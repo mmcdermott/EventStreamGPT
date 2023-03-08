@@ -33,6 +33,7 @@ class EventStreamPytorchDatasetConfig(JSONableMixin):
     max_seq_len: int = 256
     min_seq_len: int = 2
     seq_padding_side: str = 'right'
+    do_pre_cache_data: bool = False
 
     def __post_init__(self):
         assert self.seq_padding_side in ('left', 'right')
@@ -257,6 +258,8 @@ class MeasurementConfig(JSONableMixin):
                 as_dict['measurement_metadata'] = self.measurement_metadata.to_dict(into=OrderedDict)
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
             as_dict['functor'] = self.functor.to_dict()
+        if self.present_in_event_types is not None:
+            self.present_in_event_types = list(self.present_in_event_types)
         return as_dict
 
     @classmethod
@@ -280,10 +283,16 @@ class MeasurementConfig(JSONableMixin):
             assert as_dict['temporality'] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
             as_dict['functor'] = cls.FUNCTORS[as_dict['functor']['class']].from_dict(as_dict['functor'])
 
+        if as_dict['present_in_event_types'] is not None:
+            as_dict['present_in_event_types'] = set(as_dict['present_in_event_types'])
+
         return cls(**as_dict)
 
+    def __eq__(self, other: EventStreamDatasetConfig) -> bool:
+        return self.to_dict() == other.to_dict()
+
 @dataclasses.dataclass
-class EventStreamDatasetConfig:
+class EventStreamDatasetConfig(JSONableMixin):
     """
     Configuration options for parsing an `EventStreamDataset`.
 
@@ -469,3 +478,6 @@ class EventStreamDatasetConfig:
                 )
 
         return cls(measurement_configs=measurement_configs, **kwargs)
+
+    def __eq__(self, other: EventStreamDatasetConfig) -> bool:
+        return self.to_dict() == other.to_dict()

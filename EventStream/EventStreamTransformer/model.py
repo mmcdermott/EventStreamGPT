@@ -20,6 +20,7 @@ from .model_output import (
     GenerativeSequenceModelLabels,
     EventStreamTransformerForGenerativeSequenceModelOutput,
     EventStreamTransformerForStreamClassificationModelOutput,
+    get_event_type_mask_per_measurement,
 )
 from .transformer import (
     StructuredEventStreamTransformerPreTrainedModel, StructuredEventStreamTransformer
@@ -408,29 +409,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
     def get_event_type_mask_per_measurement(
         self, batch: EventStreamPytorchBatch
     ) -> Dict[str, Optional[torch.BoolTensor]]:
-        if self.config.event_types_per_measurement is None: return None
-
-        event_type_mask = (
-            batch['dynamic_measurement_indices'] == self.config.measurements_idxmap['event_type']
+        return get_event_type_mask_per_measurement(
+            batch.dynamic_measurement_indices, batch.dynamic_indices, self.config
         )
-
-        batch_event_type_indices = torch.where(
-            event_type_mask,
-            batch['dynamic_indices'] - self.config.vocab_offsets_by_measurement['event_type'],
-            -1
-        )
-
-        out_masks = {}
-        for measurement, valid_event_types in self.config.event_types_per_measurement.items():
-            valid_event_types = self.config.event_types_per_measurement[measurement]
-            valid_event_type_indices = {self.config.event_types_idxmap[et] for et in valid_event_types}
-
-            # We only want to predict for events that are of the correct type.
-            out_masks[measurement] = torch.any(
-                torch.stack([(batch_event_type_indices == i) for i in valid_event_type_indices], 0),
-                dim=0
-            ).any(-1)
-        return out_masks
 
     def forward(
             self, batch: EventStreamPytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False,
@@ -519,7 +500,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                     categorical_measurements_in_level = set()
                     numerical_measurements_in_level = set()
                     for measurement in self.config.measurements_per_dep_graph_level[i]:
-                        if type(measurement) is tuple: measurement, mode = measurement
+                        if type(measurement) in (tuple, list): measurement, mode = measurement
                         else: mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
 
                         match mode:

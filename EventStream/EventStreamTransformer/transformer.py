@@ -426,11 +426,15 @@ class StructuredEventStreamInputLayer(torch.nn.Module):
                 for measurement in measurement_list:
                     if type(measurement) is str:
                         out_list.append(config.measurements_idxmap[measurement])
-                    elif type(measurement) is tuple:
+                    elif (type(measurement) in (tuple, list)) and (len(measurement) == 2):
                         out_list.append((
                             config.measurements_idxmap[measurement[0]], measurement[1]
                         ))
-                    else: raise ValueError(f"Unexpected type {type(measurement)}")
+                    else:
+                        raise ValueError(
+                            f"Unexpected type {type(measurement)}: {measurement}\n"
+                            f"{config.measurements_per_dep_graph_level}"
+                        )
                 split_by_measurement_indices.append(out_list)
         else: split_by_measurement_indices = None
 

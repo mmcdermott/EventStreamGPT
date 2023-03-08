@@ -58,7 +58,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
     # TODO(mmd): Let this be set from a data file.
     UNIT_BOUNDS = {
         # (unit strings): [lower, lower_inclusive, upper, upper_inclusive],
-        ('%', 'percent'): [0, False, 1, False],
+        ('%', 'percent'): [0, False, 100, False],
     }
 
     @classmethod
@@ -1473,22 +1473,26 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         inlier_col = f"{col}_is_inlier"
         vals_df[inlier_col] = pd.Series([np.NaN] * len(vals_df), dtype='boolean')
 
-        self.events_df.loc[vals_df.index, vals_df.columns] = self._transform_numerical_metadata_column_vals(
-            vals_df, measurement_metadata, col, inlier_col
-        )
+        with self._time_as('_transform_numerical_metadata_column_vals'):
+            self.events_df.loc[
+                vals_df.index,
+                vals_df.columns
+            ] = EventStreamDataset._transform_numerical_metadata_column_vals(
+                vals_df, measurement_metadata, col, inlier_col
+            )
 
-    @TimeableMixin.TimeAs
+    @TimeableMixin.TimeAs(key='_transform_numerical_metadata_column_vals')
     def _transform_numerical_metadata_column_vals_gp(
         self, vals: pd.DataFrame, measurement_metadata: pd.DataFrame, val_col: str, inlier_col: str,
     ) -> pd.Series:
-        return self._transform_numerical_metadata_column_vals(
+        return EventStreamDataset._transform_numerical_metadata_column_vals(
             vals, measurement_metadata.loc[vals.name], val_col, inlier_col
         )
 
-    @TimeableMixin.TimeAs
+    @staticmethod
     def _transform_numerical_metadata_column_vals(
-        self, vals_df: pd.DataFrame, measurement_metadata: pd.Series, val_col: str, inlier_col: str,
-    ) -> pd.Series:
+        vals_df: pd.DataFrame, measurement_metadata: pd.Series, val_col: str, inlier_col: str,
+    ) -> pd.DataFrame:
         """
         Transforms a particular numerical metadata column, with key `key_col`.
 
@@ -1513,7 +1517,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             vals_df[val_col] = np.NaN
             return
 
-        vals_df[val_col] = self.drop_or_censor_series(vals_df[val_col], measurement_metadata)
+        vals_df[val_col] = EventStreamDataset.drop_or_censor_series(vals_df[val_col], measurement_metadata)
 
         # 4. Convert values to desired types:
         present_idx = ~vals_df[val_col].isna()
@@ -1523,8 +1527,13 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             vals_df[val_col] = vals_df[val_col].round()
 
         # 5. Add inlier/outlier indices and remove learned outliers.
-        if self.config.outlier_detector_config is not None:
-            inlier_idx = self._get_is_inlier(vals_df.loc[present_idx, val_col], measurement_metadata)
+        if (
+            ('outlier_model' in measurement_metadata.index) and
+            (not pd.isnull(measurement_metadata['outlier_model']))
+        ):
+            inlier_idx = EventStreamDataset._get_is_inlier(
+                vals_df.loc[present_idx, val_col], measurement_metadata
+            )
 
             with warnings.catch_warnings():
                 # This operation throws a Deprecation warning because inlier_idx is a different type than the
@@ -1540,16 +1549,19 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             if not present_idx.any(): return vals_df
 
         # 6. Normalize values.
-        if self.config.normalizer_config is not None:
-            vals_df.loc[present_idx, val_col] = self._get_normalized_vals(
+        if (
+            ('normalizer' in measurement_metadata.index) and
+            (not pd.isnull(measurement_metadata['normalizer']))
+        ):
+            vals_df.loc[present_idx, val_col] = EventStreamDataset._get_normalized_vals(
                 vals_df.loc[present_idx, val_col], measurement_metadata
             )
 
         vals_df[val_col] = vals_df[val_col].astype(float)
         return vals_df
 
-    @classmethod
-    def _get_is_inlier(cls, vals: pd.Series, measurement_metadata: pd.Series) -> pd.Series:
+    @staticmethod
+    def _get_is_inlier(vals: pd.Series, measurement_metadata: pd.Series) -> pd.Series:
         """
         Uses a pre-fit outlier detection model (if present) to return inlier predictions for a metadata
         column.
@@ -1575,8 +1587,8 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
                 [True for v in vals], index=vals.index, name=vals.name, dtype='boolean'
             )
 
-    @classmethod
-    def _get_normalized_vals(self, vals: pd.Series, measurement_metadata: pd.Series) -> pd.Series:
+    @staticmethod
+    def _get_normalized_vals(vals: pd.Series, measurement_metadata: pd.Series) -> pd.Series:
         """
         Uses a pre-fit normalizer model (if present) to return normalized values for a metadata column.
 

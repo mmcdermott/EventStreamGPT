@@ -1,7 +1,8 @@
 import dataclasses, json, torch, pandas as pd, pytorch_lightning as pl
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from tqdm.auto import tqdm
 from transformers import get_polynomial_decay_schedule_with_warmup
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from .config import (
     StructuredEventProcessingMode,
@@ -12,7 +13,7 @@ from .transformer import StructuredEventStreamTransformer, StructuredEventStream
 from .utils import safe_masked_max, safe_weighted_avg
 from ..EventStreamData.event_stream_dataset import EventStreamDataset
 from ..EventStreamData.config import EventStreamPytorchDatasetConfig
-from ..EventStreamData.event_stream_pytorch_dataset import EventStreamPytorchDataset
+from ..EventStreamData.event_stream_pytorch_cached_dataset import EventStreamPytorchDataset
 
 class EmbeddingsOnlyModel(StructuredEventStreamTransformerPreTrainedModel):
     def __init__(self, config: StructuredEventStreamTransformerConfig):
@@ -83,8 +84,10 @@ class StructuredEventStreamForEmbeddingLightningModule(pl.LightningModule):
 
 def get_embeddings(
     load_model_dir: Path,
-    dataset: EventStreamDataset,
-    task_df: pd.DataFrame,
+    dataset_dir: Optional[Path] = None,
+    dataset: Optional[EventStreamDataset] = None,
+    task_df: Optional[pd.DataFrame] = None,
+    task_df_name: Optional[str] = None,
     batch_size: int = 32,
     num_dataloader_workers: int = 1,
     pooling_method: str = 'last',
@@ -92,7 +95,9 @@ def get_embeddings(
     config: Optional[StructuredEventStreamTransformerConfig] = None,
     data_config: Optional[EventStreamPytorchDatasetConfig] = None,
     do_overwrite: bool = False,
-    get_embeddings_on_split: str = 'held_out',
+    get_embeddings_on_splits: Sequence[str] = ['held_out'],
+    pyds: Optional[Sequence[EventStreamPytorchDataset]] = None,
+    do_load_only: bool = False,
 ):
     """
     Gets the embeddings for the model saved in `load_model_dir`.
@@ -104,53 +109,92 @@ def get_embeddings(
         save_embeddings_dir = load_model_dir / 'embeddings'
         save_embeddings_dir.mkdir(parents=False, exist_ok=True)
 
-    embeddings_fp = save_embeddings_dir / f'{get_embeddings_on_split}_embeddings.pt'
-    if embeddings_fp.is_file() and not do_overwrite:
-        print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
-        return torch.load(embeddings_fp)
+    embeddings_fps = [save_embeddings_dir / f'{split}_embeddings.pt' for split in get_embeddings_on_splits]
+    all_present = all([fp.is_file() for fp in embeddings_fps])
+
+    if do_load_only:
+        if all_present: return [torch.load(fp) for fp in embeddings_fps]
+        else: raise FileNotFoundError(f"Embeddings not found at {embeddings_fps}.")
+    elif all_present and not do_overwrite:
+        print(f"Embeddings already exist at {embeddings_fps}. To overwrite, set `do_overwrite=True`.")
+        return [torch.load(fp) for fp in embeddings_fps]
+
+
+    if data_config is None:
+        data_config = EventStreamPytorchDatasetConfig.from_json_file(load_model_dir / 'data_config.json')
 
     if config is None:
         config = StructuredEventStreamTransformerConfig.from_json_file(load_model_dir / 'config.json')
         if config.task_specific_params is None: config.task_specific_params = {}
         config.task_specific_params['pooling_method'] = pooling_method
 
-    if data_config is None:
-        data_config = EventStreamPytorchDatasetConfig.from_json_file(load_model_dir / 'data_config.json')
+        if config.max_seq_len != data_config.max_seq_len:
+            print(f"Warning: `config.max_seq_len` ({config.max_seq_len}) != `data_config.max_seq_len` ({data_config.max_seq_len}).")
+            data_config.max_seq_len = config.max_seq_len
 
     # Creating training/tuning datasets
-    pyd = EventStreamPytorchDataset(
-        split=get_embeddings_on_split, E=dataset, config=data_config, task_df=task_df
-    )
+    assert task_df_name is not None
+    if task_df is None:
+        assert dataset_dir is not None
+        task_df = pd.read_csv(dataset_dir / 'task_dfs' / f'{task_df_name}.csv')
 
     data_config.to_json_file(save_embeddings_dir / "data_config.json", do_overwrite=do_overwrite)
     task_df.to_csv(save_embeddings_dir / "task_df.csv")
     config.to_json_file(save_embeddings_dir / "config.json")
 
+    # Datasets
+    if pyds is None:
+        pyds = EventStreamPytorchDataset.load_or_create(
+            data_dir=dataset_dir,
+            config=data_config,
+            splits=get_embeddings_on_splits,
+            data=dataset,
+            task_df=task_df,
+            task_df_name=task_df_name,
+        )
+
     # Model
     pretrained_weights_fp = load_model_dir / 'pretrained_weights'
+    if not pretrained_weights_fp.is_dir():
+        raise FileNotFoundError(f"Couldn't find pretrained weights at {pretrained_weights_fp}.")
     LM = StructuredEventStreamForEmbeddingLightningModule(config, pretrained_weights_fp)
 
-    # Setting up torch dataloader
-    dataloader = torch.utils.data.DataLoader(
-        pyd,
-        batch_size  = batch_size,
-        num_workers = num_dataloader_workers,
-        collate_fn  = pyd.collate,
-        shuffle     = False,
-    )
+    out = []
+    for split, embeddings_fp, pyd in tqdm(
+        list(zip(get_embeddings_on_splits, embeddings_fps, pyds)),
+        desc="Getting Embeddings", leave=False
+    ):
+        if embeddings_fp.is_file() and not do_overwrite:
+            print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
+            out.append(torch.load(embeddings_fp))
+            continue
 
-    checkpoints_dir = save_embeddings_dir / "model_checkpoints"
+        if pyd.max_seq_len != data_config.max_seq_len:
+            print(f"Warning: `pyd.max_seq_len` ({pyd.max_seq_len}) != `data_config.max_seq_len` ({data_config.max_seq_len}).")
+            pyd.max_seq_len = data_config.max_seq_len
 
-    trainer_kwargs = {'max_epochs': 1, 'default_root_dir': checkpoints_dir}
+        # Setting up torch dataloader
+        dataloader = torch.utils.data.DataLoader(
+            pyd,
+            batch_size  = batch_size,
+            num_workers = num_dataloader_workers,
+            collate_fn  = pyd.collate,
+            shuffle     = False,
+        )
 
-    if torch.cuda.is_available():
-        trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
+        checkpoints_dir = save_embeddings_dir / "model_checkpoints"
 
-    trainer = pl.Trainer(**trainer_kwargs)
+        trainer_kwargs = {'max_epochs': 1, 'default_root_dir': checkpoints_dir}
 
-    # Getting Embeddings model
-    embeddings = torch.cat(trainer.predict(LM, dataloader), 0)
+        if torch.cuda.is_available():
+            trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
 
-    torch.save(embeddings, embeddings_fp)
+        trainer = pl.Trainer(**trainer_kwargs)
 
-    return embeddings
+        # Getting Embeddings model
+        embeddings = torch.cat(trainer.predict(LM, dataloader), 0)
+
+        torch.save(embeddings, embeddings_fp)
+        out.append(embeddings)
+
+    return out

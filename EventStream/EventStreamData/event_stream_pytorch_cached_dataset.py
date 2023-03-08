@@ -1,19 +1,20 @@
-import itertools, torch, numpy as np, pandas as pd
+import copy, itertools, torch, numpy as np, pandas as pd
 
 from collections import defaultdict
 from datetime import datetime
 from functools import cached_property
-from mixins import SeedableMixin, TimeableMixin
+from mixins import SaveableMixin, SeedableMixin, TimeableMixin
+from pathlib import Path
+from tqdm.auto import tqdm
+from typing import Dict, Hashable, List, Optional, Sequence, Tuple, Union
 
 from .event_stream_dataset import EventStreamDataset
 from .config import EventStreamPytorchDatasetConfig
 from .types import DataModality, EventStreamPytorchBatch, TemporalityType
 
-from typing import Dict, Hashable, List, Optional, Tuple, Union
-
 DATA_ITEM_T = Dict[str, List[float]]
 
-class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
+class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
     """
     Ultimately, this class will produce a set of batches for ML that will have the following structure:
     {
@@ -80,12 +81,84 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
         raise TypeError(f"Can't process label of {val.dtype} type!")
 
+    @classmethod
+    def load_or_create(
+        cls,
+        data_dir: Path,
+        config: EventStreamPytorchDatasetConfig,
+        splits: Sequence[str],
+        data: Optional[EventStreamDataset] = None,
+        task_df: Optional[pd.DataFrame] = None,
+        task_df_name: Optional[str] = None,
+    ) -> 'EventStreamPytorchDataset':
+        """
+        Loads the dataset from disk if it exists, otherwise creates it and saves it to disk.
+        """
+
+        out = []
+        for split in splits:
+            if task_df_name is not None:
+                pyd_fp = data_dir / f'{task_df_name}_{split}_pytorch_dataset.pkl'
+            else:
+                pyd_fp = data_dir / f'{split}_pytorch_dataset.pkl'
+            if pyd_fp.is_file():
+                start = datetime.now()
+                loaded_pyd = cls._load(pyd_fp)
+                print(f"Loaded pytorch dataset from {pyd_fp} in {datetime.now() - start}.")
+
+                if loaded_pyd.max_seq_len != config.max_seq_len:
+                    print(
+                        f"Warning: max_seq_len mismatch for {split} split: "
+                        f"{loaded_pyd.max_seq_len} vs {config.max_seq_len}!\n"
+                        f"Overwriting with {config.max_seq_len}..."
+                    )
+                    loaded_pyd.max_seq_len = config.max_seq_len
+
+                if loaded_pyd.do_normalize_log_inter_event_times != config.do_normalize_log_inter_event_times:
+                    raise ValueError(
+                        f"do_normalize_log_inter_event_times mismatch for {split} split: "
+                        f"{loaded_pyd.do_normalize_log_inter_event_times} vs "
+                        f"{config.do_normalize_log_inter_event_times}!"
+                    )
+
+                out.append(loaded_pyd)
+                continue
+
+            print(f"Creating pytorch dataset for {split} split...")
+
+            if data is None:
+                print(f"Loading event stream dataset...")
+                start = datetime.now()
+                data = EventStreamDataset._load(data_dir / 'processed_event_stream_dataset.pkl')
+                print(f"Loaded event stream dataset in {datetime.now() - start}.")
+
+            start = datetime.now()
+            pyd = cls(data, config, split, task_df=task_df, task_df_name=task_df_name)
+            print(f"Made pytorch dataset in {datetime.now() - start}.")
+
+            start = datetime.now()
+            pyd.save(data_dir)
+            print(f"Saved pytorch dataset to {data_dir} in {datetime.now() - start}.")
+            out.append(pyd)
+
+        return out
+
+    def save_path(self, data_dir: Path) -> Path:
+        if self.has_task:
+            return data_dir / f'{self.task_df_name}_{self.split}_pytorch_dataset.pkl'
+        else:
+            return data_dir / f'{self.split}_pytorch_dataset.pkl'
+
+    def save(self, data_dir: Path, do_overwrite: bool = False):
+        self._save(self.save_path(data_dir), do_overwrite=do_overwrite)
+
     def __init__(
         self,
-        E: EventStreamDataset,
+        data: EventStreamDataset,
         config: EventStreamPytorchDatasetConfig,
         split: str,
         task_df: Optional[pd.DataFrame] = None,
+        task_df_name: Optional[str] = None,
     ):
         """
         Constructs the EventStreamPytorchDataset).
@@ -105,21 +178,11 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         """
 
         super().__init__()
-        self.data = E
+        self.do_produce_static_data = data.has_static_measurements
         self.split = split
-        # event_type is tracked differently than other metadata elements, currently. TODO(mmd): Probably
-        # sub-optimal.
-        self.event_types_idxmap = {et: i for i, et in enumerate(self.data.event_types)}
 
-        self.seq_padding_side = config.seq_padding_side
-        assert self.seq_padding_side in ('left', 'right'), f"{self.seq_padding_side} is invalid!"
+        self.event_types_idxmap = {et: i for i, et in enumerate(data.event_types)}
 
-        self.max_seq_len = config.max_seq_len
-        self.do_normalize_log_inter_event_times = config.do_normalize_log_inter_event_times
-        self.mean_log_inter_event_time_min = E.train_mean_log_inter_event_time_min
-        self.std_log_inter_event_time_min = E.train_std_log_inter_event_time_min
-
-        self.do_produce_static_data = E.has_static_measurements
         self.event_cols = []
         self.static_cols = []
         self.dynamic_cols = []
@@ -127,7 +190,7 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         self.measurements_per_generative_mode[DataModality.SINGLE_LABEL_CLASSIFICATION].append('event_type')
         self.event_types_per_measurement = {'event_type': list(self.event_types_idxmap.keys())}
 
-        for m, cfg in E.measurement_configs.items():
+        for m, cfg in data.measurement_configs.items():
             if cfg.is_dropped: continue
 
             col = m
@@ -156,14 +219,29 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         }
         self.data_cols = self.dynamic_cols + self.event_cols + self.static_cols
 
+        self.seq_padding_side = config.seq_padding_side
+        assert self.seq_padding_side in ('left', 'right'), f"{self.seq_padding_side} is invalid!"
+
+        self.max_seq_len = config.max_seq_len
+        self.do_normalize_log_inter_event_times = config.do_normalize_log_inter_event_times
+        self.mean_log_inter_event_time_min = data.train_mean_log_inter_event_time_min
+        self.std_log_inter_event_time_min = data.train_std_log_inter_event_time_min
+
         # We need thse to be ordered, so we ensure this is a list.
         self.subject_ids = [
-            sid for sid in self.data.subject_ids_for_split(split) \
-                if self.data.n_events_per_subject[sid] >= config.min_seq_len
+            sid for sid in data.subject_ids_for_split(split) \
+                if data.n_events_per_subject[sid] >= config.min_seq_len
         ]
 
+        # event_type is tracked differently than other metadata elements, currently. TODO(mmd): Probably
+        # sub-optimal.
 
         # Everything starts at 1 as we reserve 0 for padding.
+        self.vocab_sizes_by_measurement = {
+            'event_type': len(self.event_types_idxmap),
+            **{k: len(v) for k, v in data.measurement_vocabs.items()},
+        }
+
         self.measurement_vocab_offsets = {'event_type': 1}
         self.measurements_idxmap = {'event_type': 1}
         curr_end_of_vocab = len(self.event_types_idxmap) + 1
@@ -175,16 +253,16 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
             self.measurement_vocab_offsets[col] = curr_end_of_vocab
 
-            if self.data.measurement_configs[col].vocabulary is None:
-                if self.data.measurement_configs[col].modality != DataModality.UNIVARIATE_REGRESSION:
+            if data.measurement_configs[col].vocabulary is None:
+                if data.measurement_configs[col].modality != DataModality.UNIVARIATE_REGRESSION:
                     raise ValueError(
                         f"Observed inappropriate config! {col} has no vocabulary but is not univariate "
-                        f"regression, is {self.data.measurement_configs[col].modality}! Full config:\n"
-                        f"{self.data.measurement_configs[col]}"
+                        f"regression, is {data.measurement_configs[col].modality}! Full config:\n"
+                        f"{data.measurement_configs[col]}"
                     )
                 vocab_size = 1
             else:
-                vocab_size = len(self.data.measurement_idxmaps[col])
+                vocab_size = len(data.measurement_idxmaps[col])
             curr_end_of_vocab += vocab_size
 
         self.total_vocab_size   = curr_end_of_vocab
@@ -195,7 +273,11 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         if task_df is None:
             self.task_df = None
             self.tasks = None
+            assert task_df_name is None
+            self.task_df_name = None
         else:
+            assert task_df_name is not None
+            self.task_df_name = task_df_name
             self.task_df = task_df[task_df.subject_id.isin(self.subject_ids)].copy()
             self.tasks = [c for c in self.task_df if c not in ['subject_id', 'start_time', 'end_time']]
             for t in self.tasks:
@@ -211,21 +293,37 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 self.task_types[t] = task_type
                 self.task_df[t] = normalized_vals
 
-        if config.do_pre_cache_data:
-            self._pre_cache_data_items()
-            self.use_pre_cached_data = True
-        else:
-            self.use_pre_cached_data = False
+        self._pre_cache_data_items(data)
 
     @property
     def has_task(self) -> bool: return (self.task_df is not None)
 
     def __len__(self): return len(self.task_df) if self.has_task else len(self.subject_ids)
 
+    @SeedableMixin.WithSeed
+    def subset(self, subset_size: int) -> 'EventStreamPytorchDataset':
+        all_idx = np.arange(len(self.schema))
+        sub_idx = np.random.permutation(all_idx)[:subset_size]
+
+        out = copy.deepcopy(self)
+        if self.has_task:
+            out.task_df = self.task_df.iloc[sub_idx]
+        else:
+            out.subject_ids = [self.subject_ids[i] for i in sub_idx]
+        del out.schema
+        assert len(out) == subset_size
+
+        out.cached_data = list(np.array(self.cached_data)[sub_idx])
+
+        out.split = f"{self.split}_subset_{subset_size}"
+        return out
+
     @cached_property
     def schema(self):
         if self.has_task:
-            return list(self.task_df.apply(lambda r: (r.subject_id, r.start_time, r.end_time), axis='index'))
+            return list(
+                self.task_df.apply(lambda r: (r.subject_id, r.start_time, r.end_time), axis='columns')
+            )
         else:
             return [(sid, None, None) for sid in self.subject_ids]
 
@@ -233,6 +331,7 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
     @TimeableMixin.TimeAs
     def _pre_cache_data_items(
         self,
+        data: EventStreamDataset,
     ):
         """
         Pre-caches processed versions of the underlying data so that subsequent __get_item__ calls are faster.
@@ -240,17 +339,17 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
         self.cached_data = []
 
-        for subject_id, start_time, end_time in self.schema:
+        for subject_id, start_time, end_time in tqdm(self.schema, leave=False):
             # First find the subject corresponding to this dataset element.
             with self._time_as('pre_cache_get_subj_data'):
-                subj_data = self.data.events_df[self.data.events_df.subject_id == subject_id]
+                subj_data = data.events_df[data.events_df.subject_id == subject_id]
                 if start_time is not None:
                     subj_data = subj_data[subj_data.timestamp >= start_time]
                 if end_time is not None:
                     subj_data = subj_data[subj_data.timestamp <= end_time]
 
             with self._time_as('pre_cache_get_subj_dynamic_data'):
-                subj_metadata = self.data.metadata_df(subject_id=subject_id)
+                subj_metadata = data.metadata_df(subject_id=subject_id)
 
             start_time = subj_data.timestamp.min()
 
@@ -313,7 +412,7 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                     # As 0 is a sentinel vocabulary element of 'UNK' in all vocabularies, that is what we use of
                     # we don't find the associated key in the metadata idxmap.
                     new_indices = [
-                        self.data.measurement_idxmaps[col].get(v, 0) + offset for v in vals
+                        data.measurement_idxmaps[col].get(v, 0) + offset for v in vals
                     ]
                     event_dynamic_indices.extend(new_indices)
                     event_dynamic_measurement_indices.extend([self.measurements_idxmap[col] for _ in new_indices])
@@ -344,13 +443,13 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
                     val = r[col]
 
-                    if self.data.measurement_configs[col].modality == DataModality.UNIVARIATE_REGRESSION:
+                    if data.measurement_configs[col].modality == DataModality.UNIVARIATE_REGRESSION:
                         new_index = offset
                         new_val = val
                     else:
                         # As 0 is a sentinel vocabulary element of 'UNK' in all vocabularies, that is what we use
                         # of we don't find the associated key in the metadata idxmap.
-                        new_index = self.data.measurement_idxmaps[col].get(val, 0) + offset
+                        new_index = data.measurement_idxmaps[col].get(val, 0) + offset
                         if (vals_col is None) or (vals_col not in metadata.columns): new_val = np.NaN
                         else: new_val = r[vals_col]
 
@@ -375,7 +474,7 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 }
             else:
                 self._register_start('pre_cache_get_static_item_contents')
-                subj_static_data = self.data.subjects_df.loc[subject_id]
+                subj_static_data = data.subjects_df.loc[subject_id]
 
                 static_indices = []
                 static_measurement_indices = []
@@ -388,7 +487,7 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                     offset = self.measurement_vocab_offsets[col]
 
                     val = subj_static_data[col]
-                    static_indices.append(self.data.measurement_idxmaps[col].get(val, 0) + offset)
+                    static_indices.append(data.measurement_idxmaps[col].get(val, 0) + offset)
                     static_measurement_indices.append(self.measurements_idxmap[col])
                 self._register_end('pre_cache_get_static_item_contents')
 
@@ -403,17 +502,13 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             self.cached_data.append(out)
 
     def __getitem__(self, idx: int) -> Dict[str, list]:
-        if self.use_pre_cached_data:
-            batch = self._seeded_getitem_from_cached_idx(idx)
-        else:
-            batch = self._seeded_getitem_from_range(*self.schema[idx])
+        batch = self._seeded_getitem_from_cached_idx(idx)
 
         if self.has_task:
             row = self.task_df.iloc[idx]
             for task in self.tasks: batch[task] = row[task]
-            return batch
-        else:
-            return batch
+
+        return batch
 
     @SeedableMixin.WithSeed
     @TimeableMixin.TimeAs
@@ -458,211 +553,6 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 for k in ('time', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices'):
                     full_subj_data[k] = full_subj_data[k][start_idx:start_idx+self.max_seq_len]
         return full_subj_data
-
-    @SeedableMixin.WithSeed
-    @TimeableMixin.TimeAs
-    def _seeded_getitem_from_range(
-        self,
-        subject_id: Hashable,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> Dict[str, list]:
-        """
-        Returns a dictionary corresponding to a batch element for a single patient. This will not be
-        tensorized as that work will need to be re-done in the collate function regardless. The output will
-        have structure:
-        {
-            'time': [seq_len],
-            'dynamic_indices': [seq_len, n_data_per_event] (ragged),
-            'dynamic_values': [seq_len, n_data_per_event] (ragged),
-            'dynamic_measurement_indices': [seq_len, n_data_per_event] (ragged),
-            'static_indices': [seq_len, n_data_per_event] (ragged),
-            'static_measurement_indices': [seq_len, n_data_per_event] (ragged),
-        }
-          1. `time` captures the time of the sequence elements.
-          2. `dynamic_indices` captures the categorical metadata elements listed in `self.data_cols` in a unified
-             vocabulary space spanning all metadata vocabularies.
-          3. `dynamic_values` captures the numerical metadata elements listed in `self.data_cols`. If no
-             numerical elements are listed in `self.data_cols` for a given categorical column, the according
-             index in this output will be `np.NaN`.
-          4. `dynamic_measurement_indices` captures which metadata vocabulary was used to source a given data element.
-
-        If `self.do_normalize_log_inter_event_times`, then `time` will be approximately modified as follows:
-            1. `obs_TTE = time.diff()` Capture the observed inter_event_times.
-            2. `mod_TTE = np.exp((np.log(obs_TTE + 1) - self.mean_log_inter...)/self.std_log_inter...)`:
-               Modify the times between events by first padding them so none are <= 0, then ensuring that
-               their log has mean 0 and standard deviation 1, then re-exponentiating them out of the log
-               space.
-            3. `mod_time = mod_TTE.cumsum()` Re-sum the modified inter-event times to get modified raw times.
-        """
-
-        # First find the subject corresponding to this dataset element.
-        with self._time_as('get_subj_data'):
-            subj_data = self.data.events_df[self.data.events_df.subject_id == subject_id]
-            if start_time is not None:
-                subj_data = subj_data[subj_data.timestamp >= start_time]
-            if end_time is not None:
-                subj_data = subj_data[subj_data.timestamp <= end_time]
-
-        with self._time_as('get_subj_dynamic_data'):
-            subj_metadata = self.data.metadata_df(subject_id=subject_id)
-
-        start_time = subj_data.timestamp.min()
-
-        # If we need to truncate to `self.max_seq_len`, grab a random full-size span to capture that.
-        # TODO(mmd): This will proportionally underweight the front and back ends of the subjects data
-        # relative to the middle, as there are fewer full length sequences containing those elements.
-        if len(subj_data) > self.max_seq_len:
-            with self._time_as('truncate_to_max_seq_len'):
-                start_idx = np.random.choice(len(subj_data) - self.max_seq_len)
-                subj_data = subj_data.iloc[start_idx:start_idx+self.max_seq_len]
-
-        # Now we need to produce the 4 tensor elements in this dataset:
-        # time, dynamic_indices, dynamic_values, and dynamic_measurement_indices
-
-        self._register_start('get_dynamic_item_contents')
-        # Normalize time to the start of the sequence and convert it to minutes.
-        time_min = (subj_data.timestamp - start_time) / pd.to_timedelta(1, unit='minute')
-
-        if self.do_normalize_log_inter_event_times:
-            time_deltas = time_min.diff()
-            # We do the + 1 here because it is possible that events have the same timestamp. This should be
-            # mirrored in the calculation of mean_/std_log_inter_event_time_min.
-            time_deltas = np.exp(
-                (np.log(time_deltas + 1) - self.mean_log_inter_event_time_min) /
-                self.std_log_inter_event_time_min
-            )
-            time_min = time_deltas.fillna(0).cumsum()
-
-        # For data elements, we'll build a ragged representation for now,
-        # then will convert everything to padded tensors in the collate function.
-
-        dynamic_indices, dynamic_values, dynamic_measurement_indices = [], [], []
-        # TODO(mmd): convert to apply to make this faster
-        for event_id, r in subj_data.iterrows():
-            # The first metadata element will always be the event type, so we initialize with that. It has no
-            # value associated with it.
-            event_dynamic_indices = [
-                self.measurement_vocab_offsets['event_type'] + self.event_types_idxmap[r['event_type']]
-            ]
-            event_dynamic_values = [np.NaN]
-            event_dynamic_measurement_indices = [self.measurements_idxmap['event_type']]
-
-            self._register_start('get_dynamic_item_contents__metadata_select')
-            metadata = subj_metadata[subj_metadata.event_id == event_id]
-            self._register_end('get_dynamic_item_contents__metadata_select')
-
-            self._register_start('get_dynamic_item_contents__dynamic_cols')
-            for col in self.dynamic_cols:
-                if type(col) is tuple: col, vals_col = col
-                else: vals_col = None
-
-                # A given metadata column may not exist in this event, which is fine and just means it won't
-                # contribute to the data values for this event, so we can continue.
-                if col not in metadata.columns: continue
-
-                # As we normalize everything to a single vocabulary, we need to grab the offset here.
-                offset = self.measurement_vocab_offsets[col]
-
-                vals = metadata[col].values
-                # Some values may be nested sequences, which we need to flatten.
-                if type(vals[0]) in (list, tuple): vals = list(itertools.chain.from_iterable(vals))
-
-                # Some values may be missing, which we need to ignore. We don't use pandas or numpy here as
-                # the type of vals is just a list.
-                vals_valid_idx = np.array([not pd.isnull(v) for v in vals])
-                vals = [v for v, b in zip(vals, vals_valid_idx) if b]
-
-                # As 0 is a sentinel vocabulary element of 'UNK' in all vocabularies, that is what we use of
-                # we don't find the associated key in the metadata idxmap.
-                new_indices = [
-                    self.data.measurement_idxmaps[col].get(v, 0) + offset for v in vals
-                ]
-                event_dynamic_indices.extend(new_indices)
-                event_dynamic_measurement_indices.extend([self.measurements_idxmap[col] for _ in new_indices])
-
-                if (vals_col is None) or (vals_col not in metadata.columns):
-                    event_dynamic_values.extend([np.NaN for _ in new_indices])
-                else:
-                    # We normalize infinite values to missing values here as well. TODO(mmd): Log this?
-                    event_dynamic_values.extend(
-                        [np.NaN if v in (float('inf'), -float('inf')) else v for v, b in zip(
-                            #M[vals_col], vals_valid_idx
-                            metadata[vals_col], vals_valid_idx
-                        ) if b]
-                    )
-            self._register_end('get_dynamic_item_contents__dynamic_cols')
-
-            self._register_start('get_dynamic_item_contents__event_cols')
-            for col in self.event_cols:
-                if type(col) is tuple: col, vals_col = col
-                else: vals_col = None
-
-                # A given metadata column may not exist in this event, which is fine and just means it won't
-                # contribute to the data values for this event, so we can continue.
-                if col not in r: continue
-
-                # As we normalize everything to a single vocabulary, we need to grab the offset here.
-                offset = self.measurement_vocab_offsets[col]
-
-                val = r[col]
-
-                if self.data.measurement_configs[col].modality == DataModality.UNIVARIATE_REGRESSION:
-                    new_index = offset
-                    new_val = val
-                else:
-                    # As 0 is a sentinel vocabulary element of 'UNK' in all vocabularies, that is what we use
-                    # of we don't find the associated key in the metadata idxmap.
-                    new_index = self.data.measurement_idxmaps[col].get(val, 0) + offset
-                    if (vals_col is None) or (vals_col not in metadata.columns): new_val = np.NaN
-                    else: new_val = r[vals_col]
-
-                event_dynamic_indices.append(new_index)
-                event_dynamic_measurement_indices.append(self.measurements_idxmap[col])
-                event_dynamic_values.append(
-                    np.NaN if new_val in (float('inf'), -float('inf')) else new_val
-                )
-            self._register_end('get_dynamic_item_contents__event_cols')
-
-            dynamic_indices.append(event_dynamic_indices)
-            dynamic_values.append(event_dynamic_values)
-            dynamic_measurement_indices.append(event_dynamic_measurement_indices)
-        self._register_end('get_dynamic_item_contents')
-
-        if not self.do_produce_static_data:
-            return {
-                'time': time_min.values,
-                'dynamic_indices': dynamic_indices,
-                'dynamic_values': dynamic_values,
-                'dynamic_measurement_indices': dynamic_measurement_indices,
-            }
-
-        self._register_start('get_static_item_contents')
-        subj_static_data = self.data.subjects_df.loc[subject_id]
-
-        static_indices = []
-        static_measurement_indices = []
-        for col in self.static_cols:
-            # A given metadata column may not exist in this event, which is fine and just means it won't
-            # contribute to the data values for this event, so we can continue.
-            if col not in subj_static_data.index: continue
-
-            # As we normalize everything to a single vocabulary, we need to grab the offset here.
-            offset = self.measurement_vocab_offsets[col]
-
-            val = subj_static_data[col]
-            static_indices.append(self.data.measurement_idxmaps[col].get(val, 0) + offset)
-            static_measurement_indices.append(self.measurements_idxmap[col])
-        self._register_end('get_static_item_contents')
-
-        return {
-            'time': time_min.values,
-            'dynamic_indices': dynamic_indices,
-            'dynamic_values': dynamic_values,
-            'dynamic_measurement_indices': dynamic_measurement_indices,
-            'static_indices': static_indices,
-            'static_measurement_indices': static_measurement_indices,
-        }
 
     def __static_and_dynamic_collate(self, batch: List[DATA_ITEM_T]) -> EventStreamPytorchBatch:
         out_batch = self.__dynamic_only_collate(batch)

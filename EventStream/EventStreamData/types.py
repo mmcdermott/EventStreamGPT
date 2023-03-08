@@ -24,6 +24,8 @@ class EventStreamPytorchBatch:
     def sequence_length(self) -> int: return self.event_mask.shape[1]
     @property
     def n_data_elements(self) -> int: return self.dynamic_indices.shape[2]
+    @property
+    def n_static_data_elements(self) -> int: return self.static_indices.shape[1]
 
     def __getitem__(self, item: str) -> torch.Tensor: return dataclasses.asdict(self)[item]
     def __setitem__(self, item: str, val: torch.Tensor):
@@ -100,6 +102,9 @@ class DataModality(StrEnum):
             dimensions. Currently only supported on static or time-dependent columns, and then only for
             univariate data.
     """
+
+    @classmethod
+    def values(cls): return list(map(lambda c: c.value, cls))
 
     DROPPED = enum.auto()
     SINGLE_LABEL_CLASSIFICATION = enum.auto()

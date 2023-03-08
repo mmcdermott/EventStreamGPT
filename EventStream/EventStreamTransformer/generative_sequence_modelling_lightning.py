@@ -1,5 +1,6 @@
 import dataclasses, json, torch, torchmetrics, wandb, pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pathlib import Path
 from torchmetrics.classification import (
     MulticlassAUROC,
@@ -17,10 +18,9 @@ from .model import StructuredEventStreamTransformerForGenerativeSequenceModeling
 from .model_output import EventStreamTransformerForGenerativeSequenceModelOutput
 from .utils import expand_indexed_regression
 from ..EventStreamData.types import DataModality, EventStreamPytorchBatch
+from ..EventStreamData.config import EventStreamPytorchDatasetConfig
 from ..EventStreamData.event_stream_dataset import EventStreamDataset
-from ..EventStreamData.event_stream_pytorch_dataset import (
-    EventStreamPytorchDataset, EventStreamPytorchDatasetConfig,
-)
+from ..EventStreamData.event_stream_pytorch_cached_dataset import EventStreamPytorchDataset
 
 def str_summary(T: torch.Tensor):
     return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
@@ -32,7 +32,8 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.Light
         config: Union[StructuredEventStreamTransformerConfig, Dict[str, Any]],
         optimization_config: Union[EventStreamOptimizationConfig, Dict[str, Any]],
         pretrained_weights_fp: Optional[Path] = None,
-        do_debug_mode: bool = True
+        do_debug_mode: bool = True,
+        do_skip_all_metrics: bool = False,
     ):
         """
         Initializes the Lightning Module.
@@ -60,12 +61,13 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.Light
         self.config = config
         self.optimization_config = optimization_config
         self.do_debug_mode = do_debug_mode
+        self.do_skip_all_metrics = do_skip_all_metrics
 
         self.save_hyperparameters({
             'config': config.to_dict(),
             'optimization_config': dataclasses.asdict(optimization_config),
         })
-        self.build_metrics()
+        if not self.do_skip_all_metrics: self.build_metrics()
 
         if pretrained_weights_fp is None:
             self.model = StructuredEventStreamTransformerForGenerativeSequenceModeling(config)
@@ -208,6 +210,26 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.Light
                 The prefix that should be used when logging metric results. Will likely be 'train', 'tuning',
                 or 'held_out', for example.
         """
+        # We start by logging the losses.
+        self.log_dict(
+            {f"{prefix}_{k}_cls_NLL": v for k, v in results['losses']['classification'].items()},
+            batch_size=self.optimization_config.batch_size,
+        )
+        self.log_dict(
+            {f"{prefix}_{k}_reg_NLL": v for k, v in results['losses']['regression'].items()},
+            batch_size=self.optimization_config.batch_size,
+        )
+        self.log(
+            f"{prefix}_TTE_reg_NLL", results['losses']['time_to_event'],
+            batch_size=self.optimization_config.batch_size,
+        )
+
+        self.log(
+            f"{prefix}_loss", results['loss'],
+            batch_size=self.optimization_config.batch_size,
+        )
+
+        if self.do_skip_all_metrics: return
         # We'll commonly log metrics via the `self._log_metric_dict` helper, with some shared keyword
         # arguments.
         log_metric_kwargs = {'skip_metrics': skip_metrics, 'prefix': prefix}
@@ -304,25 +326,6 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.Light
                         measurement=measurement, **log_metric_kwargs
                     )
 
-        # Now, all that is left is to log the losses as well.
-        self.log_dict(
-            {f"{prefix}_{k}_cls_NLL": v for k, v in results['losses']['classification'].items()},
-            batch_size=self.optimization_config.batch_size,
-        )
-        self.log_dict(
-            {f"{prefix}_{k}_reg_NLL": v for k, v in results['losses']['regression'].items()},
-            batch_size=self.optimization_config.batch_size,
-        )
-        self.log(
-            f"{prefix}_TTE_reg_NLL", results['losses']['time_to_event'],
-            batch_size=self.optimization_config.batch_size,
-        )
-
-        self.log(
-            f"{prefix}_loss", results['loss'],
-            batch_size=self.optimization_config.batch_size,
-        )
-
     def training_step(self, batch: EventStreamPytorchBatch, batch_idx: int) -> torch.Tensor:
         """Training step. Skips logging all AUROC, AUPRC, and per_class metric to save compute."""
         out = self.model(batch)
@@ -334,6 +337,11 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.Light
         """Validation step. Differs from training only in that it does not skip metrics."""
         out = self.model(batch)
         self.log_metrics(out, skip_metrics=[], prefix='tuning')
+
+    def test_step(self, batch: EventStreamPytorchBatch, batch_idx: int):
+        """Validation step. Differs from training only in that it does not skip metrics."""
+        out = self.model(batch)
+        self.log_metrics(out, skip_metrics=[], prefix='held_out')
 
     def configure_optimizers(self):
         """
@@ -363,7 +371,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.Light
 
 def fit_generative_sequence_model(
     save_dir: Path,
-    dataset: EventStreamDataset,
+    dataset_dir: Path,
     config: StructuredEventStreamTransformerConfig,
     optimization_config: EventStreamOptimizationConfig,
     data_config: EventStreamPytorchDatasetConfig,
@@ -378,6 +386,9 @@ def fit_generative_sequence_model(
     tuning_split: str = 'tuning',
     held_out_split: str = 'held_out',
     do_overwrite: bool = False,
+    do_skip_all_metrics_in_train: bool = False,
+    do_final_validation_on_metrics: bool = True,
+    do_save_pretrained: bool = True,
 ):
     """
     Runs the end to end training procedure for the StructuredEventStreamForGenerativeSequenceModelingLightningModule model.
@@ -386,10 +397,11 @@ def fit_generative_sequence_model(
         `save_dir` (`pathlib.Path`):
             In what directory this model and its configurationfiles should be saved. If the directory does not
             exist, it will be created. If it does exist already, some files within it may be overwritten.
-        `dataset` (`EventStreamDataset`):
-            The base dataset object on which this model run will train. This dataset should already be fully
-            processed, including being split into named `'train'`, `'tuning'`, and `'held_out'` splits and
-            having metadata vocabularies fully specified.
+        `dataset_dir` (`pathlib.Path`):
+            The path within which the base dataset object is saved at filename
+            `processed_event_stream_dataset.pkl` on which this model run will train. This dataset should
+            already be fully processed, including being split into named `'train'`, `'tuning'`, and
+            `'held_out'` splits and having metadata vocabularies fully specified.
         `config` (`StructuredEventStreamTransformerConfig`):
             The model configuration for this run. Will primarily be used to create the underlying encoder
             transformer.
@@ -398,7 +410,7 @@ def fit_generative_sequence_model(
             parameters for optimization.
         `data_config` (`EventStreamPytorchDatasetConfig`):
             The pytorch dataset configuration for this run. Will primarily be used to configure how the
-            pytorch dataset parses the data in `dataset`.
+            pytorch dataset parses the data in `dataset_dir`.
         `wandb_name` (`str`, *optional*, defaults to `'generative_mimic_model'`):
             What name to use for tracking this model in Weights & Biases.
         `wandb_project` (`str`, *optional*, defaults to `'medFMs'`):
@@ -422,10 +434,10 @@ def fit_generative_sequence_model(
     """
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # Creating training/tuning datasets
-    train_pyd = EventStreamPytorchDataset(dataset, data_config, split=train_split)
-    tuning_pyd = EventStreamPytorchDataset(dataset, data_config, split=tuning_split)
-    held_out_pyd = EventStreamPytorchDataset(dataset, data_config, split=held_out_split)
+    # Creating or loading training/tuning datasets
+    train_pyd, tuning_pyd, held_out_pyd = EventStreamPytorchDataset.load_or_create(
+        dataset_dir, data_config, splits=[train_split, tuning_split, held_out_split]
+    )
 
     # Setting up configurations
     config.set_to_dataset(train_pyd)
@@ -441,7 +453,9 @@ def fit_generative_sequence_model(
     optimization_config.to_json_file(save_dir / "optimization_config.json", do_overwrite=do_overwrite)
 
     # Model
-    LM = StructuredEventStreamForGenerativeSequenceModelingLightningModule(config, optimization_config)
+    LM = StructuredEventStreamForGenerativeSequenceModelingLightningModule(
+        config, optimization_config, do_skip_all_metrics=do_skip_all_metrics_in_train
+    )
 
     wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
     wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
@@ -467,10 +481,21 @@ def fit_generative_sequence_model(
         collate_fn  = tuning_pyd.collate,
         shuffle     = False,
     )
+    held_out_dataloader = torch.utils.data.DataLoader(
+        held_out_pyd,
+        batch_size  = optimization_config.batch_size,
+        num_workers = num_dataloader_workers,
+        collate_fn  = held_out_pyd.collate,
+        shuffle     = False,
+    )
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step')
+    callbacks = [pl.callbacks.LearningRateMonitor(logging_interval='step')]
+    if optimization_config.patience is not None:
+        callbacks.append(EarlyStopping(
+            monitor='tuning_loss', mode='min', patience=optimization_config.patience
+        ))
 
     checkpoints_dir = save_dir / "model_checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
@@ -481,24 +506,79 @@ def fit_generative_sequence_model(
         logger            = wandb_logger,
         track_grad_norm   = 2,
         log_every_n_steps = log_every_n_steps,
-        callbacks         = [lr_monitor],
+        callbacks         = callbacks,
         default_root_dir  = checkpoints_dir,
     )
+
+    if (
+        (optimization_config.gradient_accumulation is not None) and 
+        (optimization_config.gradient_accumulation > 1)
+    ):
+        trainer_kwargs['accumulate_grad_batches'] = optimization_config.gradient_accumulation
 
     if torch.cuda.is_available():
         trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
 
-    trainer = pl.Trainer(**trainer_kwargs)
-
     if return_early:
         return (
-            (train_pyd, tuning_pyd, held_out_pyd), (config, optimization_config, data_config),
-            (train_dataloader, tuning_dataloader), (trainer_kwargs, trainer), LM
+            (train_pyd, tuning_pyd), (config, optimization_config, data_config),
+            (train_dataloader, tuning_dataloader), (trainer_kwargs, pl.Trainer(**trainer_kwargs)), LM
         )
 
     # Fitting model
     try:
-        trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
+        n_attempts = 0
+        while n_attempts < 5:
+            n_attempts += 1
+            try:
+                trainer = pl.Trainer(**trainer_kwargs)
+                trainer.fit(
+                    model=LM,
+                    train_dataloaders=train_dataloader,
+                    val_dataloaders=tuning_dataloader
+                )
+
+                if do_final_validation_on_metrics:
+                    if do_skip_all_metrics_in_train:
+                        LM.do_skip_all_metrics = False
+                        LM.build_metrics()
+
+                    trainer.validate(model=LM, dataloaders=tuning_dataloader)
+                    trainer.test(model=LM, dataloaders=held_out_dataloader)
+
+                if do_save_pretrained:
+                    pretraining_save_dir = save_dir / 'pretrained_weights'
+                    pretraining_save_dir.mkdir(exist_ok=True, parents=False)
+                    LM.save_pretrained(save_dir)
+
+                break
+            except RuntimeError as e:
+                print(
+                    f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
+                    "accumulation..."
+                )
+                trainer_kwargs['accumulate_grad_batches'] \
+                    = trainer_kwargs.get('accumulate_grad_batches', 1) * 2
+                optimization_config.gradient_accumulation = trainer_kwargs['accumulate_grad_batches']
+                optimization_config.batch_size = data_config.batch_size // 2
+                optimization_config.to_json_file(
+                    save_dir / "optimization_config.json", do_overwrite=True
+                )
+
+                train_dataloader = torch.utils.data.DataLoader(
+                    train_pyd,
+                    batch_size  = optimization_config.batch_size,
+                    num_workers = num_dataloader_workers,
+                    collate_fn  = train_pyd.collate,
+                    shuffle     = True,
+                )
+                tuning_dataloader = torch.utils.data.DataLoader(
+                    tuning_pyd,
+                    batch_size  = optimization_config.batch_size,
+                    num_workers = num_dataloader_workers,
+                    collate_fn  = tuning_pyd.collate,
+                    shuffle     = False,
+                )
     finally:
         # Even in the case of an error, we want to ensure that wandb exits successfully, otherwise it can lock
         # up Jupyter notebooks for some reason.

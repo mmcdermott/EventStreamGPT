@@ -46,6 +46,11 @@ class EventStreamOptimizationConfig(JSONableMixin):
             decay.
         `weight_decay` (`float`, default is 0.01):
             The L2 weight regularization penalty that is applied during training.
+        `patience` (`Optional[int]`, *optional*, default is None):
+            The number of epochs to wait before early stopping if the validation loss does not improve. If
+            None, early stopping is not used.
+        `gradient_accumulation` (`Optional[int]`, *optional*, default is None):
+            The number of gradient accumulation steps to use. If None, gradient accumulation is not used.
     """
     init_lr:               float = 1e-2
     end_lr:                float = 1e-7
@@ -56,6 +61,8 @@ class EventStreamOptimizationConfig(JSONableMixin):
     max_training_steps:    Optional[int] = None
     lr_decay_power:        float = 1.0
     weight_decay:          float = 0.01
+    patience:              Optional[int] = None
+    gradient_accumulation: Optional[int] = None
 
     def set_to_dataset(self, dataset: EventStreamPytorchDataset):
         """Sets missing parameters in the optimization config to appropriate values given `dataset`'s size."""
@@ -614,24 +621,11 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         self.measurements_idxmap = pytorch_dataset.measurements_idxmap
         self.measurements_per_generative_mode = pytorch_dataset.measurements_per_generative_mode
 
-        self.event_types_per_measurement = {'event_type': list(pytorch_dataset.event_types_idxmap.keys())}
-        for measurement, cfg in pytorch_dataset.data.measurement_configs.items():
-            if (cfg.is_dropped or cfg.temporality != TemporalityType.DYNAMIC): continue
-
-            if cfg.present_in_event_types is None:
-                self.event_types_per_measurement[measurement] = list(
-                    pytorch_dataset.event_types_idxmap.keys()
-                )
-            else:
-                self.event_types_per_measurement[measurement] = list(cfg.present_in_event_types)
-
+        self.event_types_per_measurement = pytorch_dataset.event_types_per_measurement
         self.event_types_idxmap = pytorch_dataset.event_types_idxmap
 
         self.vocab_offsets_by_measurement = pytorch_dataset.measurement_vocab_offsets
-        self.vocab_sizes_by_measurement = {
-            'event_type': len(pytorch_dataset.event_types_idxmap),
-            **{k: len(v) for k, v in pytorch_dataset.data.measurement_vocabs.items()},
-        }
+        self.vocab_sizes_by_measurement = pytorch_dataset.vocab_sizes_by_measurement
         for k in set(self.vocab_offsets_by_measurement.keys()) - set(self.vocab_sizes_by_measurement.keys()):
             self.vocab_sizes_by_measurement[k] = 1
         self.data_cols = pytorch_dataset.data_cols
