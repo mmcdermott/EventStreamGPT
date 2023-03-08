@@ -5,18 +5,11 @@ import copy, math, torch, unittest, pandas as pd
 
 from ..mixins import ConfigComparisonsMixin
 
-from EventStream.EventStreamData.expandable_df_dict import ExpandableDfDict
-from EventStream.EventStreamTransformer.transformer import (
-    StructuredEventStreamTransformer
-)
+from EventStream.EventStreamData.types import EventStreamPytorchBatch
+from EventStream.EventStreamTransformer.transformer import StructuredEventStreamTransformer
 from EventStream.EventStreamTransformer.config import (
     StructuredEventStreamTransformerConfig,
     StructuredEventProcessingMode,
-)
-from EventStream.EventStreamData.expandable_df_dict import ExpandableDfDict
-from EventStream.EventStreamData.config import (
-    EventStreamDatasetConfig,
-    EventStreamPytorchDatasetConfig,
 )
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
@@ -106,14 +99,14 @@ class TestStructuredEventStreamTransformer(ConfigComparisonsMixin, unittest.Test
         M = StructuredEventStreamTransformer(config)
         M.eval() # So layernorm and dropout don't affect anything.
 
-        batch = {**copy.deepcopy(BASE_BATCH)}
+        batch = EventStreamPytorchBatch(**copy.deepcopy(BASE_BATCH))
         batch2 = copy.deepcopy(batch)
         out1 = M(batch)
         out1_alt = M(batch2)
 
         self.assertEqual(out1, out1_alt)
 
-        batch['event_mask'] = torch.BoolTensor([[False, False, True]])
+        batch.event_mask = torch.BoolTensor([[False, False, True]])
 
         out2 = M(batch)
         with self.assertRaises(AssertionError): self.assertEqual(out1, out2)

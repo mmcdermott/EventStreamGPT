@@ -4,6 +4,7 @@ sys.path.append('../..')
 from ..mixins import ConfigComparisonsMixin
 
 import dataclasses, unittest, numpy as np, pandas as pd
+from pathlib import Path
 from typing import Optional
 
 from EventStream.EventStreamData.config import (
@@ -494,3 +495,125 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_valid_column_observations = 10,
         )
         self.assertEqual(want_config, got_config)
+
+    def test_eq(self):
+        config1 = EventStreamDatasetConfig(
+            measurement_configs = {
+                'A_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTI_LABEL_CLASSIFICATION
+                ),
+                'B_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTIVARIATE_REGRESSION,
+                    values_column = 'B_val',
+                ),
+                'C': MeasurementConfig(
+                    temporality = TemporalityType.STATIC,
+                    modality = DataModality.SINGLE_LABEL_CLASSIFICATION
+                ),
+                'D': MeasurementConfig(
+                    temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
+                    functor = AgeFunctor('dob'),
+                ),
+            },
+            min_valid_column_observations = 10,
+            min_valid_vocab_element_observations = 0.5,
+            min_true_float_frequency = 0.75,
+            min_unique_numerical_observations = 0.25,
+            max_numerical_value_frequency = 0.1,
+            outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
+            normalizer_config = {'cls': 'normalizer', 'baz': 'bam'},
+        )
+        config2 = EventStreamDatasetConfig(
+            measurement_configs = {
+                'A_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTI_LABEL_CLASSIFICATION
+                ),
+                'B_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTIVARIATE_REGRESSION,
+                    values_column = 'B_val',
+                ),
+                'C': MeasurementConfig(
+                    temporality = TemporalityType.STATIC,
+                    modality = DataModality.SINGLE_LABEL_CLASSIFICATION
+                ),
+                'D': MeasurementConfig(
+                    temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
+                    functor = AgeFunctor('dob'),
+                ),
+            },
+            min_valid_column_observations = 10,
+            min_valid_vocab_element_observations = 0.5,
+            min_true_float_frequency = 0.75,
+            min_unique_numerical_observations = 0.25,
+            max_numerical_value_frequency = 0.1,
+            outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
+            normalizer_config = {'cls': 'normalizer', 'baz': 'bam'},
+        )
+
+        self.assertTrue(config1 == config2)
+
+        config3 = EventStreamDatasetConfig(
+            measurement_configs = {
+                'A_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTI_LABEL_CLASSIFICATION
+                ),
+                'B_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTIVARIATE_REGRESSION,
+                    values_column = 'B_val',
+                ),
+                'C': MeasurementConfig(
+                    temporality = TemporalityType.STATIC,
+                    modality = DataModality.SINGLE_LABEL_CLASSIFICATION
+                ),
+                'E': MeasurementConfig(
+                    temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
+                    functor = AgeFunctor('dob'),
+                ),
+            },
+            min_valid_column_observations = 10,
+            min_valid_vocab_element_observations = 0.5,
+            min_true_float_frequency = 0.75,
+            min_unique_numerical_observations = 0.25,
+            max_numerical_value_frequency = 0.1,
+            outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
+            normalizer_config = {'cls': 'normalizer', 'baz': 'bam'},
+        )
+
+        self.assertFalse(config1 == config3)
+
+        config4 = EventStreamDatasetConfig(
+            measurement_configs = {
+                'A_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTI_LABEL_CLASSIFICATION
+                ),
+                'B_key': MeasurementConfig(
+                    temporality = TemporalityType.DYNAMIC,
+                    modality = DataModality.MULTIVARIATE_REGRESSION,
+                    values_column = 'B_val',
+                ),
+                'C': MeasurementConfig(
+                    temporality = TemporalityType.STATIC,
+                    modality = DataModality.SINGLE_LABEL_CLASSIFICATION
+                ),
+                'D': MeasurementConfig(
+                    temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
+                    functor = AgeFunctor('dob'),
+                ),
+            },
+            min_valid_column_observations = 10,
+            min_valid_vocab_element_observations = 0.5,
+            min_true_float_frequency = 0.75,
+            min_unique_numerical_observations = 0.25,
+            max_numerical_value_frequency = 0.1,
+            outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
+            normalizer_config = {'cls': 'normalizer', 'baz': 3},
+        )
+
+        self.assertFalse(config1 == config4)
