@@ -10,7 +10,6 @@ from typing import Any
 
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
 from EventStream.EventStreamData.event_stream_dataset import EventStreamDataset
-from EventStream.EventStreamData.expandable_df_dict import ExpandableDfDict
 from EventStream.EventStreamData.types import (
     DataModality,
     TemporalityType,
@@ -48,33 +47,6 @@ class DummySklearn():
 
 class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
     """Tests the `EventStreamDataset` class."""
-    def test_to_events_df(self):
-        df = pd.DataFrame({
-            'alt_subject_col': [1, 2, 3, 4],
-            'alt_time_col': ['12/1/22', '12/2/22', '12/3/22', '12/1/22'],
-            'metadata_col_1': ['foo', 'bar', 'foo', 'bar'],
-            'metadata_col_2': ['baz', 'biz', 'buz', 'bez'],
-        })
-
-        want_events_df = pd.DataFrame({
-            'subject_id': [1, 2, 3, 4],
-            'timestamp': ['12/1/22', '12/2/22', '12/3/22', '12/1/22'],
-            'event_type': ['A', 'A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({'metadata_col_1': ['foo'], 'metadata_col_2': ['baz']}),
-                ExpandableDfDict({'metadata_col_1': ['bar'], 'metadata_col_2': ['biz']}),
-                ExpandableDfDict({'metadata_col_1': ['foo'], 'metadata_col_2': ['buz']}),
-                ExpandableDfDict({'metadata_col_1': ['bar'], 'metadata_col_2': ['bez']}),
-            ],
-        })
-
-        got_events_df = EventStreamDataset.to_events(
-            df, event_type='A', subject_col='alt_subject_col',
-            time_col='alt_time_col', metadata_cols=['metadata_col_1', 'metadata_col_2']
-        )
-
-        self.assertEqual(want_events_df, got_events_df)
-
     def test_to_events_and_metadata(self):
         df = pd.DataFrame({
             'alt_subject_col': [1, 2, 3, 4],
@@ -135,195 +107,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
 
         self.assertEqual(want_metadata, input_measurement_metadata)
 
-    def test_drop_or_censor(self):
-        series_index = [
-            'drop_lower_bound', 'drop_lower_bound_inclusive', 'drop_upper_bound',
-            'drop_upper_bound_inclusive',
-            'censor_lower_bound', 'censor_upper_bound',
-        ]
-        cases = [
-            {
-                'msg': "Should drop to NaN or censor if and only if in the right range.",
-                'input_rows': [
-                    pd.Series([0, False, None, None, None, None], index=series_index),
-                    pd.Series([0, True, 10, True, None, None], index=series_index),
-                    pd.Series([0, True, 10, False, 1, 2], index=series_index),
-                    pd.Series([0, False, 10, True, 1, 2], index=series_index),
-                    pd.Series([0, True, 10, False, 1, 2], index=series_index),
-                    pd.Series([0, True, 10, True, 1, 2], index=series_index),
-                    pd.Series([0, True, 10, True, 1, 2], index=series_index),
-                    pd.Series([0, True, 10, False, 1, 2], index=series_index),
-                    pd.Series([0, True, 10, True, 1, 2], index=series_index),
-                    pd.Series([0, True, 10, False, 1, 2], index=series_index),
-
-                    pd.Series([None, None, None, None, None, None], index=series_index),
-                    pd.Series([np.NaN, np.NaN, 10, True, np.NaN, 4], index=series_index),
-                    pd.Series([-10, True, None, None, -3, None], index=series_index),
-                ], 'input_vals': [
-                    -1, 0, 0, 0, 1, 1.5, 2, 10, 10, 11,
-                    -1, -1, -1,
-                ], 'want': [
-                    np.NaN, np.NaN, np.NaN, 1, 1, 1.5, 2, 2, np.NaN, np.NaN,
-                    -1, -1, -1,
-                ],
-            },
-        ]
-
-        for C in cases:
-            for i, (row, val, want) in enumerate(zip(C['input_rows'], C['input_vals'], C['want'])):
-                with self.subTest(f"{C['msg']} ({i})"):
-                    got = EventStreamDataset.drop_or_censor(val, row)
-                    if np.isnan(want): self.assertTrue(np.isnan(got))
-                    else:
-                        self.assertFalse(np.isnan(got))
-                        self.assertEqual(want, got)
-
-    def test_drop_oob_and_censor_outliers(self):
-        vals = pd.Series([
-            -1, 0, 0.5, 1, 2,
-            0, 1, 2, 5, 10, 11,
-            1, 2,
-        ], index = [
-            'foo', 'foo', 'foo', 'foo', 'foo',
-            'bar', 'bar', 'bar', 'bar', 'bar', 'bar',
-            'no_bounds', 'no_bounds',
-        ], name='val_col')
-
-        # TODO(mmd): Convert to cases = [...] format.
-
-        with self.subTest("Values should be unchanged when no bounds are passed."):
-            measurement_metadata = pd.DataFrame({}, index=['foo', 'bar', 'unused'])
-            want = copy.deepcopy(vals)
-            self.assertEqual(want, EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata))
-
-        with self.subTest("Values should be dropped or censored with all bounds present."):
-            measurement_metadata = pd.DataFrame({
-                'drop_lower_bound': [0, None, 4],
-                'drop_lower_bound_inclusive': [True, None, False],
-                'drop_upper_bound': [1, 10, None],
-                'drop_upper_bound_inclusive': [True, False, None],
-                'censor_lower_bound': [None, 1, 2],
-                'censor_upper_bound': [None, 5, None],
-            }, index=['foo', 'bar', 'unused'])
-
-            want = pd.Series([
-                np.NaN, np.NaN, 0.5, np.NaN, np.NaN,
-                1, 1, 2, 5, 5, np.NaN,
-                1, 2,
-            ], index = [
-                'foo', 'foo', 'foo', 'foo', 'foo',
-                'bar', 'bar', 'bar', 'bar', 'bar', 'bar',
-                'no_bounds', 'no_bounds',
-            ], name='val_col')
-
-            self.assertEqual(want, EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata))
-
-        with self.subTest("It should work without lower bounds specified."):
-            measurement_metadata = pd.DataFrame({
-                'drop_upper_bound': [1, 10, None],
-                'drop_upper_bound_inclusive': [True, False, None],
-                'censor_lower_bound': [None, 1, 2],
-                'censor_upper_bound': [None, 5, None],
-            }, index=['foo', 'bar', 'unused'])
-
-            want = pd.Series([
-                -1, 0, 0.5, np.NaN, np.NaN,
-                1, 1, 2, 5, 5, np.NaN,
-                1, 2,
-            ], index = [
-                'foo', 'foo', 'foo', 'foo', 'foo',
-                'bar', 'bar', 'bar', 'bar', 'bar', 'bar',
-                'no_bounds', 'no_bounds',
-            ], name='val_col')
-
-            self.assertEqual(want, EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata))
-
-        with self.subTest("It should work without upper bounds specified."):
-            measurement_metadata = pd.DataFrame({
-                'drop_lower_bound': [0, None, 4],
-                'drop_lower_bound_inclusive': [True, None, False],
-                'censor_lower_bound': [None, 1, 2],
-                'censor_upper_bound': [None, 5, None],
-            }, index=['foo', 'bar', 'unused'])
-
-            want = pd.Series([
-                np.NaN, np.NaN, 0.5, 1, 2,
-                1, 1, 2, 5, 5, 5,
-                1, 2,
-            ], index = [
-                'foo', 'foo', 'foo', 'foo', 'foo',
-                'bar', 'bar', 'bar', 'bar', 'bar', 'bar',
-                'no_bounds', 'no_bounds',
-            ], name='val_col')
-
-            self.assertEqual(want, EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata))
-
-        with self.subTest("It should work without censor bounds specified."):
-            measurement_metadata = pd.DataFrame({
-                'drop_lower_bound': [0, None, 4],
-                'drop_lower_bound_inclusive': [True, None, False],
-                'drop_upper_bound': [1, 10, None],
-                'drop_upper_bound_inclusive': [True, False, None],
-            }, index=['foo', 'bar', 'unused'])
-
-            want = pd.Series([
-                np.NaN, np.NaN, 0.5, np.NaN, np.NaN,
-                0, 1, 2, 5, 10, np.NaN,
-                1, 2,
-            ], index = [
-                'foo', 'foo', 'foo', 'foo', 'foo',
-                'bar', 'bar', 'bar', 'bar', 'bar', 'bar',
-                'no_bounds', 'no_bounds',
-            ], name='val_col')
-
-            self.assertEqual(want, EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata))
-
-        with self.subTest("It should error if bounds are passed by inclusive values aren't."):
-            measurement_metadata = pd.DataFrame({'drop_lower_bound': [0, None]}, index=['foo', 'bar'])
-            with self.assertRaises(KeyError):
-                EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata)
-
-            measurement_metadata = pd.DataFrame({'drop_upper_bound': [0, None]}, index=['foo', 'bar'])
-            with self.assertRaises(KeyError):
-                EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata)
-
-        with self.assertRaises(AssertionError, msg="Should error if measurement_metadata has >1 index level."):
-            measurement_metadata = pd.DataFrame(
-                {
-                    'drop_lower_bound': [0, None, 4],
-                    'drop_lower_bound_inclusive': [True, None, False],
-                    'drop_upper_bound': [1, 10, None],
-                    'drop_upper_bound_inclusive': [True, False, None],
-                    'censor_lower_bound': [None, 1, 2],
-                    'censor_upper_bound': [None, 5, None],
-                },
-                index=pd.MultiIndex.from_tuples([('foo', 1), ('bar', 2), ('baz', 3)])
-            )
-            vals = pd.Series([3.0])
-
-            EventStreamDataset.drop_oob_and_censor_outliers(vals, measurement_metadata)
-
-    def test_transform_categorical_key_values(self):
-        measurement_metadata = pd.DataFrame({
-            'value_type': ['float', 'categorical_integer', 'categorical_float', 'dropped'],
-        }, index=['k1', 'k2', 'k3', 'k4'])
-        kv_df = pd.DataFrame({
-            'key': ['k2', 'k1', 'k4', 'k3', 'k2', 'k3'],
-            'val': [3.2,  0.2,  45, 0.1, -1.2, 0.001],
-            'unused': ['foo', 'bar', np.NaN, 3, 5, 1.2],
-        })
-
-        want_kv_df = pd.DataFrame({
-            'key': ['k2__EQ_3', 'k1', 'k4', 'k3__EQ_0.1', 'k2__EQ_-1', 'k3__EQ_0.001'],
-            'val': [np.NaN,  0.2,  45, np.NaN, np.NaN, np.NaN],
-            'unused': ['foo', 'bar', np.NaN, 3, 5, 1.2],
-        })
-
-        self.assertEqual(
-            want_kv_df,
-            EventStreamDataset.transform_categorical_key_values_df(measurement_metadata, kv_df, 'key', 'val')
-        )
-
     def test_fit_metadata_model(self):
         """Tests `EventStreamDataset._fit_metadata_model`"""
         class DumbMetadataModel():
@@ -368,16 +151,20 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'subject_id': [2, 1, 1, 2, 2],
             'timestamp': ['12/3/22', '12/2/22', '12/1/22', '12/1/22', '12/1/22'],
             'event_type': ['C', 'B', 'A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({'C_col': ['Z']}),
-                ExpandableDfDict({'B_col': [2]}),
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'A_col': [3]}),
-                ExpandableDfDict({'A_col': [4,5]}),
-            ],
+        }, index=pd.Index([0, 1, 2, 3, 4], name='event_id'))
+
+        metadata_df = pd.DataFrame({
+            'C_col': ['Z', None, None, None, None, None],
+            'B_col': [None, 2, None, None, None, None],
+            'A_col': [None, None, 1, 3, 4, 5],
+            'event_id': [0, 1, 2, 3, 4, 4]
         })
 
-        E = EventStreamDataset(events_df=events_df, config=EventStreamDatasetConfig())
+        E = EventStreamDataset(
+            events_df=events_df,
+            metadata_df=metadata_df,
+            config=EventStreamDatasetConfig()
+        )
 
         # It should know who its subjects are.
         self.assertFalse(E.has_static_measurements)
@@ -411,27 +198,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
         want_metadata_df.index=pd.Index([0, 1, 2, 3, 4, 5], name='metadata_id')
         self.assertEqual(want_metadata_df, E.joint_metadata_df)
 
-        # Unlike the input, the parsed df should have timestamps and be sorted.
-        want_events_df_with_metadata = pd.DataFrame({
-            'subject_id': [1, 1, 2, 2, 2],
-            'timestamp': [
-                pd.to_datetime('12/1/22'),
-                pd.to_datetime('12/2/22'),
-                pd.to_datetime('12/1/22'),
-                pd.to_datetime('12/1/22'),
-                pd.to_datetime('12/3/22'),
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'C'],
-            'metadata': [
-                ExpandableDfDict({'event_id': [2], 'A_col': [1]}),
-                ExpandableDfDict({'event_id': [1], 'B_col': [2]}),
-                ExpandableDfDict({'event_id': [3], 'A_col': [3]}),
-                ExpandableDfDict({'event_id': [4,4], 'A_col': [4,5]}),
-                ExpandableDfDict({'event_id': [0], 'C_col': ['Z']}),
-            ],
-        }, index=pd.Index([2, 1, 3, 4, 0], name='event_id'))
-        self.assertEqual(want_events_df_with_metadata, E.events_df_with_metadata)
-
         self.assertEqual({1, 2}, E.subject_ids)
         self.assertEqual(['A', 'B', 'C'], E.event_types)
 
@@ -460,17 +226,17 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'subject_id': [2, 1, 1, 2, 2],
             'timestamp': ['12/3/22', '12/2/22', '12/1/22', '12/1/22', '12/1/22'],
             'event_type': ['C', 'B', 'A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({'C_col': ['Z']}),
-                ExpandableDfDict({'B_col': [2]}),
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'A_col': [3]}),
-                ExpandableDfDict({'A_col': [4,5]}),
-            ],
+        }, index=pd.Index([0, 1, 2, 3, 4], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'C_col': ['Z', None, None, None, None, None],
+            'B_col': [None, 2, None, None, None, None],
+            'A_col': [None, None, 1, 3, 4, 5],
+            'event_id': [0, 1, 2, 3, 4, 4]
         })
 
         E = EventStreamDataset(
             events_df=events_df,
+            metadata_df=metadata_df,
             subjects_df=subjects_df,
             config=EventStreamDatasetConfig()
         )
@@ -503,16 +269,19 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'subject_id': [2, 1, 1, 2, 2],
             'timestamp': ['12/3/22', '12/2/22', '12/1/22', '12/1/22', '12/1/22'],
             'event_type': ['C', 'B', 'A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({'C_col': ['Z']}),
-                ExpandableDfDict({'B_col': [2]}),
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'A_col': [3]}),
-                ExpandableDfDict({'A_col': [4,5]}),
-            ],
-        })
+        }, index=pd.Index([0, 1, 2, 3, 4], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'C_col': ['Z', None, None, None, None, None],
+            'B_col': [None, 2, None, None, None, None],
+            'A_col': [None, None, 1, 3, 4, 5],
+            'event_id': [0, 1, 2, 3, 4, 4]
+        }, index=pd.Index([0, 1, 2, 3, 4, 5], name='metadata_id'))
 
-        E = EventStreamDataset(events_df=events_df, config=EventStreamDatasetConfig())
+        E = EventStreamDataset(
+            events_df=events_df,
+            metadata_df=metadata_df,
+            config=EventStreamDatasetConfig()
+        )
         E.agg_by_time_type()
 
         want_events_df = pd.DataFrame({
@@ -527,23 +296,16 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
         }, index=pd.Index([0, 1, 2, 3], name='event_id'))
         self.assertEqual(want_events_df, E.events_df)
 
-        want_events_df_with_metadata = pd.DataFrame({
-            'subject_id': [1, 1, 2, 2],
-            'timestamp': [
-                pd.to_datetime('12/1/22'),
-                pd.to_datetime('12/2/22'),
-                pd.to_datetime('12/1/22'),
-                pd.to_datetime('12/3/22'),
-            ],
-            'event_type': ['A', 'B', 'A', 'C'],
-            'metadata': [
-                ExpandableDfDict({'event_id': [0], 'A_col': [1]}),
-                ExpandableDfDict({'event_id': [1], 'B_col': [2]}),
-                ExpandableDfDict({'event_id': [2, 2, 2], 'A_col': [3, 4, 5]}),
-                ExpandableDfDict({'event_id': [3], 'C_col': ['Z']}),
-            ],
-        }, index=pd.Index([0, 1, 2, 3], name='event_id'))
-        self.assertEqual(want_events_df_with_metadata, E.events_df_with_metadata)
+        # `EventStreamDataset` should be able to extracted the associated metadata_df from the raw events_df.
+        want_metadata_df = pd.DataFrame({
+            'event_id': [0, 1, 2, 2, 2, 3],
+            'event_type': ['A', 'B', 'A', 'A', 'A', 'C'],
+            'subject_id': [1, 1, 2, 2, 2, 2],
+            'A_col': [1, None, 3, 4, 5, None],
+            'B_col': [None, 2, None, None, None, None],
+            'C_col': [None, None, None, None, None, 'Z'],
+        }, index=pd.Index([2, 1, 3, 4, 5, 0], name='metadata_id'))
+        self.assertEqual(want_metadata_df, E.joint_metadata_df)
 
     def test_split(self):
         """`EventStreamDataset` should be able to split the `events_df` into splits by `subject_id`."""
@@ -556,12 +318,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 pd.to_datetime('12/3/22'),
             ],
             'event_type': ['A', 'B', 'A', 'C'],
-            'metadata': [
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'B_col': [2]}),
-                ExpandableDfDict({'A_col': [3, 4, 5]}),
-                ExpandableDfDict({'C_col': ['Z']}),
-            ],
         })
 
         E = EventStreamDataset(events_df=events_df, config=EventStreamDatasetConfig())
@@ -620,13 +376,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 pd.to_datetime('12/4/22'),
             ],
             'event_type': ['A', 'B', 'A', 'C', 'D'],
-            'metadata': [
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'B_col': [2]}),
-                ExpandableDfDict({'A_col': [3, 4, 5]}),
-                ExpandableDfDict({'C_col': ['Z']}),
-                ExpandableDfDict({'D_col': [0.4]}),
-            ],
         })
 
         E = EventStreamDataset(events_df=events_df, config=EventStreamDatasetConfig())
@@ -677,14 +426,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 '12/2/22 1:40:00 pm',
             ],
             'event_type': ['A', 'B', 'A', 'C', 'A', 'C'],
-            'metadata': [
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'B_col': [2]}),
-                ExpandableDfDict({'A_col': [1]}),
-                ExpandableDfDict({'C_col': ['Z']}),
-                ExpandableDfDict({'A_col': [3, 4, 5]}),
-                ExpandableDfDict({'C_col': ['Z']}),
-            ],
         })
 
         E = EventStreamDataset(events_df=events_df, config=EventStreamDatasetConfig())
@@ -712,13 +453,17 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'subject_id': [1, 1],
             'timestamp': ['12/1/22', '12/2/22'],
             'event_type': ['A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['c', 'b', 'b'], 'B_val': [1, 3, 2]}),
-            ],
+        }, index=pd.Index([0, 1], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'event_id': [0, 1, 1, 1],
+            'A_col': ['foo', None, None, None],
+            'B_key': [None, 'c', 'b', 'b'],
+            'B_val': [None, 1, 3, 2],
         })
+
         E = EventStreamDataset(
             events_df=events_df,
+            metadata_df=metadata_df,
             config=EventStreamDatasetConfig(
                 measurement_configs = {
                     'B_key': MeasurementConfig(
@@ -763,17 +508,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
         E.restore_numerical_metadata_columns()
         self.assertEqual(want_metadata_df, E.joint_metadata_df)
 
-        want_events_df_with_metadata = pd.DataFrame({
-            'subject_id': [1, 1],
-            'timestamp': [pd.to_datetime('12/1/22'), pd.to_datetime('12/2/22')],
-            'event_type': ['A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'event_id': [0], 'A_col': ['foo']}),
-                ExpandableDfDict({'event_id': [1, 1, 1], 'B_key': ['c', 'b', 'b'], 'B_val': [1, 3, 2]}),
-            ],
-        }, index=pd.Index([0, 1], name='event_id'))
-        self.assertEqual(want_events_df_with_metadata, E.events_df_with_metadata)
-
     def test_add_time_dependent_columns(self):
         events_df = pd.DataFrame({
             'subject_id': [1, 1, 1, 2, 2],
@@ -782,7 +516,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 '3/1/2010 12:00am'
             ],
             'event_type': ['A', 'B', 'A', 'B', 'C'],
-            'metadata': [ExpandableDfDict({})] * 5,
         })
 
         subjects_df = pd.DataFrame({
@@ -851,7 +584,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
     def test_measurement_configs(self):
         events_df = pd.DataFrame({
             'subject_id': [1], 'timestamp': ['12/1/22'], 'event_type': ['A'],
-            'metadata': [ExpandableDfDict({})]
         })
         config = EventStreamDatasetConfig.from_simple_args(['c1', ('c2_key', 'c2_val')])
         E = EventStreamDataset(events_df=events_df, config=config)
@@ -865,7 +597,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
     def test_metadata_columns(self):
         events_df = pd.DataFrame({
             'subject_id': [1], 'timestamp': ['12/1/22'], 'event_type': ['A'],
-            'metadata': [ExpandableDfDict({})]
         })
         config = EventStreamDatasetConfig.from_simple_args(['c1', 'drop', ('c2_key', 'c2_val')])
         config.measurement_configs['drop'].modality = 'dropped'
@@ -899,12 +630,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'static2': ['I', 'II', None, None, None, None, 'VII'] * 2,
         }, index=pd.Index([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], name='subject_id'))
 
-        # A_col overall will be observed only on 4 of the 6 possible events, so will fail
-        # `min_valid_column_observations`.
-        # B_col will occur on 5 of the 6 possible events, and will have 1 vocab element occur once (less than
-        # 2/5 of the events), one vocab element occur twice (exactly 2/5 of the events), and one occur thrice
-        # (greater than 2/5 of the events.
-        # C_col will occur on all 6 events and will have two vocab elements occuring 3x each.
         events_df = pd.DataFrame({
             'subject_id': [1, 2, 3, 4, 5, 6, 7],
             'timestamp': [
@@ -917,21 +642,27 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 '1/14/22 3:30 p.m.', # PM
             ],
             'event_type': ['A', 'B', 'A', 'C', 'B', 'A', 'Z'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['a'], 'B_col': ['foo'], 'C_col': ['1'], 'D_col': ['z']}),
-                ExpandableDfDict({'A_col': ['b'], 'B_col': ['bar'], 'C_col': ['2'], 'D_col': ['y']}),
-                ExpandableDfDict({'A_col': ['a'], 'B_col': ['bar'], 'C_col': ['1'], 'D_col': ['x']}),
-                ExpandableDfDict({'A_col': ['a'], 'B_col': ['baz'], 'C_col': ['2'], 'D_col': ['w']}),
-                ExpandableDfDict({                'B_col': ['baz'], 'C_col': ['1'], 'D_col': ['v']}),
-                ExpandableDfDict({                                  'C_col': ['2'], 'D_col': ['u']}),
-                ExpandableDfDict({
-                    'A_col': ['a', 'b', 'a', 'b', 'a'],
-                    'B_col': ['foo', 'bar', 'baz', 'foo', 'bar'],
-                    'C_col': ['1', '2', '1', '2', '1'],
-                }),
-            ],
+        }, index=pd.Index([0, 1, 2, 3, 4, 5, 6], name='event_id'))
+
+        # A_col overall will be observed only on 4 of the 6 possible events, so will fail
+        # `min_valid_column_observations`.
+        # B_col will occur on 5 of the 6 possible events, and will have 1 vocab element occur once (less than
+        # 2/5 of the events), one vocab element occur twice (exactly 2/5 of the events), and one occur thrice
+        # (greater than 2/5 of the events.
+        # C_col will occur on all 6 events and will have two vocab elements occuring 3x each.
+        metadata_df = pd.DataFrame({
+            'A_col': ['a', 'b', 'a', 'a', None, None, 'a', 'b', 'a', 'b', 'a'],
+            'B_col': ['foo', 'bar', 'bar', 'baz' ,'baz', None, 'foo', 'bar', 'baz', 'foo', 'bar'],
+            'C_col': ['1', '2', '1', '2', '1', '2', '1', '2', '1', '2', '1'],
+            'D_col': ['z', 'y', 'x', 'w', 'v', 'u', None, None, None, None, None],
+            'event_id': [0, 1, 2, 3, 4, 5, 6, 6, 6, 6, 6],
         })
-        E = EventStreamDataset(events_df=events_df, subjects_df=subjects_df, config=config)
+        E = EventStreamDataset(
+            events_df=events_df,
+            metadata_df=metadata_df,
+            subjects_df=subjects_df,
+            config=config
+        )
 
         E.split_subjects = {'train': {1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13}, 'held_out': {7, 14}}
 
@@ -939,7 +670,7 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
 
         E.add_time_dependent_columns()
 
-        E._fit_categorical_metadata()
+        E.fit_metadata()
 
         want_inferred_measurement_configs = {
             'static1': MeasurementConfig(
@@ -1013,19 +744,18 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'subject_id': [1],
             'timestamp': ['12/1/22'],
             'event_type': ['A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'num_key': ['k1', 'k1', 'k1', 'k1', 'k2', 'k2', 'k3', 'k4'],
-                    'num_val': [1.0,  0.9,  2.1,  1.0,  2,    3,    4.5,  7],
-                }),
-            ],
+        }, index=pd.Index([0], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'num_key': ['k1', 'k1', 'k1', 'k1', 'k2', 'k2', 'k3', 'k4'],
+            'num_val': [1.0,  0.9,  2.1,  1.0,  2,    3,    4.5,  7],
+            'event_id': [0, 0, 0, 0, 0, 0, 0, 0],
         })
-        E = EventStreamDataset(events_df=events_df, config=config)
+        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
         E.split_subjects = {'train': {1}, 'held_out': set()}
 
         self.assertEqual(E.inferred_measurement_configs, {})
 
-        E._fit_categorical_metadata()
+        E.fit_metadata()
 
         want_inferred_measurement_configs = {
             'num_key': MeasurementConfig(
@@ -1036,6 +766,8 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 values_column = 'num_val',
                 measurement_metadata = pd.DataFrame({
                     'value_type': ['categorical_integer', 'integer', 'float', 'categorical_float'],
+                    'outlier_model': [None] * 4,
+                    'normalizer': [None] * 4,
                 }, index = ['k1', 'k2', 'k3', 'k4']),
                 vocabulary = Vocabulary(
                     ['k1__EQ_1', 'k2', 'k1__EQ_2', 'k3', 'k4__EQ_7.0'],
@@ -1048,10 +780,7 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
 
     def test_infer_val_type(self):
         # This function doesn't actually need to reference events_df at all.
-        events_df = pd.DataFrame({
-            'subject_id': [1], 'timestamp': ['12/1/22'], 'event_type': ['A'],
-            'metadata': [ExpandableDfDict({})]
-        })
+        events_df = pd.DataFrame({'subject_id': [1], 'timestamp': ['12/1/22'], 'event_type': ['A']})
 
         cases = [
             {
@@ -1189,11 +918,10 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                     C['want_type'], E._infer_val_type(vals.dropna(), C['total_col_obs'], len(vals))
                 )
 
-    def test_fit_dynamic_numerical_metadata_column_vals(self):
+    def test_fit_multivariate_numerical_metadata_column_vals(self):
         # This function doesn't actually need to reference events_df at all.
         events_df = pd.DataFrame({
             'subject_id': [1], 'timestamp': ['12/1/22'], 'event_type': ['A'],
-            'metadata': [ExpandableDfDict({})]
         })
 
         key_col = 'key_col'
@@ -1328,7 +1056,9 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 E.inferred_measurement_configs = copy.deepcopy(config.measurement_configs)
 
                 vals = pd.Series(C['vals'], name=obs_key)
-                got = E._fit_dynamic_numerical_metadata_column_vals(vals, key_col, C['total_col_obs'])
+                got = E._fit_multivariate_numerical_metadata_column_vals(
+                    vals, C['total_col_obs'], E.inferred_measurement_configs[key_col].measurement_metadata
+                )
 
                 self.assertTrue(got is None)
 
@@ -1337,179 +1067,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 want_metadata = pd.DataFrame(C['want_metadata_dict'], index=want_metadata_index)
 
                 self.assertEqual(want_metadata, E.inferred_measurement_configs[key_col].measurement_metadata)
-
-    def test_fit_numerical_metadata_only_dynamic(self):
-        # DummySklearn is defined at the top of the file, and just memorizes the mean, min, max, and count of
-        # the input, and asserts that it is a secretly 1D array of reshaped to a 2D array per sklearn
-        # convention. validate_and_squeeze just checks that the shape is right then returns the 1D version.
-        class DummyOutlier(DummySklearn):
-            def predict(self, vals):
-                return np.array([1 if v >= self.mean else -1 for v in self.validate_and_squeeze(vals)])
-
-        class DummyNormalizer(DummySklearn):
-            def transform(self, vals): return self.validate_and_squeeze(vals) - self.mean
-
-        class Derived(EventStreamDataset):
-            METADATA_MODELS = {
-                'outlier': DummyOutlier,
-                'normalizer': DummyNormalizer,
-            }
-            UNIT_BOUNDS = {
-                # (unit strings): [lower, lower_inclusive, upper, upper_inclusive],
-                ('%', 'percent'): [0, False, 1, False],
-            }
-
-        config = EventStreamDatasetConfig.from_simple_args(
-            [
-                'cat',
-                ('num1_key', 'num1_val'), ('num2_key', 'num2_val'), ('num3_key', 'num3_val'),
-                ('num4_key', 'num4_val'), ('num5_key', 'num5_val')
-            ],
-            min_valid_column_observations = 2,
-            min_true_float_frequency = 1/2,
-            min_valid_vocab_element_observations = 1/3,
-            min_unique_numerical_observations = 2,
-            outlier_detector_config = {'cls': 'outlier'},
-            normalizer_config = {'cls': 'normalizer'},
-        )
-        config.measurement_configs['num5_key'].measurement_metadata = pd.DataFrame({
-            'value_type': ['float', 'float'],
-            'unit': [None, '%'],
-            'drop_lower_bound': [-1, None],
-            'drop_lower_bound_inclusive': [False, None],
-            'drop_upper_bound': [1, None],
-            'drop_upper_bound_inclusive': [True, None],
-            'censor_lower_bound': [-0.5, None],
-            'censor_upper_bound': [0.5, None],
-        }, index=pd.Index(['k1', 'k2'], name='num5_key'))
-
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1],
-            'timestamp': ['12/1/22', '12/2/22', '12/3/22'],
-            'event_type': ['A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'cat': ['a', 'b', 'c', 'd', 'e', 'f'],
-                    'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'],
-                    'num1_val': [0.1,   0.3,   0.5,   -5,   -1.1,  -3],
-                    'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz'],
-                    'num2_val': [0.4,   0.3,   0.1,   0.2,   0.5,   0.4],
-                    'num3_key': ['one',   'two',   'one',   'two',   'one',   'two'],
-                    'num3_val': [-0.1,  0.3,   0,     0.1,   0,     0.2],
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [-2, -1, -0.75,    -1, 0, 0.5],
-                }),
-                ExpandableDfDict({
-                    'num4_key': ['one'],
-                    'num4_val': [0.1],
-                }),
-                ExpandableDfDict({
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [0.3, 0.7, 1,       1, 1.1, 1.2],
-                }),
-            ],
-        })
-        E = Derived(events_df=events_df, config=config)
-        E.split_subjects = {'train': {1}, 'held_out': set()}
-
-        self.assertEqual({}, E.inferred_measurement_configs)
-        self.assertEqual(
-            [
-                ('num1_key', 'num1_val'), ('num2_key', 'num2_val'), ('num3_key', 'num3_val'),
-                ('num4_key', 'num4_val'), ('num5_key', 'num5_val'),
-            ],
-            E.dynamic_numerical_columns
-        )
-        self.assertEqual([], E.time_dependent_numerical_columns)
-
-        E._fit_numerical_metadata()
-
-        want_inferred_measurement_configs = {
-            'num1_key': MeasurementConfig(
-                name = 'num1_key',
-                temporality = TemporalityType.DYNAMIC,
-                modality = 'multivariate_regression',
-                values_column = 'num1_val',
-                measurement_metadata = pd.DataFrame({
-                    'value_type': ['integer', 'float'],
-                    'outlier_model': [
-                        DummyOutlier(mean=-3, min=-5, max=-1, count=3),
-                        DummyOutlier(mean=0.3, min=0.1, max=0.5, count=3),
-                    ],
-                    'normalizer': [
-                        DummyNormalizer(mean=-2, min=-3, max=-1, count=2),
-                        DummyNormalizer(mean=0.4, min=0.3, max=0.5, count=2),
-                    ],
-                }, index = pd.Index(['bar', 'foo'], name='num1_key')),
-            ),
-            'num2_key': MeasurementConfig(
-                name = 'num2_key',
-                temporality = TemporalityType.DYNAMIC,
-                modality = 'multivariate_regression',
-                values_column = 'num2_val',
-                measurement_metadata = pd.DataFrame({
-                    'value_type': ['float', 'dropped'],
-                    'outlier_model': [
-                        DummyOutlier(mean=0.3, min=0.1, max=0.5, count=5),
-                        np.NaN,
-                    ],
-                    'normalizer': [
-                        DummyNormalizer(mean=0.4, min=0.3, max=0.5, count=3),
-                        np.NaN,
-                    ],
-                }, index = pd.Index(['baz', 'biz'], name='num2_key')),
-            ),
-            'num3_key': MeasurementConfig(
-                name = 'num3_key',
-                temporality = TemporalityType.DYNAMIC,
-                modality = 'multivariate_regression',
-                values_column = 'num3_val',
-                measurement_metadata = pd.DataFrame({
-                    'value_type': ['dropped', 'float'],
-                    'outlier_model': [
-                        np.NaN,
-                        DummyOutlier(mean=0.2, min=0.1, max=0.3, count=3),
-                    ],
-                    'normalizer': [
-                        np.NaN,
-                        DummyNormalizer(mean=0.25, min=0.2, max=0.3, count=2),
-                    ],
-                }, index = pd.Index(['one', 'two'], name='num3_key')),
-            ),
-            # This column will be ignored as it has too few observations.
-            'num4_key': MeasurementConfig(
-                name = 'num4_key',
-                temporality = TemporalityType.DYNAMIC,
-                modality = 'multivariate_regression',
-                values_column = 'num4_val',
-            ),
-            'num5_key': MeasurementConfig(
-                name = 'num5_key',
-                temporality = TemporalityType.DYNAMIC,
-                modality = 'multivariate_regression',
-                values_column = 'num5_val',
-                measurement_metadata = pd.DataFrame({
-                    'value_type': ['float', 'float'],
-                    'unit': [None, '%'],
-                    'drop_lower_bound': [-1., 0.],
-                    'drop_lower_bound_inclusive': [False, False],
-                    'drop_upper_bound': [1., 1],
-                    'drop_upper_bound_inclusive': [True, False],
-                    'censor_lower_bound': [-0.5, None],
-                    'censor_upper_bound': [0.5, None],
-                    'outlier_model': [
-                        DummyOutlier(mean=-0.05, min=-0.5, max=0.5, count=4),
-                        DummyOutlier(mean=0.5, min=0, max=1, count=3),
-                    ],
-                    'normalizer': [
-                        DummyNormalizer(mean=0.4, min=0.3, max=0.5, count=2),
-                        DummyNormalizer(mean=0.75, min=0.5, max=1, count=2),
-                    ],
-                }, index = pd.Index(['k1', 'k2'], name='num5_key')),
-            ),
-        }
-
-        self.assertNestedDictEqual(want_inferred_measurement_configs, E.inferred_measurement_configs)
 
     def test_fit_numerical_metadata(self):
         # DummySklearn is defined at the top of the file, and just memorizes the mean, min, max, and count of
@@ -1534,7 +1091,6 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
 
         config = EventStreamDatasetConfig.from_simple_args(
             dynamic_measurement_columns = [
-                'cat',
                 ('num1_key', 'num1_val'), ('num2_key', 'num2_val'), ('num3_key', 'num3_val'),
                 ('num4_key', 'num4_val'), ('num5_key', 'num5_val')
             ],
@@ -1557,36 +1113,29 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'censor_upper_bound': [0.5, None],
         }, index=pd.Index(['k1', 'k2'], name='num5_key'))
 
+        subjects_df = pd.DataFrame(
+            {'dob': [pd.to_datetime('12/1/20')]}, index=pd.Index([1], name='subject_id')
+        )
         events_df = pd.DataFrame({
             'subject_id': [1, 1, 1],
             'timestamp': ['12/1/21', '12/1/22', '12/1/23'],
             'event_type': ['A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'cat': ['a', 'b', 'c', 'd', 'e', 'f'],
-                    'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'],
-                    'num1_val': [0.1,   0.3,   0.5,   -5,   -1.1,  -3],
-                    'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz'],
-                    'num2_val': [0.4,   0.3,   0.1,   0.2,   0.5,   0.4],
-                    'num3_key': ['one',   'two',   'one',   'two',   'one',   'two'],
-                    'num3_val': [-0.1,  0.3,   0,     0.1,   0,     0.2],
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [-2, -1, -0.75,    -1, 0, 0.5],
-                }),
-                ExpandableDfDict({
-                    'num4_key': ['one'],
-                    'num4_val': [0.1],
-                }),
-                ExpandableDfDict({
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [0.3, 0.7, 1,       1, 1.1, 1.2],
-                }),
-            ],
+        }, index=pd.Index([0, 1, 2], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'event_id': [0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2],
+            'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar', None, None, None, None, None, None, None],
+            'num1_val': [0.1, 0.3, 0.5, -5, -1.1, -3, None, None, None, None, None, None, None],
+            'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz', None, None, None, None, None, None, None],
+            'num2_val': [0.4, 0.3, 0.1, 0.2, 0.5, 0.4, None, None, None, None, None, None, None],
+            'num3_key': ['one', 'two', 'one', 'two', 'one', 'two', None, None, None, None, None, None, None],
+            'num3_val': [-0.1,  0.3, 0, 0.1, 0, 0.2, None, None, None, None, None, None, None],
+            'num4_key': [None, None, None, None, None, None, 'one', None, None, None, None, None, None],
+            'num4_val': [None, None, None, None, None, None, 0.1, None, None, None, None, None, None],
+            'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2', None, 'k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
+            'num5_val': [-2, -1, -0.75, -1, 0, 0.5, None, 0.3, 0.7, 1, 1, 1.1, 1.2],
         })
-        subjects_df = pd.DataFrame(
-            {'dob': [pd.to_datetime('12/1/20')]}, index=pd.Index([1], name='subject_id')
-        )
-        E = Derived(events_df=events_df, subjects_df=subjects_df, config=config)
+
+        E = Derived(events_df=events_df, metadata_df=metadata_df, subjects_df=subjects_df, config=config)
         E.split_subjects = {'train': {1}, 'held_out': set()}
 
         self.assertEqual({}, E.inferred_measurement_configs)
@@ -1600,7 +1149,7 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual(['age'], E.time_dependent_numerical_columns)
 
         E.add_time_dependent_columns()
-        E._fit_numerical_metadata()
+        E.fit_metadata()
 
         want_inferred_measurement_configs = {
             'age': MeasurementConfig(
@@ -1634,6 +1183,8 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                         DummyNormalizer(mean=0.4, min=0.3, max=0.5, count=2),
                     ],
                 }, index = pd.Index(['bar', 'foo'], name='num1_key')),
+                observation_frequency = 6/13,
+                vocabulary = Vocabulary(['UNK', 'foo', 'bar'], [0, 1/2, 1/2]),
             ),
             'num2_key': MeasurementConfig(
                 name = 'num2_key',
@@ -1651,6 +1202,8 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                         np.NaN,
                     ],
                 }, index = pd.Index(['baz', 'biz'], name='num2_key')),
+                observation_frequency = 6/13,
+                vocabulary = Vocabulary(['UNK', 'baz'], [1/6, 5/6]),
             ),
             'num3_key': MeasurementConfig(
                 name = 'num3_key',
@@ -1668,12 +1221,14 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                         DummyNormalizer(mean=0.25, min=0.2, max=0.3, count=2),
                     ],
                 }, index = pd.Index(['one', 'two'], name='num3_key')),
+                observation_frequency = 6/13,
+                vocabulary = Vocabulary(['UNK', 'one', 'two'], [0, 3/6, 3/6]),
             ),
             # This column will be ignored as it has too few observations.
             'num4_key': MeasurementConfig(
                 name = 'num4_key',
                 temporality = TemporalityType.DYNAMIC,
-                modality = 'multivariate_regression',
+                modality = 'dropped',
                 values_column = 'num4_val',
             ),
             'num5_key': MeasurementConfig(
@@ -1699,6 +1254,8 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                         DummyNormalizer(mean=0.75, min=0.5, max=1, count=2),
                     ],
                 }, index = pd.Index(['k1', 'k2'], name='num5_key')),
+                observation_frequency = 12/13,
+                vocabulary = Vocabulary(['UNK', 'k1', 'k2'], [0, 1/2, 1/2]),
             ),
         }
 
@@ -1768,7 +1325,7 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 vocabulary = Vocabulary(['one__EQ_-1', 'one__EQ_1'], [0.5, 0.5]),
                 values_column = 'num3_val',
                 measurement_metadata = pd.DataFrame({
-                    'value_type': ['categorical_integer', 'float'],
+                    'value_type': ['categorical_integer', 'dropped'],
                     'outlier_model': [
                         np.NaN,
                         DummyOutlier(mean=0.2, min=0.1, max=0.3, count=3),
@@ -1859,31 +1416,30 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'TD_num_col_1': [0.4, 0.6, 1.2],
             'TD_num_col_2': [-1, 0, 1],
             'TD_num_col_3': [None, None, 2],
-            'metadata': [
-                ExpandableDfDict({
-                    'cat': ['a', 'b', 'c', 'd', 'e', 'f'],
-                    'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'],
-                    'num1_val': [0.1,   0.3,   0.5,   -5,   -1.1,  -3],
-                    'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz'],
-                    'num2_val': [0.4,   0.3,   0.1,   0.2,   0.5,   0.4],
-                    'num3_key': ['one',   'two',   'one',   'two',   'one',   'two'],
-                    'num3_val': [-0.9,  0.3,   1,     0.1,   0,     0.8],
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [-2, -1, -0.75,    -1, 0, 0.5],
-                }),
-                ExpandableDfDict({
-                    'num4_key': ['one'],
-                    'num4_val': [0.1],
-                }),
-                ExpandableDfDict({
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [0.3, 0.7, 1, 1, 1.1, 1.2],
-                }),
-            ],
+        }, index=pd.Index([0, 1, 2], name='event_id'))
+
+        metadata_df = pd.DataFrame({
+            'event_id': [0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2],
+            'cat': ['a', 'b', 'c', 'd', 'e', 'f', None, None, None, None, None, None, None],
+            'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar', None, None, None, None, None, None, None],
+            'num1_val': [0.1, 0.3, 0.5, -5, -1.1, -3, None, None, None, None, None, None, None],
+            'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz', None, None, None, None, None, None, None],
+            'num2_val': [0.4, 0.3, 0.1, 0.2, 0.5, 0.4, None, None, None, None, None, None, None],
+            'num3_key': ['one', 'two', 'one', 'two', 'one', 'two', None, None, None, None, None, None, None],
+            'num3_val': [-0.9,  0.3, 1, 0.1, 0, 0.8, None, None, None, None, None, None, None],
+            'num4_key': [None, None, None, None, None, None, 'one', None, None, None, None, None, None],
+            'num4_val': [None, None, None, None, None, None, 0.1, None, None, None, None, None, None],
+            'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2', None, 'k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
+            'num5_val': [-2, -1, -0.75, -1, 0, 0.5, None, 0.3, 0.7, 1, 1, 1.1, 1.2],
         })
 
         subjects_df = pd.DataFrame({'cat3': ['A']}, index=pd.Index([1], name='subject_id'))
-        E = EventStreamDataset(events_df=events_df.copy(), subjects_df=subjects_df.copy(), config=config)
+        E = EventStreamDataset(
+            events_df=events_df.copy(),
+            metadata_df=metadata_df.copy(),
+            subjects_df=subjects_df.copy(),
+            config=config
+        )
 
         E.metadata_is_fit = True
         E.inferred_measurement_configs = measurement_configs
@@ -2032,7 +1588,7 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
                 vocabulary = Vocabulary(['one__EQ_-1', 'one__EQ_1'], [0.5, 0.5]),
                 values_column = 'num3_val',
                 measurement_metadata = pd.DataFrame({
-                    'value_type': ['categorical_integer', 'float'],
+                    'value_type': ['categorical_integer', 'dropped'],
                     'outlier_model': [
                         np.NaN,
                         DummyOutlier(mean=0.2, min=0.1, max=0.3, count=3),
@@ -2089,29 +1645,22 @@ class TestEventStreamDataset(ConfigComparisonsMixin, unittest.TestCase):
             'subject_id': [1, 1, 1],
             'timestamp': ['12/1/22', '12/2/22', '12/3/22'],
             'event_type': ['A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'cat': ['a', 'b', 'c', 'd', 'e', 'f'],
-                    'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'],
-                    'num1_val': [0.1,   0.3,   0.5,   -5,   -1.1,  -3],
-                    'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz'],
-                    'num2_val': [0.4,   0.3,   0.1,   0.2,   0.5,   0.4],
-                    'num3_key': ['one',   'two',   'one',   'two',   'one',   'two'],
-                    'num3_val': [-0.9,  0.3,   1,     0.1,   0,     0.8],
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [-2, -1, -0.75,    -1, 0, 0.5],
-                }),
-                ExpandableDfDict({
-                    'num4_key': ['one'],
-                    'num4_val': [0.1],
-                }),
-                ExpandableDfDict({
-                    'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
-                    'num5_val': [0.3, 0.7, 1, 1, 1.1, 1.2],
-                }),
-            ],
+        }, index=pd.Index([0, 1, 2], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'event_id': [0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2],
+            'cat': ['a', 'b', 'c', 'd', 'e', 'f', None, None, None, None, None, None, None],
+            'num1_key': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar', None, None, None, None, None, None, None],
+            'num1_val': [0.1, 0.3, 0.5, -5, -1.1, -3, None, None, None, None, None, None, None],
+            'num2_key': ['biz', 'baz', 'baz', 'baz', 'baz', 'baz', None, None, None, None, None, None, None],
+            'num2_val': [0.4, 0.3, 0.1, 0.2, 0.5, 0.4, None, None, None, None, None, None, None],
+            'num3_key': ['one', 'two', 'one', 'two', 'one', 'two', None, None, None, None, None, None, None],
+            'num3_val': [-0.9,  0.3, 1, 0.1, 0, 0.8, None, None, None, None, None, None, None],
+            'num4_key': [None, None, None, None, None, None, 'one', None, None, None, None, None, None],
+            'num4_val': [None, None, None, None, None, None, 0.1, None, None, None, None, None, None],
+            'num5_key': ['k1', 'k1', 'k1', 'k2', 'k2', 'k2', None, 'k1', 'k1', 'k1', 'k2', 'k2', 'k2'],
+            'num5_val': [-2, -1, -0.75, -1, 0, 0.5, None, 0.3, 0.7, 1, 1, 1.1, 1.2],
         })
-        E = EventStreamDataset(events_df=events_df, config=config)
+        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
 
         E.metadata_is_fit = True
         E.inferred_measurement_configs = measurement_configs

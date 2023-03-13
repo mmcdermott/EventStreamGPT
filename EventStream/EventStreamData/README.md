@@ -155,11 +155,7 @@ One can construct an `EventStreamDataset` in several ways. In all cases, one mus
 `EventStreamDatasetConfig` object to configure the dataset, and a pandas DataFrame, `events_df` which contains
 the underlying events of these data. This dataframe must contain an column named `'subject_id'` and another
 named `'timestamp'`. However, there are several other options that are not mandatory:
-  1. The `events_df` dataframe can contain measurements directly within it even in a
-     one-event-to-many-measurements format, via a column `metadata` which contains a set of `ExpandableDfDict`
-     objects (which are functionally pandas dataframes stored as dictionaries). If this form is used, these
-     dictionaries will be expanded within the class into a separate dataframe for more efficient
-     pre-processing. Alternatively, dynamic, per-event measurements can be specified directly in a
+  1. The `events_df` dataframe links to dynamic, per-event measurements which are specified directly in a
      `metadata_df` dataframe, which must contain a column `event_id` that links to the index of `events_df`.
      Note that, upon construction, the `events_df` passed in will be copied and sorted by `subject_id` then
      `timestamp`.
@@ -244,12 +240,6 @@ use in modelling.
 TODO(mmd): Rename to `dynamic_measurements_df`.
 TODO(mmd): Make `event_type` a categorical column.
 TODO(mmd): Convert categorical columns to categories during preprocessing to save space and downstream time.
-
-### Other views
-You can also produce an `events_df_with_metadata` view which looks just like `events_df` but with an
-additional `metadata` column which has the sub-dataframe corresponding to non-null columns in
-`joint_metadata_df` for the rows corresponding to the event in question, re-organized as an `ExpandableDfDict`
-object. This may be removed in the future, as it is not very useful and slow to construct.
 
 ## `EventStreamPytorchDataset`
 This class converts an `EventStreamDataset` object into a pytorch deep-learning friendly dataset class. There

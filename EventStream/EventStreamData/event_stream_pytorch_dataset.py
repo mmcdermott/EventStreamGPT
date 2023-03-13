@@ -162,8 +162,12 @@ class EventStreamPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 if self.data.n_events_per_subject[sid] >= config.min_seq_len
         ]
 
-
         # Everything starts at 1 as we reserve 0 for padding.
+        self.vocab_sizes_by_measurement = {
+            'event_type': len(self.event_types_idxmap),
+            **{k: len(v) for k, v in self.data.measurement_vocabs.items()},
+        }
+
         self.measurement_vocab_offsets = {'event_type': 1}
         self.measurements_idxmap = {'event_type': 1}
         curr_end_of_vocab = len(self.event_types_idxmap) + 1

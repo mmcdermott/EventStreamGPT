@@ -476,14 +476,14 @@ def fit_generative_sequence_model(
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size  = optimization_config.batch_size // 2,
         num_workers = num_dataloader_workers,
         collate_fn  = tuning_pyd.collate,
         shuffle     = False,
     )
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size  = optimization_config.batch_size // 2,
         num_workers = num_dataloader_workers,
         collate_fn  = held_out_pyd.collate,
         shuffle     = False,
@@ -538,14 +538,6 @@ def fit_generative_sequence_model(
                     val_dataloaders=tuning_dataloader
                 )
 
-                if do_final_validation_on_metrics:
-                    if do_skip_all_metrics_in_train:
-                        LM.do_skip_all_metrics = False
-                        LM.build_metrics()
-
-                    trainer.validate(model=LM, dataloaders=tuning_dataloader)
-                    trainer.test(model=LM, dataloaders=held_out_dataloader)
-
                 if do_save_pretrained:
                     pretraining_save_dir = save_dir / 'pretrained_weights'
                     pretraining_save_dir.mkdir(exist_ok=True, parents=False)
@@ -553,6 +545,8 @@ def fit_generative_sequence_model(
 
                 break
             except RuntimeError as e:
+                if n_attempts >= 5: raise
+
                 print(
                     f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
                     "accumulation..."
@@ -560,7 +554,7 @@ def fit_generative_sequence_model(
                 trainer_kwargs['accumulate_grad_batches'] \
                     = trainer_kwargs.get('accumulate_grad_batches', 1) * 2
                 optimization_config.gradient_accumulation = trainer_kwargs['accumulate_grad_batches']
-                optimization_config.batch_size = data_config.batch_size // 2
+                optimization_config.batch_size = optimization_config.batch_size // 2
                 optimization_config.to_json_file(
                     save_dir / "optimization_config.json", do_overwrite=True
                 )
@@ -574,11 +568,19 @@ def fit_generative_sequence_model(
                 )
                 tuning_dataloader = torch.utils.data.DataLoader(
                     tuning_pyd,
-                    batch_size  = optimization_config.batch_size,
+                    batch_size  = optimization_config.batch_size // 2,
                     num_workers = num_dataloader_workers,
                     collate_fn  = tuning_pyd.collate,
                     shuffle     = False,
                 )
+
+        if do_final_validation_on_metrics:
+            if do_skip_all_metrics_in_train:
+                LM.do_skip_all_metrics = False
+                LM.build_metrics()
+
+            trainer.validate(model=LM, dataloaders=tuning_dataloader)
+            trainer.test(model=LM, dataloaders=held_out_dataloader)
     finally:
         # Even in the case of an error, we want to ensure that wandb exits successfully, otherwise it can lock
         # up Jupyter notebooks for some reason.

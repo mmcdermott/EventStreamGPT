@@ -1,11 +1,10 @@
-import copy, numpy as np, pandas as pd, warnings
+import copy, itertools, numpy as np, pandas as pd, warnings
 
 from collections import Counter
 from mixins import SeedableMixin, SaveableMixin, TimeableMixin
 from sklearn.preprocessing import QuantileTransformer
 from typing import Any, Dict, Hashable, List, Optional, Tuple, Sequence, Set, Union
 
-from .expandable_df_dict import ExpandableDfDict
 from .config import EventStreamDatasetConfig, MeasurementConfig
 from .types import DataModality, TemporalityType, NumericDataModalitySubtype
 from .vocabulary import Vocabulary
@@ -29,11 +28,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             * `subject_id`, the subject_id of the event to which this metadata element corresponds.
         3. `subjects_df`, which has integer index `subject_id` and arbitrary other user-specified columns with
            subject-specific metadata.
-    `joint_metadata_df` is joinable to `events_df` on `event_id`. One can also access
-    `events_df_with_metadata`, which contains the columns of `events_df` plus an additional column,
-    `metadata`, which contains an `ExpandableDfDict` view of the metadata dataframe rows corresponding to that
-    event, with columns that are universally null removed. `events_df_with_metadata` is lazily constructed
-    when accessed then cached, so first accesses may take a long time.
+    `joint_metadata_df` is joinable to `events_df` on `event_id`.
 
     TODO(mmd): Consider using pandas sparse matrices to simplify:
     https://pandas.pydata.org/docs/user_guide/sparse.html
@@ -62,7 +57,9 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
     }
 
     @classmethod
-    def infer_bounds_from_units_inplace(cls, measurement_metadata: pd.DataFrame) -> pd.DataFrame:
+    def infer_bounds_from_units_inplace(
+        cls, measurement_metadata: Union[pd.DataFrame, pd.Series]
+    ) -> Union[pd.DataFrame, pd.Series]:
         """
         This updates the bounds in measurement_metadata to reflect the implied bounds in `cls.UNIT_BOUNDS`.
 
@@ -92,10 +89,26 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             'unit_inferred_low', 'unit_inferred_low_inclusive', 'unit_inferred_high',
             'unit_inferred_high_inclusive'
         ]
-        measurement_metadata[new_cols] = measurement_metadata.unit.apply(
-            lambda u: pd.Series(unit_bounds.get(u, [None, None, None, None]))
-        )
+        match measurement_metadata:
+            case pd.Series():
+                measurement_metadata[new_cols] = unit_bounds.get(
+                    measurement_metadata.unit, [None, None, None, None]
+                )
+            case pd.DataFrame():
+                measurement_metadata[new_cols] = measurement_metadata.unit.apply(
+                    lambda u: pd.Series(unit_bounds.get(u, [None, None, None, None]))
+                )
+            case _:
+                raise ValueError(f"Invalid type for measurement_metadata: {type(measurement_metadata)}")
 
+        def incl_update_fn(
+            r: pd.Series, new_bound: str, old_bound: str, new_incl: str, old_incl: str, sign: int
+        ):
+            if pd.isnull(r[new_bound]): return r[old_incl]
+            elif pd.isnull(r[old_bound]): return r[new_incl]
+            elif (sign * r[old_bound]) < (sign * r[new_bound]): return r[old_incl]
+            elif (sign * r[new_bound]) < (sign * r[old_bound]): return r[new_incl]
+            else: return r[old_incl] or r[new_incl]
 
         for (old_bound, new_bound, min_max) in (
             ('drop_lower_bound', 'unit_inferred_low', 'max'),
@@ -104,59 +117,45 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             old_incl = f"{old_bound}_inclusive"
             new_incl = f"{new_bound}_inclusive"
 
-            if old_bound not in measurement_metadata.columns:
+            if old_bound not in measurement_metadata:
                 measurement_metadata[old_bound] = measurement_metadata[new_bound]
                 measurement_metadata[old_incl] = measurement_metadata[new_incl]
                 continue
 
-            if min_max == 'min':
-                measurement_metadata[old_incl] = measurement_metadata[
-                    [old_bound, new_bound, old_incl, new_incl]
-                ].apply(
-                    lambda r: (
-                        r[old_incl] if (pd.isnull(r[new_bound])) else
-                        r[new_incl] if (pd.isnull(r[old_bound])) else
-                        r[old_incl] if (r[old_bound] < r[new_bound]) else
-                        r[new_incl] if (r[new_bound] < r[old_bound]) else
-                        (r[old_incl] or r[new_incl])
-                    ), axis='columns'
-                )
-                measurement_metadata[old_bound] = measurement_metadata[[old_bound, new_bound]].min('columns')
-            else:
-                measurement_metadata[old_incl] = measurement_metadata[
-                    [old_bound, new_bound, old_incl, new_incl]
-                ].apply(
-                    lambda r: (
-                        r[old_incl] if (pd.isnull(r[new_bound])) else
-                        r[new_incl] if (pd.isnull(r[old_bound])) else
-                        r[old_incl] if (r[old_bound] > r[new_bound]) else
-                        r[new_incl] if (r[new_bound] > r[old_bound]) else
-                        (r[old_incl] or r[new_incl])
-                    ), axis='columns'
-                )
-                measurement_metadata[old_bound] = measurement_metadata[[old_bound, new_bound]].max('columns')
+            args = (new_bound, old_bound, new_incl, old_incl, 1 if min_max == 'min' else -1)
 
-            measurement_metadata.drop(columns=[new_bound, new_incl], inplace=True)
+            match measurement_metadata:
+                case pd.Series():
+                    measurement_metadata[old_incl] = incl_update_fn(measurement_metadata, *args)
+                    if min_max == 'min':
+                        measurement_metadata[old_bound] = measurement_metadata[[old_bound, new_bound]].min()
+                    else:
+                        measurement_metadata[old_bound] = measurement_metadata[[old_bound, new_bound]].max()
+                    measurement_metadata.drop([new_bound, new_incl], inplace=True)
+                case pd.DataFrame():
+                    measurement_metadata[old_incl] = measurement_metadata.apply(
+                        incl_update_fn, args=args, axis='columns'
+                    )
+                    if min_max == 'min':
+                        measurement_metadata[old_bound] = measurement_metadata[[old_bound, new_bound]].min(1)
+                    else:
+                        measurement_metadata[old_bound] = measurement_metadata[[old_bound, new_bound]].max(1)
+                    measurement_metadata.drop(columns=[new_bound, new_incl], inplace=True)
+                case _:
+                    raise ValueError(f"Invalid type for measurement_metadata: {type(measurement_metadata)}")
 
         return measurement_metadata
 
     @staticmethod
-    def drop_or_censor_series(val: pd.Series, row: Union[pd.Series, Dict[str, Optional[float]]]) -> pd.Series:
-        """
-        Appropriately either drops (returns np.NaN) or censors (returns the censor value) the values in `val`
-        based on the bounds in `row`. See `EventStreamDataset.drop_or_censor` for description of `row` bound
-        keys and meaning.
-        """
-        return val.apply(EventStreamDataset.drop_or_censor, args=(row,))
-
-    @staticmethod
-    def drop_or_censor(val: float, row: Union[pd.Series, Dict[str, Optional[float]]]) -> float:
+    def drop_or_censor(
+        vals: pd.Series, row: Union[pd.Series, Dict[str, Optional[float]]]
+    ) -> pd.Series:
         """
         Appropriately either drops (returns np.NaN) or censors (returns the censor value) the value `val`
         based on the bounds in `row`.
 
         Args:
-            `val` (`float`): The value to drop, censor, or return unchanged.
+            `val` (`pd.Series`): The value to drop, censor, or return unchanged.
             `row` (`Union[pd.Series, Dict[str, Optional[float]]]`):
                 The bounds for dropping and censoring. Must contain the following keys:
                     * `drop_lower_bound`:
@@ -183,87 +182,26 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
                         If `None` or `np.NaN`, no bound will be applied.
 
         """
-        if (
-            (
-                ('drop_lower_bound' in row) and
-                (not pd.isnull(row['drop_lower_bound'])) and (
-                    (val < row['drop_lower_bound']) or
-                    (row['drop_lower_bound_inclusive'] and val == row['drop_lower_bound'])
-                )
-            ) or (
-                ('drop_upper_bound' in row) and
-                (not pd.isnull(row['drop_upper_bound'])) and (
-                    (val > row['drop_upper_bound']) or
-                    (row['drop_upper_bound_inclusive'] and val == row['drop_upper_bound'])
-                )
-            )
-        ): return np.NaN
-        elif (
-            ('censor_lower_bound' in row) and
-            (not pd.isnull(row['censor_lower_bound'])) and
-            (val < row['censor_lower_bound'])
-        ): return row['censor_lower_bound']
-        elif (
-            ('censor_upper_bound' in row) and
-            (not pd.isnull(row['censor_upper_bound'])) and
-            (val > row['censor_upper_bound'])
-        ): return row['censor_upper_bound']
-        else: return val
 
-    @staticmethod
-    def drop_oob_and_censor_outliers(vals: pd.Series, measurement_metadata: pd.DataFrame) -> pd.Series:
-        """
-        Drops out-of-bounds data values and censors invalid data values according to measurement_metadata. Data
-        are joined based on indices of `vals` and `measurement_metadata`.
+        vals = vals.copy()
+        drop_idxs = []
 
-        Args:
-            `vals` (`pd.Series`): The values to be dropped or censored.
-            `measurement_metadata` (`pd.DataFrame`):
-                The dataframe containing the bounds to drop or censor `vals`. Must have one index level and
-                the following column names:
-                    * `drop_lower_bound`
-                    * `drop_lower_bound_inclusive`
-                    * `drop_upper_bound`
-                    * `drop_upper_bound_inclusive`
-                    * `censor_lower_bound`
-                    * `censor_upper_bound`
-                See `EventStreamDataset.drop_or_censor` for a description of what the columns mean individually.
+        if ('drop_lower_bound' in row) and (not pd.isnull(row['drop_lower_bound'])):
+            if row['drop_lower_bound_inclusive']: drop_idxs.append(vals <= row['drop_lower_bound'])
+            else: drop_idxs.append(vals < row['drop_lower_bound'])
 
-        Returns: A `pd.Series` of the same schema as `vals` with the values either dropped or censored.
-        """
+        if ('drop_upper_bound' in row) and (not pd.isnull(row['drop_upper_bound'])):
+            if row['drop_upper_bound_inclusive']: drop_idxs.append(vals >= row['drop_upper_bound'])
+            else: drop_idxs.append(vals > row['drop_upper_bound'])
 
-        assert len(measurement_metadata.index.names) == 1
+        if drop_idxs: vals[np.logical_or.reduce(drop_idxs)] = np.NaN
 
-        orig_val_name = vals.name
-        orig_val_index = vals.index
-        orig_key_col_name = measurement_metadata.index.names[0]
+        if ('censor_lower_bound' in row) and (not pd.isnull(row['censor_lower_bound'])):
+            vals[vals < row['censor_lower_bound']] = row['censor_lower_bound']
+        if ('censor_upper_bound' in row) and (not pd.isnull(row['censor_upper_bound'])):
+            vals[vals > row['censor_upper_bound']] = row['censor_upper_bound']
 
-        # We just want the unit bounds, and we need to standardize the index name
-        cols = list(set(measurement_metadata.columns).intersection({
-            'drop_lower_bound', 'drop_lower_bound_inclusive', 'drop_upper_bound',
-            'drop_upper_bound_inclusive', 'censor_lower_bound', 'censor_upper_bound',
-        }))
-        if not cols: return vals
-
-        vals = pd.DataFrame({'vals': vals})
-        vals['int_index'] = np.arange(len(vals))
-
-        vals.set_index('int_index', append=True, inplace=True)
-        vals.index.names = ['key_col', 'int_index']
-
-        measurement_metadata.index.names = ['key_col']
-        processed_vals = vals.join(measurement_metadata[cols], on='key_col', how='left').apply(
-            lambda r: EventStreamDataset.drop_or_censor(r['vals'], r),
-            axis='columns'
-        )
-
-        measurement_metadata.index.names = [orig_key_col_name]
-
-        processed_vals = processed_vals.loc[vals.index]
-        processed_vals.name = orig_val_name
-        processed_vals.index = orig_val_index
-
-        return processed_vals
+        return vals
 
     @classmethod
     def _fit_metadata_model(cls, vals: pd.Series, model_config: Dict[str, Any]):
@@ -272,9 +210,8 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         assert model_config['cls'] in cls.METADATA_MODELS
 
         vals = to_sklearn_np(vals)
-        if len(vals) == 0: return None
-
         N = len(vals)
+        if N == 0: return None
 
         model_config = copy.deepcopy(
             {k: (v(N) if callable(v) else v) for k, v in model_config.items()}
@@ -295,7 +232,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         return f"{key}__EQ_{val}"
 
     @classmethod
-    def transform_categorical_values_series(
+    def transform_categorical_numerical_values_to_keys(
         cls, measurement_metadata: pd.Series, vals: pd.Series
     ) -> Optional[pd.Series]:
         """
@@ -325,92 +262,6 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             case _: return None
 
         return vals.apply(lambda v: conversion_fn(key=vals.name, val=v))
-
-    @classmethod
-    def transform_categorical_key_values_df(
-        cls, measurement_metadata: pd.DataFrame, kv_df: pd.DataFrame, key_col: str, val_col: str
-    ) -> pd.DataFrame:
-        """
-        Converts the keys and values in `kv_df` to an appropriate numerical or categorical representation as
-        dictated by `measurement_metadata['value_type']`.
-
-        Args:
-            `measurement_metadata` (`pd.DataFrame`):
-                The dataframe containing the value types dictating what conversions should apply to what
-                key-value pairs. The index of `measurement_metadata` must contain keys, and it must contain a
-                column `'value_type'`.
-                Keys with a `'value_type'` of `NumericDataModalitySubtype.CATEGORICAL_INTEGER` will be converted
-                to integers, then to string representations via the appropriate class method.
-                Keys with a `'value_type'` of `NumericDataModalitySubtype.CATEGORICAL_FLOAT` will be converted
-                to string representations via the appropriate class method.
-            `kv_df` (`pd.DataFrame`):
-                Contains the key-value pairs (keys in column `key_col`, values in `val_col`) to be converted.
-                This dataframe _will_ be modified by this function!
-            `key_col` (`str`): The column of `kv_df` containing the keys.
-            `val_col` (`str`): The column of `kv_df` containing the values.
-
-        Returns: The modified `kv_df` with transformed keys, of type `pd.DataFrame`.
-        """
-        for value_type, conversion_fn in (
-            (NumericDataModalitySubtype.CATEGORICAL_INTEGER, cls.int_key_value_to_categorical),
-            (NumericDataModalitySubtype.CATEGORICAL_FLOAT, cls.float_key_value_to_categorical),
-        ):
-            keys_to_expand = set(measurement_metadata[measurement_metadata['value_type'] == value_type].index)
-            if not keys_to_expand: continue
-
-            keys_to_convert_idx = kv_df[key_col].isin(keys_to_expand)
-            kv_df.loc[keys_to_convert_idx, key_col] = kv_df[keys_to_convert_idx].apply(
-                lambda r: conversion_fn(key=r[key_col], val=r[val_col]),
-                axis='columns'
-            )
-            kv_df.loc[keys_to_convert_idx, val_col] = np.NaN
-
-        return kv_df
-
-    @staticmethod
-    def to_events(
-        df:            pd.DataFrame,
-        event_type:    str,
-        subject_col:   str,
-        time_col:      str,
-        metadata_cols: Optional[List[str]] = None,
-    ) -> pd.DataFrame:
-        """
-        Converts `df` into the format of an `events_df` as expected by `EventStreamDataset`.
-
-        Args:
-            `df` (`pd.DataFrame'):
-                The dataframe to be converted. Must have one row per event (or be collapsible into such) and
-                capture only a single event type.
-            `event_type` (`str`): What type of event this dataframe captures.
-            `subject_col` (`str`): The name of the column containing the subject ID.
-            `time_col` (`str`): The name of the column containing the timestamp of the event.
-            `metadata_cols` (`List[str]`, *optional*, default is `[]`):
-                A list of the columns that should be captured as event-specific metadata. They will be
-                extracted and converted to `ExpandableDfDict`s per the `EventStreamDataset` structure.
-
-        Returns:
-            * `events` (`pd.DataFrame`):
-                A copy of of `df` with the following modifications:
-                    * `time_col` renamed to `'timestamp'`
-                    * `subject_col` renamed to `'subject_id'`
-                    * An `'event_type'` column added added with the value `event_type`
-                    * The index _overwritten_ with an `'event_id'` index which is a numerical index following
-                      the order of records in the input `df`.
-                    * A `'metadata'` column added whose values take on single-row `ExpandableDfDict` objects
-                      corresponding to the columns and values of `df[metadata_cols]` for that row.
-        """
-        if metadata_cols is None: metadata_cols = []
-
-        events = df[[subject_col, time_col]].rename(
-            columns={time_col: 'timestamp', subject_col: 'subject_id'}
-        ).copy()
-        events['event_type'] = event_type
-        events['metadata']   = df.apply(
-            lambda r: ExpandableDfDict({k: [v] for k, v in r[metadata_cols].to_dict().items()}), axis=1
-        )
-
-        return events
 
     @staticmethod
     def to_events_and_metadata(
@@ -490,14 +341,10 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
                     * `subject_id`: The ID of the subject of the row.
                     * `event_type`: The type of the row's event.
                     * `timestamp`: The timestamp (in a `pd.to_datetime` parseable format) of the row's event.
-                    * `metadata`:
-                        Contains `ExpandableDfDict` objects capturing additional metadata elements for the
-                        event. If `metadata_df` is `None`, this column must be present. Otherwise it is
-                        unused.
             `metadata_df` (`Optional[pd.DataFrame]`, defaults to `None`):
                 The associated underlying metadata. If present, one of the following two conditions must be
                 true:
-                    * It must contain a column `event_id` and `events_df` must have a single index columnh
+                    * It must contain a column `event_id` and `events_df` must have a single index column
                       named `event_id` which can be joined against this column. `subject_id` and `event_type`
                       will then be inferred (unless already present) in `metadata_df` on the basis of this
                       join key.
@@ -531,18 +378,26 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             if 'event_id' in metadata_df.columns:
                 assert events_df.index.names == ['event_id'], f"Got {events_df.index.names}"
                 if 'event_type' not in metadata_df.columns:
-                    metadata_df['event_type'] = events_df.loc[metadata_df.event_id, 'event_type']
+                    metadata_df['event_type'] = events_df.loc[metadata_df.event_id, 'event_type'].values
                 if 'subject_id' not in metadata_df.columns:
-                    metadata_df['subject_id'] = events_df.loc[metadata_df.event_id, 'subject_id']
+                    metadata_df['subject_id'] = events_df.loc[metadata_df.event_id, 'subject_id'].values
             else:
                 assert len(metadata_df) == len(events_df)
                 metadata_df['event_id'] = np.arange(len(events_df))
                 metadata_df['event_type'] = events_df['event_type']
 
-            non_event_cols = [c for c in metadata_df.columns if c not in ('event_id', 'event_type')]
-            cols_order = ['event_id', 'event_type', *sorted(non_event_cols)]
+            if metadata_df.index.names == [None]:
+                metadata_df.index.names = ['metadata_id']
+            assert metadata_df.index.names == ['metadata_id'], f"Got {metadata_df.index.names}"
+            assert metadata_df.index.is_unique
+
+            non_event_cols = [
+                c for c in metadata_df.columns if c not in ('event_id', 'event_type', 'subject_id')
+            ]
+            cols_order = ['event_id', 'event_type', 'subject_id', *sorted(non_event_cols)]
+            metadata_df.sort_values(by='event_id', inplace=True)
             self.joint_metadata_df = metadata_df[cols_order].copy()
-        elif 'metadata' not in events_df:
+        else:
             self.joint_metadata_df = pd.DataFrame(
                 {'event_id': [], 'event_type': []}, index=pd.Index([], name='metadata_id')
             )
@@ -551,7 +406,6 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
 
         self.subjects_df = subjects_df
 
-        self.__events_df_with_metadata_stale = False
         self.events_df = events_df
 
         self.split_subjects = {}
@@ -566,69 +420,8 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
     @property
     def passed_measurement_configs(self): return self.config.measurement_configs
 
-    @TimeableMixin.TimeAs
-    def __build_joint_metadata_df_from_events(self):
-        """
-        Builds a joint metadata dataframe by concatenating the `ExpandableDfDict` metadata objects present
-        in each row of the events df, then saves that as `self.joint_metadata_df`.
-        """
-        def metadata_df_with_event_info(r: pd.Series):
-            df = r.metadata.df()
-            df['event_id'] = r.name
-            df['event_type'] = r.event_type
-            df['subject_id'] = r.subject_id
-            return df
-        metadata_df = pd.concat(
-            (metadata_df_with_event_info(r) for _, r in self.events_df.iterrows()), ignore_index=True
-        )
-        metadata_df.index = np.arange(len(metadata_df))
-        metadata_df.index.names = ['metadata_id']
-
-        static_cols = ['event_id', 'event_type', 'subject_id']
-
-        non_event_cols = [c for c in metadata_df.columns if c not in static_cols]
-        cols_order = [*static_cols, *sorted(non_event_cols)]
-
-        self.joint_metadata_df = metadata_df[cols_order]
-        self.metadata_is_fit = False
-
     @property
     def events_df(self): return self._events_df
-
-    @property
-    def events_df_with_metadata(self):
-        """
-        If necessary, re-builds the events df view with metadata, then returns that view. Uses this method
-        rather than `functools.cached_property` because clearing the `cached_property` version was (for some
-        reason) very computationally expensive.
-        """
-        if self.__events_df_with_metadata_stale or not hasattr(self, '_events_df_with_metadata'):
-            self._build_events_df_with_metadata()
-            self.__events_df_with_metadata_stale = False
-
-        return self._events_df_with_metadata
-
-    @TimeableMixin.TimeAs
-    def _build_events_df_with_metadata(self):
-        """
-        Builds the joint view of events with the `'metadata'` column that was originally used.
-        Stored separately for ease of tracking timing even with the caching property above.
-        """
-        E = self._events_df.copy()
-        if self.joint_metadata_df.shape[1] == 0:
-            E['metadata'] = [ExpandableDfDict({}) for _ in range(len(E))]
-        else:
-            E['metadata'] = self.joint_metadata_df.drop(
-                columns=['event_type', 'subject_id']
-            ).groupby('event_id', group_keys=True).apply(ExpandableDfDict.from_df)
-        self._events_df_with_metadata = E
-
-    def __clear_events_with_metadata(self):
-        """
-        An internal endpoint for clearing the pre-cached events with metadata. Right now, this function may be
-        not necessary given how rarely that view is used, and it may be removed in the future.
-        """
-        self.__events_df_with_metadata_stale = True
 
     @events_df.setter
     @TimeableMixin.TimeAs(key='events_df_setter')
@@ -638,7 +431,6 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
           * Resetting the index to a new integer index (event_id).
           * Adding the new event_id to the metadata.
           * If necessary, re-building `self.joint_metadata_df`.
-          * Clearing the stored `events_with_metadata` view.
           * Sorts the events by `'subject_id'` and `'timestamp'`.
         """
         self._events_df = new_df
@@ -648,11 +440,6 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             self.events_df.index = np.arange(len(self.events_df))
             self.events_df.index.names = ['event_id']
 
-        if 'metadata' in self.events_df.columns:
-            self.__build_joint_metadata_df_from_events()
-            self.events_df.drop(columns='metadata', inplace=True)
-
-        self.__clear_events_with_metadata()
         self.sort_events()
 
         self.event_types = [e for e, _ in Counter(self.events_df.event_type).most_common()]
@@ -697,7 +484,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             self.joint_metadata_df['event_id'] = self.joint_metadata_df.event_id.apply(
                 lambda x: old_to_new[x]
             )
-        self.__clear_events_with_metadata()
+            self.joint_metadata_df.sort_values(by='event_id', inplace=True)
 
     @SeedableMixin.WithSeed
     @TimeableMixin.TimeAs
@@ -764,19 +551,13 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
 
     @property
     def train_subjects_df(self):
-        return self.subjects_df[
-            self.subjects_df.index.isin(self.subject_ids_for_split('train'))
-        ]
+        return self.subjects_df[self.subjects_df.index.isin(self.subject_ids_for_split('train'))]
     @property
     def tuning_subjects_df(self):
-        return self.subjects_df[
-            self.subjects_df.index.isin(self.subject_ids_for_split('tuning'))
-        ]
+        return self.subjects_df[self.subjects_df.index.isin(self.subject_ids_for_split('tuning'))]
     @property
     def held_out_subjects_df(self):
-        return self.subjects_df[
-            self.subjects_df.index.isin(self.subject_ids_for_split('held_out'))
-        ]
+        return self.subjects_df[self.subjects_df.index.isin(self.subject_ids_for_split('held_out'))]
 
     @TimeableMixin.TimeAs
     def _events_for_split(
@@ -894,38 +675,24 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
     @TimeableMixin.TimeAs
     def backup_numerical_metadata_columns(self):
         """Backs up the all numerical columns to avoid data loss during processing."""
-        for gp_by_col, val_col in self.dynamic_numerical_columns:
-            backup_gp_by_col, backup_val_col = f"__backup_{gp_by_col}", f"__backup_{val_col}"
-            if backup_gp_by_col not in self.joint_metadata_df.columns:
-                self.joint_metadata_df.loc[:, backup_gp_by_col] = self.joint_metadata_df[gp_by_col]
-            if backup_val_col not in self.joint_metadata_df.columns:
-                self.joint_metadata_df.loc[:, backup_val_col] = self.joint_metadata_df[val_col]
-
-        for val_col in self.time_dependent_numerical_columns:
-            backup_val_col = f"__backup_{val_col}"
-            if backup_val_col not in self.events_df.columns:
-                self.events_df.loc[:, backup_val_col] = self.events_df[val_col]
+        for cols, source in (
+            (itertools.chain.from_iterable(self.dynamic_numerical_columns), self.joint_metadata_df),
+            (self.time_dependent_numerical_columns, self.events_df)
+        ):
+            for col in cols:
+                if f"__backup_{col}" not in source.columns: source[f"__backup_{col}"] = source[col]
 
     @TimeableMixin.TimeAs
     def restore_numerical_metadata_columns(self):
         """Restores backed-up copies of all numerical columns."""
-        for gp_by_col, val_col in self.dynamic_numerical_columns:
-            backup_gp_by_col, backup_val_col = f"__backup_{gp_by_col}", f"__backup_{val_col}"
-            assert backup_gp_by_col in self.joint_metadata_df.columns
-            self.joint_metadata_df[gp_by_col] = self.joint_metadata_df[backup_gp_by_col]
-
-            assert backup_val_col in self.joint_metadata_df.columns
-            self.joint_metadata_df[val_col] = self.joint_metadata_df[backup_val_col]
-
-            self.joint_metadata_df.drop(columns=[backup_gp_by_col, backup_val_col], inplace=True)
-
-        for val_col in self.time_dependent_numerical_columns:
-            backup_val_col = f"__backup_{val_col}"
-            assert backup_val_col in self.events_df.columns
-            self.events_df[val_col] = self.events_df[backup_val_col]
-
-            self.events_df.drop(columns=[backup_val_col], inplace=True)
-        self.__clear_events_with_metadata()
+        for cols, source in (
+            (itertools.chain.from_iterable(self.dynamic_numerical_columns), self.joint_metadata_df),
+            (self.time_dependent_numerical_columns, self.events_df)
+        ):
+            for col in cols:
+                assert f"__backup_{col}" in source.columns
+                source[col] = source[f"__backup_{col}"]
+                source.drop(columns=[f"__backup_{col}"], inplace=True)
 
     @TimeableMixin.TimeAs
     def preprocess_metadata(self):
@@ -951,8 +718,13 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         categorical columns, over the training split. Details of pre-processing are dictated by `self.config`.
         """
         self.metadata_is_fit = False
-        self._fit_numerical_metadata()
-        self._fit_categorical_metadata()
+
+        for measure, cfg in self.measurement_configs.items():
+            if cfg.is_dropped: continue
+
+            if cfg.is_numeric: self._fit_numerical_measurement(measure, cfg)
+            self._fit_categorical_measurement(measure, cfg)
+
         self.metadata_is_fit = True
 
     @property
@@ -1003,50 +775,43 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         return vocabs
 
     @TimeableMixin.TimeAs
-    def _fit_numerical_metadata(self):
+    def _fit_numerical_measurement(self, measure: str, passed_config: MeasurementConfig):
         """
-        Pre-processes numerical metadata columns, according to `self.config`. Iterates through individual
-        numerical columns and processes them independently.
-        """
-
-        for k, v in self.dynamic_numerical_columns: self._fit_dynamic_numerical_metadata_column(k, v)
-        for k in self.time_dependent_numerical_columns: self._fit_time_dependent_numerical_metadata_column(k)
-
-    @TimeableMixin.TimeAs
-    def _fit_dynamic_numerical_metadata_column(self, key_col: str, val_col: str):
-        """
-        Pre-processes a particular numerical metadata column, with key `key_col`.
+        Pre-processes the numerical measurement `measure`.
 
         Performs the following steps:
-            1. Infers additional bounds on the basis of metadata units.
+            1. Infers additional bounds on the basis of measurement units.
             2. Eliminates hard outliers and performs censoring via specified config.
-            3. Per-metadata key, processes the metadata values.
+            3. Processes the measurement values, in either a univariate or multivariate setting.
 
-        Throughout these steps, the model also tracks the final configuration of the column in
+        Throughout these steps, the model also tracks the final configuration of the measurement in
         `self.inferred_measurement_configs`.
 
         Args:
-            `key_col` (`str`): The column name of the governing key column.
-            `val_col` (`str`):
-                The column name of the governing values column. Note this should be identical to
-                `self.passed_measurement_configs[key_col].values_column`.
+            `measure` (`str`): The name of the measurement.
+            `config` (`MeasurementConfig`): The configuration object governing this measure.
         """
         with self._time_as('building_inferred_config'):
-            passed_config = self.passed_measurement_configs[key_col]
-            # TODO(mmd): Infer this
-            event_types = passed_config.present_in_event_types
-
             inferred_config = copy.deepcopy(passed_config)
-            self.inferred_measurement_configs[key_col] = inferred_config
+            self.inferred_measurement_configs[measure] = inferred_config
 
-        with self._time_as('get_kv_df'):
-            kv_train_df = self.metadata_df(event_types=event_types, split='train')[[key_col, val_col]]
+        match passed_config.temporality:
+            case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
+                source_df = self.train_events_df
+            case TemporalityType.DYNAMIC:
+                source_df = self.metadata_df(event_types=passed_config.present_in_event_types, split='train')
+            case _:
+                raise ValueError(
+                    f"Called _fit_numerical_measurement on measure {measure} of temporality type "
+                    f"{passed_config.temporality}!"
+                )
 
-            N = len(kv_train_df[key_col].dropna())
-            total_possible_events = len(kv_train_df)
+        total_possible_events = len(source_df)
+        N = len(source_df[measure].dropna())
 
         if lt_count_or_proportion(N, self.config.min_valid_column_observations, total_possible_events):
             # In this case, we're going to drop this column entirely, so we can return.
+            inferred_config.drop()
             return
 
         with self._time_as('build_measurement_metadata'):
@@ -1055,32 +820,33 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
 
         # 1. Infers additional bounds on the basis of metadata units.
         with self._time_as('check_units'):
-            if 'unit' in measurement_metadata.columns:
-                self.infer_bounds_from_units_inplace(measurement_metadata)
+            if 'unit' in measurement_metadata: self.infer_bounds_from_units_inplace(measurement_metadata)
 
-        vals = kv_train_df.set_index(key_col)[val_col]
+        # 3. Process the metadata values.
+        match passed_config.modality:
+            case DataModality.UNIVARIATE_REGRESSION:
+                self._fit_numerical_metadata_column_vals(source_df[measure], measurement_metadata, N)
+            case DataModality.MULTIVARIATE_REGRESSION:
+                with warnings.catch_warnings():
+                    # As `_fit_dynamic_numerical_metadata_column_vals` returns None, pandas throws a warning
+                    # about the default dtype for an empty Series, so we add a filter to ignore that.
+                    warnings.simplefilter(action='ignore', category=FutureWarning)
 
-        # 2. Eliminate hard outliers and perform censoring.
-        with self._time_as('drop_oob_and_censor_outliers'):
-            vals = self.drop_oob_and_censor_outliers(vals, measurement_metadata)
+                    source_df.groupby(measure)[passed_config.values_column].transform(
+                        self._fit_multivariate_numerical_metadata_column_vals,
+                        total_col_obs=N,
+                        measurement_metadata=measurement_metadata,
+                    )
+            case _:
+                raise ValueError(
+                    f"Called _fit_numerical_measurement on non-numeric measure {measure} of type "
+                    f"{passed_config.modality}!"
+                )
 
-        # 3. Per-metadata key, process the metadata values.
-        with warnings.catch_warnings():
-            # As `_fit_dynamic_numerical_metadata_column_vals` returns None, pandas throws a warning about the
-            # default dtype for an empty Series, so we add a filter to ignore that.
-            warnings.simplefilter(action='ignore', category=FutureWarning)
-            vals.groupby(level=key_col).transform(
-                self._fit_dynamic_numerical_metadata_column_vals,
-                key_col=key_col,
-                total_col_obs=N
-            )
-
-    @TimeableMixin.TimeAs
-    def _fit_dynamic_numerical_metadata_column_vals(
-        self, vals: pd.Series, key_col: str, total_col_obs: int
+    def _fit_multivariate_numerical_metadata_column_vals(
+        self, vals: pd.Series, total_col_obs: int, measurement_metadata: pd.DataFrame
     ):
         gp_key = vals.name
-        measurement_metadata = self.inferred_measurement_configs[key_col].measurement_metadata
 
         if gp_key not in measurement_metadata.index:
             measurement_metadata.loc[gp_key] = pd.Series(
@@ -1088,72 +854,9 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             )
 
         measurement_metadata_copy = measurement_metadata.loc[gp_key].copy()
-
-        output = self._fit_numerical_metadata_column_vals(
-            vals, measurement_metadata_copy, total_col_obs
-        )
-
+        output = self._fit_numerical_metadata_column_vals(vals, measurement_metadata_copy, total_col_obs)
         measurement_metadata.loc[gp_key] = measurement_metadata_copy
         return output
-
-    @TimeableMixin.TimeAs
-    def _fit_time_dependent_numerical_metadata_column(self, col: str):
-        """
-        Pre-processes a particular numerical metadata column, with key `key_col`.
-
-        Performs the following steps:
-            1. Infers additional bounds on the basis of metadata units.
-            2. Eliminates hard outliers and performs censoring via specified config.
-            3. Per-metadata key, processes the metadata values.
-
-        Throughout these steps, the model also tracks the final configuration of the column in
-        `self.inferred_measurement_configs`.
-
-        Args:
-            `key_col` (`str`): The column name of the governing key column.
-            `val_col` (`str`):
-                The column name of the governing values column. Note this should be identical to
-                `self.passed_measurement_configs[key_col].values_column`.
-        """
-        with self._time_as('building_inferred_config'):
-            passed_config = self.passed_measurement_configs[col]
-
-            inferred_config = copy.deepcopy(passed_config)
-            self.inferred_measurement_configs[col] = inferred_config
-
-        with self._time_as('get_vals'):
-            vals = self.train_events_df[col]
-
-            N = len(vals.dropna())
-            total_possible_events = len(vals)
-
-        if lt_count_or_proportion(N, self.config.min_valid_column_observations, total_possible_events):
-            # In this case, we're going to drop this column entirely, so we can return.
-            return
-
-        with self._time_as('build_measurement_metadata'):
-            inferred_config.add_missing_mandatory_metadata_cols()
-            measurement_metadata = inferred_config.measurement_metadata
-
-        # 1. Infers additional bounds on the basis of metadata units.
-        with self._time_as('check_units'):
-            if 'unit' in measurement_metadata:
-                # TODO(mmd): unify with other function.
-                unit_bounds = flatten_dict(self.UNIT_BOUNDS)
-                new_cols = [
-                    'unit_inferred_low', 'unit_inferred_low_inclusive', 'unit_inferred_high',
-                    'unit_inferred_high_inclusive'
-                ]
-                measurement_metadata[new_cols] = unit_bounds.get(
-                    measurement_metadata['unit'], [None, None, None, None]
-                )
-
-        # 2. Eliminate hard outliers and perform censoring.
-        with self._time_as('drop_oob_and_censor_outliers'):
-            vals = self.drop_or_censor_series(vals, measurement_metadata)
-
-        # 3. Per-metadata key, process the metadata values.
-        self._fit_numerical_metadata_column_vals(vals, measurement_metadata, N)
 
     @TimeableMixin.TimeAs
     def _fit_numerical_metadata_column_vals(
@@ -1165,6 +868,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         as inputs to avoid needing the full class context across all groupby workers.
 
         Performs the following steps:
+            0. Drops or censors values as warranted.
             1. Sets the column type if it is not pre-set. If necessary, converts the values to the appropriate
                type prior to subsequent processing, but does not alter persistent metadata.
             2. Fits an outlier detection model. If necessary, removes outliers in training prior to
@@ -1173,11 +877,14 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
 
         Args:
             `vals` (`pd.Series`): The values to be pre-processed.
-            `key_col` (`str`): The name of the key column that is being processed.
             `total_col_obs` (`int`):
                 The total number of column observations that were observed for this metadata column (_not_
                 just this key!)
         """
+
+        # 0. Eliminate hard outliers and perform censoring.
+        with self._time_as('drop_or_censor'):
+            vals = self.drop_or_censor(vals, measurement_metadata)
 
         total_key_obs = len(vals)
         vals = vals.dropna()
@@ -1277,23 +984,7 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         return value_type
 
     @TimeableMixin.TimeAs
-    def _fit_categorical_metadata(self):
-        """
-        Pre-processes categorical metadata columns, according to `self.config`.
-
-        Performs the following steps for each categorical metadata column:
-            1. Set the overall observation frequency for the column.
-            2. Drop the column if observations occur too rarely.
-            3. Fit metadata vocabularies on the training set.
-            4. Eliminate observations that occur too rarely.
-            5. If all observations were eliminated, we need to drop the entire column.
-        """
-        for m in self.measurements: self._fit_categorical_metadata_column(m)
-
-    @TimeableMixin.TimeAs
-    def _fit_categorical_metadata_column(self, col: str):
-        passed_config = self.passed_measurement_configs[col]
-
+    def _fit_categorical_measurement(self, col: str, passed_config: MeasurementConfig):
         if col not in self.inferred_measurement_configs:
             self.inferred_measurement_configs[col] = copy.deepcopy(passed_config)
 
@@ -1316,51 +1007,45 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
 
         match config.modality:
             case DataModality.DROPPED: return
-
             case DataModality.MULTIVARIATE_REGRESSION:
                 kv_df = measurement_df[[col, config.values_column]].copy()
-                kv_df = self.transform_categorical_key_values_df(
-                    config.measurement_metadata, kv_df, col, config.values_column
-                )
-                observations = kv_df[col]
-
+                def agg_fn(X: pd.Series):
+                    if X.name not in config.measurement_metadata.index: return X.name
+                    out = self.transform_categorical_numerical_values_to_keys(
+                        config.measurement_metadata.loc[X.name], X
+                    )
+                    return X.name if out is None else out
+                observations = kv_df.groupby(col)[config.values_column].transform(agg_fn)
             case DataModality.UNIVARIATE_REGRESSION:
-                observations = self.transform_categorical_values_series(
+                observations = self.transform_categorical_numerical_values_to_keys(
                     config.measurement_metadata, measurement_df[col].copy()
                 )
                 if observations is None: return
-
             case _: observations = measurement_df[col].copy()
 
-        return self._fit_categorical_metadata_column_vals(observations, config, total_possible_events)
-
-    @TimeableMixin.TimeAs
-    def _fit_categorical_metadata_column_vals(
-        self, vals: pd.Series, inferred_config: MeasurementConfig, total_possible_events: int
-    ):
         # 1. Set the overall observation frequency for the column.
-        N = len(vals)
-        inferred_config.observation_frequency = N / total_possible_events
+        N = len(observations)
+        config.observation_frequency = N / total_possible_events
 
         # 2. Drop the column if observations occur too rarely.
         if lt_count_or_proportion(N, self.config.min_valid_column_observations, total_possible_events):
-            inferred_config.drop()
+            config.drop()
             return
 
         # 3. Fit metadata vocabularies on the trianing set.
-        if inferred_config.vocabulary is None:
+        if config.vocabulary is None:
             try:
-                inferred_config.vocabulary = Vocabulary.build_vocab(vals)
+                config.vocabulary = Vocabulary.build_vocab(observations)
             except AssertionError as e:
                 raise AssertionError(f"Failed to build vocabulary for {col}") from e
 
         # 4. Eliminate observations that occur too rarely.
         if self.config.min_valid_vocab_element_observations is not None:
-            inferred_config.vocabulary.filter(N, self.config.min_valid_vocab_element_observations)
+            config.vocabulary.filter(N, self.config.min_valid_vocab_element_observations)
 
         # 5. If all observations were eliminated, drop the column.
-        if inferred_config.vocabulary.vocabulary == ['UNK']:
-            inferred_config.drop()
+        if config.vocabulary.vocabulary == ['UNK']:
+            config.drop()
             return
 
     @TimeableMixin.TimeAs
@@ -1368,130 +1053,66 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
         """Transforms the entire dataset metadata given the fit pre-processors."""
         self.backup_numerical_metadata_columns()
 
-        for k, v in self.dynamic_numerical_columns: 
-            self._transform_dynamic_numerical_metadata_column(k, v)
-
-        for k in self.time_dependent_numerical_columns:
-            self._transform_time_dependent_numerical_metadata_column(k)
-
-        self.__clear_events_with_metadata()
+        for measure, cfg in self.measurement_configs.items():
+            if cfg.is_dropped: continue
+            if cfg.is_numeric: self._transform_numerical_measurement(measure, cfg)
 
     @TimeableMixin.TimeAs
-    def _transform_dynamic_numerical_metadata_column(self, key_col: str, val_col: str):
+    def _transform_numerical_measurement(self, measure: str, config: MeasurementConfig):
         """
-        Transforms a particular numerical metadata column, with key `key_col`.
+        Transforms the numerical measurement `measure` according to config `config`.
 
         Performs the following steps:
             1. Transforms keys to categorical representations for categorical keys.
             2. Eliminates any values associated with dropped or categorical keys.
             3. Eliminates hard outliers and performs censoring via specified config.
-            4. Convert values to desired types.
-            5. Add inlier/outlier indices and remove learned outliers.
-            6. Normalize values.
+            4. Converts values to desired types.
+            5. Adds inlier/outlier indices and remove learned outliers.
+            6. Normalizes values.
 
         Args:
-            `key_col` (`str`): The column name of the governing key column.
-            `val_col` (`str`): The column name of the underlying values column.
+            `measure` (`str`): The column name of the governing measurement to transform.
+            `config` (`MeasurementConfig`): The configuration object governing this measure.
         """
 
-        config = self.measurement_configs[key_col]
         measurement_metadata = config.measurement_metadata
 
-        event_types = config.present_in_event_types
-        kv_df = self.metadata_df(event_types=event_types)[[key_col, val_col]]
-        kv_df = kv_df[~kv_df[key_col].isna()].copy()
+        match config.temporality:
+            case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
+                source_df = self.events_df
+                vals_df = source_df
+            case TemporalityType.DYNAMIC:
+                source_df = self.joint_metadata_df
+                vals_df = self.metadata_df(event_types=config.present_in_event_types)
+            case _:
+                raise ValueError(
+                    f"Called _transform_numerical_measurement on measure {measure} of invalid temporality "
+                    f"type {config.temporality}!"
+                )
 
-        # 1. Transforms keys to categorical representations for categorical keys.
-        kv_df = self.transform_categorical_key_values_df(measurement_metadata, kv_df, key_col, val_col)
+        match config.modality:
+            case DataModality.UNIVARIATE_REGRESSION:
+                out = EventStreamDataset._transform_numerical_metadata_column_vals(
+                    vals_df[[measure]].copy(), measurement_metadata, measure, measure,
+                )
+            case DataModality.MULTIVARIATE_REGRESSION:
+                out = vals_df[[measure, config.values_column]].groupby(
+                    measure, group_keys=False
+                ).apply(lambda vals: self._transform_numerical_metadata_column_vals(
+                    vals, measurement_metadata.loc[vals.name], config.values_column, measure
+                ))
 
-        # 2. Eliminates any values associated with dropped or categorical keys.
-        kv_df.loc[~(kv_df[key_col].isin(config.vocabulary.vocab_set)), val_col] = np.NaN
+                out.loc[~(out[measure].isin(config.vocabulary.vocab_set)), config.values_column] = np.NaN
+            case _:
+                raise ValueError(
+                    f"Called _transform_numerical_measurement on measure {measure} of invalid modality "
+                    f"{config.modality}!"
+                )
+        source_df.loc[out.index, out.columns] = out
 
-        # Reset the true metadata from steps one and two before continuing.
-        with warnings.catch_warnings():
-            # This operation throws a Deprecation warning because pandas thinks the new columns are a
-            # different type than the prior columns, so current behavior is to set this with a copy and new
-            # behavior will be to set it in place. It actually isn't a new type though, but I think pandas
-            # doesn't realize that for some reason. This rationale is an inference from the other source of
-            # this warning in the code.
-            warnings.simplefilter(action='ignore', category=DeprecationWarning)
-            self.joint_metadata_df.loc[kv_df.index, kv_df.columns] = kv_df
-
-        # 3. Eliminates hard outliers and performs censoring via specified config.
-        present_idx = ~kv_df[val_col].isna()
-
-        if not present_idx.any(): return
-
-        kv_df = kv_df[present_idx]
-
-        inlier_col = f"{val_col}_is_inlier"
-        kv_df[inlier_col] = None
-        kv_df.astype({inlier_col: 'boolean'}, copy=False)
-
-        self.joint_metadata_df.loc[kv_df.index, [val_col, inlier_col]] = kv_df.groupby(
-            key_col, group_keys=False
-        ).apply(
-            self._transform_numerical_metadata_column_vals_gp, measurement_metadata, val_col, inlier_col
-        )
-
-    @TimeableMixin.TimeAs
-    def _transform_time_dependent_numerical_metadata_column(self, col: str):
-        """
-        Transforms a particular numerical metadata column, with key `key_col`.
-
-        Performs the following steps:
-            1. Eliminates any values associated with dropped or categorical keys.
-            3. Eliminates hard outliers and performs censoring via specified config.
-            4. Convert values to desired types.
-            5. Add inlier/outlier indices and remove learned outliers.
-            6. Normalize values.
-
-        Args:
-            `col` (`str`): The column name of the governing column.
-        """
-
-        config = self.measurement_configs[col]
-        measurement_metadata = config.measurement_metadata
-
-        vals_df = self.events_df[[col]]
-
-        # 1. Transforms keys to categorical representations for categorical keys.
-        transformed_vals = self.transform_categorical_values_series(
-            measurement_metadata, vals_df[col]
-        )
-        if transformed_vals is not None:
-            self.events_df[vals_df] = transformed_vals
-            return
-
-        # 2. Eliminates hard outliers and performs censoring via specified config.
-        present_idx = ~vals_df[col].isna()
-
-        if not present_idx.any(): return
-
-        vals_df = vals_df[present_idx]
-
-        inlier_col = f"{col}_is_inlier"
-        vals_df[inlier_col] = pd.Series([np.NaN] * len(vals_df), dtype='boolean')
-
-        with self._time_as('_transform_numerical_metadata_column_vals'):
-            self.events_df.loc[
-                vals_df.index,
-                vals_df.columns
-            ] = EventStreamDataset._transform_numerical_metadata_column_vals(
-                vals_df, measurement_metadata, col, inlier_col
-            )
-
-    @TimeableMixin.TimeAs(key='_transform_numerical_metadata_column_vals')
-    def _transform_numerical_metadata_column_vals_gp(
-        self, vals: pd.DataFrame, measurement_metadata: pd.DataFrame, val_col: str, inlier_col: str,
-    ) -> pd.Series:
-        return EventStreamDataset._transform_numerical_metadata_column_vals(
-            vals, measurement_metadata.loc[vals.name], val_col, inlier_col
-        )
-
-    @staticmethod
+    @classmethod
     def _transform_numerical_metadata_column_vals(
-        vals_df: pd.DataFrame, measurement_metadata: pd.Series, val_col: str, inlier_col: str,
+        cls, vals_df: pd.DataFrame, measurement_metadata: pd.Series, val_col: str, key_col: str
     ) -> pd.DataFrame:
         """
         Transforms a particular numerical metadata column, with key `key_col`.
@@ -1505,9 +1126,18 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             6. Normalize values.
 
         Args:
-            `key_col` (`str`): The column name of the governing key column.
             `val_col` (`str`): The column name of the underlying values column.
+            `inlier_col` (`str`): The column name for containing inlier indicators.
         """
+
+        vals_arr = vals_df[val_col]
+        if hasattr(vals_df, 'name'): vals_arr.name = vals_df.name
+
+        transformed_vals = cls.transform_categorical_numerical_values_to_keys(measurement_metadata, vals_arr)
+        if transformed_vals is not None:
+            vals_df[val_col] = np.NaN
+            vals_df[key_col] = transformed_vals
+            return vals_df
 
         if measurement_metadata['value_type'] in {
             NumericDataModalitySubtype.DROPPED,
@@ -1515,9 +1145,9 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             NumericDataModalitySubtype.CATEGORICAL_FLOAT,
         }:
             vals_df[val_col] = np.NaN
-            return
+            return vals_df
 
-        vals_df[val_col] = EventStreamDataset.drop_or_censor_series(vals_df[val_col], measurement_metadata)
+        vals_df[val_col] = EventStreamDataset.drop_or_censor(vals_df[val_col], measurement_metadata)
 
         # 4. Convert values to desired types:
         present_idx = ~vals_df[val_col].isna()
@@ -1531,6 +1161,9 @@ class EventStreamDataset(SeedableMixin, SaveableMixin, TimeableMixin):
             ('outlier_model' in measurement_metadata.index) and
             (not pd.isnull(measurement_metadata['outlier_model']))
         ):
+            inlier_col = f"{val_col}_is_inlier"
+            vals_df[inlier_col] = pd.Series([np.NaN] * len(vals_df), dtype='boolean')
+
             inlier_idx = EventStreamDataset._get_is_inlier(
                 vals_df.loc[present_idx, val_col], measurement_metadata
             )

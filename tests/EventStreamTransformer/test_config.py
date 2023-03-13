@@ -7,7 +7,6 @@ from tempfile import TemporaryDirectory
 
 from ..mixins import ConfigComparisonsMixin
 
-from EventStream.EventStreamData.expandable_df_dict import ExpandableDfDict
 from EventStream.EventStreamData.config import (
     EventStreamDatasetConfig,
     EventStreamPytorchDatasetConfig,
@@ -46,27 +45,22 @@ class TestEventStreamOptimizationConfig(unittest.TestCase):
         })
 
         n_patients = 6
+
         events_df = pd.DataFrame({
             'subject_id': list(range(n_patients)),
             'timestamp': ['12/1/22'] * n_patients,
             'event_type': ['A'] * n_patients,
-            'metadata': [
-                ExpandableDfDict({
-                    'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                })
-            ] * n_patients,
+        }, index=pd.Index(list(range(n_patients)), name='event_id'))
+
+        metadata_df = pd.DataFrame({
+            'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'] * n_patients,
+            'B_key': ['a', 'a', 'a', 'b', 'b'] * n_patients,
+            'B_val': [1, 2, 3, 4, 5] * n_patients,
+            'event_id': [i for i in range(n_patients) for _ in range(5)],
         })
 
         config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
+        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
         E.split_subjects = {'train': set(range(n_patients))}
         E.preprocess_metadata()
 
@@ -277,25 +271,16 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
             'subject_id': [1, 1, 1],
             'timestamp': ['12/1/22 1:00 am', '12/1/22 2:00 am', '12/2/22'],
             'event_type': ['A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({}),
-                ExpandableDfDict({}),
-            ],
+        }, index=pd.Index([0, 1, 2], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
+            'B_key': ['a', 'a', 'a', 'b', 'b'],
+            'B_val': [1, 2, 3, 4, 5],
+            'event_id': [0, 0, 0, 0, 0],
         })
 
         config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
+        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
         E.split_subjects = {'train': {1}}
         E.preprocess_metadata()
 
@@ -472,25 +457,16 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
             'subject_id': [1, 1, 1],
             'timestamp': ['12/1/22 1:00 am', '12/1/22 2:00 am', '12/2/22'],
             'event_type': ['A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({}),
-                ExpandableDfDict({}),
-            ],
+        }, index=pd.Index([0, 1, 2], name='event_id'))
+        metadata_df = pd.DataFrame({
+            'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
+            'B_key': ['a', 'a', 'a', 'b', 'b'],
+            'B_val': [1, 2, 3, 4, 5],
+            'event_id': [0, 0, 0, 0, 0],
         })
 
         config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
+        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
         E.split_subjects = {'train': {1}}
         E.preprocess_metadata()
 

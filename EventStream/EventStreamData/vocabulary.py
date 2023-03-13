@@ -47,6 +47,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
     def __len__(self): return len(self.vocabulary)
     def __eq__(self, other: 'Vocabulary'):
         return (
+            (type(self) is type(other)) and
             (self.vocabulary == other.vocabulary) and
             (self.obs_frequencies == other.obs_frequencies).all()
         )

@@ -3,11 +3,10 @@ sys.path.append('../..')
 
 import torch, unittest, numpy as np, pandas as pd
 from dataclasses import asdict
-from typing import Optional
+from typing import List, Optional, Set
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.config import EventStreamDatasetConfig
-from EventStream.EventStreamData.expandable_df_dict import ExpandableDfDict
 from EventStream.EventStreamData.event_stream_dataset import EventStreamDataset
 from EventStream.EventStreamData.event_stream_pytorch_dataset import (
     EventStreamPytorchDataset,
@@ -18,6 +17,67 @@ from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBa
 from EventStream.EventStreamData.vocabulary import Vocabulary
 
 class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
+    def build_basic_event_stream_dataset(
+        self, event_times: Optional[List[str]] = None, train_subjects: Optional[Set[int]] = None,
+        do_static_data: bool = True,
+    ) -> EventStreamDataset:
+        subjects_df = pd.DataFrame({
+                'buzz': ['foo', 'bar', 'foo'],
+                'dob': [
+                    pd.to_datetime('12/1/21'),
+                    pd.to_datetime('12/1/20'),
+                    pd.to_datetime('12/1/90'),
+                ]
+            },
+            index=pd.Index([1, 2, 3], name='subject_id')
+        )
+
+        if event_times is None:
+            event_times = [
+                '12/1/22 12:00 a.m.',
+                '12/2/22 2:00 p.m.',
+                '12/3/22 10:00 a.m.',
+                '12/4/22 11:00 p.m.',
+                '12/1/22 15:00',
+                '12/2/22 2:00',
+            ]
+
+        if train_subjects is  None: train_subjects = {1, 2}
+
+        events_df = pd.DataFrame({
+            'subject_id': [1, 1, 1, 1, 2, 2],
+            'timestamp': event_times,
+            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
+        }, index=pd.Index([0, 1, 2, 3, 4, 5], name='event_id'))
+
+        metadata_df = pd.DataFrame({
+            'A_col': ['foo', None, None, None, None, None, 'bar', 'foo', 'foo', None, None],
+            'B_key': [None, 'a', 'a', 'a', 'b', 'b', None, None, None, 'a', 'b'],
+            'B_val': [None, 1, 2, 3, 4, 5, None, None, None, 1, 5],
+            'event_id': [0, 1, 1, 1, 1, 1, 2, 3, 4, 5, 5],
+        })
+
+        if do_static_data:
+            config = EventStreamDatasetConfig.from_simple_args(
+                dynamic_measurement_columns=['A_col', ('B_key', 'B_val')],
+                static_measurement_columns=['buzz'],
+                time_dependent_measurement_columns=[
+                    ('time_of_day', TimeOfDayFunctor()), ('age', AgeFunctor('dob'))
+                ],
+            )
+
+            E = EventStreamDataset(
+                events_df=events_df, metadata_df=metadata_df, subjects_df=subjects_df, config=config
+            )
+        else:
+            config = EventStreamDatasetConfig.from_simple_args(
+                dynamic_measurement_columns=['A_col', ('B_key', 'B_val')],
+            )
+
+            E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
+        E.split_subjects = {'train': train_subjects}
+        return E
+
     def test_normalize_task(self):
         cases = [
             {
@@ -59,57 +119,8 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
     def test_basic_construction(self):
         """EventStreamPytorchDataset should construct appropriately"""
-        subjects_df = pd.DataFrame({
-                'buzz': ['foo', 'bar', 'foo'],
-                'dob': [
-                    pd.to_datetime('12/1/21'),
-                    pd.to_datetime('12/1/20'),
-                    pd.to_datetime('12/1/90'),
-                ]
-            },
-            index=pd.Index([1, 2, 3], name='subject_id')
-        )
+        E = self.build_basic_event_stream_dataset(train_subjects={1, 2, 3})
 
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': [
-                '12/1/22 12:00 a.m.',
-                '12/2/22 2:00 p.m.',
-                '12/3/22 10:00 a.m.',
-                '12/4/22 11:00 p.m.',
-                '12/1/22 15:00',
-                '12/2/22 2:00',
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(
-            dynamic_measurement_columns=['A_col', ('B_key', 'B_val')],
-            static_measurement_columns=['buzz'],
-            time_dependent_measurement_columns=[
-                ('time_of_day', TimeOfDayFunctor()), ('age', AgeFunctor('dob'))
-            ],
-        )
-
-        E = EventStreamDataset(events_df=events_df, subjects_df=subjects_df, config=config)
-        E.split_subjects = {'train': {1, 2, 3}}
         E.preprocess_metadata()
         # Vocab is {
         #   'A_col': ['UNK', 'foo', 'bar'], 'B_key': ['UNK', 'a', 'b'],
@@ -200,30 +211,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         self.assertEqual(0, len(pyd))
 
     def test_with_task_construction(self):
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1],
-            'timestamp': ['12/1/22 1:00 am', '12/1/22 2:00 am', '12/2/22'],
-            'event_type': ['A', 'A', 'A'],
-            'metadata': [
-                ExpandableDfDict({
-                    'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({}),
-                ExpandableDfDict({}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
-        E.split_subjects = {'train': {1}}
+        E = self.build_basic_event_stream_dataset()
         E.preprocess_metadata()
 
         data_config = EventStreamPytorchDatasetConfig(
@@ -296,55 +284,9 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         `EventStreamPytorchDataset.__get_item__(i)` should retreve and correctly represent item `i` even after
         pre-caching.
         """
-        subjects_df = pd.DataFrame({
-                'buzz': ['foo', 'bar'],
-                'dob': [
-                    pd.to_datetime('12/1/21'),
-                    pd.to_datetime('12/1/20'),
-                ]
-            },
-            index=pd.Index([1, 2], name='subject_id')
-        )
 
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': [
-                '12/1/22 12:00 a.m.',
-                '12/2/22 2:00 p.m.',
-                '12/3/22 10:00 a.m.',
-                '12/4/22 11:00 p.m.',
-                '12/1/22 15:00',
-                '12/2/22 2:00',
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
+        E = self.build_basic_event_stream_dataset()
 
-        config = EventStreamDatasetConfig.from_simple_args(
-            dynamic_measurement_columns=['A_col', ('B_key', 'B_val')],
-            static_measurement_columns=['buzz'],
-            time_dependent_measurement_columns=[
-                ('time_of_day', TimeOfDayFunctor()), ('age', AgeFunctor('dob'))
-            ],
-        )
-        E = EventStreamDataset(events_df=events_df, subjects_df=subjects_df, config=config)
-        E.split_subjects = {'train': {1, 2}}
         E.preprocess_metadata()
         # Vocab is {
         #   'A_col': ['UNK', 'foo', 'bar'], 'B_key': ['UNK', 'a', 'b'],
@@ -494,39 +436,10 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         self.assertEqual(want_out, out)
 
         # With TTE Normalization
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': [
-                '12/1/22 12:00 am',
-                '12/1/22 12:10 am',
-                '12/1/22 12:30 am',
-                '12/1/22 1:00 am',
-                '12/1/22',
-                '12/2/22',
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
-        E.split_subjects = {'train': {1}}
+        E = self.build_basic_event_stream_dataset(event_times = [
+            '12/1/22 12:00 am', '12/1/22 12:10 am', '12/1/22 12:30 am', '12/1/22 1:00 am', '12/1/22',
+            '12/2/22',
+        ], train_subjects = {1}, do_static_data=False)
         E.preprocess_metadata()
 
         data_config = EventStreamPytorchDatasetConfig(
@@ -574,55 +487,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
     def test_get_item(self):
         """`EventStreamPytorchDataset.__get_item__(i)` should retreve and correctly represent item `i`."""
-        subjects_df = pd.DataFrame({
-                'buzz': ['foo', 'bar'],
-                'dob': [
-                    pd.to_datetime('12/1/21'),
-                    pd.to_datetime('12/1/20'),
-                ]
-            },
-            index=pd.Index([1, 2], name='subject_id')
-        )
-
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': [
-                '12/1/22 12:00 a.m.',
-                '12/2/22 2:00 p.m.',
-                '12/3/22 10:00 a.m.',
-                '12/4/22 11:00 p.m.',
-                '12/1/22 15:00',
-                '12/2/22 2:00',
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(
-            dynamic_measurement_columns=['A_col', ('B_key', 'B_val')],
-            static_measurement_columns=['buzz'],
-            time_dependent_measurement_columns=[
-                ('time_of_day', TimeOfDayFunctor()), ('age', AgeFunctor('dob'))
-            ],
-        )
-        E = EventStreamDataset(events_df=events_df, subjects_df=subjects_df, config=config)
-        E.split_subjects = {'train': {1, 2}}
+        E = self.build_basic_event_stream_dataset()
         E.preprocess_metadata()
         # Vocab is {
         #   'A_col': ['UNK', 'foo', 'bar'], 'B_key': ['UNK', 'a', 'b'],
@@ -824,39 +689,10 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         self.assertEqual(want_out, out)
 
         # With TTE Normalization
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': [
-                '12/1/22 12:00 am',
-                '12/1/22 12:10 am',
-                '12/1/22 12:30 am',
-                '12/1/22 1:00 am',
-                '12/1/22',
-                '12/2/22',
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
-        E.split_subjects = {'train': {1}}
+        E = self.build_basic_event_stream_dataset(event_times = [
+            '12/1/22 12:00 am', '12/1/22 12:10 am', '12/1/22 12:30 am', '12/1/22 1:00 am', '12/1/22',
+            '12/2/22',
+        ], train_subjects={1}, do_static_data=False,)
         E.preprocess_metadata()
 
         data_config = EventStreamPytorchDatasetConfig(
@@ -903,32 +739,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
     def test_dynamic_collate_fn(self):
         """collate_fn should appropriately combine two batches of ragged tensors."""
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': ['12/1/22', '12/2/22', '12/3/22', '12/4/22', '12/1/22', '12/2/22'],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, config=config)
-        E.split_subjects = {'train': {1, 2}}
+        E = self.build_basic_event_stream_dataset(do_static_data=False)
         E.preprocess_metadata()
         # Vocab is {'A': ['UNK', 'foo', 'bar'], 'B': ['UNK', 'a', 'b']}
 
@@ -939,6 +750,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         )
 
         pyd = EventStreamPytorchDataset(E, data_config, split='train')
+        pyd.do_produce_static_data = False
 
         subj_1 = {
             'time': [0., 24*60., 2*24*60., 3*24*60.],
@@ -1053,6 +865,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         )
 
         pyd = EventStreamPytorchDataset(E, data_config, split='train')
+        pyd.do_produce_static_data = False
 
         out = pyd.collate(batches)
 
@@ -1131,46 +944,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
             index=pd.Index([1, 2], name='subject_id')
         )
 
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1, 2, 2],
-            'timestamp': [
-                '12/1/22 12:00 a.m.',
-                '12/2/22 2:00 p.m.',
-                '12/3/22 10:00 a.m.',
-                '12/4/22 11:00 p.m.',
-                '12/1/22 15:00',
-                '12/2/22 2:00',
-            ],
-            'event_type': ['A', 'B', 'A', 'A', 'A', 'B'],
-            'metadata': [
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({
-                    'B_key': [
-                        'a', 'a', 'a',
-                        'b', 'b',
-                    ],
-                    'B_val': [
-                        1, 2, 3,
-                        4, 5,
-                    ],
-                }),
-                ExpandableDfDict({'A_col': ['bar']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'A_col': ['foo']}),
-                ExpandableDfDict({'B_key': ['a', 'b'], 'B_val': [1, 5]}),
-            ],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(
-            dynamic_measurement_columns=['A_col', ('B_key', 'B_val')],
-            static_measurement_columns=['buzz'],
-            time_dependent_measurement_columns=[
-                ('time_of_day', TimeOfDayFunctor()), ('age', AgeFunctor('dob'))
-            ],
-        )
-
-        E = EventStreamDataset(events_df=events_df, subjects_df=subjects_df, config=config)
-        E.split_subjects = {'train': {1, 2}}
+        E = self.build_basic_event_stream_dataset()
         E.preprocess_metadata()
         # Vocab is {
         #   'A_col': ['UNK', 'foo', 'bar'], 'B_key': ['UNK', 'a', 'b'],
