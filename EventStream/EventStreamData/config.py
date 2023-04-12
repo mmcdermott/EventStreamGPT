@@ -12,6 +12,23 @@ from .types import TemporalityType, DataModality, NumericDataModalitySubtype
 from .vocabulary import Vocabulary
 
 @dataclasses.dataclass
+class VocabularyConfig(JSONableMixin):
+    vocab_sizes_by_measurement: Optional[Dict[str, int]] = None
+    vocab_offsets_by_measurement: Optional[Dict[str, int]] = None
+    measurements_idxmap: Optional[Dict[str, Dict[Hashable, int]]] = None
+    measurements_per_generative_mode: Optional[Dict[DataModality, List[str]]] = None
+    event_types_per_measurement: Optional[Dict[str, List[str]]] = None
+    event_types_idxmap: Optional[Dict[str, int]] = None
+
+    @property
+    def total_vocab_size(self) -> int:
+        return (
+            sum(self.vocab_sizes_by_measurement.values()) +
+            min(self.vocab_offsets_by_measurement.values()) +
+            (len(self.vocab_offsets_by_measurement) - len(self.vocab_sizes_by_measurement))
+        )
+
+@dataclasses.dataclass
 class EventStreamPytorchDatasetConfig(JSONableMixin):
     """
     Configuration options for building a PyTorch dataset from an `EventStreamDataset`.
@@ -29,16 +46,33 @@ class EventStreamPytorchDatasetConfig(JSONableMixin):
         `seq_padding_side` (`str`, defaults to `'right'`):
             Whether to pad smaller sequences on the right (default) or the left (used for generation).
     """
-    do_normalize_log_inter_event_times: bool = True
     max_seq_len: int = 256
     min_seq_len: int = 2
     seq_padding_side: str = 'right'
+
+    do_produce_static_data: bool = True
+
+    save_dir: Optional[Path] = None
 
     def __post_init__(self):
         assert self.seq_padding_side in ('left', 'right')
         assert self.min_seq_len >= 0
         assert self.max_seq_len >= 1
         assert self.max_seq_len >= self.min_seq_len
+
+        if type(self.save_dir) is str: self.save_dir = Path(save_dir)
+
+    def to_dict(self) -> dict:
+        """Represents this configuation object as a plain dictionary."""
+        as_dict = dataclasses.asdict(self)
+        as_dict['save_dir'] = str(as_dict['save_dir'])
+        return as_dict
+
+    @classmethod
+    def from_dict(cls, as_dict: dict) -> 'EventStreamPytorchDatasetConfig':
+        """Creates a new instance of this class from a plain dictionary."""
+        as_dict['save_dir'] = Path(as_dict['save_dir'])
+        return cls(**as_dict)
 
 @dataclasses.dataclass
 class MeasurementConfig(JSONableMixin):
@@ -242,6 +276,8 @@ class MeasurementConfig(JSONableMixin):
                         self.measurement_metadata[col] = pd.Series(
                             [None] * len(self.measurement_metadata), dtype=dtype
                         )
+                if self.measurement_metadata.index.names == [None]:
+                    self.measurement_metadata.index.names = [self.name]
             case pd.Series():
                 for col, dtype in self.PREPROCESSING_METADATA_COLUMNS.items():
                     if col not in self.measurement_metadata.index:
@@ -257,6 +293,8 @@ class MeasurementConfig(JSONableMixin):
                 as_dict['measurement_metadata'] = self.measurement_metadata.to_dict(into=OrderedDict)
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
             as_dict['functor'] = self.functor.to_dict()
+        if self.present_in_event_types is not None:
+            self.present_in_event_types = list(self.present_in_event_types)
         return as_dict
 
     @classmethod
@@ -280,10 +318,16 @@ class MeasurementConfig(JSONableMixin):
             assert as_dict['temporality'] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
             as_dict['functor'] = cls.FUNCTORS[as_dict['functor']['class']].from_dict(as_dict['functor'])
 
+        if as_dict['present_in_event_types'] is not None:
+            as_dict['present_in_event_types'] = set(as_dict['present_in_event_types'])
+
         return cls(**as_dict)
 
+    def __eq__(self, other: EventStreamDatasetConfig) -> bool:
+        return self.to_dict() == other.to_dict()
+
 @dataclasses.dataclass
-class EventStreamDatasetConfig:
+class EventStreamDatasetConfig(JSONableMixin):
     """
     Configuration options for parsing an `EventStreamDataset`.
 
@@ -320,13 +364,6 @@ class EventStreamDatasetConfig:
             Can be either an integer count or a proportion (of total numerical observations) in (0, 1).
             If `None`, no constraint is applied.
 
-        `max_numerical_value_frequency` (`Optional[PROPORTION]`, defaulst to `None`):
-            The maximum proportion of observations a single numerical value can take for a given measurement.
-            If more than this proportion of observed numerical values take a single value, that value will be
-            removed and treated as a categorical variable, and the remaining observations will be processed
-            independently.
-            If `None`, no constraint is applied.
-
         `outlier_detector_config` (`Optional[Dict[str, Any]]`, defauls to `None`):
             Configuation options for outlier detection. If not `None`, must contain the key `'cls'`, which
             points to the class used outlier detection. All other keys and values are keyword arguments to be
@@ -347,11 +384,12 @@ class EventStreamDatasetConfig:
     min_valid_column_observations: Optional[COUNT_OR_PROPORTION] = None
     min_valid_vocab_element_observations: Optional[COUNT_OR_PROPORTION] = None
     min_true_float_frequency: Optional[PROPORTION] = None
-    min_unique_numerical_observations: Optiona[COUNT_OR_PROPORTION] = None
-    max_numerical_value_frequency: Optional[PROPORTION] = None
+    min_unique_numerical_observations: Optional[COUNT_OR_PROPORTION] = None
 
     outlier_detector_config: Optional[Dict[str, Any]] = None
     normalizer_config: Optional[Dict[str, Any]] = None
+
+    save_dir: Optional[Path] = None
 
     def __post_init__(self):
         """Validates that parameters take on valid values."""
@@ -371,7 +409,7 @@ class EventStreamDatasetConfig:
                     ((type(val) is int) and (val > 1))
                 )
 
-        for var in ('max_numerical_value_frequency', 'min_true_float_frequency'):
+        for var in ('min_true_float_frequency',):
             val = getattr(self, var)
             if val is not None: assert type(val) is float and (0 < val) and (val < 1)
 
@@ -383,6 +421,8 @@ class EventStreamDatasetConfig:
             try: v._validate()
             except Exception as e:
                 raise ValueError(f"Measurement config {k} invalid!") from e
+
+        if type(self.save_dir) is str: self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
         """Represents this configuation object as a plain dictionary."""
@@ -469,3 +509,6 @@ class EventStreamDatasetConfig:
                 )
 
         return cls(measurement_configs=measurement_configs, **kwargs)
+
+    def __eq__(self, other: EventStreamDatasetConfig) -> bool:
+        return self.to_dict() == other.to_dict()

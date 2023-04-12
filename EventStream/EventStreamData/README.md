@@ -20,17 +20,46 @@ We assume any "event stream dataset" consists of 3 fundamental data units:
      a measurement can only take on a single value per event. Measurements are characterized by many
      properties and can be pre-processed automatically by the system in several ways.
 
-This data model is realized explicitly in the internal structure of the `EventStreamDataset` class, documented
-below.
+This data model is realized explicitly in the internal structure of the `EventStreamDataset` class,
+documented below. Note that there is both an `EventStreamDatasetBase` class which contains pre-processing
+logic that does not rely on the internal data representation library, and specific `EventStreamDataset`
+classes for different interal data representation libraries. For now, this solely includes
+`event_stream_dataset_polars.py`, which uses the library `Polars` as its internal library. As we scale to
+larger dataset sizes, we plan to also extend to `event_stream_dataset_pyspark.py` and may also implement an
+`event_stream_dataset_pandas.py` file for backwards compatability, even though `polars` is significantly
+faster in all tested settings currently.
 
 Note that currently, at some places in the code, measurements are referred to as `metadata` --- this will be
-removed eventually.
-TODO(mmd): Fully switch over the name.
+removed eventually. TODO(mmd): Fully switch over the name.
 
-This data model translate during pytorch embedding to one in which data are presented to models in a sparse,
-fully-temporally realized format which should be more efficient computationally than a dense format and based
-on [existing literature](https://arxiv.org/abs/2106.11959) is likely to be a high-performance style of data
+The `EventStreamDataset` class also can produce fully cached deep-learning friendly dataframes for its various
+splits and store these to files. These are then used with the associated `EventStreamPytorchDataset` classes
+for deep learning applications, where the represetnations can be translated to pytorch embedding to one in
+which data are presented to models in a sparse, fully-temporally realized format which should be more
+efficient computationally than a dense format and based on
+[existing literature](https://arxiv.org/abs/2106.11959) is likely to be a high-performance style of data
 embedding overall (at least with respect to the per-timestamp data embedding practices).
+
+The deep-learning friendly representation strategy simplifies the column layout significantly, storing only
+the following data:
+  1. `subject_id`, which is the identifier for the subject.
+  2. `start_time`, which is the start timestamp for the subjects overall record.
+  3. `static_indices`, which contains a list of integral indices in a unified overall vocabulary for all
+     static variables that are observed for the subject. This list may be of different lengths for different
+     subjects, and its order is not guaranteed to be meaningful or consistent.
+  4. `static_measurement_indices`, which contains a list of the integral indices of the measures that are
+     reflected in the `static_indices` column. It is guaranteed to be consistently ordered and of the same
+     length with `static_indices`.
+  4. `time`, which contains a list of the time in minutes since the start time of the event in question.
+  5. `dynamic_indices`, which contains a list of lists, where the outer list is of the same length as the list
+     in the `time` column with one entry per event for the subject, and the inner list contains the indices in
+     the unified vocabulary of all specific dynamic measurements observed at that event.
+  6. `dynamic_measurement_indices`, which is of the same (ragged) shape as `dynamic_indices` and contains the
+     indices of the measures that correspond to the measurement observations in `dynamic_indices`.
+  7. `dynamic_values`, which is of the same (ragged) shape as `dynamic_indices` and contains any unique
+     numerical values associated with those measurements. Items may be missing (reflected with `None` or
+     `np.NaN`, depending on the data library format) or may have been filtered out as outliers (reflected with
+     `np.NaN`).
 
 ## Measurements
 Measurements are identified uniquely by a single column name or, in the context of a multivariate regression 
@@ -151,21 +180,27 @@ This configuration file is readable from and writable to JSON files. Full detail
 configuration object can be found in its source documentation.
 
 ### Construction
-One can construct an `EventStreamDataset` in several ways. In all cases, one must present an
-`EventStreamDatasetConfig` object to configure the dataset, and a pandas DataFrame, `events_df` which contains
-the underlying events of these data. This dataframe must contain an column named `'subject_id'` and another
-named `'timestamp'`. However, there are several other options that are not mandatory:
-  1. The `events_df` dataframe can contain measurements directly within it even in a
-     one-event-to-many-measurements format, via a column `metadata` which contains a set of `ExpandableDfDict`
-     objects (which are functionally pandas dataframes stored as dictionaries). If this form is used, these
-     dictionaries will be expanded within the class into a separate dataframe for more efficient
-     pre-processing. Alternatively, dynamic, per-event measurements can be specified directly in a
-     `metadata_df` dataframe, which must contain a column `event_id` that links to the index of `events_df`.
-     Note that, upon construction, the `events_df` passed in will be copied and sorted by `subject_id` then
-     `timestamp`.
-  2. One can specify static data per-subject via a `subjects_df` dataframe, which must contain a unique index
-     named `subject_id` but is otherwise unconstrainted. If this dataframe is unspecified, any passed static
-     measurements in the configuration object will cause an error at pre-processing time.
+One can construct an `EventStreamDataset` by passing a configuration object and a `subjects_df`, an
+`events_df`, and a `measurements_df`. There are several mandatory columns for each dataframe, which can be
+found in the source documentation.
+
+### Saving / Loading
+`EventStreamDatasets` can be efficiently saved and loaded to disk via the instance method `_save` and class
+method `_load`, both of which use a `pathlib.Path` object pointing to a directory in which the dataset should
+be saved / loaded. For `_save`, this directory is not passed as a parameter, but is specified in the
+configuration object for the instance. For loading, it is passed as a parameter to the function. For saving
+(loading) the dataset will write (read) a number of files and subdirectories to (from)
+that passed directory. Dataframes are stored in a user-specifiable format via a class variable, but for the
+only current `EventStreamDataset` class, the `Polars` version, we recommend using the `parquet` format and it
+is the only format supported out of the box. The `EventStreamDataset` also saves a vocabulary configuration
+object to JSON and stores its other attributes via a pickled file produced via `dill`. We plan to further
+specialize the saving logic to write the internal `config` object to a JSON file instead and to write the fit
+measurement information to disk in a more translatable format as well. `_save` should only be called after the
+model has been fit. `_save` does not store the deep-learning representation at present; this needs to be saved
+separately via `cache_deep_learning_representation`. `_load`, upon calling, will not load the transformed
+dataframes, as those may not be needed if the user only wants to inspect the configuration objects. This
+allows the loading to be very fast, and the dataframes are instead lazily loaded upon first access by the
+user.
 
 ### Pre-processing Data Capabilities
 This dataset can pre-process the code in several key ways, listed and described below.
@@ -202,6 +237,9 @@ the time-of-day of the event (e.g., morning, evening, etc.), the subject's age a
 The system contained here can pre-compute these time-dependent feature values, then apply the same
 pre-processing capabilities to the appropriate column types to the results.
 
+#### Re-organize the final, transformed datasets to produce a DL friendly view
+As discussed above, the datasets can also be massaged into a format more suitable for deep-learning.
+
 ### Internal Storage
 #### `EventStreamDataset.subjects_df`
 This dataframe stores the _subjects_ that make up the data. It has a subject per row and has the following
@@ -209,9 +247,7 @@ mandatory schema elements:
   * A unique, integer index named `subject_id`.
 
 It may have additional, user-defined schema elements that can be leveraged during dataset pre-processing for
-use in modelling.
-
-TODO(mmd): Convert categorical columns to categories during preprocessing to save space and downstream time.
+use in modelling. After transformation, column types will have been compressed to save memory.
 
 #### `EventStreamDataset.events_df`
 This dataframe stores the _events_ that make up the data. It has an event per row and has the following schema
@@ -219,15 +255,13 @@ elements:
   * A unique, integer index named `event_id`.
   * An integer column `subject_id` which is joinable against `subjects_df.index` and indicates to which
     subject a row's event corresponds. Many events may link to a single subject.
-  * A pandas datetime column `timestamp` which tracks the time of the row's event.
-  * A string column `event_type` which indicates what type of event the row's event is.
+  * A datetime column `timestamp` which tracks the time of the row's event.
+  * A categorical column `event_type` which indicates what type of event the row's event is.
 
-TODO(mmd): Make `event_type` a categorical column.
-
-#### `EventStreamDataset.joint_metadata_df`
+#### `EventStreamDataset.dynamic_measurements_df`
 This dataframe stores the _metadata elements_ that describe each event in the data. It has a metadata element
 per row and has the following mandatory schema elements:
-  * A unique, integer index named `metadata_id`
+  * A unique, integer index named `measurement_id`
   * An integer column `event_id`, which is joinable against `events_df.index` and indicates to which event a
     the row's metadata element corresponds. Many metadata elements may link to a single event.
   * An integer column `subject_id` which is joinable against `subjects_df.index` and indicates to which
@@ -241,19 +275,10 @@ per row and has the following mandatory schema elements:
 It may have additional, user-defined schema elements that can be leveraged during dataset pre-processing for
 use in modelling.
 
-TODO(mmd): Rename to `dynamic_measurements_df`.
-TODO(mmd): Make `event_type` a categorical column.
-TODO(mmd): Convert categorical columns to categories during preprocessing to save space and downstream time.
-
-### Other views
-You can also produce an `events_df_with_metadata` view which looks just like `events_df` but with an
-additional `metadata` column which has the sub-dataframe corresponding to non-null columns in
-`joint_metadata_df` for the rows corresponding to the event in question, re-organized as an `ExpandableDfDict`
-object. This may be removed in the future, as it is not very useful and slow to construct.
-
 ## `EventStreamPytorchDataset`
-This class converts an `EventStreamDataset` object into a pytorch deep-learning friendly dataset class. There
-are three relevant data structures to understand here:
+This class reads the DL-friendly representation from disk produced by an `EventStreamDataset` object, as well
+as the vocabulary config object saved to disk from that dataset, and produces pytorch items and collates
+batches for downstream use. There are three relevant data structures to understand here:
   1. That of how internal indexing and labels are specifiable for sequence classification applications.
   2. That of individual items returned from `__getitem__`
   3. That of batches produced by class instance's `collate` function.
@@ -291,7 +316,6 @@ Let us define the following variables:
   # These aren't used directly in actual computation, but rather are used to define losses, positional
   # embeddings, dependency graph positions, etc.
   'time': [L],
-  'event_type': [L],
 
   # Static Embedding Variables
   # These variables are static --- they are constant throughout the entire sequence of events.
@@ -342,9 +366,8 @@ EventStreamPytorchBatch(**{
   # These aren't used directly in actual computation, but rather are used to define losses, positional
   # embeddings, dependency graph positions, etc.
   'time': [B X L], # (FloatTensor, normalized such that the first entry for each sequence is 0)
-  'event_type': [B X L], # (LongTensor, 0 <=> no event was observed)
-
-  'dynamic_values_mask': [B X K], # (BoolTensor, indicates whether a static data element was observed)
+  'event_mask': [B X L], # (BoolTensor, capturing whether an event was observed at an index)
+  'dynamic_values_mask': [B X L X M], # (BoolTensor, indicates whether a dynamic value was observed)
 
   # Static Embedding Variables
   # These variables are static --- they are constant throughout the entire sequence of events.

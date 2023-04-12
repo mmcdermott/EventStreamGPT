@@ -46,6 +46,11 @@ class EventStreamOptimizationConfig(JSONableMixin):
             decay.
         `weight_decay` (`float`, default is 0.01):
             The L2 weight regularization penalty that is applied during training.
+        `patience` (`Optional[int]`, *optional*, default is None):
+            The number of epochs to wait before early stopping if the validation loss does not improve. If
+            None, early stopping is not used.
+        `gradient_accumulation` (`Optional[int]`, *optional*, default is None):
+            The number of gradient accumulation steps to use. If None, gradient accumulation is not used.
     """
     init_lr:               float = 1e-2
     end_lr:                float = 1e-7
@@ -56,6 +61,8 @@ class EventStreamOptimizationConfig(JSONableMixin):
     max_training_steps:    Optional[int] = None
     lr_decay_power:        float = 1.0
     weight_decay:          float = 0.01
+    patience:              Optional[int] = None
+    gradient_accumulation: Optional[int] = None
 
     def set_to_dataset(self, dataset: EventStreamPytorchDataset):
         """Sets missing parameters in the optimization config to appropriate values given `dataset`'s size."""
@@ -165,10 +172,6 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
             Which measurements (by str name) are associated with each event type (by str name).
         event_types_idxmap (`Dict[str, int]`, *optional*, defaults to None):
             A map of the integer index corresponding to each event type.
-        data_cols (`Sequence[Union[str, Tuple[str, str]]]`):
-            A list of the data columns included in the model. A single-string column has no associated value,
-            a tuple of two columns (`gp_key_col`, `val_col`) indicates that the column `gp_key_col`
-            corresponds to a group key associated with value `val_col`.
         measurements_per_dep_graph_level (`List[List[MEAS_INDEX_GROUP_T]]`, *optional*, defaults to None):
             A list of the measurements (by name) and whether or not categorical, numerical, or both associated
             values of that measurement are used in each dependency graph level. At the default, this assumes
@@ -333,7 +336,6 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         measurements_per_generative_mode: Optional[Dict[DataModality, List[str]]] = None,
         event_types_per_measurement: Optional[Dict[str, List[str]]] = None,
         event_types_idxmap: Optional[Dict[str, int]] = None,
-        data_cols: Optional[Sequence[Union[str, Tuple[str, str]]]] = None,
         measurements_per_dep_graph_level: Optional[List[List[MEAS_INDEX_GROUP_T]]] = None,
         max_seq_len: int = 256,
         categorical_embedding_dim: Optional[int] = None,
@@ -382,7 +384,6 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         if vocab_offsets_by_measurement is None: vocab_offsets_by_measurement = {}
         if measurements_idxmap is None: measurements_idxmap = {}
         if measurements_per_generative_mode is None: measurements_per_generative_mode = {}
-        if data_cols is None: data_cols = []
         if event_types_per_measurement is None: event_types_per_measurement = {}
         if event_types_idxmap is None: event_types_idxmap = {}
 
@@ -573,7 +574,6 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         self.vocab_offsets_by_measurement = vocab_offsets_by_measurement
         self.measurements_idxmap = measurements_idxmap
         self.measurements_per_generative_mode = measurements_per_generative_mode
-        self.data_cols = data_cols
         self.measurements_per_dep_graph_level = measurements_per_dep_graph_level
 
         self.vocab_size = max(sum(self.vocab_sizes_by_measurement.values()), 1)
@@ -609,51 +609,39 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
                 attentions.extend(item[0])
         return attentions
 
-    def set_to_dataset(self, pytorch_dataset: EventStreamPytorchDataset):
-        """Set various configuration parameters to match `pytorch_dataset`."""
-        self.measurements_idxmap = pytorch_dataset.measurements_idxmap
-        self.measurements_per_generative_mode = pytorch_dataset.measurements_per_generative_mode
+    def set_to_dataset(self, dataset: EventStreamPytorchDataset):
+        """Set various configuration parameters to match `dataset`."""
+        self.measurements_idxmap = dataset.vocabulary_config.measurements_idxmap
+        self.measurements_per_generative_mode = dataset.vocabulary_config.measurements_per_generative_mode
 
-        self.event_types_per_measurement = {'event_type': list(pytorch_dataset.event_types_idxmap.keys())}
-        for measurement, cfg in pytorch_dataset.data.measurement_configs.items():
-            if (cfg.is_dropped or cfg.temporality != TemporalityType.DYNAMIC): continue
+        self.event_types_per_measurement = dataset.vocabulary_config.event_types_per_measurement
+        self.event_types_idxmap = dataset.vocabulary_config.event_types_idxmap
 
-            if cfg.present_in_event_types is None:
-                self.event_types_per_measurement[measurement] = list(
-                    pytorch_dataset.event_types_idxmap.keys()
-                )
-            else:
-                self.event_types_per_measurement[measurement] = list(cfg.present_in_event_types)
-
-        self.event_types_idxmap = pytorch_dataset.event_types_idxmap
-
-        self.vocab_offsets_by_measurement = pytorch_dataset.measurement_vocab_offsets
-        self.vocab_sizes_by_measurement = {
-            'event_type': len(pytorch_dataset.event_types_idxmap),
-            **{k: len(v) for k, v in pytorch_dataset.data.measurement_vocabs.items()},
-        }
+        self.vocab_offsets_by_measurement = dataset.vocabulary_config.vocab_offsets_by_measurement
+        self.vocab_sizes_by_measurement = dataset.vocabulary_config.vocab_sizes_by_measurement
         for k in set(self.vocab_offsets_by_measurement.keys()) - set(self.vocab_sizes_by_measurement.keys()):
             self.vocab_sizes_by_measurement[k] = 1
-        self.data_cols = pytorch_dataset.data_cols
-        self.vocab_size = pytorch_dataset.total_vocab_size
-        self.max_seq_len = pytorch_dataset.max_seq_len
+
+        self.vocab_size = dataset.vocabulary_config.total_vocab_size
+        self.max_seq_len = dataset.max_seq_len
 
         if self.TTE_generation_layer_type == TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
-            if pytorch_dataset.do_normalize_log_inter_event_times:
+            raise NotImplementedError(f"Not yet supported.")
+            if dataset.do_normalize_log_inter_event_times:
                 self.mean_log_inter_event_time_min = 0.0
                 self.std_log_inter_event_time_min = 1.0
             else:
-                self.mean_log_inter_event_time_min = pytorch_dataset.mean_log_inter_event_time_min
-                self.std_log_inter_event_time_min = pytorch_dataset.std_log_inter_event_time_min
+                self.mean_log_inter_event_time_min = dataset.mean_log_inter_event_time_min
+                self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
 
-        if pytorch_dataset.has_task:
-            if len(pytorch_dataset.tasks) == 1:
+        if dataset.has_task:
+            if len(dataset.tasks) == 1:
                 # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
-                self.finetuning_task = pytorch_dataset.tasks[0]
-                match pytorch_dataset.task_types[self.finetuning_task]:
+                self.finetuning_task = dataset.tasks[0]
+                match dataset.task_types[self.finetuning_task]:
                     case 'binary_classification' | 'multi_class_classification':
                         self.id2label = {
-                            i: v for i, v in enumerate(pytorch_dataset.task_vocabs[self.finetuning_task])
+                            i: v for i, v in enumerate(dataset.task_vocabs[self.finetuning_task])
                         }
                         self.label2id = {v: i for i, v in self.id2label.items()}
                         self.num_labels = len(self.id2label)
@@ -661,11 +649,11 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
                     case 'regression':
                         self.num_labels = 1
                         self.problem_type = 'regression'
-            elif all(t == 'binary_classification' for t in pytorch_dataset.task_types.values()):
+            elif all(t == 'binary_classification' for t in dataset.task_types.values()):
                 self.problem_type = 'multi_label_classification'
-                self.num_labels = len(pytorch_dataset.tasks)
-            elif all(t == 'regression' for t in pytorch_dataset.task_types.values()):
-                self.num_labels = len(pytorch_dataset.tasks)
+                self.num_labels = len(dataset.tasks)
+            elif all(t == 'regression' for t in dataset.task_types.values()):
+                self.num_labels = len(dataset.tasks)
                 self.problem_type = 'regression'
 
     def __eq__(self, other):

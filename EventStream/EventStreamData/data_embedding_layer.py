@@ -370,13 +370,26 @@ class DataEmbeddingLayer(torch.nn.Module):
         return embedded.view(*out_shape)
 
     def forward(self, batch: EventStreamPytorchBatch) -> torch.Tensor:
-        embedded = self.dynamic_embedding(batch)
+        if batch.batch_size == 0: return torch.empty(0, batch.sequence_length, self.out_dim)
+        elif batch.sequence_length == 0: return torch.empty(batch.batch_size, 0, self.out_dim)
+
+        if batch.n_data_elements == 0:
+            embedded = torch.zeros(
+                batch.batch_size, batch.sequence_length, self.out_dim,
+                device=batch['dynamic_indices'].device,
+            )
+        else:
+            embedded = self.dynamic_embedding(batch)
         # embedded is of shape (batch_size, sequence_length, out_dim) or of shape
         # (batch_size, sequence_length, num_measurement_buckets, out_dim)
 
         if self.static_embedding_mode == StaticEmbeddingMode.DROP: return embedded
 
-        static_embedded = self.static_embedding(batch)
+        if batch.n_static_data_elements == 0:
+            static_embedded = torch.zeros(
+                batch.batch_size, self.out_dim, device=batch['static_indices'].device,
+            )
+        else: static_embedded = self.static_embedding(batch)
         # static_embedded is of shape (batch_size, out_dim)
 
         static_embedded = static_embedded.unsqueeze(1)

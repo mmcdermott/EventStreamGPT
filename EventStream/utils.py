@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import dataclasses, enum, json, numpy as np, pandas as pd
+import dataclasses, enum, json, numpy as np, pandas as pd, polars as pl
 
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Type, TypeVar, Union
@@ -17,7 +17,9 @@ def count_or_proportion(N: Optional[int], cnt_or_prop: COUNT_OR_PROPORTION) -> i
     """
     if type(cnt_or_prop) is int: return cnt_or_prop
     assert N is not None
-    return int(cnt_or_prop * N)
+    if type(N) is int: return int(round(cnt_or_prop * N))
+    elif type(N) is pl.Expr: return (N * cnt_or_prop).round(0).cast(int)
+    else: raise TypeError(f"{type(N)} is invalid for `N`")
 
 def lt_count_or_proportion(
     N_obs: int, cnt_or_prop: Optional[COUNT_OR_PROPORTION], N_total: Optional[int] = None

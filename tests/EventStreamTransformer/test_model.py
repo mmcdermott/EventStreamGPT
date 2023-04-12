@@ -2,7 +2,7 @@ import sys
 sys.path.append('../..')
 
 import math, torch, unittest, numpy as np
-from dpp.models.log_norm_mix import LogNormalMixtureDistribution
+from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBatch
@@ -689,6 +689,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
 
         for C in cases:
             with self.subTest(C['message']):
+                C['batch'] = EventStreamPytorchBatch(**C['batch'])
                 config = StructuredEventStreamTransformerConfig(**{
                     **BASE_CONFIG_KWARGS,
                     **C.get('config_kwargs', {}),
@@ -864,6 +865,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
 
         for C in cases:
             with self.subTest(C['message']):
+                C['batch'] = EventStreamPytorchBatch(**C['batch'])
                 config = StructuredEventStreamTransformerConfig(
                     **shared_config_kwargs,
                     **generation_specific_config_kwargs[C['TTE_generation_layer_type']],
@@ -1328,6 +1330,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
 
         for C in cases:
             with self.subTest(C['message']):
+                C['batch'] = EventStreamPytorchBatch(**C['batch'])
                 config = StructuredEventStreamTransformerConfig(**{
                     **BASE_CONFIG_KWARGS,
                     **C.get('config_kwargs', {}),
@@ -1614,6 +1617,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
 
         for C in cases:
             with self.subTest(C['msg']):
+                C['batch'] = EventStreamPytorchBatch(**C.get('batch', batch))
                 cfg = StructuredEventStreamTransformerConfig(**{**default_cfg_kwargs, **C['kwargs']})
                 M = StructuredEventStreamTransformerForStreamClassification(cfg)
 

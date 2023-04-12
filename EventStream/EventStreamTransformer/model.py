@@ -20,6 +20,7 @@ from .model_output import (
     GenerativeSequenceModelLabels,
     EventStreamTransformerForGenerativeSequenceModelOutput,
     EventStreamTransformerForStreamClassificationModelOutput,
+    get_event_type_mask_per_measurement,
 )
 from .transformer import (
     StructuredEventStreamTransformerPreTrainedModel, StructuredEventStreamTransformer
@@ -213,7 +214,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         for measurement, classification_mode in self.classification_mode_per_measurement.items():
             if measurement not in valid_measurements: continue
 
-            if event_type_mask_per_measurement is not None:
+            if event_type_mask_per_measurement is not None and measurement != 'event_type':
                 event_mask = event_type_mask_per_measurement[measurement] & batch['event_mask']
             else:
                 event_mask = batch['event_mask']
@@ -244,7 +245,19 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 ) * events_with_label.long()
                 # labels is of shape [batch X seq]
 
-                loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
+                try:
+                    loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
+                except IndexError as e:
+                    print(f"Failed to get loss for {measurement}: {e}!")
+                    print(f"vocab_start: {vocab_start}, vocab_end: {vocab_end}")
+                    print(f"max(labels): {labels.max()}, min(labels): {labels.min()}")
+                    print(
+                        f"max(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).max())}, "
+                        f"min(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).min())}"
+                    )
+                    print(f"max(tensor_idx.sum(-1)): {tensor_idx.sum(-1).max()}")
+                    print(f"scores.shape: {scores.shape}")
+                    raise
 
                 event_mask = event_mask & events_with_label
 
@@ -252,8 +265,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
             elif classification_mode == DataModality.MULTI_LABEL_CLASSIFICATION:
                 data_labels_or_zero = torch.where(
-                    tensor_idx,
-                    dynamic_indices - vocab_start + 1, # Add an extra 1 so zero is always omitted.
+                    tensor_idx, dynamic_indices - vocab_start + 1,
                     torch.zeros_like(dynamic_indices),
                 ).long()
 
@@ -408,29 +420,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
     def get_event_type_mask_per_measurement(
         self, batch: EventStreamPytorchBatch
     ) -> Dict[str, Optional[torch.BoolTensor]]:
-        if self.config.event_types_per_measurement is None: return None
-
-        event_type_mask = (
-            batch['dynamic_measurement_indices'] == self.config.measurements_idxmap['event_type']
+        return get_event_type_mask_per_measurement(
+            batch.dynamic_measurement_indices, batch.dynamic_indices, self.config
         )
-
-        batch_event_type_indices = torch.where(
-            event_type_mask,
-            batch['dynamic_indices'] - self.config.vocab_offsets_by_measurement['event_type'],
-            -1
-        )
-
-        out_masks = {}
-        for measurement, valid_event_types in self.config.event_types_per_measurement.items():
-            valid_event_types = self.config.event_types_per_measurement[measurement]
-            valid_event_type_indices = {self.config.event_types_idxmap[et] for et in valid_event_types}
-
-            # We only want to predict for events that are of the correct type.
-            out_masks[measurement] = torch.any(
-                torch.stack([(batch_event_type_indices == i) for i in valid_event_type_indices], 0),
-                dim=0
-            ).any(-1)
-        return out_masks
 
     def forward(
             self, batch: EventStreamPytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False,
@@ -519,7 +511,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                     categorical_measurements_in_level = set()
                     numerical_measurements_in_level = set()
                     for measurement in self.config.measurements_per_dep_graph_level[i]:
-                        if type(measurement) is tuple: measurement, mode = measurement
+                        if type(measurement) in (tuple, list): measurement, mode = measurement
                         else: mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
 
                         match mode:

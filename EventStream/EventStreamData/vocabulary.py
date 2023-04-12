@@ -47,8 +47,9 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
     def __len__(self): return len(self.vocabulary)
     def __eq__(self, other: 'Vocabulary'):
         return (
+            (type(self) is type(other)) and
             (self.vocabulary == other.vocabulary) and
-            (self.obs_frequencies == other.obs_frequencies).all()
+            (self.obs_frequencies.round(3) == other.obs_frequencies.round(3)).all()
         )
 
     def __post_init__(self):
@@ -63,8 +64,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         assert int not in self.element_types, f"Integer vocabularies are not supported."
 
         self.obs_frequencies = np.array(self.obs_frequencies)
-        if (self.vocabulary[0] == 'UNK') and is_monotonically_nonincreasing(self.obs_frequencies[1:]):
-            return
+        self.obs_frequencies = self.obs_frequencies / self.obs_frequencies.sum()
 
         vocab = copy.deepcopy(self.vocabulary)
         obs_frequencies = self.obs_frequencies
@@ -76,7 +76,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             del vocab[unk_index]
         else: unk_freq = 0
 
-        idx = np.argsort(-obs_frequencies)
+        idx = np.lexsort((vocab, obs_frequencies))[::-1]
 
         self.vocabulary = ['UNK'] + [vocab[i] for i in idx]
         self.obs_frequencies = np.concatenate(([unk_freq], obs_frequencies[idx]))

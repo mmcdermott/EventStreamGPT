@@ -1,5 +1,7 @@
-import dataclasses, json, torch, torchmetrics, wandb, pandas as pd, pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
+import dataclasses, json, torch, torchmetrics, wandb, pandas as pd, lightning as L
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from lightning.pytorch.callbacks import LearningRateMonitor
 from pathlib import Path
 from torchmetrics.classification import (
     BinaryAUROC,
@@ -20,12 +22,12 @@ from .model import StructuredEventStreamTransformerForStreamClassification
 from .model_output import EventStreamTransformerForStreamClassificationModelOutput
 from ..EventStreamData.event_stream_dataset import EventStreamDataset
 from ..EventStreamData.config import EventStreamPytorchDatasetConfig
-from ..EventStreamData.event_stream_pytorch_dataset import EventStreamPytorchDataset
+from ..EventStreamData.event_stream_pytorch_cached_dataset import EventStreamPytorchDataset
 
 def str_summary(T: torch.Tensor):
     return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
 
-class StructuredEventStreamForStreamClassificationLightningModule(pl.LightningModule):
+class StructuredEventStreamForStreamClassificationLightningModule(L.LightningModule):
     """A PyTorch Lightning Module for a `StructuredEventStreamForStreamClassification` model."""
     def __init__(
         self,
@@ -128,6 +130,14 @@ class StructuredEventStreamForStreamClassificationLightningModule(pl.LightningMo
                 'micro_AUPRC': MultilabelAveragePrecision(**metric_kwargs, average='micro'),
             })
         else: raise ValueError(f"{self.config.problem_type} not valid")
+        self.metrics_defined = False
+
+    def define_metrics(self):
+        if self.metrics_defined: return
+        for metric_name, _ in self.metrics.items():
+            for prefix in ('train', 'tuning', 'held_out'):
+                wandb.define_metric(f'{prefix}_{metric_name}', summary='max')
+        self.metrics_defined = True
 
     def _log_metric_dict(
         self,
@@ -153,6 +163,7 @@ class StructuredEventStreamForStreamClassificationLightningModule(pl.LightningMo
                 The prefix that should be used when logging metric results. Will likely be 'train', 'tuning',
                 or 'held_out', for example.
         """
+        self.define_metrics()
         for metric_name, metric in metrics.items():
             # We'll want to skip a metric if any element of our skip_metrics list is a substring of the metric
             # name:
@@ -208,6 +219,11 @@ class StructuredEventStreamForStreamClassificationLightningModule(pl.LightningMo
         out = self.model(batch)
         self.log_metrics(out, skip_metrics=[], prefix='tuning')
 
+    def test_step(self, batch, batch_idx):
+        """Validation step. Differs from training only in that it does not skip metrics."""
+        out = self.model(batch)
+        self.log_metrics(out, skip_metrics=[], prefix='held_out')
+
     def configure_optimizers(self):
         """
         Configures optimizer and learning rate scheduler. Currently this module uses the AdamW optimizer, with
@@ -236,11 +252,14 @@ class StructuredEventStreamForStreamClassificationLightningModule(pl.LightningMo
 
 def fit_stream_classification_model(
     save_dir: Path,
-    dataset: EventStreamDataset,
-    task_df: pd.DataFrame,
-    config: StructuredEventStreamTransformerConfig,
     optimization_config: EventStreamOptimizationConfig,
-    data_config: EventStreamPytorchDatasetConfig,
+
+    dataset_dir: Optional[Path] = None,
+    dataset: Optional[EventStreamDataset] = None,
+    task_df: Optional[pd.DataFrame] = None,
+    task_df_name: str = '',
+    config: Optional[StructuredEventStreamTransformerConfig] = None,
+    data_config: Optional[EventStreamPytorchDatasetConfig] = None,
     wandb_name: str = 'generative_mimic_model',
     wandb_project: str = 'medFMs',
     num_dataloader_workers: int = 1,
@@ -249,8 +268,12 @@ def fit_stream_classification_model(
     return_early: bool = False,
     pretrained_weights_fp: Optional[Path] = None,
     do_overwrite: bool = False,
+    train_split: str = 'train',
+    tuning_split: str = 'tuning',
+    held_out_split: str = 'held_out',
+    pyds: Optional[Sequence[EventStreamPytorchDataset]] = None,
+    extra_wandb_log_params: Optional[Dict[str, Any]] = None,
 ):
-    # TODO(mmd): Add pre-training path and such here.
     """
     Runs the end to end training procedure for the StructuredEventStreamForGenerativeSequenceModelingLightningModule model.
 
@@ -295,12 +318,21 @@ def fit_stream_classification_model(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # Creating training/tuning datasets
-    pyd_kwargs = {'E': dataset, 'config': data_config, 'task_df': task_df}
-    train_pyd = EventStreamPytorchDataset(split='train', **pyd_kwargs)
-    tuning_pyd = EventStreamPytorchDataset(split='tuning', **pyd_kwargs)
-    held_out_pyd = EventStreamPytorchDataset(split='held_out', **pyd_kwargs)
+    # Datasets
+    if pyds is None:
+        pyds = EventStreamPytorchDataset.load_or_create(
+            data_dir=dataset_dir,
+            config=data_config,
+            splits=(train_split, tuning_split, held_out_split),
+            data=dataset,
+            task_df=task_df,
+            task_df_name=task_df_name,
+        )
+
+    train_pyd, tuning_pyd, held_out_pyd = pyds
 
     # Setting up configurations
+    assert config is not None
     config.set_to_dataset(train_pyd)
 
     optimization_config.set_to_dataset(train_pyd)
@@ -321,6 +353,8 @@ def fit_stream_classification_model(
     )
     # Watching the model naturally tracks parameter values and gradients.
     wandb_logger.watch(LM, log='all', log_graph=True)
+    if extra_wandb_log_params is not None:
+        wandb_logger.experiment.config.update(extra_wandb_log_params)
 
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
@@ -337,10 +371,21 @@ def fit_stream_classification_model(
         collate_fn  = tuning_pyd.collate,
         shuffle     = False,
     )
+    held_out_dataloader = torch.utils.data.DataLoader(
+        held_out_pyd,
+        batch_size  = optimization_config.batch_size,
+        num_workers = num_dataloader_workers,
+        collate_fn  = held_out_pyd.collate,
+        shuffle     = False,
+    )
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step')
+    callbacks = [LearningRateMonitor(logging_interval='step')]
+    if optimization_config.patience is not None:
+        callbacks.append(EarlyStopping(
+            monitor='tuning_loss', mode='min', patience=optimization_config.patience
+        ))
 
     checkpoints_dir = save_dir / "model_checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
@@ -349,16 +394,15 @@ def fit_stream_classification_model(
         max_epochs        = optimization_config.max_epochs,
         detect_anomaly    = do_detect_anomaly,
         logger            = wandb_logger,
-        track_grad_norm   = 2,
         log_every_n_steps = log_every_n_steps,
-        callbacks         = [lr_monitor],
+        callbacks         = callbacks,
         default_root_dir  = checkpoints_dir,
     )
 
     if torch.cuda.is_available():
         trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
 
-    trainer = pl.Trainer(**trainer_kwargs)
+    trainer = L.Trainer(**trainer_kwargs)
 
     if return_early:
         return (
@@ -369,6 +413,7 @@ def fit_stream_classification_model(
     # Fitting model
     try:
         trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
+        trainer.test(model=LM, dataloaders=held_out_dataloader)
     finally:
         # Even in the case of an error, we want to ensure that wandb exits successfully, otherwise it can lock
         # up Jupyter notebooks for some reason.

@@ -17,8 +17,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect, logging, warnings
+import inspect, logging, warnings, pandas as pd
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
@@ -42,6 +43,7 @@ from transformers.pytorch_utils import torch_int_div
 from transformers.utils import ModelOutput
 
 from ..EventStreamData.types import EventStreamPytorchBatch
+from ..EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from .model_output import GenerativeSequenceModelPredictions
 
 logger = logging.getLogger(__name__)
@@ -241,6 +243,10 @@ class StructuredEventStreamGenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
+
+        # TODO(mmd): Improve API so this isn't necessary!
+        base_dataset: Optional[EventStreamDatasetBase] = None,
+        batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, SampleOutput, torch.LongTensor]:
         r"""
@@ -329,8 +335,11 @@ class StructuredEventStreamGenerationMixin:
                     - [`~generation_utils.BeamSearchEncoderDecoderOutput`],
                     - [`~generation_utils.BeamSampleEncoderDecoderOutput`]
         """
-        assert self.config.structured_event_processing_mode == 'conditionally_independent', \
-            f"{self.config.structured_event_processing_mode} not currently supported."
+        assert base_dataset is not None, "base_dataset must be provided for structured event generation."
+        assert batch_schema is not None,\
+            "batch_schema must be provided for structured event generation."
+
+        static_data = base_dataset.subjects_df.loc[[subj for subj, _, _ in batch_schema]]
 
         # 1. Set generation parameters if not already defined
         do_sample = do_sample if do_sample is not None else self.config.do_sample
@@ -428,6 +437,9 @@ class StructuredEventStreamGenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                base_dataset=base_dataset,
+                batch_schema=batch_schema,
+                static_data=static_data,
                 **model_kwargs,
             )
 
@@ -451,6 +463,9 @@ class StructuredEventStreamGenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                base_dataset=base_dataset,
+                batch_schema=batch_schema,
+                static_data=static_data,
                 **model_kwargs,
             )
 
@@ -466,6 +481,10 @@ class StructuredEventStreamGenerationMixin:
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
         sample_fn: str = 'mode',
+        # TODO(mmd): Improve API -- this shouldn't be necessary.
+        base_dataset: Optional[EventStreamDatasetBase] = None,
+        batch_schema: Optional[List[int]] = None,
+        static_data: Optional[pd.DataFrame] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, SampleOutput, EventStreamPytorchBatch]:
         r"""
@@ -498,6 +517,10 @@ class StructuredEventStreamGenerationMixin:
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
         """
         assert sample_fn in ('greedy', 'sample')
+        assert base_dataset is not None, "base_dataset must be provided for structured event generation."
+        assert batch_schema is not None, \
+            "batch_schema must be provided for structured event generation."
+        assert static_data is not None, "static_data must be provided for structured event generation."
 
         # init values
         outputs_processor = outputs_processor if outputs_processor is not None else OutputsProcessorList()
@@ -539,9 +562,11 @@ class StructuredEventStreamGenerationMixin:
                     measurements_to_fill_list = [{'time',}, set(self.config.measurements_idxmap.keys())]
                 case 'nested_attention':
                     if self.config.measurements_per_dep_graph_level:
-                        measurements_to_fill_list = [{'time',}, set(self.config.measurements_idxmap.keys())]
+                        measurements_to_fill_list = [
+                            {'time',}, *self.config.measurements_per_dep_graph_level[1:]
+                        ]
                     else:
-                        measurements_to_fill_list = [{'time',}] + self.config.measurements_per_dep_graph_level
+                        measurements_to_fill_list = [{'time',}, set(self.config.measurements_idxmap.keys())]
 
             for measurements_to_fill in measurements_to_fill_list:
                 # TODO(mmd): Here -- need to loop over dependency graph elements.
@@ -583,7 +608,12 @@ class StructuredEventStreamGenerationMixin:
 
                 # update batch for next step
                 if measurements_to_fill == {'time',}:
-                    batch = next_event.append_to_batch(batch, self.config)
+                    batch = next_event.append_to_batch(
+                        batch, self.config,
+                        base_dataset=base_dataset,
+                        batch_schema=batch_schema,
+                        static_data=static_data
+                    )
                 else:
                     batch = next_event.update_last_event_data(
                         batch, self.config, measurements_to_fill=measurements_to_fill
