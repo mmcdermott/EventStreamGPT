@@ -1,4 +1,4 @@
-import dataclasses, json, torch, pandas as pd, pytorch_lightning as pl
+import dataclasses, json, torch, pandas as pd, lightning as L
 from pathlib import Path
 from tqdm.auto import tqdm
 from transformers import get_polynomial_decay_schedule_with_warmup
@@ -22,7 +22,7 @@ class EmbeddingsOnlyModel(StructuredEventStreamTransformerPreTrainedModel):
 
     def forward(self, *args, **kwargs): return self.encoder(*args, **kwargs)
 
-class StructuredEventStreamForEmbeddingLightningModule(pl.LightningModule):
+class StructuredEventStreamForEmbeddingLightningModule(L.LightningModule):
     """A PyTorch Lightning Module for a `StructuredEventStreamForStreamClassification` model."""
     def __init__(
         self,
@@ -189,7 +189,7 @@ def get_embeddings(
         if torch.cuda.is_available():
             trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
 
-        trainer = pl.Trainer(**trainer_kwargs)
+        trainer = L.Trainer(**trainer_kwargs)
 
         # Getting Embeddings model
         embeddings = torch.cat(trainer.predict(LM, dataloader), 0)

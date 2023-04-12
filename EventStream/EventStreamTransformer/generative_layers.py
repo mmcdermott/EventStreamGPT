@@ -1,5 +1,5 @@
 import math, torch
-from dpp.models.log_norm_mix import LogNormalMixtureDistribution
+from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 from typing import Optional
 
 class LogNormalMixtureTTELayer(torch.nn.Module):

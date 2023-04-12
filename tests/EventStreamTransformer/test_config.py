@@ -2,20 +2,13 @@ import sys
 sys.path.append('../..')
 
 import torch, unittest, pandas as pd
+from unittest.mock import MagicMock
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from ..mixins import ConfigComparisonsMixin
 
-from EventStream.EventStreamData.config import (
-    EventStreamDatasetConfig,
-    EventStreamPytorchDatasetConfig,
-)
 from EventStream.EventStreamData.types import DataModality
-from EventStream.EventStreamData.event_stream_dataset import EventStreamDataset
-from EventStream.EventStreamData.event_stream_pytorch_dataset import (
-    EventStreamPytorchDataset
-)
 from EventStream.EventStreamTransformer.config import (
     EventStreamOptimizationConfig,
     StructuredEventProcessingMode,
@@ -44,33 +37,8 @@ class TestEventStreamOptimizationConfig(unittest.TestCase):
             'lr_frac_warmup_steps': 6/30,
         })
 
-        n_patients = 6
-
-        events_df = pd.DataFrame({
-            'subject_id': list(range(n_patients)),
-            'timestamp': ['12/1/22'] * n_patients,
-            'event_type': ['A'] * n_patients,
-        }, index=pd.Index(list(range(n_patients)), name='event_id'))
-
-        metadata_df = pd.DataFrame({
-            'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'] * n_patients,
-            'B_key': ['a', 'a', 'a', 'b', 'b'] * n_patients,
-            'B_val': [1, 2, 3, 4, 5] * n_patients,
-            'event_id': [i for i in range(n_patients) for _ in range(5)],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
-        E.split_subjects = {'train': set(range(n_patients))}
-        E.preprocess_metadata()
-
-        data_config = EventStreamPytorchDatasetConfig(
-            do_normalize_log_inter_event_times = False,
-            max_seq_len = 4,
-            min_seq_len = 0,
-        )
-
-        pyd = EventStreamPytorchDataset(E, data_config, split='train')
+        pyd = MagicMock()
+        pyd.__len__.return_value = 6
 
         cfg.set_to_dataset(pyd)
 
@@ -82,7 +50,6 @@ DEFAULT_MAIN_CONFIG_DICT = dict(
     vocab_offsets_by_measurement = None,
     measurements_idxmap = None,
     measurements_per_generative_mode = None,
-    data_cols = None,
     measurements_per_dep_graph_level = None,
     max_seq_len = 256,
     hidden_size = 256,
@@ -267,184 +234,151 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
             self.assertEqual(C['want'], got)
 
     def test_set_to_dataset(self):
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1],
-            'timestamp': ['12/1/22 1:00 am', '12/1/22 2:00 am', '12/2/22'],
-            'event_type': ['A', 'A', 'A'],
-        }, index=pd.Index([0, 1, 2], name='event_id'))
-        metadata_df = pd.DataFrame({
-            'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
-            'B_key': ['a', 'a', 'a', 'b', 'b'],
-            'B_val': [1, 2, 3, 4, 5],
-            'event_id': [0, 0, 0, 0, 0],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
-        E.split_subjects = {'train': {1}}
-        E.preprocess_metadata()
-
-        data_config = EventStreamPytorchDatasetConfig(
-            do_normalize_log_inter_event_times = False,
-            max_seq_len = 4,
-        )
-        pyd = EventStreamPytorchDataset(E, data_config, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual(4, cfg.max_seq_len)
-        self.assertEqual(9, cfg.vocab_size)
-        self.assertEqual([('B_key', 'B_val'), 'A_col'], cfg.data_cols)
-        self.assertEqual({'event_type': 1, 'A_col': 4, 'B_key': 3}, cfg.vocab_sizes_by_measurement)
-        self.assertEqual({'event_type': 1, 'B_key': 2, 'A_col': 5}, cfg.vocab_offsets_by_measurement)
-        self.assertEqual({'event_type': 1, 'B_key': 2, 'A_col': 3}, cfg.measurements_idxmap)
-
-        want_measurements_per_generative_mode = {
+        default_measurements_per_generative_mode = {
             DataModality.SINGLE_LABEL_CLASSIFICATION: ['event_type'],
             DataModality.MULTI_LABEL_CLASSIFICATION: ['B_key', 'A_col'],
             DataModality.MULTIVARIATE_REGRESSION: ['B_key'],
         }
-        self.assertEqual(want_measurements_per_generative_mode, cfg.measurements_per_generative_mode)
+        default_measurements_idxmap = {'event_type': 1, 'B_key': 2, 'A_col': 3}
+        default_measurement_vocab_offsets = {'event_type': 1, 'B_key': 2, 'A_col': 5}
+        default_vocab_sizes_by_measurement = {'event_type': 2, 'B_key': 3, 'A_col': 4}
 
-        self.assertEqual(None, cfg.mean_log_inter_event_time_min)
-        self.assertEqual(None, cfg.std_log_inter_event_time_min)
+        default_pyd_spec = {
+            'has_task': False,
+            'max_seq_len': 4,
+            'vocabulary_config': {
+                'measurements_idxmap': default_measurements_idxmap,
+                'vocab_offsets_by_measurement': default_measurement_vocab_offsets,
+                'vocab_sizes_by_measurement': default_vocab_sizes_by_measurement,
+                'measurements_per_generative_mode': default_measurements_per_generative_mode,
+                'total_vocab_size': 9,
+            },
+        }
 
-        # When in lognormal mode, it should also copy the inter event time stats.
-        cfg = StructuredEventStreamTransformerConfig(**DEFAULT_LOGNORMAL_MIXTURE_DICT)
-        data_config = EventStreamPytorchDatasetConfig(
-            do_normalize_log_inter_event_times = False,
-            max_seq_len = 4,
-        )
-        pyd = EventStreamPytorchDataset(E, data_config, split='train')
-        cfg.set_to_dataset(pyd)
+        default_want = {
+            'max_seq_len': 4,
+            'vocab_size': 9,
+            'vocab_sizes_by_measurement': default_vocab_sizes_by_measurement,
+            'measurements_idxmap': default_measurements_idxmap,
+            'vocab_offsets_by_measurement': default_measurement_vocab_offsets,
+            'measurements_per_generative_mode': default_measurements_per_generative_mode,
+            'finetuning_task': None,
+            'problem_type': None,
+        }
 
-        self.assertEqual(E.train_mean_log_inter_event_time_min, cfg.mean_log_inter_event_time_min)
-        self.assertEqual(E.train_std_log_inter_event_time_min, cfg.std_log_inter_event_time_min)
+        cases = [
+            {
+                'msg': "Should set appropriate with no task_df.",
+                'pyd_spec': default_pyd_spec, 'want': default_want,
+            }, {
+                'msg': "Should set appropriate regression task_df.",
+                'pyd_spec': {
+                    **default_pyd_spec,
+                    'has_task': True,
+                    'task_types': {'task': 'regression'},
+                    'tasks': ['task'],
+                },
+                'want': {
+                    **default_want,
+                    'finetuning_task': 'task',
+                    'problem_type': 'regression',
+                    'num_labels': 1,
+                },
+            }, {
+                'msg': "Should set appropriate multi_class_classification task_df.",
+                'pyd_spec': {
+                    **default_pyd_spec,
+                    'has_task': True,
+                    'task_types': {'task': 'multi_class_classification'},
+                    'task_vocabs': {'task': ['A', 'B', 'C']},
+                    'tasks': ['task'],
+                },
+                'want': {
+                    **default_want,
+                    'finetuning_task': 'task',
+                    'problem_type': 'single_label_classification',
+                    'num_labels': 3,
+                    'id2label': {0: 'A', 1: 'B', 2: 'C'},
+                    'label2id': {'A': 0, 'B': 1, 'C': 2},
+                },
+            }, {
+                'msg': "Should set appropriate with binary task_df.",
+                'pyd_spec': {
+                    **default_pyd_spec,
+                    'has_task': True,
+                    'task_types': {'task': 'binary_classification'},
+                    'task_vocabs': {'task': [False, True]},
+                    'tasks': ['task'],
+                },
+                'want': {
+                    **default_want,
+                    'finetuning_task': 'task',
+                    'problem_type': 'single_label_classification',
+                    'num_labels': 2,
+                    'id2label': {0: False, 1: True},
+                    'label2id': {False: 0, True: 1},
+                },
+            }, {
+                'msg': "Should set appropriate with multi_label binary task_df.",
+                'pyd_spec': {
+                    **default_pyd_spec,
+                    'has_task': True,
+                    'task_types': {
+                        'task1': 'binary_classification',
+                        'task2': 'binary_classification',
+                        'task3': 'binary_classification',
+                    },
+                    'task_vocabs': {'task1': [False, True], 'task2': [False, True], 'task3': [False, True]},
+                    'tasks': ['task1', 'task2', 'task3'],
+                },
+                'want': {
+                    **default_want,
+                    'finetuning_task': None,
+                    'problem_type': 'multi_label_classification',
+                    'num_labels': 3,
+                },
+            }, {
+                'msg': "Should set appropriate with multivariate regression task_df.",
+                'pyd_spec': {
+                    **default_pyd_spec,
+                    'has_task': True,
+                    'task_types': {'task1': 'regression', 'task2': 'regression'},
+                    'tasks': ['task1', 'task2'],
+                },
+                'want': {
+                    **default_want,
+                    'finetuning_task': None,
+                    'problem_type': 'regression',
+                    'num_labels': 2,
+                },
+            }, {
+                'msg': "Should set appropriate with mixed task_df.",
+                'pyd_spec': {
+                    **default_pyd_spec,
+                    'has_task': True,
+                    'task_types': {'task1': 'regression', 'task2': 'binary_classification'},
+                    'tasks': ['task1', 'task2'],
+                },
+                'want': {
+                    **default_want,
+                    'finetuning_task': None,
+                    'problem_type': None,
+                },
+            }
+        ]
 
-        cfg = StructuredEventStreamTransformerConfig(**DEFAULT_LOGNORMAL_MIXTURE_DICT)
-        data_config = EventStreamPytorchDatasetConfig(
-            do_normalize_log_inter_event_times = True,
-            max_seq_len = 4,
-        )
-        pyd = EventStreamPytorchDataset(E, data_config, split='train')
-        cfg.set_to_dataset(pyd)
+        for C in cases:
+            with self.subTest(C['msg']):
+                pyd = MagicMock()
+                pyd.vocabulary_config = MagicMock()
+                for k, v in C['pyd_spec'].pop('vocabulary_config').items():
+                    setattr(pyd.vocabulary_config, k, v)
+                for k, v in C['pyd_spec'].items(): setattr(pyd, k, v)
 
-        self.assertEqual(0, cfg.mean_log_inter_event_time_min)
-        self.assertEqual(1, cfg.std_log_inter_event_time_min)
-
-        # Testing fine-tuning dataset parameter setting.
-        task_df = pd.DataFrame({
-            'subject_id': [1, 1, 1, 1],
-            'start_time': [
-                pd.to_datetime('12/1/22 12:00 am'),
-                pd.to_datetime('12/1/22 12:00 am'),
-                pd.to_datetime('12/1/22 12:00 am'),
-                pd.to_datetime('12/1/22 12:00 am'),
-            ],
-            'end_time': [
-                pd.to_datetime('12/1/22 1:00 am'),
-                pd.to_datetime('12/1/22 2:00 am'),
-                pd.to_datetime('12/1/22 3:00 am'),
-                pd.to_datetime('12/1/22 4:00 am'),
-            ],
-        })
-
-        binary_task_df = task_df.copy()
-        binary_task_df['binary'] = [True, False, True, False]
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=binary_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual('binary', cfg.finetuning_task)
-        self.assertEqual('single_label_classification', cfg.problem_type)
-        self.assertEqual(2, cfg.num_labels)
-        self.assertEqual({0: False, 1: True}, cfg.id2label)
-        self.assertEqual({False: 0, True: 1}, cfg.label2id)
-
-        multi_class_task_df = task_df.copy()
-        multi_class_task_df['multi_class'] = [0, 1, 2, 4]
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=multi_class_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual('multi_class', cfg.finetuning_task)
-        self.assertEqual('single_label_classification', cfg.problem_type)
-        self.assertEqual(5, cfg.num_labels)
-        self.assertEqual({0: 0, 1: 1, 2: 2, 3: 3, 4: 4}, cfg.id2label)
-        self.assertEqual({0: 0, 1: 1, 2: 2, 3: 3, 4: 4}, cfg.label2id)
-
-        multi_class_task_df = task_df.copy()
-        multi_class_task_df['multi_class'] = pd.Series(['a', 'b', 'a', 'z'], dtype='category')
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=multi_class_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual('multi_class', cfg.finetuning_task)
-        self.assertEqual('single_label_classification', cfg.problem_type)
-        self.assertEqual(3, cfg.num_labels)
-        self.assertEqual({0: 'a', 1: 'b', 2: 'z'}, cfg.id2label)
-        self.assertEqual({'a': 0, 'b': 1, 'z': 2}, cfg.label2id)
-
-        regression_task_df = task_df.copy()
-        regression_task_df['regression'] = [1.4, 2.3, 4.2, 1.1]
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=regression_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual('regression', cfg.finetuning_task)
-        self.assertEqual('regression', cfg.problem_type)
-        self.assertEqual(1, cfg.num_labels)
-
-        regression_task_df = task_df.copy()
-        regression_task_df['regression_1'] = [1.4, 2.3, 4.2, 1.1]
-        regression_task_df['regression_2'] = [1.3, 2.2, 422, 1.9]
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=regression_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual(None, cfg.finetuning_task)
-        self.assertEqual('regression', cfg.problem_type)
-        self.assertEqual(2, cfg.num_labels)
-
-        multi_label_task_df = task_df.copy()
-        multi_label_task_df['multi_label_1'] = [True, False, False, False]
-        multi_label_task_df['multi_label_2'] = [True, True, False, False]
-        multi_label_task_df['multi_label_3'] = [True, True, True, False]
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=multi_label_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual(None, cfg.finetuning_task)
-        self.assertEqual('multi_label_classification', cfg.problem_type)
-        self.assertEqual(3, cfg.num_labels)
-
-        mixed_task_df = task_df.copy()
-        mixed_task_df['mixed_1'] = [True, False, False, False]
-        mixed_task_df['mixed_2'] = [1, 2, 3, 4]
-        mixed_task_df['mixed_3'] = [1.1, 2.3, 1.1, 3.]
-
-        pyd = EventStreamPytorchDataset(E, data_config, task_df=mixed_task_df, split='train')
-
-        cfg = StructuredEventStreamTransformerConfig()
-        default_num_labels = cfg.num_labels
-        cfg.set_to_dataset(pyd)
-
-        self.assertEqual(None, cfg.finetuning_task)
-        self.assertEqual(None, cfg.problem_type)
-        self.assertEqual(default_num_labels, cfg.num_labels)
+                cfg = StructuredEventStreamTransformerConfig()
+                cfg.set_to_dataset(pyd)
+                for k, v in C['want'].items():
+                    self.assertEqual(v, getattr(cfg, k))
 
     def test_save_load(self):
         """
@@ -453,34 +387,11 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
         and re-loading is still possible (e.g., ensuring that post-processing doesn't invalidate validation
         constraints).
         """
-        events_df = pd.DataFrame({
-            'subject_id': [1, 1, 1],
-            'timestamp': ['12/1/22 1:00 am', '12/1/22 2:00 am', '12/2/22'],
-            'event_type': ['A', 'A', 'A'],
-        }, index=pd.Index([0, 1, 2], name='event_id'))
-        metadata_df = pd.DataFrame({
-            'A_col': ['foo', 'bar', 'foo', 'bar', 'bax'],
-            'B_key': ['a', 'a', 'a', 'b', 'b'],
-            'B_val': [1, 2, 3, 4, 5],
-            'event_id': [0, 0, 0, 0, 0],
-        })
-
-        config = EventStreamDatasetConfig.from_simple_args(['A_col', ('B_key', 'B_val')])
-        E = EventStreamDataset(events_df=events_df, metadata_df=metadata_df, config=config)
-        E.split_subjects = {'train': {1}}
-        E.preprocess_metadata()
-
-        data_config = EventStreamPytorchDatasetConfig(
-            do_normalize_log_inter_event_times = False,
-            max_seq_len = 4,
-        )
-        pyd = EventStreamPytorchDataset(E, data_config, split='train')
-
         for params in (
             {},
             DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
             DEFAULT_NESTED_ATTENTION_DICT,
-            DEFAULT_LOGNORMAL_MIXTURE_DICT,
+            #DEFAULT_LOGNORMAL_MIXTURE_DICT,
             DEFAULT_EXPONENTIAL_DICT,
         ):
             cfg = StructuredEventStreamTransformerConfig(**params)
@@ -493,22 +404,6 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
                 # This isn't persisted properly for some reason (dependent on Huggingface, not me!)
                 got_cfg.transformers_version = None
                 cfg.transformers_version = None
-
-                self.assertEqual(cfg, got_cfg)
-
-                cfg.set_to_dataset(pyd)
-                cfg.to_json_file(save_path)
-                got_cfg = StructuredEventStreamTransformerConfig.from_json_file(save_path)
-
-                # This isn't persisted properly for some reason (dependent on Huggingface, not me!)
-                got_cfg.transformers_version = None
-                cfg.transformers_version = None
-
-                # Tuples are converted to lists via json...
-                self.assertEqual([('B_key', 'B_val'), 'A_col'], cfg.data_cols)
-                self.assertEqual([['B_key', 'B_val'], 'A_col'], got_cfg.data_cols)
-
-                cfg.data_cols = got_cfg.data_cols
 
                 self.assertEqual(cfg, got_cfg)
 

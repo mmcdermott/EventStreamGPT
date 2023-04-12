@@ -2,7 +2,7 @@ import sys
 sys.path.append('../..')
 
 import math, torch, unittest, numpy as np
-from dpp.models.log_norm_mix import LogNormalMixtureDistribution
+from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBatch

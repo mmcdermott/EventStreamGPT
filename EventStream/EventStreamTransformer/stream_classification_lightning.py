@@ -1,6 +1,7 @@
-import dataclasses, json, torch, torchmetrics, wandb, pandas as pd, pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+import dataclasses, json, torch, torchmetrics, wandb, pandas as pd, lightning as L
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from lightning.pytorch.callbacks import LearningRateMonitor
 from pathlib import Path
 from torchmetrics.classification import (
     BinaryAUROC,
@@ -26,7 +27,7 @@ from ..EventStreamData.event_stream_pytorch_cached_dataset import EventStreamPyt
 def str_summary(T: torch.Tensor):
     return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
 
-class StructuredEventStreamForStreamClassificationLightningModule(pl.LightningModule):
+class StructuredEventStreamForStreamClassificationLightningModule(L.LightningModule):
     """A PyTorch Lightning Module for a `StructuredEventStreamForStreamClassification` model."""
     def __init__(
         self,
@@ -380,7 +381,7 @@ def fit_stream_classification_model(
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    callbacks = [pl.callbacks.LearningRateMonitor(logging_interval='step')]
+    callbacks = [LearningRateMonitor(logging_interval='step')]
     if optimization_config.patience is not None:
         callbacks.append(EarlyStopping(
             monitor='tuning_loss', mode='min', patience=optimization_config.patience
@@ -393,7 +394,6 @@ def fit_stream_classification_model(
         max_epochs        = optimization_config.max_epochs,
         detect_anomaly    = do_detect_anomaly,
         logger            = wandb_logger,
-        track_grad_norm   = 2,
         log_every_n_steps = log_every_n_steps,
         callbacks         = callbacks,
         default_root_dir  = checkpoints_dir,
@@ -402,7 +402,7 @@ def fit_stream_classification_model(
     if torch.cuda.is_available():
         trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
 
-    trainer = pl.Trainer(**trainer_kwargs)
+    trainer = L.Trainer(**trainer_kwargs)
 
     if return_early:
         return (

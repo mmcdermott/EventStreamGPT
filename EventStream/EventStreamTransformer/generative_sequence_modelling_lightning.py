@@ -1,6 +1,7 @@
-import dataclasses, json, torch, torchmetrics, wandb, pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+import dataclasses, json, torch, torchmetrics, wandb, lightning as L
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from lightning.pytorch.callbacks import LearningRateMonitor
 from pathlib import Path
 from torchmetrics.classification import (
     MulticlassAUROC,
@@ -19,13 +20,12 @@ from .model_output import EventStreamTransformerForGenerativeSequenceModelOutput
 from .utils import expand_indexed_regression
 from ..EventStreamData.types import DataModality, EventStreamPytorchBatch
 from ..EventStreamData.config import EventStreamPytorchDatasetConfig
-from ..EventStreamData.event_stream_dataset import EventStreamDataset
-from ..EventStreamData.event_stream_pytorch_cached_dataset import EventStreamPytorchDataset
+from ..EventStreamData.event_stream_pytorch_dataset import EventStreamPytorchDataset
 
 def str_summary(T: torch.Tensor):
     return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
 
-class StructuredEventStreamForGenerativeSequenceModelingLightningModule(pl.LightningModule):
+class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.LightningModule):
     """A PyTorch Lightning Module for a `StructuredEventStreamTransformerForGenerativeSequenceModeling`."""
     def __init__(
         self,
@@ -375,9 +375,9 @@ def fit_generative_sequence_model(
     config: StructuredEventStreamTransformerConfig,
     optimization_config: EventStreamOptimizationConfig,
     data_config: EventStreamPytorchDatasetConfig,
-    wandb_name: str = 'generative_mimic_model',
-    wandb_project: str = 'medFMs',
-    wandb_team: str = 'icu_lsp',
+    wandb_name: Optional[str] = 'generative_mimic_model',
+    wandb_project: Optional[str] = 'medFMs',
+    wandb_team: Optional[str] = 'icu_lsp',
     num_dataloader_workers: int = 1,
     do_detect_anomaly: bool = False,
     log_every_n_steps: int = 50,
@@ -424,8 +424,7 @@ def fit_generative_sequence_model(
             How frequently should this run report log data.
 
     This function performs the following steps:
-        1. Builds train, tuning, and held out pytorch datasets from the passed `EventStreamDataset` and
-           `data_config`.
+        1. Builds train, tuning, and held out pytorch datasets.
         2. Sets the configuration objects to match those built datasets.
         3. Saves the configuration files to the `save_dir`.
         4. builds the pytorch lightning module and Weights & Biases logger.
@@ -435,9 +434,9 @@ def fit_generative_sequence_model(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # Creating or loading training/tuning datasets
-    train_pyd, tuning_pyd, held_out_pyd = EventStreamPytorchDataset.load_or_create(
-        dataset_dir, data_config, splits=[train_split, tuning_split, held_out_split]
-    )
+    train_pyd = EventStreamPytorchDataset(data_config, split='train')
+    tuning_pyd = EventStreamPytorchDataset(data_config, split='tuning')
+    held_out_pyd = EventStreamPytorchDataset(data_config, split='held_out')
 
     # Setting up configurations
     config.set_to_dataset(train_pyd)
@@ -457,14 +456,19 @@ def fit_generative_sequence_model(
         config, optimization_config, do_skip_all_metrics=do_skip_all_metrics_in_train
     )
 
-    wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
-    wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
-    wandb_logger = WandbLogger(
-        name=wandb_name, project=wandb_project, entity=wandb_team, save_dir=wandb_logger_savedir,
-        log_model=True
-    )
-    # Watching the model naturally tracks parameter values and gradients.
-    wandb_logger.watch(LM, log='all', log_graph=True)
+    do_use_wandb = wandb_name is not None
+    if do_use_wandb:
+        assert wandb_name is not None and wandb_project is not None and wandb_team is not None
+
+        wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
+        wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
+        wandb_logger = WandbLogger(
+            name=wandb_name, project=wandb_project, entity=wandb_team, save_dir=wandb_logger_savedir,
+            log_model=True
+        )
+        # Watching the model naturally tracks parameter values and gradients.
+        wandb_logger.watch(LM, log='all', log_graph=True)
+    else: wandb_logger = None
 
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
@@ -491,7 +495,7 @@ def fit_generative_sequence_model(
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    callbacks = [pl.callbacks.LearningRateMonitor(logging_interval='step')]
+    callbacks = [LearningRateMonitor(logging_interval='step')]
     if optimization_config.patience is not None:
         callbacks.append(EarlyStopping(
             monitor='tuning_loss', mode='min', patience=optimization_config.patience
@@ -503,12 +507,13 @@ def fit_generative_sequence_model(
     trainer_kwargs = dict(
         max_epochs        = optimization_config.max_epochs,
         detect_anomaly    = do_detect_anomaly,
-        logger            = wandb_logger,
-        track_grad_norm   = 2,
         log_every_n_steps = log_every_n_steps,
         callbacks         = callbacks,
         default_root_dir  = checkpoints_dir,
     )
+
+    if do_use_wandb:
+        trainer_kwargs['logger'] = wandb_logger
 
     if (
         (optimization_config.gradient_accumulation is not None) and 
@@ -522,7 +527,7 @@ def fit_generative_sequence_model(
     if return_early:
         return (
             (train_pyd, tuning_pyd), (config, optimization_config, data_config),
-            (train_dataloader, tuning_dataloader), (trainer_kwargs, pl.Trainer(**trainer_kwargs)), LM
+            (train_dataloader, tuning_dataloader), (trainer_kwargs, L.Trainer(**trainer_kwargs)), LM
         )
 
     # Fitting model
@@ -531,7 +536,7 @@ def fit_generative_sequence_model(
         while n_attempts < 5:
             n_attempts += 1
             try:
-                trainer = pl.Trainer(**trainer_kwargs)
+                trainer = L.Trainer(**trainer_kwargs)
                 trainer.fit(
                     model=LM,
                     train_dataloaders=train_dataloader,
@@ -584,7 +589,8 @@ def fit_generative_sequence_model(
     finally:
         # Even in the case of an error, we want to ensure that wandb exits successfully, otherwise it can lock
         # up Jupyter notebooks for some reason.
-        wandb_logger.experiment.unwatch(LM)
-        wandb.finish()
+        if do_use_wandb:
+            wandb_logger.experiment.unwatch(LM)
+            wandb.finish()
 
     return config, LM

@@ -343,13 +343,11 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
                 min_valid_vocab_element_observations = 12,
                 min_true_float_frequency = 1e-6,
                 min_unique_numerical_observations = 13,
-                max_numerical_value_frequency = 1e-6,
             ), dict(
                 min_valid_column_observations = 0.5,
                 min_valid_vocab_element_observations = 1-1e-6,
                 min_true_float_frequency = 1 - 1e-6,
                 min_unique_numerical_observations = 1e-6,
-                max_numerical_value_frequency = 1 - 1e-6,
             ), dict(
                 outlier_detector_config = {'cls': None},
                 normalizer_config = {'cls': None},
@@ -369,8 +367,6 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             ), dict(
                 min_unique_numerical_observations = 2.0,
             ), dict(
-                max_numerical_value_frequency = 0.,
-            ), dict(
                 outlier_detector_config = {'not_cls': None},
             ), dict(
                 normalizer_config = {'not_cls': None},
@@ -386,9 +382,9 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_valid_vocab_element_observations = None,
             min_true_float_frequency = None,
             min_unique_numerical_observations = None,
-            max_numerical_value_frequency = None,
             outlier_detector_config = None,
             normalizer_config = None,
+            save_dir = None,
         )
         nontrivial_measurement_configs = {
             'col_A': MeasurementConfig(
@@ -521,7 +517,6 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_valid_vocab_element_observations = 0.5,
             min_true_float_frequency = 0.75,
             min_unique_numerical_observations = 0.25,
-            max_numerical_value_frequency = 0.1,
             outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
             normalizer_config = {'cls': 'normalizer', 'baz': 'bam'},
         )
@@ -549,7 +544,6 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_valid_vocab_element_observations = 0.5,
             min_true_float_frequency = 0.75,
             min_unique_numerical_observations = 0.25,
-            max_numerical_value_frequency = 0.1,
             outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
             normalizer_config = {'cls': 'normalizer', 'baz': 'bam'},
         )
@@ -580,7 +574,6 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_valid_vocab_element_observations = 0.5,
             min_true_float_frequency = 0.75,
             min_unique_numerical_observations = 0.25,
-            max_numerical_value_frequency = 0.1,
             outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
             normalizer_config = {'cls': 'normalizer', 'baz': 'bam'},
         )
@@ -611,7 +604,6 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_valid_vocab_element_observations = 0.5,
             min_true_float_frequency = 0.75,
             min_unique_numerical_observations = 0.25,
-            max_numerical_value_frequency = 0.1,
             outlier_detector_config = {'cls': 'outlier', 'foo': 'bar'},
             normalizer_config = {'cls': 'normalizer', 'baz': 3},
         )

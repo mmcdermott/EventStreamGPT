@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Sequence, Set
 from .utils import INDEX_SELECT_T, idx_distribution, expand_indexed_regression
 from .config import StructuredEventStreamTransformerConfig, MEAS_INDEX_GROUP_T
 from ..EventStreamData.types import TemporalityType, DataModality, EventStreamPytorchBatch
-from ..EventStreamData.event_stream_dataset import EventStreamDataset
+from ..EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from ..EventStreamData.data_embedding_layer import MeasIndexGroupOptions
 from ..EventStreamData.config import MeasurementConfig
 
@@ -135,7 +135,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: EventStreamPytorchBatch,
         config: StructuredEventStreamTransformerConfig,
-        base_dataset: Optional[EventStreamDataset] = None,
+        base_dataset: Optional[EventStreamDatasetBase] = None,
         batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
         static_data: Optional[pd.DataFrame] = None,
     ) -> Tuple[
@@ -191,11 +191,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     vals_df['vals'] = np.NaN
                 case DataModality.UNIVARIATE_REGRESSION:
                     vals_df['is_inlier'] = pd.Series([None] * len(vals_df), dtype='boolean')
-                    new_keys = EventStreamDataset.transform_categorical_values_series(
+                    new_keys = EventStreamDatasetBase.transform_categorical_values_series(
                         measurement_metadata=cfg.measurement_metadata, vals=vals_df.vals
                     )
 
-                    vals_df = EventStreamDataset._transform_numerical_metadata_column_vals(
+                    vals_df = EventStreamDatasetBase._transform_numerical_metadata_column_vals(
                         vals_df, cfg.measurement_metadata, val_col='vals', inlier_col='is_inlier'
                     )
 
@@ -461,7 +461,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
     def append_to_batch(
         self, batch: EventStreamPytorchBatch, config: StructuredEventStreamTransformerConfig,
-        base_dataset: Optional[EventStreamDataset] = None,
+        base_dataset: Optional[EventStreamDatasetBase] = None,
         batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
         static_data: Optional[pd.DataFrame] = None,
     ) -> EventStreamPytorchBatch:

@@ -43,7 +43,7 @@ from transformers.pytorch_utils import torch_int_div
 from transformers.utils import ModelOutput
 
 from ..EventStreamData.types import EventStreamPytorchBatch
-from ..EventStreamData.event_stream_dataset import EventStreamDataset
+from ..EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from .model_output import GenerativeSequenceModelPredictions
 
 logger = logging.getLogger(__name__)
@@ -245,7 +245,7 @@ class StructuredEventStreamGenerationMixin:
         synced_gpus: Optional[bool] = False,
 
         # TODO(mmd): Improve API so this isn't necessary!
-        base_dataset: Optional[EventStreamDataset] = None,
+        base_dataset: Optional[EventStreamDatasetBase] = None,
         batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, SampleOutput, torch.LongTensor]:
@@ -482,7 +482,7 @@ class StructuredEventStreamGenerationMixin:
         synced_gpus: Optional[bool] = False,
         sample_fn: str = 'mode',
         # TODO(mmd): Improve API -- this shouldn't be necessary.
-        base_dataset: Optional[EventStreamDataset] = None,
+        base_dataset: Optional[EventStreamDatasetBase] = None,
         batch_schema: Optional[List[int]] = None,
         static_data: Optional[pd.DataFrame] = None,
         **model_kwargs,

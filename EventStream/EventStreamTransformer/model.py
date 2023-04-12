@@ -214,7 +214,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         for measurement, classification_mode in self.classification_mode_per_measurement.items():
             if measurement not in valid_measurements: continue
 
-            if event_type_mask_per_measurement is not None:
+            if event_type_mask_per_measurement is not None and measurement != 'event_type':
                 event_mask = event_type_mask_per_measurement[measurement] & batch['event_mask']
             else:
                 event_mask = batch['event_mask']
@@ -245,7 +245,19 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 ) * events_with_label.long()
                 # labels is of shape [batch X seq]
 
-                loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
+                try:
+                    loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
+                except IndexError as e:
+                    print(f"Failed to get loss for {measurement}: {e}!")
+                    print(f"vocab_start: {vocab_start}, vocab_end: {vocab_end}")
+                    print(f"max(labels): {labels.max()}, min(labels): {labels.min()}")
+                    print(
+                        f"max(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).max())}, "
+                        f"min(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).min())}"
+                    )
+                    print(f"max(tensor_idx.sum(-1)): {tensor_idx.sum(-1).max()}")
+                    print(f"scores.shape: {scores.shape}")
+                    raise
 
                 event_mask = event_mask & events_with_label
 
@@ -253,8 +265,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
             elif classification_mode == DataModality.MULTI_LABEL_CLASSIFICATION:
                 data_labels_or_zero = torch.where(
-                    tensor_idx,
-                    dynamic_indices - vocab_start + 1, # Add an extra 1 so zero is always omitted.
+                    tensor_idx, dynamic_indices - vocab_start + 1,
                     torch.zeros_like(dynamic_indices),
                 ).long()
 
