@@ -19,6 +19,9 @@ class EventStreamPytorchBatch:
     stream_labels: Optional[Dict[str, Union[torch.FloatTensor, torch.LongTensor]]] = None
 
     @property
+    def device(self): return self.event_mask.device
+
+    @property
     def batch_size(self) -> int: return self.event_mask.shape[0]
     @property
     def sequence_length(self) -> int: return self.event_mask.shape[1]

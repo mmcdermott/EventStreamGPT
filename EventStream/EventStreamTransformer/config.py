@@ -408,7 +408,7 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
             raise ValueError(
                 "`structured_event_processing_mode` must be a valid `StructuredEventProcessingMode` "
                 f"enum member ({StructuredEventProcessingMode.values()}). Got "
-                f"{structured_event_procvessing_mode}."
+                f"{structured_event_processing_mode}."
             )
 
         dep_graph_params = {

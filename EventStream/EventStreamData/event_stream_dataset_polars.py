@@ -1,4 +1,4 @@
-import copy, itertools, numpy as np, pandas as pd, polars as pl, warnings
+import copy, numpy as np, pandas as pd, polars as pl, warnings
 
 from collections import Counter
 from datetime import datetime
@@ -962,11 +962,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         # Identify the measurements sourced from each dataframe:
         subject_measures, event_measures, dynamic_measures = [], ['event_type'], []
         for m in self.unified_measurements_vocab[1:]:
-            match self.measurement_configs[m].temporality:
+            temporality = self.measurement_configs[m].temporality
+            match temporality:
                 case TemporalityType.STATIC: subject_measures.append(m)
                 case TemporalityType.FUNCTIONAL_TIME_DEPENDENT: event_measures.append(m)
                 case TemporalityType.DYNAMIC: dynamic_measures.append(m)
-                case _: raise ValueError(f'Unknown temporality type {cfg.temporality} for {m}')
+                case _: raise ValueError(f'Unknown temporality type {temporality} for {m}')
 
         # 1. Process subject data into the right format.
         #    self.subjects_df has columns subject_id, ...static_meas_columns...
