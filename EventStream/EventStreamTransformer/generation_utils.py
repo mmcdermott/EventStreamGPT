@@ -447,7 +447,7 @@ class StructuredEventStreamGenerationMixin:
             # 10. prepare outputs warper
             outputs_warper = self._get_outputs_warper()
 
-            # 11. expand input_ids with `num_return_sequences` additional sequences per batch
+            # 11. expand batch with `num_return_sequences` additional sequences per batch
             batch, model_kwargs = self._expand_inputs_for_generation(
                 batch,
                 expand_size=num_return_sequences,
@@ -548,7 +548,7 @@ class StructuredEventStreamGenerationMixin:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
-                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(input_ids.device)
+                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(batch.device)
                 # send 0.0 if we finished, 1.0 otherwise
                 dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
                 # did all peers finish? the reduced sum will be 0.0 then

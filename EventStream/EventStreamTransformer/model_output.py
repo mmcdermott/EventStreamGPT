@@ -313,6 +313,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             else:
                 regressed_values = self.regression[measurement]
                 regressed_values_mask = torch.ones_like(regressed_values).bool()
+                vocab_size = config.vocab_sizes_by_measurement[measurement]
 
                 # Now we need to align the regressed_indices to the classification indices, as indices we
                 # regressed over but don't think were actually observed in the event wouldn't have
@@ -541,7 +542,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             if (type(m) is not tuple) or (m[1] != MeasIndexGroupOptions.NUMERICAL_ONLY): continue
 
             m = m[0]
-            prev_measurements_to_drop_idx |= (prev_dynamic_measurement_idx == config.measurements_idxmap[m])
+            prev_measurements_to_drop_idx |= (prev_dynamic_measurement_indices == config.measurements_idxmap[m])
 
         kept_cols_mask = ~(prev_measurements_to_drop_idx.all(dim=0))
 

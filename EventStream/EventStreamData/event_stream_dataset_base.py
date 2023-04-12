@@ -1,4 +1,4 @@
-import abc, copy, numpy as np, pandas as pd
+import abc, copy, itertools, numpy as np, pandas as pd
 
 from collections import defaultdict
 from datetime import datetime
