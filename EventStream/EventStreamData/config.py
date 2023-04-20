@@ -34,9 +34,6 @@ class EventStreamPytorchDatasetConfig(JSONableMixin):
     Configuration options for building a PyTorch dataset from an `EventStreamDataset`.
 
     Args:
-        `do_normalize_log_inter_event_times` (`bool`):
-            Captures whether or not the presented times in the batch should be transformed such that the log
-            of the times between events have mean 0 and standard deviation 1.
         `max_seq_len` (`int`):
             Captures the maximum sequence length the pytorch dataset should output in any individual item.
             Note that batche are _not_ universally normalized to have this sequence length --- it is a
@@ -45,6 +42,8 @@ class EventStreamPytorchDatasetConfig(JSONableMixin):
             Only include subjects with at least this many events in the raw data.
         `seq_padding_side` (`str`, defaults to `'right'`):
             Whether to pad smaller sequences on the right (default) or the left (used for generation).
+        `do_produce_static_data` (`bool`):
+            Whether or not to produce static data when processing the dataset.
     """
     max_seq_len: int = 256
     min_seq_len: int = 2
@@ -60,7 +59,7 @@ class EventStreamPytorchDatasetConfig(JSONableMixin):
         assert self.max_seq_len >= 1
         assert self.max_seq_len >= self.min_seq_len
 
-        if type(self.save_dir) is str: self.save_dir = Path(save_dir)
+        if type(self.save_dir) is str: self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
         """Represents this configuation object as a plain dictionary."""
@@ -139,7 +138,7 @@ class MeasurementConfig(JSONableMixin):
             Which column stores the numerical values corresponding to this measurement. If `None`, then
             measurement values are stored in the same column.
 
-        `measurement_metadata` (`Optional[pd.DataFrame]`, *optional*, defauls to `None`):
+        `measurement_metadata` (`Optional[pd.DataFrame]`, *optional*, defaults to `None`):
             Stores metadata (dataframe columns) about the numerical values corresponding to each
             key (dataframe index). Metadata columns must include the following, which are sentinel values in
             preprocessing steps:
@@ -294,7 +293,7 @@ class MeasurementConfig(JSONableMixin):
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
             as_dict['functor'] = self.functor.to_dict()
         if self.present_in_event_types is not None:
-            self.present_in_event_types = list(self.present_in_event_types)
+            as_dict['present_in_event_types'] = list(self.present_in_event_types)
         return as_dict
 
     @classmethod
@@ -323,7 +322,7 @@ class MeasurementConfig(JSONableMixin):
 
         return cls(**as_dict)
 
-    def __eq__(self, other: EventStreamDatasetConfig) -> bool:
+    def __eq__(self, other: MeasurementConfig) -> bool:
         return self.to_dict() == other.to_dict()
 
 @dataclasses.dataclass
@@ -364,14 +363,14 @@ class EventStreamDatasetConfig(JSONableMixin):
             Can be either an integer count or a proportion (of total numerical observations) in (0, 1).
             If `None`, no constraint is applied.
 
-        `outlier_detector_config` (`Optional[Dict[str, Any]]`, defauls to `None`):
+        `outlier_detector_config` (`Optional[Dict[str, Any]]`, defaults to `None`):
             Configuation options for outlier detection. If not `None`, must contain the key `'cls'`, which
             points to the class used outlier detection. All other keys and values are keyword arguments to be
             passed to the specified class. The API of these objects is expected to mirror scikit-learn outlier
             detection model APIs.
             If `None`, numerical outlier values are not removed.
 
-        `normalizer_config` (`Optional[Dict[str, Any]]`, defauls to `None`):
+        `normalizer_config` (`Optional[Dict[str, Any]]`, defaults to `None`):
             Configuation options for normalization. If not `None`, must contain the key `'cls'`, which points
             to the class used normalization. All other keys and values are keyword arguments to be passed to
             the specified class. The API of these objects is expected to mirror scikit-learn normalization
