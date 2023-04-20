@@ -995,7 +995,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             pl.col('value').struct.field('value').alias('value'),
         )
 
-    def build_DL_cached_representation(self, do_sort_outputs: bool = False) -> DF_T:
+    def build_DL_cached_representation(self, subject_ids: Optional[List[int]] = None) -> DF_T:
         """
         Produces a format with the below syntax:
 
@@ -1028,8 +1028,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
                 case _: raise ValueError(f'Unknown temporality type {temporality} for {m}')
 
         # 1. Process subject data into the right format.
-        #    self.subjects_df has columns subject_id, ...static_meas_columns...
-        static_data = self.melt_df(self.subjects_df, ['subject_id'], subject_measures).groupby(
+        if subject_ids:
+            subjects_df = self._filter_col_inclusion(self.subjects_df, {'subject_id': subject_ids})
+        else:
+            subjects_df = self.subjects_df
+
+        static_data = self.melt_df(subjects_df, ['subject_id'], subject_measures).groupby(
             'subject_id'
         ).agg(
             pl.col('measurement_index').alias('static_measurement_indices'),
@@ -1037,11 +1041,24 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         )
 
         # 2. Process event data into the right format.
-        event_data = self.melt_df(self.events_df, ['subject_id', 'timestamp', 'event_id'], event_measures)
+        if subject_ids:
+            events_df = self._filter_col_inclusion(self.events_df, {'subject_id': subject_ids})
+            event_ids = list(events_df['event_id'])
+        else:
+            events_df = self.events_df
+            event_ids = None
+        event_data = self.melt_df(events_df, ['subject_id', 'timestamp', 'event_id'], event_measures)
 
         # 3. Process measurement data into the right base format:
+        if event_ids:
+            dynamic_measurements_df = self._filter_col_inclusion(
+                self.dynamic_measurements_df, {'event_id': event_ids}
+            )
+        else:
+            dynamic_measurements_df = self.dynamic_measurements_df
+
         dynamic_ids = ['event_id', 'measurement_id'] if do_sort_outputs else ['event_id']
-        dynamic_data = self.melt_df(self.dynamic_measurements_df, dynamic_ids, dynamic_measures)
+        dynamic_data = self.melt_df(dynamic_measurements_df, dynamic_ids, dynamic_measures)
 
         if do_sort_outputs: dynamic_data = dynamic_data.sort('event_id', 'measurement_id')
 

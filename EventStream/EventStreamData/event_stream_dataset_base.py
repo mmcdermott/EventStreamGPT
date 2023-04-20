@@ -600,20 +600,21 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             source_df = self._drop_df_nulls(source_df, measure)
             updated_cols = [measure]
 
-            if config.is_numeric:
-                try:
+            try:
+                if config.is_numeric:
                     source_df = self._transform_numerical_measurement(measure, config, source_df)
-                except BaseException as e:
-                    raise ValueError(f"Transforming measurement failed for measure {measure}!") from e
 
-                if config.modality == DataModality.MULTIVARIATE_REGRESSION:
-                    updated_cols.append(config.values_column)
+                    if config.modality == DataModality.MULTIVARIATE_REGRESSION:
+                        updated_cols.append(config.values_column)
 
-                if self.config.outlier_detector_config is not None:
-                    updated_cols.append(f"{measure}_is_inlier")
+                    if self.config.outlier_detector_config is not None:
+                        updated_cols.append(f"{measure}_is_inlier")
 
-            if config.vocabulary is not None:
-                source_df = self._transform_categorical_measurement(measure, config, source_df)
+                if config.vocabulary is not None:
+                    source_df = self._transform_categorical_measurement(measure, config, source_df)
+
+            except BaseException as e:
+                raise ValueError(f"Transforming measurement failed for measure {measure}!") from e
 
             self.update_attr_df(source_attr, id_col, source_df, updated_cols)
 
@@ -713,22 +714,32 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return vocabs
 
     @TimeableMixin.TimeAs
-    def cache_deep_learning_representation(self):
+    def cache_deep_learning_representation(self, subjects_per_output_file: Optional[int] = None):
         """
         Produces a cached, batched representation of the dataset suitable for deep learning applications and
         writes it to cache_fp in the specified format.
         """
 
-        cached_df = self.build_DL_cached_representation()
-
         DL_dir = self.config.save_dir / "DL_reps"
         DL_dir.mkdir(exist_ok=True, parents=True)
 
-        for split, subjects in self.split_subjects.items():
-            fp = DL_dir / f"{split}.{self.DF_SAVE_FORMAT}"
+        if subjects_per_output_file is None:
+            subject_chunks = [None]
+        else:
+            subjects = np.random.permutation(list(self.subject_ids))
+            subject_chunks = np.array_split(
+                subjects, np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file)
+            )
+            subject_chunks = [list(c) for c in subject_chunks]
 
-            split_cached_df = self._filter_col_inclusion(cached_df, {'subject_id': subjects})
-            self._write_df(split_cached_df, fp)
+        for chunk_idx, subjects_list in enumerate(subject_chunks):
+            cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
+
+            for split, subjects in self.split_subjects.items():
+                fp = DL_dir / f"{split}_{chunk_idx}.{self.DF_SAVE_FORMAT}"
+
+                split_cached_df = self._filter_col_inclusion(cached_df, {'subject_id': subjects})
+                self._write_df(split_cached_df, fp)
 
     @property
     def vocabulary_config(self) -> VocabularyConfig:
@@ -783,7 +794,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return idxmaps
 
     @abc.abstractmethod
-    def build_DL_cached_representation(self) -> DF_T:
+    def build_DL_cached_representation(self, subject_ids: Optional[List[int]] = None) -> DF_T:
         """
         Produces a format with the below syntax:
 
