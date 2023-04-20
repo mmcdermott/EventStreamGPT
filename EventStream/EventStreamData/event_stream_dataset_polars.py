@@ -289,6 +289,40 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         self.events_df = self.events_df.sort('subject_id', 'timestamp', descending=False)
 
     @TimeableMixin.TimeAs
+    def agg_by_time(self):
+        """
+        Aggregates the events_df by subject_id, timestamp, combining event_types into grouped categories,
+        tracking all associated metadata. Note that no numerical aggregation (e.g., mean, etc.) happens here;
+        all data is retained, and only dynamic measurement event IDs are updated.
+        """
+
+        event_id_dt = self.events_df['event_id'].dtype
+
+        grouped = self.events_df.groupby(
+            ['subject_id', 'timestamp'], maintain_order=True
+        ).agg(
+            pl.col('event_type').unique().sort(),
+            pl.col('event_id').unique().alias('old_event_id')
+        ).sort(
+            'subject_id', 'timestamp', descending=False
+        ).with_row_count(
+            'event_id'
+        ).with_columns(
+            pl.col('event_id').cast(event_id_dt),
+            pl.col('event_type').arr.eval(pl.col('').cast(pl.Utf8)).arr.join('&').alias('event_type')
+        )
+
+        new_to_old_set = grouped[['event_id', 'old_event_id']].explode('old_event_id')
+
+        self.events_df = grouped.drop('old_event_id')
+
+        self.dynamic_measurements_df = self.dynamic_measurements_df.rename(
+            {'event_id': 'old_event_id'}
+        ).join(
+            new_to_old_set, on='old_event_id', how='left'
+        ).drop('old_event_id')
+
+    @TimeableMixin.TimeAs
     def agg_by_time_type(self):
         """
         Aggregates the events_df by subject_id, timestamp, and event_type, tracking all associated metadata.
@@ -340,6 +374,30 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
 
         return df.filter(pl.all(filter_exprs))
+
+    @TimeableMixin.TimeAs
+    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+        measures = []
+        for measure, config in self.config.measurement_configs.items():
+            if (
+                (config.is_dropped) or 
+                (config.temporality != TemporalityType.DYNAMIC) or
+                (config.present_in_event_types is not None)
+            ): continue
+            measures.append(measure)
+
+        event_type_cnts = self._filter_measurements_df(
+            split='train'
+        ).join(
+            self.train_events_df.select('event_id', 'event_type'), on='event_id'
+        ).groupby('event_type').agg(
+            *[pl.col(c).drop_nulls().count() for c in measures]
+        )
+
+        out = {}
+        for measure in measures:
+            out[measure] = event_type_cnts.filter(pl.col(measure) > 0)['event_type'].to_list()
+        return out
 
     @TimeableMixin.TimeAs
     def add_time_dependent_measurements(self):

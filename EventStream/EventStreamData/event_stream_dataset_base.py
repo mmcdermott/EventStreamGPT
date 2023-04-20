@@ -266,7 +266,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         )
 
         if self.events_df is not None:
-            self.agg_by_time_type()
+            self.agg_by_time()
             self.sort_events()
         self._update_subject_event_properties()
 
@@ -286,12 +286,26 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
+    def filter_subjects(self):
+        if self.config.min_events_per_subject is None: return
+
+        subjects_to_keep = [
+            s for s, n in self.n_events_per_subject.items() if n >= self.config.min_events_per_subject
+        ]
+        self.subjects_df = self._filter_col_inclusion(self.subjects_df, {'subject_id': subjects_to_keep})
+        self.events_df = self._filter_col_inclusion(self.events_df, {'subject_id': subjects_to_keep})
+        self.dynamic_measurements_df = self._filter_col_inclusion(
+            self.dynamic_measurements_df,
+            {'event_id': list(self.events_df['event_id'])}
+        )
+
+    @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def agg_by_time_type(self):
+    def agg_by_time(self):
         """
-        Aggregates the events_df by subject_id, timestamp, and event_type, tracking all associated metadata.
-        Note that no numerical aggregation (e.g., mean, etc.) happens here; all data is retained, and only
-        dynamic measurement event IDs are updated.
+        Aggregates the events_df by subject_id, timestamp, combining event_types into grouped categories,
+        tracking all associated metadata. Note that no numerical aggregation (e.g., mean, etc.) happens here;
+        all data is retained, and only dynamic measurement event IDs are updated.
         """
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -445,6 +459,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
     @TimeableMixin.TimeAs
     def preprocess_measurements(self):
         """Fits all metadata over the train set, then transforms all metadata."""
+        self.filter_subjects()
         self.add_time_dependent_measurements()
         self.fit_measurements()
         self.transform_measurements()
@@ -481,6 +496,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return source_attr, source_id, source_df
 
     @TimeableMixin.TimeAs
+    @abc.abstractmethod
+    def _get_valid_event_types(self, measure: str) -> List[str]:
+        raise NotImplementedError("This method must be implemented by a subclass.")
+
+    @TimeableMixin.TimeAs
     def fit_measurements(self):
         """
         Fits preprocessing models, variables, and vocabularies over all metadata, including both numerical and
@@ -488,13 +508,22 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         """
         self._is_fit = False
 
+        # Get valid event types per measure
+        event_types_obs_per_measure = self._get_valid_event_types()
+
         for measure, config in self.config.measurement_configs.items():
             if config.is_dropped: continue
 
-            _, _, source_df = self._get_source_df(config, do_only_train=True)
-
             self.inferred_measurement_configs[measure] = copy.deepcopy(config)
             config = self.inferred_measurement_configs[measure]
+
+            # Add inferred event type limitations:
+            if (
+                (config.temporality == TemporalityType.DYNAMIC) and
+                (config.present_in_event_types is None)
+            ): config.present_in_event_types = event_types_obs_per_measure.get(measure, None)
+
+            _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
                 config.drop()

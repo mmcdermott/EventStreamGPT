@@ -203,10 +203,6 @@ class MeasurementConfig(JSONableMixin):
             case TemporalityType.DYNAMIC:
                 assert self.functor is None
 
-                if self.modality == DataModality.UNIVARIATE_REGRESSION:
-                    raise NotImplementedError(
-                        f"Dynamic measures don't yet support fully observed regression measures."
-                    )
             case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
                 assert self.functor is not None
                 assert self.present_in_event_types is None
@@ -385,6 +381,7 @@ class EventStreamDatasetConfig(JSONableMixin):
     min_valid_vocab_element_observations: Optional[COUNT_OR_PROPORTION] = None
     min_true_float_frequency: Optional[PROPORTION] = None
     min_unique_numerical_observations: Optional[COUNT_OR_PROPORTION] = None
+    min_events_per_subject: Optional[int] = None
 
     outlier_detector_config: Optional[Dict[str, Any]] = None
     normalizer_config: Optional[Dict[str, Any]] = None
