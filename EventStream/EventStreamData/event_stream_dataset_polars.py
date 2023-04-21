@@ -914,18 +914,22 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             ).otherwise(
                 pl.col(config.values_column)
             ).alias(config.values_column))
+            vocab_el_col = pl.col(measure)
+        elif config.modality == DataModality.UNIVARIATE_REGRESSION:
+            vocab_el_col = pl.col('const_key')
+        else: vocab_el_col = pl.col(measure)
 
         transform_expr.append(
             pl.when(
-                pl.col(measure).is_null()
+                vocab_el_col.is_null()
             ).then(
                 None
             ).when(
-                ~pl.col(measure).is_in(list(config.vocabulary.vocab_set))
+                ~vocab_el_col.is_in(list(config.vocabulary.vocab_set))
             ).then(
                 'UNK'
             ).otherwise(
-                pl.col(measure)
+                vocab_el_col
             ).cast(
                 pl.Categorical
             ).alias(measure)

@@ -13,6 +13,11 @@ from ..utils import lt_count_or_proportion
 
 DF_T = TypeVar('DF_T')
 
+
+    def build_input_dfs(
+        dfs: Dict[str, pl.DataFrame],
+        schema: 
+
 class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixin, TimeableMixin):
     """
     A unified base class for dataset objects using different processing libraries.
