@@ -7,88 +7,10 @@ class InputDFType(StrEnum):
     EVENT = enum.auto()
     RANGE = enum.auto()
 
-DF_COL = Union[str, Sequence[str]]
-
-DF_SCHEMA = Union[
-    # For cases where you specify a list of columns of a constant type.
-    Tuple[List[DF_COL], DataModality],
-    # For specifying a dictionary of columns to types.
-    Dict[DF_COL, DataModality],
-    # For specifying a dictionary of column in names to column out names and types.
-    Dict[DF_COL, Tuple[str, DataModality]],
-    # For specifying a dictionary of column in names to out names, all of a constant type.
-    Tuple[Dict[DF_COL, str], DataModality],
-]
-
 class InputDataType(StrEnum):
     CATEGORICAL = enum.auto()
     FLOAT = enum.auto()
-
-@dataclasses.dataclass
-class InputDFSchema:
-    name: Optional[str] = None
-    type: Optional[InputDFType] = None
-    event_type: Optional[str] = None
-
-    ts_col: Optional[DF_COL] = None
-    start_ts_col: Optional[DF_COL] = None
-    end_ts_col: Optional[DF_COL] = None
-    data_cols: Optional[List[DF_COL]] = None
-
-    do_make_unique: Optional[bool] = None
-    data_schema: Optional[Sequence[DF_SCHEMA]] = None
-
-    def __post_init__(self):
-        if self.type is None: raise ValueError("Missing mandatory parameter type!")
-        if self.event_type is None: raise ValueError("Missing mandatory parameter event_type!")
-
-        match self.type:
-            case InputDFType.EVENT:
-                if self.ts_col is None: raise ValueError("Missing mandatory event parameter ts_col!")
-                if (self.start_ts_col is not None) or (self.end_ts_col is not None):
-                    raise ValueError(
-                        "start_ts_col and end_ts_col should be `None` for {self.type} schemas! Got: "
-                        f"{self.start_ts_col} and {self.end_ts_col}."
-                    )
-            case InputDFType.RANGE:
-                if self.start_ts_col is None:
-                    raise ValueError("Missing mandatory range parameter start_ts_col!")
-                if self.end_ts_col is None:
-                    raise ValueError("Missing mandatory range parameter end_ts_col!")
-                if self.ts_col is not None:
-                    raise ValueError(f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}.")
-    def _add_to_schema(self, in_col: str, out_col: str, data_type: InputDataType):
-        self.unified_schema
-
-    def _set_unified_schema(self):
-        self.unified_schema = {}
-        if self.data_schema is None: return
-
-
-        for schema in self.data_schema:
-            match schema:
-                case (list() as cols, DataModality.MULTIVARIATE_REGRESSION as dt):
-                    for c in cols:
-                        if type(c) != tuple and len(c) != 2:
-                            raise ValueError(
-                                f"For {dt} columns, you must specify both a key column and a value column "
-                                f"in a tuple: (key, value). Got {c}!"
-                            )
-                        key_col, val_col = c
-                        if key_col in self.unified_schema:
-                            raise ValueError(f"Column {key_col} is repeated in schema!
-
-                case (list() as cols, DataModality() as dt):
-                    for c in cols:
-                        if type(c) is not str:
-                            raise ValueError(f"For {dt} columns, each column should be a string. Got {c}")
-
-                case dict():
-                case (dict() as col_names_map, DataModality.MULTIVARIATE_REGRESSION as dt):
-                case (dict() as col_names_map, DataModality() as dt):
-                case _:
-                    raise ValueError(f"Schema Unprocessable!\n{schema}")
-
+    TIMESTAMP = enum.auto()
 
 @dataclasses.dataclass
 class EventStreamPytorchBatch:
