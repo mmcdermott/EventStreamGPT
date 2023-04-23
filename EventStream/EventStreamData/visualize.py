@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import dataclasses, pandas as pd
+import dataclasses, numpy as np, polars as pl
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Sequence, Tuple, Union
@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Set, Sequence, Tuple, Union
 from ..utils import JSONableMixin
 
 import plotly.express as px
+from plotly.graph_objs._figure import Figure
 
 @dataclasses.dataclass
 class Visualizer(JSONableMixin):
@@ -97,7 +98,7 @@ class Visualizer(JSONableMixin):
         if self.plot_by_time and self.time_unit is None:
             raise ValueError("Can't plot by time if time_unit is unspecified!")
 
-    def plot_counts_over_time(self, events_df: pl.DataFrame) -> List[px.Figure]:
+    def plot_counts_over_time(self, events_df: pl.DataFrame) -> List[Figure]:
         figures = []
         if not self.plot_by_time: return figures
 
@@ -128,15 +129,13 @@ class Visualizer(JSONableMixin):
             ).alias('cumulative_subj_increment'),
         ).groupby_dynamic(
             index_column='timestamp',
-            every=time_unit,
+            every=self.time_unit,
             by=self.static_covariates,
         ).agg(
             pl.col('subject_id').n_unique().alias('n_subjects'),
             pl.col('event_id').n_unique().alias('n_events'),
             pl.col('active_subj_increment').sum().alias('active_subjects_delta'),
             pl.col('cumulative_subj_increment').sum().alias('cumulative_subjects_delta'),
-        ).with_columns(
-            (pl.col('n_events') / pl.col('n_subjects')).alias('events_per_subject_per_time'),
         ).sort('timestamp', descending=False)
 
         for static_covariate in self.static_covariates:
@@ -147,8 +146,10 @@ class Visualizer(JSONableMixin):
             ).agg(
                 pl.col('n_subjects').sum(),
                 pl.col('n_events').sum(),
-                pl.col('active_subj_increment').sum(),
-                pl.col('cumulative_subj_increment').sum(),
+                pl.col('active_subjects_delta').sum(),
+                pl.col('cumulative_subjects_delta').sum(),
+            ).with_columns(
+                (pl.col('n_events') / pl.col('n_subjects')).alias('events_per_subject_per_time'),
             )
 
             # "Active Subjects": $y$ = the number of active subjects at time $x$ (i.e. the number of subjects
@@ -193,9 +194,10 @@ class Visualizer(JSONableMixin):
 
     def plot_age_distribution_over_time(
         self, subjects_df: pl.DataFrame, subj_ranges: pl.DataFrame
-    ) -> List[px.Figure]:
-        if not self.plot_by_time: return []
-        if self.dob_col is None: return []
+    ) -> List[Figure]:
+        figures = []
+        if not self.plot_by_time: return figures
+        if self.dob_col is None: return figures
 
         start_time = subj_ranges['start_time'].min()
         end_time = subj_ranges['end_time'].max()
@@ -211,7 +213,7 @@ class Visualizer(JSONableMixin):
         cross_df = subj_ranges.join(
             time_points, how='cross'
         ).filter(
-            pl.col('start_time') <= pl.col('timestamp') <= pl.col('end_time')
+	    (pl.col('start_time') <= pl.col('timestamp')) & (pl.col('timestamp') <= pl.col('end_time'))
         ).select(
             *self.static_covariates,
             (pl.col('timestamp') - pl.col(self.dob_col)).alias(self.age_col),
@@ -219,10 +221,12 @@ class Visualizer(JSONableMixin):
 
         for static_covariate in self.static_covariates:
             figures.append(px.density_heatmap(
-                cross_df, x='timestamp', y=self.age_col, facet=static_covariate, nbinsy=self.n_age_buckets,
+                cross_df, x='timestamp', y=self.age_col, facet_col=static_covariate, nbinsy=self.n_age_buckets,
             ))
 
-    def plot_counts_over_age(self, events_df: pl.DataFrame) -> List[px.Figure]:
+        return figures
+
+    def plot_counts_over_age(self, events_df: pl.DataFrame) -> List[Figure]:
         figures = []
         if not self.plot_by_age: return figures
 
@@ -272,8 +276,8 @@ class Visualizer(JSONableMixin):
         return figures
 
     def plot(
-        self, events_df: pl.DataFrame, subjects_df: pl.DataFrame, dynamic_measurements_df: pl.DataFrame
-    ) -> List[px.Figure]:
+        self, subjects_df: pl.DataFrame, events_df: pl.DataFrame, dynamic_measurements_df: pl.DataFrame
+    ) -> List[Figure]:
         subj_ranges = events_df.groupby('subject_id').agg(
             pl.col('timestamp').min().alias('start_time'),
             pl.col('timestamp').max().alias('end_time')

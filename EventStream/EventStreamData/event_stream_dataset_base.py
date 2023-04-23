@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import datetime
 from mixins import SeedableMixin, SaveableMixin, TimeableMixin
 from pathlib import Path
+from plotly.graph_objs._figure import Figure
 from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Set, Union
 
 from .config import (
@@ -894,7 +895,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         self,
         viz_config: Visualizer,
         save_dir: Optional[Path] = None,
-    ) -> List[px.Figure]:
+    ) -> List[Figure]:
         """
         Visualizes the dataset, along the following axes:
 
@@ -910,7 +911,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             viz_config.to_json_file(save_dir / 'viz_config.json')
 
         if viz_config.subset_size is not None:
-            subject_ids = list(np.random.choice(self.subject_ids, viz_config.subset_size))
+            subject_ids = list(np.random.choice(list(self.subject_ids), viz_config.subset_size))
 
             subjects_df = self._filter_col_inclusion(self.subjects_df, {'subject_id': subject_ids})
             events_df = self._filter_col_inclusion(self.events_df, {'subject_id': subject_ids})
