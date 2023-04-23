@@ -8,10 +8,10 @@ from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar,
 
 from .config import (
     EventStreamDatasetConfig, MeasurementConfig, VocabularyConfig,
-    InputDFSchema, VisualizationConfig,
 )
+from .visualize import Visualizer
 from .types import (
-    DataModality, TemporalityType, NumericDataModalitySubtype, InputDFType, InputDataType
+    DataModality, TemporalityType, NumericDataModalitySubtype
 )
 from .vocabulary import Vocabulary
 from ..utils import lt_count_or_proportion
@@ -885,11 +885,10 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
 
         raise NotImplementedError("This method must be implemented by a subclass.")
 
-    def _plot(
-        self, fig: Any, plot_spec: Dict[str, str],
-        subjects_df: DF_T, events_df: DF_T, dynamic_measurements_df: DF_T
-    ):
-        raise NotImplementedError()
+    @abc.abstractmethod
+    def denormalize(self, events_df: DF_T, col: str) -> DF_T:
+        """ Un-normalizes the column `col` in df `events_df`. """
+        raise NotImplementedError("This method must be implemented by a subclass.")
 
     def visualize(
         self,
@@ -918,15 +917,12 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             dynamic_measurements_df = self._filter_col_inclusion(
                 self.dynamic_measurements_df, {'event_id': list(events_df['event_id'])}
             )
-        else: 
+        else:
             subjects_df = self.subjects_df
             events_df = self.events_df
             dynamic_measurements_df = self.dynamic_measurements_df
 
-        # Step 1: Build Plot Spec
-        plots = viz_config.plot_spec
+        if viz_config.age_col is not None:
+            events_df = self.denormalize(events_df, viz_config.age_col)
 
-        fig_axes = ...
-
-        for fig, plot_spec in zip(fig_axes, plots):
-            self._plot(fig, plot_spec, subjects_df, events_df, dynamic_measurements_df)
+        viz_config.plot(subjects_df, events_df, dynamic_measurements_df)

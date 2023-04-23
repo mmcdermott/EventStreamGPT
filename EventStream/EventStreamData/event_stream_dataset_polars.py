@@ -1087,3 +1087,17 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         if do_sort_outputs: out = out.sort('subject_id')
 
         return out
+
+    def denormalize(self, events_df: DF_T, col: str) -> DF_T:
+        if self.config.normalizer_config is None: return events_df
+        elif self.config.normalizer_config['cls'] != 'standard_scaler':
+            raise ValueError(f"De-normalizing from {self.config.normalizer_config} not yet supported!")
+
+        config = self.measurement_configs[col]
+        if config.modality != DataModality.UNIVARIATE_REGRESSION:
+            raise ValueError(f"De-normalizing {config.modality} is not currently supported.")
+
+        normalizer_params = config.measurement_metadata.normalizer
+        return events_df.with_columns(
+            ((pl.col(col)*normalizer_params['std_']) + normalizer_params['mean_']).alias(col)
+        )
