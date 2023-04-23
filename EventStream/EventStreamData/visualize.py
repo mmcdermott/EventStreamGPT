@@ -150,7 +150,7 @@ class Visualizer(JSONableMixin):
                 pl.col('cumulative_subjects_delta').sum(),
             ).with_columns(
                 (pl.col('n_events') / pl.col('n_subjects')).alias('events_per_subject_per_time'),
-            )
+            ).sort('timestamp', descending=False)
 
             # "Active Subjects": $y$ = the number of active subjects at time $x$ (i.e. the number of subjects
             # who have at least one event before $t$ and have not yet had their last event at $t$).
@@ -209,19 +209,21 @@ class Visualizer(JSONableMixin):
         time_points = pl.DataFrame({
             'timestamp': pl.date_range(start_time, end_time, interval=self.time_unit)
         })
+        n_time_bins = len(time_points)+1
 
         cross_df = subj_ranges.join(
             time_points, how='cross'
         ).filter(
 	    (pl.col('start_time') <= pl.col('timestamp')) & (pl.col('timestamp') <= pl.col('end_time'))
         ).select(
-            *self.static_covariates,
+            'timestamp', *self.static_covariates,
             (pl.col('timestamp') - pl.col(self.dob_col)).alias(self.age_col),
         ).to_pandas()
 
         for static_covariate in self.static_covariates:
             figures.append(px.density_heatmap(
                 cross_df, x='timestamp', y=self.age_col, facet_col=static_covariate, nbinsy=self.n_age_buckets,
+                nbinsx=n_time_bins, marginal_y='histogram',
             ))
 
         return figures
@@ -250,7 +252,7 @@ class Visualizer(JSONableMixin):
         )
 
         for static_covariate in self.static_covariates:
-            plt_kwargs = {'x': 'timestamp', 'color': static_covariate}
+            plt_kwargs = {'x': self.age_col, 'color': static_covariate}
 
             counts_at_age = events_df.groupby(
                 self.age_col, static_covariate
