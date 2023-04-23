@@ -281,8 +281,12 @@ class Visualizer(JSONableMixin):
         events_per_patient = events_df.groupby(
             'subject_id', *self.static_covariates
         ).agg(
-            pl.col('event_id').n_unique()
-        )
+            pl.col('event_id').n_unique().alias('# of Events')
+        ).to_pandas()
+
+        return [
+            px.histogram(events_per_patient, x='# of Events', color=c) for c in self.static_covariates
+        ]
 
     def plot(
         self, subjects_df: pl.DataFrame, events_df: pl.DataFrame, dynamic_measurements_df: pl.DataFrame
