@@ -1,4 +1,4 @@
-import abc, copy, itertools, numpy as np, pandas as pd
+import abc, copy, itertools, numpy as np, pandas as pd, plotly.express as px
 
 from collections import defaultdict
 from datetime import datetime
@@ -892,9 +892,9 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
 
     def visualize(
         self,
-        viz_config: VisualizationConfig,
+        viz_config: Visualizer,
         save_dir: Optional[Path] = None,
-    ):
+    ) -> List[px.Figure]:
         """
         Visualizes the dataset, along the following axes:
 
@@ -925,4 +925,5 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         if viz_config.age_col is not None:
             events_df = self.denormalize(events_df, viz_config.age_col)
 
-        viz_config.plot(subjects_df, events_df, dynamic_measurements_df)
+        figs = viz_config.plot(subjects_df, events_df, dynamic_measurements_df)
+        return figs
