@@ -277,6 +277,13 @@ class Visualizer(JSONableMixin):
 
         return figures
 
+    def plot_events_per_patient(self, events_df: pl.DataFrame) -> List[Figure]:
+        events_per_patient = events_df.groupby(
+            'subject_id', *self.static_covariates
+        ).agg(
+            pl.col('event_id').n_unique()
+        )
+
     def plot(
         self, subjects_df: pl.DataFrame, events_df: pl.DataFrame, dynamic_measurements_df: pl.DataFrame
     ) -> List[Figure]:
@@ -298,5 +305,6 @@ class Visualizer(JSONableMixin):
         figs.extend(self.plot_counts_over_time(events_df))
         figs.extend(self.plot_age_distribution_over_time(subjects_df, subj_ranges))
         figs.extend(self.plot_counts_over_age(events_df))
+        figs.extend(self.plot_events_per_patient(events_df))
 
         return figs
