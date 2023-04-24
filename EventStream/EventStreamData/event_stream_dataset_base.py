@@ -564,7 +564,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def _get_valid_event_types(self, measure: str) -> List[str]:
+    def _get_valid_event_types(self) -> Dict[str, List[str]]:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
@@ -861,7 +861,9 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return idxmaps
 
     @abc.abstractmethod
-    def build_DL_cached_representation(self, subject_ids: Optional[List[int]] = None) -> DF_T:
+    def build_DL_cached_representation(
+        self, subject_ids: Optional[List[int]] = None, do_sort_outputs: bool = False
+    ) -> DF_T:
         """
         Produces a format with the below syntax:
 

@@ -106,10 +106,6 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 modality = DataModality.UNIVARIATE_REGRESSION,
                 measurement_metadata = pd.Series([None]),
             ), dict(
-                temporality = TemporalityType.DYNAMIC,
-                modality = DataModality.UNIVARIATE_REGRESSION,
-                measurement_metadata = pd.Series([None]),
-            ), dict(
                 modality = 'dropped',
             ), dict(
                 temporality = TemporalityType.DYNAMIC,
@@ -385,6 +381,7 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             outlier_detector_config = None,
             normalizer_config = None,
             save_dir = None,
+            min_events_per_subject = None,
         )
         nontrivial_measurement_configs = {
             'col_A': MeasurementConfig(

@@ -309,7 +309,11 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             'event_id'
         ).with_columns(
             pl.col('event_id').cast(event_id_dt),
-            pl.col('event_type').arr.eval(pl.col('').cast(pl.Utf8)).arr.join('&').alias('event_type')
+            pl.col(
+                'event_type'
+            ).arr.eval(
+                pl.col('').cast(pl.Utf8)
+            ).arr.join('&').cast(pl.Categorical).alias('event_type')
         )
 
         new_to_old_set = grouped[['event_id', 'old_event_id']].explode('old_event_id')
@@ -382,9 +386,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             if (
                 (config.is_dropped) or 
                 (config.temporality != TemporalityType.DYNAMIC) or
-                (config.present_in_event_types is not None)
+                (config.present_in_event_types is not None) or
+                (measure not in self.dynamic_measurements_df.columns)
             ): continue
             measures.append(measure)
+
+        if not measures: return {}
 
         event_type_cnts = self._filter_measurements_df(
             split='train'
@@ -999,7 +1006,9 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             pl.col('value').struct.field('value').alias('value'),
         )
 
-    def build_DL_cached_representation(self, subject_ids: Optional[List[int]] = None) -> DF_T:
+    def build_DL_cached_representation(
+        self, subject_ids: Optional[List[int]] = None, do_sort_outputs: bool = False
+    ) -> DF_T:
         """
         Produces a format with the below syntax:
 

@@ -7,7 +7,7 @@ import copy, unittest, numpy as np, pandas as pd
 from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Tuple, Sequence, Set
+from typing import Any, Dict, List, Tuple, Sequence, Set
 
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
 from EventStream.EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
@@ -40,8 +40,8 @@ class ESDMock(EventStreamDatasetBase[dict]):
     def _update_subject_event_properties(self):
         self.functions_called['_update_subject_event_properties'].append(())
 
-    def agg_by_time_type(self):
-        self.functions_called['agg_by_time_type'].append(())
+    def agg_by_time(self):
+        self.functions_called['agg_by_time'].append(())
 
     def sort_events(self):
         self.functions_called['sort_events'].append(())
@@ -78,13 +78,17 @@ class ESDMock(EventStreamDatasetBase[dict]):
     def _transform_numerical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: dict
     ) -> dict:
-        self.functions_called['_transform_numerical_measurement'].append((measure, config, source_df))
+        self.functions_called['_transform_numerical_measurement'].append(
+            copy.deepcopy((measure, config, source_df))
+        )
         return source_df
 
     def _transform_categorical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: dict
     ) -> dict:
-        self.functions_called['_transform_categorical_measurement'].append((measure, config, source_df))
+        self.functions_called['_transform_categorical_measurement'].append(
+            copy.deepcopy((measure, config, source_df))
+        )
 
     def _filter_col_inclusion(self, df: dict, col: Dict[str, Sequence[Any]]) -> dict:
         self.functions_called['_filter_col_inclusion'].append((df, col))
@@ -107,6 +111,14 @@ class ESDMock(EventStreamDatasetBase[dict]):
 
     def build_DL_cached_representation(self):
         self.functions_called['build_DL_cached_representation'].append(())
+
+    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+        self.functions_called['_get_valid_event_types'].append(())
+        return {}
+
+    def denormalize(self, events_df: dict, col: str) -> dict:
+        self.functions_called['denormalize'].append((events_df, col))
+        return events_df
 
 class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     """Tests the `EventStreamDataset` class."""
@@ -137,7 +149,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         want_functions_called = {
             '_validate_initial_dfs': [(self.subjects_df, self.events_df, self.dynamic_measurements_df)],
             '_update_subject_event_properties': [()],
-            'agg_by_time_type': [()],
+            'agg_by_time': [()],
             'sort_events': [()],
         }
         self.assertEqual(want_functions_called, self.E.functions_called)
@@ -331,7 +343,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         }
 
         def get_source_df(self, *args, **kwargs):
-            self.functions_called['_get_source_df'].append((args, kwargs))
+            self.functions_called['_get_source_df'].append(copy.deepcopy((args, kwargs)))
             return None, None, mock_source_df
 
         base_measurement_config_kwargs = {
@@ -432,6 +444,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 ('retained', partial_retained_config_init, mock_source_df),
                 ('numeric', partial_numeric_config_init, mock_source_df),
             ],
+            '_get_valid_event_types': [()],
         }
         self.assertNestedDictEqual(want_functions_called, self.E.functions_called)
 
