@@ -36,7 +36,7 @@ class StructuredEventStreamForEmbeddingLightningModule(L.LightningModule):
             config (`Union[StructuredEventstreamTransformerConfig, Dict[str, Any]]`):
                 The configuration for the underlying
                 `StructuredEventStreamTransformerForGenerativeSequenceModeling` model. Should be
-                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary 
+                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary
                 parseable as such.
             pretrained_weights_fp (`pathlib.Path`):
                 The path to the pre-trained model that should be loaded whose embeddings will be retreived.

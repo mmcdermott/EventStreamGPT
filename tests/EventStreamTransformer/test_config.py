@@ -30,7 +30,7 @@ DEFAULT_OPT_CONFIG_DICT = dict(
 
 class TestEventStreamOptimizationConfig(unittest.TestCase):
     def test_set_to_dataset(self):
-        cfg = EventStreamOptimizationConfig( **{
+        cfg = EventStreamOptimizationConfig(**{
             **DEFAULT_OPT_CONFIG_DICT,
             'max_epochs': 10,
             'batch_size': 2,

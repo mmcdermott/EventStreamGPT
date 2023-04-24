@@ -58,7 +58,7 @@ class Visualizer(JSONableMixin):
     dob_col: Optional[str] = None
     n_age_buckets: Optional[int] = 200
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Represents this configuation object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
         dynamic_last_seen = []
@@ -72,7 +72,7 @@ class Visualizer(JSONableMixin):
         return as_dict
 
     @classmethod
-    def from_dict(cls, as_dict: dict) -> 'EventStreamPytorchDatasetConfig':
+    def from_dict(cls, as_dict: dict) -> 'Visualizer':
         """Creates a new instance of this class from a plain dictionary."""
         dynamic_last_seen = []
         for e in as_dict['split_subject_plots_by_dynamic_last_seen_covariates']:
@@ -214,7 +214,7 @@ class Visualizer(JSONableMixin):
         cross_df = subj_ranges.join(
             time_points, how='cross'
         ).filter(
-	    (pl.col('start_time') <= pl.col('timestamp')) & (pl.col('timestamp') <= pl.col('end_time'))
+            (pl.col('start_time') <= pl.col('timestamp')) & (pl.col('timestamp') <= pl.col('end_time'))
         ).select(
             'timestamp', *self.static_covariates,
             (pl.col('timestamp') - pl.col(self.dob_col)).alias(self.age_col),

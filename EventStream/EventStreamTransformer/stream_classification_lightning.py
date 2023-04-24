@@ -43,7 +43,7 @@ class StructuredEventStreamForStreamClassificationLightningModule(L.LightningMod
             config (`Union[StructuredEventstreamTransformerConfig, Dict[str, Any]]`):
                 The configuration for the underlying
                 `StructuredEventStreamTransformerForGenerativeSequenceModeling` model. Should be
-                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary 
+                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary
                 parseable as such.
             optimization_config (`Union[EventStreamOptimizationConfig, Dict[str, Any]]`):
                 The configuration for the optimization process handled by the Lightning module. Should

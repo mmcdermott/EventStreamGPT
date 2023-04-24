@@ -106,7 +106,7 @@ class InnerSelfAttention(nn.Module):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
+        causal_mask = self.bias[:, :, key_length - query_length:key_length, :key_length].to(torch.bool)
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error:
         # `RuntimeError: expected scalar type float but found double`.

@@ -129,7 +129,7 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
         Returns:
             The `torch.distributions.normal.Normal` distribution with parameters `self.proj(X)` on indices
             specified by `I`, which will have output shape `(batch_size, sequence_length, num_predictions)`,
-            unless `I` is None in which case it will have predictions for all indices and have shape 
+            unless `I` is None in which case it will have predictions for all indices and have shape
             `(batch_size, sequence_length, n_regression_targets)`.
         """
 

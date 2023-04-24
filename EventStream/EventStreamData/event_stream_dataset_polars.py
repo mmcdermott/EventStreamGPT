@@ -384,7 +384,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         measures = []
         for measure, config in self.config.measurement_configs.items():
             if (
-                (config.is_dropped) or 
+                (config.is_dropped) or
                 (config.temporality != TemporalityType.DYNAMIC) or
                 (config.present_in_event_types is not None) or
                 (measure not in self.dynamic_measurements_df.columns)

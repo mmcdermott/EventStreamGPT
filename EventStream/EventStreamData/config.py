@@ -570,7 +570,7 @@ class EventStreamDatasetConfig(JSONableMixin):
             val = getattr(self, var)
             if val is not None: assert type(val) is dict and 'cls' in val
 
-        for k, v in self.measurement_configs.items(): 
+        for k, v in self.measurement_configs.items():
             try: v._validate()
             except Exception as e:
                 raise ValueError(f"Measurement config {k} invalid!") from e

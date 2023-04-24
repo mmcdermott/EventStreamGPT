@@ -265,7 +265,7 @@ class OutputsProcessorList(list):
 #     this library doesn't do it (it only does it before, but they may need re-normalization) but it still supposes that
 #     the outputs are normalized when comparing the hypotheses.
 #     """
-# 
+#
 #     def __call__(self, batch: torch.Tensor, outputs: torch.Tensor) -> torch.Tensor:
 #         outputs = outputs.log_softmax(dim=-1)
 #         return outputs

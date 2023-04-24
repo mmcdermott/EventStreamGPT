@@ -100,7 +100,7 @@ class DataEmbeddingLayer(torch.nn.Module):
                 The weight of the dynamic embeddings. Only used if `static_embedding_mode` is not
                 `StaticEmbeddingMode.DROP`.
             `categorical_weight` (`float`, *default* = `1/2`):
-                The weight of the categorical embeddings. Only used if `categorical_embedding_dim` and 
+                The weight of the categorical embeddings. Only used if `categorical_embedding_dim` and
                 `numerical_embedding_dim` are not `None`.
             `numerical_weight` (`float`, *default* = `1/2`):
                 The weight of the numerical embeddings. Only used if `categorical_embedding_dim` and
@@ -113,7 +113,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         if type(n_total_embeddings) is not int: raise TypeError("`n_total_embeddings` must be an `int`.")
         if n_total_embeddings <= 0: raise ValueError("`n_total_embeddings` must be positive.")
 
-        if static_embedding_mode not in StaticEmbeddingMode.values(): 
+        if static_embedding_mode not in StaticEmbeddingMode.values():
             raise TypeError(
                 "`static_embedding_mode` must be a `StaticEmbeddingMode` enum member: "
                 f"{StaticEmbeddingMode.values()}."

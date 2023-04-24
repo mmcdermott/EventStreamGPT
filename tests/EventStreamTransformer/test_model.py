@@ -681,7 +681,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 },
                 'want_labels': {'event_type': torch.LongTensor([[0, 0, 0]])},
                 'want_losses': {
-                    # event_type has no valid observations, so should return a loss of 0. 
+                    # event_type has no valid observations, so should return a loss of 0.
                     'event_type': torch.tensor(0.),
                 },
             },
@@ -811,8 +811,8 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 # the parameters for each component, with log_weights being the logits for the component
                 # distributions):
                 # See here for pdf: https://en.wikipedia.org/wiki/Log-normal_distribution
-                # It's formula is 
-                # pdf(x) = (1/(x*math.exp(scale)*math.sqrt(2*math.pi))) * 
+                # It's formula is
+                # pdf(x) = (1/(x*math.exp(scale)*math.sqrt(2*math.pi))) *
                 #          math.exp(-(math.log(x) - loc)**2/(2*(math.exp(scale)**2)))
                 # LL = 1/2 * (
                 #   math.log(
@@ -1452,7 +1452,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 'weight': torch.nn.Parameter(torch.Tensor([[1, 0, 0, 0]])),
                 'bias': torch.nn.Parameter(torch.Tensor([0])),
                 'batch': {'stream_labels': {'test': torch.FloatTensor([0, 1])}},
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [1., 2., 3., 4.],
@@ -1487,7 +1487,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                     do_add_temporal_position_embeddings_to_data_embeddings=None,
                 ),
                 'mock_encoder': HiddenStateNoDepGraphLevel,
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [1., 2., 3., 4.],
@@ -1519,7 +1519,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
             }, {
                 'msg': "It should select from the dep_graph in the nested attention, CLS case.",
                 'kwargs': dict(),
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [-1., 0., -3., 4.],
@@ -1551,7 +1551,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
             }, {
                 'msg': "It should select from the dep_graph in the nested attention, mean case.",
                 'kwargs': {'task_specific_params': {'pooling_method': 'mean'}},
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [-1., 0., -3., 4.],
@@ -1583,7 +1583,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
             }, {
                 'msg': "It should select from the dep_graph in the nested attention, max case.",
                 'kwargs': {'task_specific_params': {'pooling_method': 'max'}},
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [-1., 2., -3., 4.],

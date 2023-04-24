@@ -42,7 +42,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
             config (`Union[StructuredEventstreamTransformerConfig, Dict[str, Any]]`):
                 The configuration for the underlying
                 `StructuredEventStreamTransformerForGenerativeSequenceModeling` model. Should be
-                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary 
+                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary
                 parseable as such.
             optimization_config (`Union[EventStreamOptimizationConfig, Dict[str, Any]]`):
                 The configuration for the optimization process handled by the Lightning module. Should
@@ -84,7 +84,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
         """Build the various torchmetrics we'll use to track performance."""
 
         # For judging our ability to predict time-to-event, we'll use the following scores:
-        #   1. Explained Variance: 
+        #   1. Explained Variance:
         #      (e.g., https://scikit-learn.org/stable/modules/generated/sklearn.metrics.explained_variance_score.html)
         #   2. Mean Squared Error
         #   3. Mean Squared Log Error
@@ -516,7 +516,7 @@ def fit_generative_sequence_model(
         trainer_kwargs['logger'] = wandb_logger
 
     if (
-        (optimization_config.gradient_accumulation is not None) and 
+        (optimization_config.gradient_accumulation is not None) and
         (optimization_config.gradient_accumulation > 1)
     ):
         trainer_kwargs['accumulate_grad_batches'] = optimization_config.gradient_accumulation

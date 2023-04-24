@@ -14,7 +14,7 @@ class VarianceImpactOutlierDetector(Preprocessor):
     deviation.
     """
     @classmethod
-    def params_schema(cls) -> Dict[str, pl.DataType]: 
+    def params_schema(cls) -> Dict[str, pl.DataType]:
         return {'thresh_large_': pl.Float64, 'thresh_small_': pl.Float64}
 
     def __init__(
