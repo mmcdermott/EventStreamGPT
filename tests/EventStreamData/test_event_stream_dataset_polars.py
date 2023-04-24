@@ -1457,12 +1457,6 @@ class TestEventStreamDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual(WANT_UNIFIED_VOCABULARY_OFFSETS, E.unified_vocabulary_offsets)
         self.assertNestedDictEqual(WANT_UNIFIED_VOCABULARY_IDXMAP, E.unified_vocabulary_idxmap)
 
-        round_expr = pl.col('dynamic_values').arr.eval(
-            pl.col('').arr.eval(
-                pl.col('').round(6)
-            )
-        ).alias('dynamic_values')
-
         got_DL_rep = E.build_DL_cached_representation(do_sort_outputs=True)
         self.assertEqual(WANT_DL_REP_DF.drop('dynamic_values'), got_DL_rep.drop('dynamic_values'))
 

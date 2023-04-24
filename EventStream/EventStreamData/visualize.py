@@ -296,9 +296,6 @@ class Visualizer(JSONableMixin):
             pl.col('timestamp').max().alias('end_time')
         )
 
-        min_time = subj_ranges['start_time'].min()
-        max_time = subj_ranges['end_time'].max()
-
         static_variables = subj_ranges.join(
             subjects_df.select('subject_id', *self.static_covariates), on='subject_id'
         )

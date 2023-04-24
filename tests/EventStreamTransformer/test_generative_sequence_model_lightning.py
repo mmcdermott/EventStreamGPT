@@ -51,6 +51,6 @@ class TestStructuredEventStreamForGenerativeSequenceModelingLightningModule(MLTy
         )
         optimization_config = EventStreamOptimizationConfig()
 
-        LM = StructuredEventStreamForGenerativeSequenceModelingLightningModule(config=config, optimization_config=optimization_config)
+        StructuredEventStreamForGenerativeSequenceModelingLightningModule(config=config, optimization_config=optimization_config)
 
 if __name__ == '__main__': unittest.main()

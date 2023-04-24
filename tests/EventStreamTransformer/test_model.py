@@ -99,7 +99,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
     def test_constructs(self):
         """Tests that the Model Output Layer constructs given default configuration options."""
         config = StructuredEventStreamTransformerConfig(**BASE_CONFIG_KWARGS)
-        layer = StructuredEventStreamGenerativeOutputLayer(config)
+        StructuredEventStreamGenerativeOutputLayer(config)
 
     def test_get_event_type_mask_per_measurement(self):
         config = StructuredEventStreamTransformerConfig(**{

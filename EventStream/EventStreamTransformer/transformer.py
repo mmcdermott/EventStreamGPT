@@ -538,11 +538,7 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if past is None:
-            past_length = 0
-            past = tuple([None] * len(self.h))
-        else:
-            past_length = past[0][0].size(-2)
+        if past is None: past = tuple([None] * len(self.h))
 
         if input_embeds is None:
             assert batch is not None

@@ -56,9 +56,8 @@ class TestEventStreamPytorchDatasetConfig(unittest.TestCase):
         for C in cases:
             with self.subTest(C['msg']):
                 if C.get('should_raise', None) is not None:
-                    with self.assertRaises(C['should_raise']):
-                        cfg = EventStreamPytorchDatasetConfig(**C['kwargs'])
-                else: cfg = EventStreamPytorchDatasetConfig(**C['kwargs'])
+                    with self.assertRaises(C['should_raise']): EventStreamPytorchDatasetConfig(**C['kwargs'])
+                else: EventStreamPytorchDatasetConfig(**C['kwargs'])
 
 class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
     def test_validates_params(self):
@@ -84,7 +83,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 functor=AgeFunctor('dob'),
             )
         ]
-        for kwargs in valid_kwargs: config = MeasurementConfig(**kwargs)
+        for kwargs in valid_kwargs: MeasurementConfig(**kwargs)
 
         invalid_kwargs = [
             dict(
@@ -129,7 +128,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         for kwargs in invalid_kwargs:
             with self.subTest(str(kwargs)):
                 with self.assertRaises((AssertionError, ValueError, NotImplementedError)):
-                    config = MeasurementConfig(**kwargs)
+                    MeasurementConfig(**kwargs)
 
     def test_add_missing_mandatory_metadata_cols(self):
         config = MeasurementConfig(

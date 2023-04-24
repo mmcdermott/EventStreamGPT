@@ -220,9 +220,9 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
                 for args_dict in kwargs:
                     if 'should_raise' in C:
                         with self.assertRaises(C['should_raise']):
-                            cfg = StructuredEventStreamTransformerConfig(**args_dict)
+                            StructuredEventStreamTransformerConfig(**args_dict)
                     else:
-                        cfg = StructuredEventStreamTransformerConfig(**args_dict)
+                        StructuredEventStreamTransformerConfig(**args_dict)
 
     def test_expand_attention_types_params(self):
         for C in [

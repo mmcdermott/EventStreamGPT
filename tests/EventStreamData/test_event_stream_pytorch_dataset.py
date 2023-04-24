@@ -356,7 +356,6 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
                 for i, it in enumerate(C['want_items']):
                     it = copy.deepcopy(it)
-                    N = len(it['time'])
                     st = C['want_start_idx'][i] if 'want_start_idx' in C else 0
                     end = C['want_end_idx'][i] if 'want_end_idx' in C else st + C['max_seq_len']
 

@@ -359,9 +359,6 @@ class StructuredEventStreamGenerationMixin:
                 else self.config.return_dict_in_generate
         )
 
-        # 2. Define batch size
-        batch_size = batch['time'].shape[0]
-
         # 3. Define other model kwargs
         model_kwargs["output_attentions"] = output_attentions
         model_kwargs["output_hidden_states"] = output_hidden_states
