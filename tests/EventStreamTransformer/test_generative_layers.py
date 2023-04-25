@@ -207,7 +207,7 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
         ])
         X.requires_grad = True
 
-        I = torch.LongTensor([
+        idx = torch.LongTensor([
             [0, 1],
             [0, 1],
             [1, 0],
@@ -228,7 +228,7 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
             [1.0, torch.finfo(torch.float32).tiny],
         ])
 
-        got = L(X, I)
+        got = L(X, idx)
 
         self.assertEqual(got.mean, want_mean)
         self.assertEqual(got.stddev, want_std)

@@ -19,12 +19,12 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
             [1, 3.4],
             [2.0, 0.0],
         ])
-        I = torch.LongTensor([
+        idx = torch.LongTensor([
             [0, 2],
             [3, 1],
         ])
 
-        got = expand_indexed_regression(X, I, vocab_size=5)
+        got = expand_indexed_regression(X, idx, vocab_size=5)
         want = torch.Tensor([
             [1, 0, 3.4, 0, 0],
             [0, 0, 0, 2, 0],

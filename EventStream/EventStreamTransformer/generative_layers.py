@@ -91,17 +91,18 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
     """
     This module implements an indexed, probabilistic regression layer. Given an input `X`, this module
     predicts probabilistic regression outputs for each input in `X` for many regression targets, then
-    subselects those down to just the set of regression targets `I` that are actually needed in practice, and
-    returns those. We can view this as a bilinear matrix multiplication: namely, given the following inputs:
+    subselects those down to just the set of regression targets `idx` that are actually needed in practice,
+    and returns those. We can view this as a bilinear matrix multiplication: namely, given the following
+    inputs:
         * `X`, a dense, batched, per-event input tensor of shape `(batch_size, sequence_len, in_dim)`
-        * `proj`, a dense transformation matrix from the input space to the regression target space of
-            shape `(in_dim, regression_dim)`.
-        * `I`, a dense, batched, per-event index tensor indicating which regression target each element of `X`
-            corresponds to, of shape `(batch_size, sequence_len, num_predictions)`. Elements of I are the
-            indices in `[0, regression_dim)`.
-    then this module outputs `(proj @ X).gather(2, I)`. Note that this requires us to fully compute
+        * `proj`, a dense transformation matrix from the input space to the regression target space of shape
+        `(in_dim, regression_dim)`.
+        * `idx`, a dense, batched, per-event index tensor indicating which regression target each element of
+        `X` corresponds to, of shape `(batch_size, sequence_len, num_predictions)`. Elements of idx are the
+        indices in `[0, regression_dim)`.
+    then this module outputs `(proj @ X).gather(2, idx)`. Note that this requires us to fully compute
     `Z = proj @ X`, where `Z` is thus of size `(batch_size, sequence_len, regression_dim)`, which may be
-    large, when in reality we actually likely only need a small subset of this (based on the indices in I).
+    large, when in reality we actually likely only need a small subset of this (based on the indices in idx).
     """
 
     def __init__(self, n_regression_targets: int, in_dim: int):
@@ -117,19 +118,19 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
         self.proj = torch.nn.Linear(in_dim, n_regression_targets*2)
 
     def forward(
-        self, X: torch.Tensor, I: Optional[torch.LongTensor] = None
+        self, X: torch.Tensor, idx: Optional[torch.LongTensor] = None
     ) -> torch.distributions.normal.Normal:
         """
-        Returns the `Normal` distribution according to the indexed regression task on `X` for indices `I`.
+        Returns the `Normal` distribution according to the indexed regression task on `X` for indices `idx`.
 
         Args:
             `X` is a float Tensor of shape `(batch_size, sequence_length, in_dim)`.
-            `I` is an optional long Tensor of shape `(batch_size, sequence_length, num_predictions)`
+            `idx` is an optional long Tensor of shape `(batch_size, sequence_length, num_predictions)`
 
         Returns:
             The `torch.distributions.normal.Normal` distribution with parameters `self.proj(X)` on indices
-            specified by `I`, which will have output shape `(batch_size, sequence_length, num_predictions)`,
-            unless `I` is None in which case it will have predictions for all indices and have shape
+            specified by `idx`, which will have output shape `(batch_size, sequence_length, num_predictions)`,
+            unless `idx` is None in which case it will have predictions for all indices and have shape
             `(batch_size, sequence_length, n_regression_targets)`.
         """
 
@@ -137,15 +138,15 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
 
         Z_mean = Z[..., 0::2]
 
-        # torch.nn.functional.elu has Image (-1, 1), but we need our std parameter to be > 0. So we need to
+        # torch.nn.functional.elu has idxmage (-1, 1), but we need our std parameter to be > 0. So we need to
         # add 1 to the output here. To ensure validity given numerical imprecision, we also add a buffer given
         # by the smallest possible positive value permissible given the type of `T`.
         Z_std  = torch.nn.functional.elu(Z[..., 1::2]) + 1 + torch.finfo(X.dtype).tiny
 
-        if I is None: return torch.distributions.normal.Normal(loc=Z_mean, scale=Z_std)
+        if idx is None: return torch.distributions.normal.Normal(loc=Z_mean, scale=Z_std)
 
-        mean = Z_mean.gather(-1, I)
-        std  = Z_std.gather(-1, I)
+        mean = Z_mean.gather(-1, idx)
+        std  = Z_std.gather(-1, idx)
 
         # TODO(mmd): validate args
         return torch.distributions.normal.Normal(loc=mean, scale=std)

@@ -440,15 +440,9 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             case DataModality.UNIVARIATE_REGRESSION:
                 key_col = 'const_key'
                 val_col = measure
-                try:
-                    metadata_as_polars = pl.DataFrame(
-                        {key_col: [measure], **{c: [v] for c, v in metadata.items()}}
-                    )
-                except:
-                    print(metadata)
-                    print({c: [v] for c, v in metadata.items()})
-                    print(measure)
-                    raise
+                metadata_as_polars = pl.DataFrame(
+                    {key_col: [measure], **{c: [v] for c, v in metadata.items()}}
+                )
                 source_df = source_df.with_columns(pl.lit(measure).cast(pl.Categorical).alias(key_col))
             case DataModality.MULTIVARIATE_REGRESSION:
                 key_col = measure
@@ -604,7 +598,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             measure, config, source_df
         )
         # 1. Determines which vocab elements should be dropped due to insufficient occurrences.
-        if not self.config.min_valid_vocab_element_observations is None:
+        if self.config.min_valid_vocab_element_observations is not None:
             if config.temporality == TemporalityType.DYNAMIC:
                 num_possible = source_df.select(pl.col('event_id').n_unique()).item()
                 num_non_null = pl.col('event_id').filter(pl.col(vocab_keys_col).is_not_null()).n_unique()

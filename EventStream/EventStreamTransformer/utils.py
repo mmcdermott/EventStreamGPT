@@ -5,10 +5,10 @@ from typing import Sequence, Tuple, Union
 VALID_INDEX_T = Union[int, slice, type(Ellipsis)]
 INDEX_SELECT_T = Union[VALID_INDEX_T, Sequence[VALID_INDEX_T]]
 
-def expand_indexed_regression(X: torch.Tensor, I: torch.Tensor, vocab_size: int):
-    """Expands values `X` with indices `I` into a dense representation."""
-    expanded = torch.zeros(*I.shape[:-1], vocab_size, device=X.device, dtype=X.dtype)
-    return expanded.scatter(-1, I, X)
+def expand_indexed_regression(X: torch.Tensor, idx: torch.Tensor, vocab_size: int):
+    """Expands values `X` with indices `idx` into a dense representation."""
+    expanded = torch.zeros(*idx.shape[:-1], vocab_size, device=X.device, dtype=X.dtype)
+    return expanded.scatter(-1, idx, X)
 
 def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """

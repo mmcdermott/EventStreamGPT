@@ -382,7 +382,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             ).long()
 
             regr_dist = self.regression_layers[measurement](
-                X=encoded, I=(None if is_generation else indices_measured_or_zero)
+                X=encoded, idx=(None if is_generation else indices_measured_or_zero)
             )
 
             values_observed_or_zero = torch.where(
