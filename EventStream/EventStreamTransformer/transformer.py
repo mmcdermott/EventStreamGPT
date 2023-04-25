@@ -546,7 +546,7 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
 
             input_embeds = self.input_layer(batch)
             seq_mask = batch['event_mask']
-        else: assert batch is None, f"Can't specify both input_embeds and batch."
+        else: assert batch is None, "Can't specify both input_embeds and batch."
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -566,7 +566,7 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
                 if use_cache:
                     logger.warning(
                         "`use_cache=True` is incompatible with gradient checkpointing. "
-                        f"Setting `use_cache=False`..."
+                        "Setting `use_cache=False`..."
                     )
                     use_cache = False
 

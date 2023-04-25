@@ -3,17 +3,13 @@ sys.path.append('../..')
 
 from ..mixins import ConfigComparisonsMixin
 
-import dataclasses, unittest, numpy as np, pandas as pd
-from pathlib import Path
-from typing import Optional
+import dataclasses, unittest, pandas as pd
 
 from EventStream.EventStreamData.config import (
     EventStreamDatasetConfig, MeasurementConfig, EventStreamPytorchDatasetConfig
 )
 from EventStream.EventStreamData.time_dependent_functor import AgeFunctor
-from EventStream.EventStreamData.types import (
-    DataModality, NumericDataModalitySubtype, TemporalityType,
-)
+from EventStream.EventStreamData.types import DataModality, TemporalityType
 from EventStream.EventStreamData.vocabulary import Vocabulary
 
 class TestEventStreamPytorchDatasetConfig(unittest.TestCase):

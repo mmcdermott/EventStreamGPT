@@ -104,7 +104,7 @@ class JSONableMixin():
 
     def to_dict(self) -> Dict[str, Any]:
         if dataclasses.is_dataclass(self): return dataclasses.asdict(self)
-        raise NotImplementedError(f"This must be overwritten in non-dataclass derived classes!")
+        raise NotImplementedError("This must be overwritten in non-dataclass derived classes!")
 
     def to_json_file(self, fp: Path, do_overwrite: bool = False):
         """Writes configuration object to a json file as a plain dictionary."""

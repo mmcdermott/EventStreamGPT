@@ -61,7 +61,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         assert len(self.vocabulary) == len(vocab_set)
 
         self.element_types = set(type(v) for v in self.vocabulary if v != 'UNK')
-        assert int not in self.element_types, f"Integer vocabularies are not supported."
+        assert int not in self.element_types, "Integer vocabularies are not supported."
 
         self.obs_frequencies = np.array(self.obs_frequencies)
         self.obs_frequencies = self.obs_frequencies / self.obs_frequencies.sum()

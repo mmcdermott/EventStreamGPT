@@ -459,7 +459,7 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         self.structured_event_processing_mode = structured_event_processing_mode
 
         if (head_dim is None) and (hidden_size is None):
-            raise ValueError(f"Must specify at least one of hidden size or head dim!")
+            raise ValueError("Must specify at least one of hidden size or head dim!")
 
         if hidden_size is None: hidden_size = head_dim * num_attention_heads
         elif head_dim is None: head_dim = hidden_size // num_attention_heads
@@ -626,7 +626,7 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         self.max_seq_len = dataset.max_seq_len
 
         if self.TTE_generation_layer_type == TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
-            raise NotImplementedError(f"Not yet supported.")
+            raise NotImplementedError("Not yet supported.")
             if dataset.do_normalize_log_inter_event_times:
                 self.mean_log_inter_event_time_min = 0.0
                 self.std_log_inter_event_time_min = 1.0

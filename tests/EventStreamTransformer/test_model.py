@@ -896,7 +896,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
 
                 self.assertEqual(C['want_label'], got_label)
                 self.assertDistributionsEqual(C['want_dist'], got_dist)
-                self.assertEqual(C['want_LL'], got_LL, f"Log likelihoods differ")
+                self.assertEqual(C['want_LL'], got_LL, "Log likelihoods differ")
 
     def test_get_regression_outputs(self):
         cases = [

@@ -59,11 +59,11 @@ class StructuredEventStreamForEmbeddingLightningModule(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         """This should not be used."""
-        raise NotImplementedError(f"This class can't train; only get pre-trained embeddings!")
+        raise NotImplementedError("This class can't train; only get pre-trained embeddings!")
 
     def validation_step(self, batch, batch_idx):
         """This should not be used."""
-        raise NotImplementedError(f"This class can't validate; only get pre-trained embeddings!")
+        raise NotImplementedError("This class can't validate; only get pre-trained embeddings!")
 
     def predict_step(self, batch, batch_idx):
         """Retrieves the embeddings and returns them."""

@@ -4,10 +4,10 @@ import dataclasses, pandas as pd
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Sequence, Tuple, Union
+from typing import Any, Dict, Hashable, List, Optional, Set, Sequence, Tuple, Union
 
 from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin
-from .time_dependent_functor import *
+from .time_dependent_functor import AgeFunctor, TimeOfDayFunctor, TimeDependentFunctor
 from .types import TemporalityType, DataModality, NumericDataModalitySubtype, InputDFType, InputDataType
 from .vocabulary import Vocabulary
 
@@ -216,7 +216,7 @@ class EventStreamPytorchDatasetConfig(JSONableMixin):
         assert self.max_seq_len >= 1
         assert self.max_seq_len >= self.min_seq_len
 
-        if type(self.save_dir) is str: self.save_dir = Path(save_dir)
+        if type(self.save_dir) is str: self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
         """Represents this configuation object as a plain dictionary."""
@@ -597,9 +597,9 @@ class EventStreamDatasetConfig(JSONableMixin):
     @classmethod
     def from_simple_args(
         cls,
-        dynamic_measurement_columns: Optional[Sequnce[Union[str, Tuple[str, str]]]] = None,
-        static_measurement_columns: Optional[Sequnce[str]] = None,
-        time_dependent_measurement_columns: Optional[Sequnce[Tuple[str, TimeDependentFunctor]]] = None,
+        dynamic_measurement_columns: Optional[Sequence[Union[str, Tuple[str, str]]]] = None,
+        static_measurement_columns: Optional[Sequence[str]] = None,
+        time_dependent_measurement_columns: Optional[Sequence[Tuple[str, TimeDependentFunctor]]] = None,
         **kwargs
     ) -> 'EventStreamDatasetConfig':
         """

@@ -520,7 +520,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
     ) -> EventStreamPytorchBatch:
         """This function updates the last batch element from self."""
         if 'time' in measurements_to_fill:
-            raise ValueError(f"You shouldn't ever be trying to fill the 'time' aspect of a batch!")
+            raise ValueError("You shouldn't ever be trying to fill the 'time' aspect of a batch!")
 
         prev_dynamic_indices = batch.dynamic_indices[:, -1]
         prev_dynamic_measurement_indices = batch.dynamic_measurement_indices[:, -1]

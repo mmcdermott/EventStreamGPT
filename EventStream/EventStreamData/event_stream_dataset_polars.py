@@ -45,7 +45,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
 
     @staticmethod
     def get_smallest_valid_int_type(num: Union[int, float, pl.Expr]) -> pl.DataType:
-        if num >= (2**64)-1: raise ValueError(f"Value is too large to be expressed as an int!")
+        if num >= (2**64)-1: raise ValueError("Value is too large to be expressed as an int!")
         if num >= (2**32)-1: return pl.UInt64
         elif num >= (2**16)-1: return pl.UInt32
         elif num >= (2**8)-1: return pl.UInt16
@@ -256,11 +256,11 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             {'subject_id': subjects_id_type} if subjects_df is not None else None,
         )
         if events_df is not None:
-            if 'event_type' not in events_df: raise ValueError(f"Missing event_type column!")
+            if 'event_type' not in events_df: raise ValueError("Missing event_type column!")
             events_df = events_df.with_columns(pl.col('event_type').cast(pl.Categorical))
 
             if 'timestamp' not in events_df or events_df['timestamp'].dtype != pl.Datetime:
-                raise ValueError(f"Malformed timestamp column!")
+                raise ValueError("Malformed timestamp column!")
 
         if dynamic_measurements_df is not None:
             linked_ids = {}

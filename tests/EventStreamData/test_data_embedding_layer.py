@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../..')
 
-import torch, unittest, numpy as np
+import torch, unittest
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.types import EventStreamPytorchBatch

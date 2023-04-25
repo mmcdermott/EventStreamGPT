@@ -402,7 +402,7 @@ class StructuredEventStreamGenerationMixin:
                 )
             if max_length > self.config.max_seq_len:
                 raise ValueError(
-                    f"Can't run for a maximum length longer than the current maximum sequence length!"
+                    "Can't run for a maximum length longer than the current maximum sequence length!"
                 )
 
         # 5. determine generation mode

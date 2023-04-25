@@ -44,7 +44,7 @@ class TimeDependentFunctor(abc.ABC):
             The result of the time-dependent function in question, as a `pd.Series` _with the same order as
             the input `time` series_.
         """
-        raise NotImplementedError(f"Must overwrite in subclass!")
+        raise NotImplementedError("Must overwrite in subclass!")
 
     def __eq__(self, other: 'TimeDependentFunctor') -> bool: return self.to_dict() == other.to_dict()
 
