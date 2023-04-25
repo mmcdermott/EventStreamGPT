@@ -919,7 +919,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [0, 0, 0, 1.1, -1.1, 0.0],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1025,7 +1025,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                     },
                 },
                 'include_event_types_mask': True,
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1109,7 +1109,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [np.NaN, -1.2, 2.0, 4.5, -4.0, -5.0],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1189,7 +1189,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1270,7 +1270,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [0, 0, 0, 1.1, -1.1, 0],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],

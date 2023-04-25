@@ -157,7 +157,7 @@ TEST_CONFIG = EventStreamDatasetConfig(
     },
 )
 
-TEST_SPLIT = {'train': {1, 2, 4, 5}, 'held_out': {3,}}
+TEST_SPLIT = {'train': {1, 2, 4, 5}, 'held_out': {3}}
 
 in_event_times = {
     1: datetime(2010, 1, 1, 2),   # MVR, Subj 1, Agg 1, EARLY_AM

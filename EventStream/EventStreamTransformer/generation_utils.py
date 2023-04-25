@@ -549,14 +549,14 @@ class StructuredEventStreamGenerationMixin:
 
             match self.config.structured_event_processing_mode:
                 case 'conditionally_independent':
-                    measurements_to_fill_list = [{'time',}, set(self.config.measurements_idxmap.keys())]
+                    measurements_to_fill_list = [{'time'}, set(self.config.measurements_idxmap.keys())]
                 case 'nested_attention':
                     if self.config.measurements_per_dep_graph_level:
                         measurements_to_fill_list = [
-                            {'time',}, *self.config.measurements_per_dep_graph_level[1:]
+                            {'time'}, *self.config.measurements_per_dep_graph_level[1:]
                         ]
                     else:
-                        measurements_to_fill_list = [{'time',}, set(self.config.measurements_idxmap.keys())]
+                        measurements_to_fill_list = [{'time'}, set(self.config.measurements_idxmap.keys())]
 
             for measurements_to_fill in measurements_to_fill_list:
                 # TODO(mmd): Here -- need to loop over dependency graph elements.
@@ -597,7 +597,7 @@ class StructuredEventStreamGenerationMixin:
                 #    next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
                 # update batch for next step
-                if measurements_to_fill == {'time',}:
+                if measurements_to_fill == {'time'}:
                     batch = next_event.append_to_batch(
                         batch, self.config,
                         base_dataset=base_dataset,

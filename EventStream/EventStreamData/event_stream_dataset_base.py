@@ -7,7 +7,7 @@ from plotly.graph_objs._figure import Figure
 from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Union
 
 from .config import (
-    EventStreamDatasetConfig, MeasurementConfig, VocabularyConfig,
+    EventStreamDatasetConfig, InputDFSchema, MeasurementConfig, VocabularyConfig,
 )
 from .visualize import Visualizer
 from .types import DataModality, TemporalityType, InputDataType, InputDFType
@@ -95,7 +95,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     @abc.abstractmethod
-    def __inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
         """
         Increments the values in a column by a given amount and returns a dataframe with the incremented
         column.
@@ -104,7 +104,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     @abc.abstractmethod
-    def __concat_dfs(dfs: List[DF_T]) -> DF_T:
+    def _concat_dfs(dfs: List[DF_T]) -> DF_T:
         """
         Concatenates a list of dataframes into a single dataframe.
         """
@@ -166,13 +166,13 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         all_events, all_measurements = [], []
         running_event_id_max = 0
         for events, measurements in all_events_and_measurements:
-            all_events.append(cls.__inc_df_col(events, 'event_id', running_event_id_max))
+            all_events.append(cls._inc_df_col(events, 'event_id', running_event_id_max))
             if measurements is not None:
-                all_measurements.append(cls.__inc_df_col(measurements, 'event_id', running_event_id_max))
+                all_measurements.append(cls._inc_df_col(measurements, 'event_id', running_event_id_max))
 
             running_event_id_max = all_events[-1]['event_id'].max() + 1
 
-        return cls.__concat_dfs(all_events), cls.__concat_dfs(all_measurements)
+        return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
 
     @classmethod
     def _get_metadata_model(

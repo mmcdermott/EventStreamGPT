@@ -6,18 +6,21 @@ from .test_config import ConfigComparisonsMixin
 import copy, unittest, pandas as pd
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
 from EventStream.EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from EventStream.EventStreamData.types import (
     DataModality,
     TemporalityType,
+    InputDataType
 )
 from EventStream.EventStreamData.time_dependent_functor import AgeFunctor
 from EventStream.EventStreamData.vocabulary import Vocabulary
 
-class ESDMock(EventStreamDatasetBase[dict]):
+class ESDMock(EventStreamDatasetBase[dict, dict]):
+    FUNCTIONS_CALLED = defaultdict(list)
+
     def __init__(self, *args, **kwargs):
         self.functions_called = defaultdict(list)
         super().__init__(*args, **kwargs)
@@ -115,6 +118,48 @@ class ESDMock(EventStreamDatasetBase[dict]):
     def denormalize(self, events_df: dict, col: str) -> dict:
         self.functions_called['denormalize'].append((events_df, col))
         return events_df
+
+    @classmethod
+    def load_input_df(
+        cls, df: dict, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
+    ) -> dict:
+        cls.FUNCTIONS_CALLED['load_input_df'].append(
+            (df, columns, subject_id_col, subject_ids_map, subject_id_dtype)
+        )
+        return {}
+
+    @classmethod
+    def process_events_and_measurments_df(
+        cls, df: dict, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
+        ts_col: Union[str, List[str]]
+    ) -> Tuple[dict, Optional[dict]]:
+        cls.FUNCTIONS_CALLED['process_events_and_measurments_df'].append(
+            (df, event_type, columns_schema, ts_col)
+        )
+        return {}, None
+
+    @classmethod
+    def split_range_events_df(
+        cls, df: dict, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
+    ) -> Tuple[dict, dict, dict]:
+        cls.FUNCTIONS_CALLED['split_range_events_df'].append((df, start_ts_col, end_ts_col))
+        return {}, {}, {}
+
+    @classmethod
+    def _inc_df_col(cls, df: dict, col: str, inc_by: int) -> dict:
+        cls.FUNCTIONS_CALLED['_inc_df_col'].append((df, col, inc_by))
+        return {}
+
+    @classmethod
+    def _concat_dfs(dfs: List[dict]) -> dict:
+        cls.FUNCTIONS_CALLED['_concat_dfs'].append((dfs,))
+        return {}
+
+    @classmethod
+    def resolve_ts_col(cls, df: dict, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> dict:
+        cls.FUNCTIONS_CALLED['resolve_ts_col'].append((df, ts_col, out_name))
+        return {}
 
 class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     """Tests the `EventStreamDataset` class."""

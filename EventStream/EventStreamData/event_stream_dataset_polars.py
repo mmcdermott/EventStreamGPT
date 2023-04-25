@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Sequence, Union
 
 from .config import MeasurementConfig
 from .event_stream_dataset_base import EventStreamDatasetBase
-from .types import DataModality, TemporalityType, NumericDataModalitySubtype
+from .types import DataModality, InputDataType, TemporalityType, NumericDataModalitySubtype
 from .vocabulary import Vocabulary
 
 from ..utils import lt_count_or_proportion
@@ -152,7 +152,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         )
 
     @classmethod
-    def __inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
         """
         Increments the values in a column by a given amount and returns a dataframe with the incremented
         column.
@@ -160,7 +160,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         return df.with_columns(pl.col(col) + inc_by)
 
     @classmethod
-    def __concat_dfs(dfs: List[DF_T]) -> DF_T:
+    def _concat_dfs(dfs: List[DF_T]) -> DF_T:
         """ Concatenates a list of dataframes into a single dataframe. """
         return pl.concat(dfs, how='diagonal').collect()
 

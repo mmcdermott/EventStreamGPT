@@ -85,9 +85,9 @@ class TestVarianceImpactOutlierDetector(MLTypeEqualityCheckableMixin, unittest.T
 
         got = X.groupby('k').agg(deviations_expr.alias('d'))
 
-        got_deviations = got.select(pl.col('d').struct.field('deviations'))[:,0].to_list()
-        got_count_pos = got.select(pl.col('d').struct.field('count_pos'))[:,0].to_list()
-        got_count_neg = got.select(pl.col('d').struct.field('count_neg'))[:,0].to_list()
+        got_deviations = got.select(pl.col('d').struct.field('deviations'))[:, 0].to_list()
+        got_count_pos = got.select(pl.col('d').struct.field('count_pos'))[:, 0].to_list()
+        got_count_neg = got.select(pl.col('d').struct.field('count_neg'))[:, 0].to_list()
 
         self.assertEqual(want_deviations, got_deviations)
         self.assertEqual(want_count_pos, got_count_pos)
