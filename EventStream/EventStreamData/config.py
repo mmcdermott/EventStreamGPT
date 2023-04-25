@@ -12,161 +12,161 @@ from .types import TemporalityType, DataModality
 #from .types import InputDFType, InputDataType
 from .vocabulary import Vocabulary
 
-#DF_COL = Union[str, Sequence[str]]
-#
-#DF_SCHEMA = Union[
-#    # For cases where you specify a list of columns of a constant type.
-#    Tuple[List[DF_COL], DataModality],
-#    # For specifying a dictionary of columns to types.
-#    Dict[DF_COL, DataModality],
-#    # For specifying a dictionary of column in names to column out names and types.
-#    Dict[DF_COL, Tuple[str, DataModality]],
-#    # For specifying a dictionary of column in names to out names, all of a constant type.
-#    Tuple[Dict[DF_COL, str], DataModality],
-#]
-#
-#@dataclasses.dataclass
-#class InputDFSchema(JSONableMixin):
-#    type: Optional[InputDFType] = None
-#    event_type: Optional[str] = None
-#
-#    ts_col: Optional[DF_COL] = None
-#    start_ts_col: Optional[DF_COL] = None
-#    end_ts_col: Optional[DF_COL] = None
-#    ts_format: Optional[str] = "%Y-%m-%d %H:%M:%S"
-#    start_ts_format: Optional[str] = None
-#    end_ts_format: Optional[str] = None
-#    data_cols: Optional[List[DF_COL]] = None
-#
-#    do_make_unique: Optional[bool] = None
-#    data_schema: Optional[Sequence[DF_SCHEMA]] = None
-#
-#    def __post_init__(self):
-#        if self.type is None: raise ValueError("Missing mandatory parameter type!")
-#        if self.event_type is None: raise ValueError("Missing mandatory parameter event_type!")
-#
-#        self.columns_to_load = []
-#
-#        match self.type:
-#            case InputDFType.EVENT:
-#                if self.ts_col is None: raise ValueError("Missing mandatory event parameter ts_col!")
-#                if (
-#                    (self.start_ts_col is not None) or (self.end_ts_col is not None) or
-#                    (self.start_ts_format is not None) or (self.end_ts_format is not None)
-#                ):
-#                    raise ValueError(
-#                        "start_ts_col, end_ts_col, start_ts_format, and end_ts_format should be `None` "
-#                        f"for {self.type} schemas! Got:\n"
-#                        f"  start_ts_col: {self.start_ts_col}\n"
-#                        f"  end_ts_col: {self.end_ts_col}\n"
-#                        f"  start_ts_format: {self.start_ts_format}\n"
-#                        f"  end_ts_format: {self.end_ts_format}"
-#                    )
-#                if type(self.ts_col) is list:
-#                    for c in self.ts_col:
-#                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.ts_format)))
-#                else: self.columns_to_load.append((self.ts_col, (InputDataType.TIMESTAMP, self.ts_format)))
-#            case InputDFType.RANGE:
-#                if self.start_ts_col is None:
-#                    raise ValueError("Missing mandatory range parameter start_ts_col!")
-#                if self.end_ts_col is None:
-#                    raise ValueError("Missing mandatory range parameter end_ts_col!")
-#                if self.ts_col is not None:
-#                    raise ValueError(f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}.")
-#                if self.start_ts_format is not None:
-#                    if self.end_ts_format is None:
-#                        raise ValueError(
-#                            "If start_ts_format is specified, end_ts_format must also be specified!"
-#                        )
-#                    if self.ts_format is not None:
-#                        raise ValueError(
-#                            "If start_ts_format is specified, ts_format must be `None`!"
-#                        )
-#                else:
-#                    if self.end_ts_format is not None:
-#                        raise ValueError(
-#                            "If end_ts_format is specified, start_ts_format must also be specified!"
-#                        )
-#                    if self.ts_format is None:
-#                        raise ValueError(
-#                            "If start_ts_format is not specified, ts_format must be specified!"
-#                        )
-#                    self.start_ts_format = self.ts_format
-#                    self.end_ts_format = self.ts_format
-#                    self.ts_format = None
-#
-#                if self.start_ts_col is list:
-#                    for c in self.start_ts_col:
-#                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.start_ts_format)))
-#                else:
-#                    self.columns_to_load.append((
-#                        self.start_ts_col, (InputDataType.TIMESTAMP, self.start_ts_format)
-#                    ))
-#                if self.end_ts_col is list:
-#                    for c in self.end_ts_col:
-#                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.end_ts_format)))
-#                else:
-#                    self.columns_to_load.append((
-#                        self.end_ts_col, (InputDataType.TIMESTAMP, self.end_ts_format)
-#                    ))
-#
-#        self._set_unified_schema()
-#
-#    def __add_to_schema_local(self, in_col: str, out_col: str, data_type: InputDataType):
-#        if in_col in self.unified_schema:
-#            raise ValueError(
-#                f"Column {in_col} is repeated in schema!\n"
-#                f"Existing: {self.unified_schema[in_col]}\n"
-#                f"New: ({out_col}, {data_type})"
-#            )
-#        elif type(in_col) is not str or type(out_col) is not str:
-#            raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
-#        self.unified_schema[in_col] = (out_col, data_type)
-#        self.columns_to_load.append((in_col, data_type))
-#
-#    def __add_to_schema(
-#        self, in_col: DF_COL, dt: DataModality, out_col: Optional[DF_COL] = None
-#    ):
-#        if out_col is None: out_col = in_col
-#
-#        match dt:
-#            case DataModality.DROPPED: raise ValueError(f"Cannot specify columns for {dt}!")
-#            case DataModality.MULTIVARIATE_REGRESSION:
-#                for c in (in_col, out_col):
-#                    if type(c) is not tuple or len(c) != 2:
-#                        raise ValueError(
-#                            f"For {dt} columns, you must specify both a key column and a value column "
-#                            f"in a tuple: (key, value). Got {c}!"
-#                        )
-#                self.__add_to_schema_local(in_col[0], out_col[0], InputDataType.CATEGORICAL)
-#                self.__add_to_schema_local(in_col[1], out_col[1], InputDataType.FLOAT)
-#            case DataModality.UNIVARIATE_REGRESSION:
-#                self.__add_to_schema_local(in_col, out_col, InputDataType.FLOAT)
-#            case DataModality.SINGLE_LABEL_CLASSIFICATION | DataModality.MULTI_LABEL_CLASSIFICATION:
-#                self.__add_to_schema_local(in_col, out_col, InputDataType.CATEGORICAL)
-#            case _: raise ValueError(f"DataModality invalid! {dt}")
-#
-#    def _set_unified_schema(self):
-#        self.unified_schema = {}
-#        if self.data_schema is None: return
-#
-#        for schema in self.data_schema:
-#            match schema:
-#                case (list() as cols, DataModality() as dt):
-#                    for c in cols: self.__add_to_schema(in_col=c, dt=dt)
-#                case dict():
-#                    for in_col, schema_info in schema.items():
-#                        match schema_info:
-#                            case (out_col, DataModality() as dt):
-#                                self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
-#                            case DataModality() as dt:
-#                                self.__add_to_schema(in_col=in_col, dt=dt)
-#                            case _: raise ValueError(f"Schema Unprocessable!\n{schema_info}")
-#                case (dict() as col_names_map, DataModality() as dt):
-#                    for in_col, out_col in col_names_map.items():
-#                        self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
-#                case _:
-#                    raise ValueError(f"Schema Unprocessable!\n{schema}")
+DF_COL = Union[str, Sequence[str]]
+
+DF_SCHEMA = Union[
+    # For cases where you specify a list of columns of a constant type.
+    Tuple[List[DF_COL], DataModality],
+    # For specifying a dictionary of columns to types.
+    Dict[DF_COL, DataModality],
+    # For specifying a dictionary of column in names to column out names and types.
+    Dict[DF_COL, Tuple[str, DataModality]],
+    # For specifying a dictionary of column in names to out names, all of a constant type.
+    Tuple[Dict[DF_COL, str], DataModality],
+]
+
+@dataclasses.dataclass
+class InputDFSchema(JSONableMixin):
+    type: Optional[InputDFType] = None
+    event_type: Optional[str] = None
+
+    ts_col: Optional[DF_COL] = None
+    start_ts_col: Optional[DF_COL] = None
+    end_ts_col: Optional[DF_COL] = None
+    ts_format: Optional[str] = "%Y-%m-%d %H:%M:%S"
+    start_ts_format: Optional[str] = None
+    end_ts_format: Optional[str] = None
+    data_cols: Optional[List[DF_COL]] = None
+
+    do_make_unique: Optional[bool] = None
+    data_schema: Optional[Sequence[DF_SCHEMA]] = None
+
+    def __post_init__(self):
+        if self.type is None: raise ValueError("Missing mandatory parameter type!")
+        if self.event_type is None: raise ValueError("Missing mandatory parameter event_type!")
+
+        self.columns_to_load = []
+
+        match self.type:
+            case InputDFType.EVENT:
+                if self.ts_col is None: raise ValueError("Missing mandatory event parameter ts_col!")
+                if (
+                    (self.start_ts_col is not None) or (self.end_ts_col is not None) or
+                    (self.start_ts_format is not None) or (self.end_ts_format is not None)
+                ):
+                    raise ValueError(
+                        "start_ts_col, end_ts_col, start_ts_format, and end_ts_format should be `None` "
+                        f"for {self.type} schemas! Got:\n"
+                        f"  start_ts_col: {self.start_ts_col}\n"
+                        f"  end_ts_col: {self.end_ts_col}\n"
+                        f"  start_ts_format: {self.start_ts_format}\n"
+                        f"  end_ts_format: {self.end_ts_format}"
+                    )
+                if type(self.ts_col) is list:
+                    for c in self.ts_col:
+                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.ts_format)))
+                else: self.columns_to_load.append((self.ts_col, (InputDataType.TIMESTAMP, self.ts_format)))
+            case InputDFType.RANGE:
+                if self.start_ts_col is None:
+                    raise ValueError("Missing mandatory range parameter start_ts_col!")
+                if self.end_ts_col is None:
+                    raise ValueError("Missing mandatory range parameter end_ts_col!")
+                if self.ts_col is not None:
+                    raise ValueError(f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}.")
+                if self.start_ts_format is not None:
+                    if self.end_ts_format is None:
+                        raise ValueError(
+                            "If start_ts_format is specified, end_ts_format must also be specified!"
+                        )
+                    if self.ts_format is not None:
+                        raise ValueError(
+                            "If start_ts_format is specified, ts_format must be `None`!"
+                        )
+                else:
+                    if self.end_ts_format is not None:
+                        raise ValueError(
+                            "If end_ts_format is specified, start_ts_format must also be specified!"
+                        )
+                    if self.ts_format is None:
+                        raise ValueError(
+                            "If start_ts_format is not specified, ts_format must be specified!"
+                        )
+                    self.start_ts_format = self.ts_format
+                    self.end_ts_format = self.ts_format
+                    self.ts_format = None
+
+                if self.start_ts_col is list:
+                    for c in self.start_ts_col:
+                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.start_ts_format)))
+                else:
+                    self.columns_to_load.append((
+                        self.start_ts_col, (InputDataType.TIMESTAMP, self.start_ts_format)
+                    ))
+                if self.end_ts_col is list:
+                    for c in self.end_ts_col:
+                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.end_ts_format)))
+                else:
+                    self.columns_to_load.append((
+                        self.end_ts_col, (InputDataType.TIMESTAMP, self.end_ts_format)
+                    ))
+
+        self._set_unified_schema()
+
+    def __add_to_schema_local(self, in_col: str, out_col: str, data_type: InputDataType):
+        if in_col in self.unified_schema:
+            raise ValueError(
+                f"Column {in_col} is repeated in schema!\n"
+                f"Existing: {self.unified_schema[in_col]}\n"
+                f"New: ({out_col}, {data_type})"
+            )
+        elif type(in_col) is not str or type(out_col) is not str:
+            raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
+        self.unified_schema[in_col] = (out_col, data_type)
+        self.columns_to_load.append((in_col, data_type))
+
+    def __add_to_schema(
+        self, in_col: DF_COL, dt: DataModality, out_col: Optional[DF_COL] = None
+    ):
+        if out_col is None: out_col = in_col
+
+        match dt:
+            case DataModality.DROPPED: raise ValueError(f"Cannot specify columns for {dt}!")
+            case DataModality.MULTIVARIATE_REGRESSION:
+                for c in (in_col, out_col):
+                    if type(c) is not tuple or len(c) != 2:
+                        raise ValueError(
+                            f"For {dt} columns, you must specify both a key column and a value column "
+                            f"in a tuple: (key, value). Got {c}!"
+                        )
+                self.__add_to_schema_local(in_col[0], out_col[0], InputDataType.CATEGORICAL)
+                self.__add_to_schema_local(in_col[1], out_col[1], InputDataType.FLOAT)
+            case DataModality.UNIVARIATE_REGRESSION:
+                self.__add_to_schema_local(in_col, out_col, InputDataType.FLOAT)
+            case DataModality.SINGLE_LABEL_CLASSIFICATION | DataModality.MULTI_LABEL_CLASSIFICATION:
+                self.__add_to_schema_local(in_col, out_col, InputDataType.CATEGORICAL)
+            case _: raise ValueError(f"DataModality invalid! {dt}")
+
+    def _set_unified_schema(self):
+        self.unified_schema = {}
+        if self.data_schema is None: return
+
+        for schema in self.data_schema:
+            match schema:
+                case (list() as cols, DataModality() as dt):
+                    for c in cols: self.__add_to_schema(in_col=c, dt=dt)
+                case dict():
+                    for in_col, schema_info in schema.items():
+                        match schema_info:
+                            case (out_col, DataModality() as dt):
+                                self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
+                            case DataModality() as dt:
+                                self.__add_to_schema(in_col=in_col, dt=dt)
+                            case _: raise ValueError(f"Schema Unprocessable!\n{schema_info}")
+                case (dict() as col_names_map, DataModality() as dt):
+                    for in_col, out_col in col_names_map.items():
+                        self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
+                case _:
+                    raise ValueError(f"Schema Unprocessable!\n{schema}")
 
 @dataclasses.dataclass
 class VocabularyConfig(JSONableMixin):

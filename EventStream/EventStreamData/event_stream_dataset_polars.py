@@ -16,9 +16,10 @@ from ..Preprocessing import (
 
 pl.toggle_string_cache(True)
 
-DF_T = Union[pl.DataFrame, pl.Expr, pl.Series]
+DF_T = Union[pl.LazyFrame, pl.DataFrame, pl.Expr, pl.Series]
+INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame]
 
-class EventStreamDataset(EventStreamDatasetBase[DF_T]):
+class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
     # Dictates what models can be fit on numerical metadata columns, for both outlier detection and
     # normalization.
     PREPROCESSORS: Dict[str, Preprocessor] = {
@@ -48,6 +49,120 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         elif num >= (2**16)-1: return pl.UInt32
         elif num >= (2**8)-1: return pl.UInt16
         else: return pl.UInt8
+
+    @classmethod
+    def load_input_df(
+        cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
+    ) -> DF_T:
+        """
+        Loads an input dataframe into the format expected by the processing library.
+        """
+        match df:
+            case Path():
+                if df.suffix == 'csv': df = pl.scan_csv(df)
+                elif df.suffix == 'parquet': df = pl.scan_parquet(df)
+                else: raise ValueError(f"Can't read dataframe of suffix {df.suffix}")
+            case pd.DataFrame(): df = pl.from_pandas(df, include_index=True).lazy()
+            case pl.DataFrame(): df = df.lazy()
+            case _: raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
+
+        read_columns = ['subject_id']
+        df = cls._filter_col_inclusion(
+            df, {subject_id_col: list(subject_ids_map.keys())}
+        ).with_columns(
+            pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias('subject_id')
+        )
+
+        for in_col, out_dt in columns:
+            match out_dt:
+                case InputDataType.FLOAT: col_expr = pl.col(in_col).cast(pl.Float32)
+                case InputDataType.CATEGORICAL: col_expr = pl.col(in_col).cast(pl.Float32)
+                case InputDataType.TIMESTAMP: col_expr = pl.col(in_col).cast(pl.Datetime)
+                case (InputDataType.TIMESTAMP, str() as ts_format):
+                    col_expr = pl.col(in_col).str.strptime(ts_format)
+                case _: raise ValueError(f"Invalid out data type {out_dt}!")
+            read_columns.append(in_col)
+            df = df.with_columns(col_epxr)
+
+        return df.select(read_columns)
+
+    @classmethod
+    def resolve_ts_col(cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> DF_T:
+        match ts_col:
+            case list():
+                ts_expr = pl.min(ts_col)
+                ts_to_drop = [c for c in ts_col if c != out_name]
+            case str():
+                ts_expr = pl.col(ts_col)
+                ts_to_drop = [ts_col] if ts_col != out_name else []
+
+        return df.with_columns(ts_expr.alias(out_name)).drop(ts_to_drop)
+
+    @classmethod
+    def process_events_and_measurments_df(
+        cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
+    ) -> Tuple[DF_T, Optional[DF_T]]:
+        """
+        Performs the following pre-processing steps on an input events and measurements dataframe:
+          1. Produces a unified timestamp column representing the minimum of passed timestamps, with the name,
+             `'timestamp'`.
+          2. Adds a categorical event type column with value `event_type`.
+          3. Extracts and renames the columns present in `columns_schema`.
+          4. Adds an integer `event_id` column.
+          4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
+             and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
+        """
+
+        df = df.with_row_count('event_id').with_columns(
+            pl.lit(event_type).cast(pl.Categorical).alias('event_type')
+        )
+
+        events_df = df.select('event_id', 'subject_id', 'timestamp', 'event_type')
+        measurements_df = df.drop('subject_id', 'timestamp', 'event_type')
+
+        if measurements_df.shape[1] > 1: return events_df, measurements_df
+        else: return events_df, None
+
+    @classmethod
+    def split_range_events_df(cls, df: DF_T) -> Tuple[DF_T, DF_T, DF_T]:
+        """
+        Performs the following steps:
+          1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
+             timestamps, respectively.
+          2. Filters out records where the end timestamp is earlier than the start timestamp.
+          3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
+             `'timestamp'`:
+             (a) An "EQ" dataframe, where start_ts_col == end_ts_col,
+             (b) A "start" dataframe, with start events, and
+             (c) An "end" dataframe, with end events.
+        """
+
+        df = df.filter(pl.col('end_time') < pl.col('start_time'))
+
+        eq_df = df.filter(pl.col('start_time') == pl.col('end_time'))
+        ne_df = df.filter(pl.col('start_time') != pl.col('end_time'))
+
+        st_col, end_col = pl.col('start_time').alias('timestamp'), pl.col('end_time').alias('timestamp')
+        drop_cols = ['start_time', 'end_time']
+        return (
+            eq_df.with_columns(st_col).drop(drop_cols),
+            ne_df.with_columns(st_col).drop(drop_cols),
+            ne_df.with_columns(end_col).drop(drop_cols)
+        )
+
+    @classmethod
+    def __inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+        """
+        Increments the values in a column by a given amount and returns a dataframe with the incremented
+        column.
+        """
+        return df.with_columns(pl.col(col) + inc_by)
+
+    @classmethod
+    def __concat_dfs(dfs: List[DF_T]) -> DF_T:
+        """ Concatenates a list of dataframes into a single dataframe. """
+        return pl.concat(dfs, how='diagonal').collect()
 
     @classmethod
     def _read_df(cls, fp: Path, **kwargs) -> DF_T: return pl.read_parquet(fp)

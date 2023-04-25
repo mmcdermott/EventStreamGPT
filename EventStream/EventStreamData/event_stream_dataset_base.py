@@ -10,7 +10,7 @@ from .config import (
     EventStreamDatasetConfig, MeasurementConfig, VocabularyConfig,
 )
 from .visualize import Visualizer
-from .types import DataModality, TemporalityType
+from .types import DataModality, TemporalityType, InputDataType, InputDFType
 from .vocabulary import Vocabulary
 from ..utils import lt_count_or_proportion
 
@@ -20,7 +20,7 @@ INPUT_DF_T = TypeVar('INPUT_DF_T')
 # This defines the type of internal dataframes -- e.g. polars DataFrames.
 DF_T = TypeVar('DF_T')
 
-class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixin, TimeableMixin):
+class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, SaveableMixin, TimeableMixin):
     """
     A unified base class for dataset objects using different processing libraries.
     """
@@ -46,128 +46,133 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
     def dynamic_measurements_fp(cls, save_dir: Path) -> Path:
         return save_dir / f"{cls.DYNAMIC_MEASUREMENTS_FN}.{cls.DF_SAVE_FORMAT}"
 
-    #@classmethod
-    #@abc.abstractmethod
-    #def load_input_df(
-    #    cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
-    #    subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
-    #) -> DF_T:
-    #    """
-    #    Loads an input dataframe into the format expected by the processing library.
-    #    """
-    #    raise NotImplementedError("Must be implemented by subclass.")
+    @classmethod
+    @abc.abstractmethod
+    def load_input_df(
+        cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
+    ) -> DF_T:
+        """
+        Loads an input dataframe into the format expected by the processing library.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-    #@classmethod
-    #@abc.abstractmethod
-    #def process_events_and_measurments_df(
-    #    cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
-    #    ts_col: Union[str, List[str]]
-    #) -> Tuple[DF_T, Optional[DF_T]]:
-    #    """
-    #    Performs the following pre-processing steps on an input events and measurements dataframe:
-    #      1. Produces a unified timestamp column representing the minimum of passed timestamps, with the name,
-    #         `'timestamp'`.
-    #      2. Adds a categorical event type column with value `event_type`.
-    #      3. Extracts and renames the columns present in `columns_schema`.
-    #      4. Adds an integer `event_id` column.
-    #      4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
-    #         and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
-    #    """
-    #    raise NotImplementedError("Must be implemented by subclass.")
+    @classmethod
+    @abc.abstractmethod
+    def process_events_and_measurments_df(
+        cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
+        ts_col: Union[str, List[str]]
+    ) -> Tuple[DF_T, Optional[DF_T]]:
+        """
+        Performs the following pre-processing steps on an input events and measurements dataframe:
+          1. Produces a unified timestamp column representing the minimum of passed timestamps, with the name,
+             `'timestamp'`.
+          2. Adds a categorical event type column with value `event_type`.
+          3. Extracts and renames the columns present in `columns_schema`.
+          4. Adds an integer `event_id` column.
+          4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
+             and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-    #@classmethod
-    #@abc.abstractmethod
-    #def split_range_events_df(
-    #    cls, df: DF_T, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
-    #) -> Tuple[DF_T, DF_T, DF_T]:
-    #    """
-    #    Performs the following steps:
-    #      1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
-    #         timestamps, respectively.
-    #      2. Filters out records where the end timestamp is earlier than the start timestamp.
-    #      3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
-    #         `'timestamp'`:
-    #         (a) An "EQ" dataframe, where start_ts_col == end_ts_col,
-    #         (b) A "start" dataframe, with start events, and
-    #         (c) An "end" dataframe, with end events.
-    #    """
-    #    raise NotImplementedError("Must be implemented by subclass.")
+    @classmethod
+    @abc.abstractmethod
+    def split_range_events_df(
+        cls, df: DF_T, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
+    ) -> Tuple[DF_T, DF_T, DF_T]:
+        """
+        Performs the following steps:
+          1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
+             timestamps, respectively.
+          2. Filters out records where the end timestamp is earlier than the start timestamp.
+          3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
+             `'timestamp'`:
+             (a) An "EQ" dataframe, where start_ts_col == end_ts_col,
+             (b) A "start" dataframe, with start events, and
+             (c) An "end" dataframe, with end events.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-    #@classmethod
-    #@abc.abstractmethod
-    #def __inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
-    #    """
-    #    Increments the values in a column by a given amount and returns a dataframe with the incremented column.
-    #    """
-    #    raise NotImplementedError("Must be implemented by subclass.")
+    @classmethod
+    @abc.abstractmethod
+    def __inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+        """
+        Increments the values in a column by a given amount and returns a dataframe with the incremented
+        column.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-    #@classmethod
-    #@abc.abstractmethod
-    #def __concat_dfs(dfs: List[DF_T]) -> DF_T:
-    #    """
-    #    Concatenates a list of dataframes into a single dataframe.
-    #    """
-    #    raise NotImplementedError("Must be implemented by subclass.")
+    @classmethod
+    @abc.abstractmethod
+    def __concat_dfs(dfs: List[DF_T]) -> DF_T:
+        """
+        Concatenates a list of dataframes into a single dataframe.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-    #@classmethod
-    #def build_event_and_measurement_dfs(
-    #    cls,
-    #    subject_ids_map: Dict[Any, int],
-    #    subject_id_col: str,
-    #    subject_id_dtype: Any,
-    #    dfs: Dict[str, INPUT_DF_T],
-    #    schemas: Dict[str, Union[InputDFSchema, Sequence[InputDFSchema]]],
-    #) -> Tuple[DF_T, DF_T]:
-    #    all_events_and_measurements = []
+    @classmethod
+    @abc.abstractmethod
+    def resolve_ts_col(cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> DF_T:
+        """
+        Produces an output column of type datetime that contains the minimum of the passed columns in `ts_col`
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-    #    if set(schemas.keys()) != set(dfs.keys()):
-    #        raise ValueError(
-    #            f"Must have schemas for all dfs. Found {set(schemas.keys())} schemas for {set(dfs.keys())} dfs."
-    #        )
+    @classmethod
+    def build_event_and_measurement_dfs(
+        cls,
+        subject_ids_map: Dict[Any, int],
+        subject_id_col: str,
+        subject_id_dtype: Any,
+        dfs: Dict[str, INPUT_DF_T],
+        schemas: Dict[str, Union[InputDFSchema, Sequence[InputDFSchema]]],
+    ) -> Tuple[DF_T, DF_T]:
+        all_events_and_measurements = []
 
-    #    for name, df in dfs.items():
-    #        all_columns = [subject_id_col]
-    #        all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas[name]))
+        if set(schemas.keys()) != set(dfs.keys()):
+            raise ValueError(
+                f"Must have schemas for all dfs. Found {set(schemas.keys())} schemas for {set(dfs.keys())} dfs."
+            )
 
-    #        df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
-    #        df = cls._filter_col_inclusion(df, {subject_id_col: list(subject_ids_map.keys())})
+        for name, df in dfs.items():
+            all_columns = [subject_id_col]
+            all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas[name]))
 
-    #        for schema in schemas[name]:
-    #            match schema.type:
-    #                case InputDFType.EVENT:
-    #                    all_events_and_measurements.append(cls.process_events_and_measurements_df(
-    #                        df=df, event_type=schema.event_type, columns_schema=schema.unified_schema,
-    #                        ts_col=schema.ts_col,
-    #                    ))
-    #                case InputDFType.RANGE:
-    #                    eq_events, st_events, end_events = cls.split_range_events_df(
-    #                        df=df, start_ts_col=schema.start_ts_col, end_ts_col=schema.end_ts_col
-    #                    )
-    #                    all_events_and_measurements.append(cls.process_events_and_measurements_df(
-    #                        df=eq_events, event_type=schema.event_type, columns_schema=schema.unified_schema,
-    #                        ts_col='timestamp',
-    #                    ))
-    #                    all_events_and_measurements.append(cls.process_events_and_measurements_df(
-    #                        df=st_events, event_type=f"{schema.event_type}_START",
-    #                        columns_schema=schema.unified_schema, ts_col='timestamp',
-    #                    ))
-    #                    all_events_and_measurements.append(cls.process_events_and_measurements_df(
-    #                        df=end_events, event_type=f"{schema.event_type}_END",
-    #                        columns_schema=schema.unified_schema, ts_col='timestamp',
-    #                    ))
-    #                case _:
-    #                    raise ValueError(f"Invalid schema type {schema.type} for {name}.")
+            df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
 
-    #    all_events, all_measurements = [], []
-    #    running_event_id_max = 0
-    #    for events, measurements in all_events_and_measurements:
-    #        all_events.append(cls.__inc_df_col(events, 'event_id', running_event_id_max))
-    #        if measurements is not None:
-    #            all_measurements.append(cls.__inc_df_col(measurements, 'event_id', running_event_id_max))
+            for schema in schemas[name]:
+                match schema.type:
+                    case InputDFType.EVENT:
+                        df = cls.resolve_ts_col(df, schema.ts_col, 'timestamp')
+                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                            df=df, event_type=schema.event_type, columns_schema=schema.unified_schema,
+                        ))
+                    case InputDFType.RANGE:
+                        df = cls.resolve_ts_col(df, start_ts_col, 'start_time')
+                        df = cls.resolve_ts_col(df, end_ts_col, 'end_time')
+                        eq, st, end = cls.split_range_events_df(df=df)
+                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                            eq, columns_schema=schema.unified_schema, event_type=schema.event_type
+                        ))
+                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                            st, columns_schema=schema.unified_schema, event_type=f"{schema.event_type}_START"
+                        ))
+                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                            end, columns_schema=schema.unified_schema, event_type=f"{schema.event_type}_END"
+                        ))
+                    case _:
+                        raise ValueError(f"Invalid schema type {schema.type} for {name}.")
 
-    #        running_event_id_max = all_events[-1]['event_id'].max() + 1
+        all_events, all_measurements = [], []
+        running_event_id_max = 0
+        for events, measurements in all_events_and_measurements:
+            all_events.append(cls.__inc_df_col(events, 'event_id', running_event_id_max))
+            if measurements is not None:
+                all_measurements.append(cls.__inc_df_col(measurements, 'event_id', running_event_id_max))
 
-    #    return cls.__concat_dfs(all_events), cls.__concat_dfs(all_measurements)
+            running_event_id_max = all_events[-1]['event_id'].max() + 1
+
+        return cls.__concat_dfs(all_events), cls.__concat_dfs(all_measurements)
 
     @classmethod
     def _get_metadata_model(
