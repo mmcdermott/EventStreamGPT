@@ -8,7 +8,8 @@ from typing import Any, Dict, Hashable, List, Optional, Set, Sequence, Tuple, Un
 
 from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin
 from .time_dependent_functor import AgeFunctor, TimeOfDayFunctor, TimeDependentFunctor
-from .types import TemporalityType, DataModality, NumericDataModalitySubtype, InputDFType, InputDataType
+from .types import TemporalityType, DataModality
+#from .types import InputDFType, InputDataType
 from .vocabulary import Vocabulary
 
 #DF_COL = Union[str, Sequence[str]]

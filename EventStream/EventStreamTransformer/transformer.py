@@ -1,14 +1,11 @@
 # Based on https://raw.githubusercontent.com/huggingface/transformers/e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
 """ PyTorch StructuredEventStreamTransformer model."""
 
-import math, os, torch, torch.utils.checkpoint
-from dataclasses import dataclass
+import math, torch, torch.utils.checkpoint
 from torch import nn
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import (
-    add_code_sample_docstrings, add_start_docstrings, add_start_docstrings_to_model_forward, logging
-)
+from transformers.utils import logging
 from typing import Dict, Optional, Tuple, Union
 
 from ..EventStreamData.data_embedding_layer import DataEmbeddingLayer

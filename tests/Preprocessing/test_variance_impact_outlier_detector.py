@@ -4,13 +4,8 @@ sys.path.append('../..')
 import math, unittest, numpy as np, polars as pl
 
 from ..mixins import MLTypeEqualityCheckableMixin
-from typing import Dict
-from unittest.mock import MagicMock
 
-from EventStream.Preprocessing.variance_impact_outlier_detector import (
-    VarianceImpactOutlierDetector
-)
-
+from EventStream.Preprocessing.variance_impact_outlier_detector import VarianceImpactOutlierDetector
 
 class TestVarianceImpactOutlierDetector(MLTypeEqualityCheckableMixin, unittest.TestCase):
     """Tests the VarianceImpactOutlierDetector class."""

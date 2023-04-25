@@ -1,14 +1,9 @@
-import dataclasses, json, torch, pandas as pd, lightning as L
+import torch, pandas as pd, lightning as L
 from pathlib import Path
 from tqdm.auto import tqdm
-from transformers import get_polynomial_decay_schedule_with_warmup
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
-from .config import (
-    StructuredEventProcessingMode,
-    StructuredEventStreamTransformerConfig,
-    EventStreamOptimizationConfig,
-)
+from .config import StructuredEventProcessingMode, StructuredEventStreamTransformerConfig
 from .transformer import StructuredEventStreamTransformer, StructuredEventStreamTransformerPreTrainedModel
 from .utils import safe_masked_max, safe_weighted_avg
 from ..EventStreamData.event_stream_dataset import EventStreamDataset

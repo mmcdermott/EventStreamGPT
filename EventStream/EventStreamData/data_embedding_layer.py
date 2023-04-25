@@ -1,6 +1,6 @@
 import enum, torch
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from ..utils import StrEnum
 from .types import EventStreamPytorchBatch

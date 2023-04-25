@@ -3,11 +3,10 @@ sys.path.append('../..')
 
 from .test_config import ConfigComparisonsMixin
 
-import copy, unittest, numpy as np, pandas as pd
+import copy, unittest, pandas as pd
 from collections import defaultdict
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import Any, Dict, List, Tuple, Sequence, Set
+from typing import Any, Dict, List, Tuple, Sequence
 
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
 from EventStream.EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
@@ -15,10 +14,7 @@ from EventStream.EventStreamData.types import (
     DataModality,
     TemporalityType,
 )
-from EventStream.EventStreamData.time_dependent_functor import (
-    AgeFunctor,
-    TimeOfDayFunctor,
-)
+from EventStream.EventStreamData.time_dependent_functor import AgeFunctor
 from EventStream.EventStreamData.vocabulary import Vocabulary
 
 class ESDMock(EventStreamDatasetBase[dict]):

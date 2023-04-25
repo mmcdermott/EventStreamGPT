@@ -1,14 +1,13 @@
 import dataclasses, enum, math
 
-from pathlib import Path
 from transformers import PretrainedConfig
 
-from typing import Callable, Dict, Hashable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Hashable, List, Optional, Tuple, Union
 
 from ..utils import StrEnum, JSONableMixin
 from ..EventStreamData.data_embedding_layer import StaticEmbeddingMode, MeasIndexGroupOptions
 from ..EventStreamData.event_stream_pytorch_dataset import EventStreamPytorchDataset
-from ..EventStreamData.types import DataModality, TemporalityType
+from ..EventStreamData.types import DataModality
 
 MEAS_INDEX_GROUP_T = Union[str, Tuple[str, MeasIndexGroupOptions]]
 

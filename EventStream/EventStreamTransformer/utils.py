@@ -1,6 +1,6 @@
 import inspect, torch
 
-from typing import Optional, Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union
 
 VALID_INDEX_T = Union[int, slice, type(Ellipsis)]
 INDEX_SELECT_T = Union[VALID_INDEX_T, Sequence[VALID_INDEX_T]]

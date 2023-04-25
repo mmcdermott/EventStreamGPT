@@ -1,16 +1,10 @@
 import sys
 sys.path.append('../..')
 
-import math, torch, unittest
+import unittest
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.types import DataModality
-from EventStream.EventStreamTransformer.model_output import (
-    EventStreamTransformerForGenerativeSequenceModelOutput,
-    GenerativeSequenceModelLosses,
-    GenerativeSequenceModelLabels,
-    GenerativeSequenceModelPredictions,
-)
 from EventStream.EventStreamTransformer.generative_sequence_modelling_lightning import (
     StructuredEventStreamForGenerativeSequenceModelingLightningModule,
 )
@@ -40,7 +34,9 @@ TEST_VOCAB_OFFSETS_BY_MEASUREMENT = {
     'regression_col': 6,
 }
 
-class TestStructuredEventStreamForGenerativeSequenceModelingLightningModule(MLTypeEqualityCheckableMixin, unittest.TestCase):
+class TestStructuredEventStreamForGenerativeSequenceModelingLightningModule(
+    MLTypeEqualityCheckableMixin, unittest.TestCase
+):
     def test_constructs(self):
         """Tests that the Lightning Module constructs given default configuration options."""
         config = StructuredEventStreamTransformerConfig(
@@ -51,6 +47,8 @@ class TestStructuredEventStreamForGenerativeSequenceModelingLightningModule(MLTy
         )
         optimization_config = EventStreamOptimizationConfig()
 
-        StructuredEventStreamForGenerativeSequenceModelingLightningModule(config=config, optimization_config=optimization_config)
+        StructuredEventStreamForGenerativeSequenceModelingLightningModule(
+            config=config, optimization_config=optimization_config
+        )
 
 if __name__ == '__main__': unittest.main()

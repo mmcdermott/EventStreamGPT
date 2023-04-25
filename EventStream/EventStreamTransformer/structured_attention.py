@@ -1,6 +1,5 @@
 import torch
 
-from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
 class TakeExistingEventEmbedding(torch.nn.Module):

@@ -1,5 +1,5 @@
-import math, torch
-from typing import Any, Callable, Dict, Optional, Set, Tuple, Union
+import torch
+from typing import Dict, Optional, Set, Tuple, Union
 
 from ..EventStreamData.types import DataModality, EventStreamPytorchBatch
 from ..EventStreamData.data_embedding_layer import MeasIndexGroupOptions

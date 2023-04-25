@@ -4,14 +4,11 @@ sys.path.append('../..')
 import copy, torch, unittest, numpy as np, pandas as pd, polars as pl
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from typing import List, Optional, Set
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.event_stream_pytorch_dataset import EventStreamPytorchDataset
 from EventStream.EventStreamData.config import EventStreamPytorchDatasetConfig, VocabularyConfig
-from EventStream.EventStreamData.time_dependent_functor import TimeOfDayFunctor, AgeFunctor
-from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBatch
-from EventStream.EventStreamData.vocabulary import Vocabulary
+from EventStream.EventStreamData.types import EventStreamPytorchBatch
 
 MEASUREMENTS_IDXMAP = {
     'event_type': 1,

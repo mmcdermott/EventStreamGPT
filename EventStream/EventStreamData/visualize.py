@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import dataclasses, numpy as np, polars as pl
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 from ..utils import JSONableMixin
 

@@ -17,29 +17,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect, logging, warnings, pandas as pd
+import logging, warnings, pandas as pd
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
-from torch import nn
 
 from .generation_stopping_criteria import (
     MaxLengthCriteria,
     MaxTimeCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
-    validate_stopping_criteria,
 )
-from .generation_outputs_process import (
-    OutputsProcessor,
-    OutputsProcessorList,
-    OutputsWarper,
-)
+from .generation_outputs_process import OutputsProcessorList
 
-from transformers.pytorch_utils import torch_int_div
 from transformers.utils import ModelOutput
 
 from ..EventStreamData.types import EventStreamPytorchBatch

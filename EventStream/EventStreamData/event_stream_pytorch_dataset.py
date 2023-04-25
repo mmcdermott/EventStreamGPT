@@ -1,15 +1,12 @@
-import copy, itertools, torch, numpy as np, pandas as pd, polars as pl
+import copy, torch, numpy as np, pandas as pd, polars as pl
 
 from collections import defaultdict
-from datetime import datetime
-from functools import cached_property
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin
 from pathlib import Path
-from tqdm.auto import tqdm
-from typing import Dict, Hashable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from .config import EventStreamPytorchDatasetConfig, VocabularyConfig
-from .types import DataModality, EventStreamPytorchBatch, TemporalityType
+from .types import EventStreamPytorchBatch
 
 DATA_ITEM_T = Dict[str, List[float]]
 

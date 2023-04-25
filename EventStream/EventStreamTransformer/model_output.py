@@ -3,14 +3,13 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from mixins import SeedableMixin
 from transformers.utils import ModelOutput
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence, Set
+from typing import Any, Dict, List, Optional, Tuple, Union, Set
 
 from .utils import INDEX_SELECT_T, idx_distribution, expand_indexed_regression
 from .config import StructuredEventStreamTransformerConfig, MEAS_INDEX_GROUP_T
 from ..EventStreamData.types import TemporalityType, DataModality, EventStreamPytorchBatch
 from ..EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from ..EventStreamData.data_embedding_layer import MeasIndexGroupOptions
-from ..EventStreamData.config import MeasurementConfig
 
 CATEGORICAL_DIST_T = Union[torch.distributions.Bernoulli, torch.distributions.Categorical]
 

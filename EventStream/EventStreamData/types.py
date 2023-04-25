@@ -1,5 +1,5 @@
 import dataclasses, enum, torch
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, Optional, Union
 
 from ..utils import StrEnum
 

@@ -1,17 +1,11 @@
 import sys
 sys.path.append('../..')
 
-import math, torch, unittest, numpy as np
+import torch, unittest, numpy as np
 from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBatch
-from EventStream.EventStreamTransformer.model_output import (
-    EventStreamTransformerForGenerativeSequenceModelOutput,
-    GenerativeSequenceModelLosses,
-    GenerativeSequenceModelLabels,
-    GenerativeSequenceModelPredictions,
-)
 from EventStream.EventStreamTransformer.model import (
     StructuredEventStreamGenerativeOutputLayer,
     StructuredEventStreamTransformerForStreamClassification,
@@ -19,7 +13,6 @@ from EventStream.EventStreamTransformer.model import (
 from EventStream.EventStreamTransformer.config import (
     StructuredEventStreamTransformerConfig,
     StructuredEventProcessingMode,
-    TimeToEventGenerationHeadType,
 )
 
 TEST_MEASUREMENTS_PER_GEN_MODE = {

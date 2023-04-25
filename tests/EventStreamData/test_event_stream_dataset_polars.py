@@ -3,11 +3,11 @@ sys.path.append('../..')
 
 from ..mixins import ConfigComparisonsMixin
 
-import copy, unittest, numpy as np, pandas as pd, polars as pl
+import unittest, numpy as np, pandas as pd, polars as pl
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict
+from typing import Dict
 
 from EventStream.Preprocessing import Preprocessor
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig

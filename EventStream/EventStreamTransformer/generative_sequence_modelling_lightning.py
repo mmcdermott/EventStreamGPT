@@ -1,4 +1,4 @@
-import dataclasses, json, torch, torchmetrics, wandb, lightning as L
+import dataclasses, torch, torchmetrics, wandb, lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import LearningRateMonitor
@@ -11,7 +11,7 @@ from torchmetrics.classification import (
     MulticlassAveragePrecision,
     MultilabelAveragePrecision,
 )
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, Union
 from transformers import get_polynomial_decay_schedule_with_warmup
 
 from .config import StructuredEventStreamTransformerConfig, EventStreamOptimizationConfig

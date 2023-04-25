@@ -1,4 +1,4 @@
-import math, torch
+import torch
 from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 from typing import Optional
 

@@ -6,7 +6,7 @@ from collections import Counter
 from functools import cached_property
 from typing import Dict, Generic, List, Optional, Sequence, Set, TypeVar, Union
 
-from ..utils import COUNT_OR_PROPORTION, is_monotonically_nonincreasing
+from ..utils import COUNT_OR_PROPORTION
 
 VOCAB_ELEMENT = TypeVar('T')
 NESTED_VOCAB_SEQUENCE = Union[VOCAB_ELEMENT, Sequence['NESTED_VOCAB_SEQUENCE']]

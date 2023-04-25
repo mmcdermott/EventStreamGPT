@@ -1,17 +1,15 @@
-import copy, numpy as np, pandas as pd, polars as pl, warnings
+import numpy as np, pandas as pd, polars as pl
 
-from collections import Counter
-from datetime import datetime
-from mixins import SeedableMixin, SaveableMixin, TimeableMixin
+from mixins import TimeableMixin
 from pathlib import Path
-from typing import Any, Dict, Hashable, List, Optional, Tuple, Sequence, Set, Union
+from typing import Any, Dict, List, Optional, Tuple, Sequence, Union
 
-from .config import EventStreamDatasetConfig, MeasurementConfig
+from .config import MeasurementConfig
 from .event_stream_dataset_base import EventStreamDatasetBase
 from .types import DataModality, TemporalityType, NumericDataModalitySubtype
 from .vocabulary import Vocabulary
 
-from ..utils import lt_count_or_proportion, flatten_dict, to_sklearn_np
+from ..utils import lt_count_or_proportion
 from ..Preprocessing import (
     Preprocessor, StddevCutoffOutlierDetector, StandardScaler
 )

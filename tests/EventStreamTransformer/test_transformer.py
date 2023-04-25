@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../..')
 
-import copy, math, torch, unittest, pandas as pd
+import copy, torch, unittest
 
 from ..mixins import ConfigComparisonsMixin
 

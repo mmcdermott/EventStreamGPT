@@ -1,19 +1,16 @@
-import abc, copy, itertools, numpy as np, pandas as pd, plotly.express as px
+import abc, copy, itertools, numpy as np, pandas as pd
 
 from collections import defaultdict
-from datetime import datetime
 from mixins import SeedableMixin, SaveableMixin, TimeableMixin
 from pathlib import Path
 from plotly.graph_objs._figure import Figure
-from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Set, Union
+from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Union
 
 from .config import (
     EventStreamDatasetConfig, MeasurementConfig, VocabularyConfig,
 )
 from .visualize import Visualizer
-from .types import (
-    DataModality, TemporalityType, NumericDataModalitySubtype
-)
+from .types import DataModality, TemporalityType
 from .vocabulary import Vocabulary
 from ..utils import lt_count_or_proportion
 

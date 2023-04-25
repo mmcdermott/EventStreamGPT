@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../..')
 
-import torch, unittest, pandas as pd
+import unittest
 from unittest.mock import MagicMock
 from pathlib import Path
 from tempfile import TemporaryDirectory
