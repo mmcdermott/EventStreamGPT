@@ -858,11 +858,11 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
             case DataModality.UNIVARIATE_REGRESSION:
                 if config.measurement_metadata.value_type == NumericDataModalitySubtype.CATEGORICAL_INTEGER:
                     observations = source_df.with_columns(
-                        f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
+                        (f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)).alias(measure)
                     ).get_column(measure)
                 elif config.measurement_metadata.value_type == NumericDataModalitySubtype.CATEGORICAL_FLOAT:
                     observations = source_df.with_columns(
-                        f"{measure}__EQ_" + pl.col(measure).cast(pl.Utf8)
+                        (f"{measure}__EQ_" + pl.col(measure).cast(pl.Utf8)).alias(measure)
                     ).get_column(measure)
                 else: return
             case _: observations = source_df.get_column(measure)
@@ -1060,6 +1060,9 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
 
     def melt_df(self, source_df: DF_T, id_cols: Sequence[str], measures: List[str]) -> pl.Expr:
         struct_exprs = []
+        total_vocab_size = self.vocabulary_config.total_vocab_size
+        idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
+
         for m in measures:
             if m == 'event_type':
                 cfg = None
@@ -1068,18 +1071,15 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
                 cfg = self.measurement_configs[m]
                 modality = cfg.modality
 
-            total_vocab_size = self.vocabulary_config.total_vocab_size
-            idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
-
             if m in self.measurement_vocabs:
                 idx_present_expr = pl.col(m).is_not_null() & pl.col(m).is_in(self.measurement_vocabs[m])
-                idx_value_expr = pl.col(m).map_dict(self.unified_vocabulary_idxmap[m])
+                idx_value_expr = pl.col(m).map_dict(self.unified_vocabulary_idxmap[m], return_dtype=idx_dt)
             else:
                 idx_present_expr = pl.col(m).is_not_null()
-                idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m])
+                idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m]).cast(idx_dt)
 
             idx_present_expr = idx_present_expr.cast(pl.Boolean).alias('present')
-            idx_value_expr = idx_value_expr.cast(idx_dt).alias('index')
+            idx_value_expr = idx_value_expr.alias('index')
 
             if (
                 (modality == DataModality.UNIVARIATE_REGRESSION) and
