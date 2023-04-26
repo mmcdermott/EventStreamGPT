@@ -48,7 +48,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     @abc.abstractmethod
-    def load_input_df(
+    def _load_input_df(
         cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
         subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
     ) -> DF_T:
@@ -59,7 +59,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     @abc.abstractmethod
-    def process_events_and_measurments_df(
+    def process_events_and_measurements_df(
         cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
         ts_col: Union[str, List[str]]
     ) -> Tuple[DF_T, Optional[DF_T]]:
@@ -104,7 +104,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     @abc.abstractmethod
-    def _concat_dfs(dfs: List[DF_T]) -> DF_T:
+    def _concat_dfs(cls, dfs: List[DF_T]) -> DF_T:
         """
         Concatenates a list of dataframes into a single dataframe.
         """
@@ -125,7 +125,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         subject_id_col: str,
         subject_id_dtype: Any,
         dfs: Dict[str, INPUT_DF_T],
-        schemas: Dict[str, Union[InputDFSchema, Sequence[InputDFSchema]]],
+        schemas: Dict[str, Union[InputDFSchema, List[InputDFSchema]]],
     ) -> Tuple[DF_T, DF_T]:
         all_events_and_measurements = []
 
@@ -133,9 +133,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
             raise ValueError(
                 f"Must have schemas for all dfs. Found {set(schemas.keys())} schemas for {set(dfs.keys())} dfs."
             )
+        schemas = {k: v if type(v) is list else [v] for k, v in schemas.items()}
 
         for name, df in dfs.items():
-            all_columns = [subject_id_col]
+            all_columns = []
+
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas[name]))
 
             df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)

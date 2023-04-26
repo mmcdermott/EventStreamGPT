@@ -51,7 +51,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         else: return pl.UInt8
 
     @classmethod
-    def load_input_df(
+    def _load_input_df(
         cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
         subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
     ) -> DF_T:
@@ -59,33 +59,29 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         Loads an input dataframe into the format expected by the processing library.
         """
         match df:
-            case Path():
-                if df.suffix == 'csv': df = pl.scan_csv(df)
-                elif df.suffix == 'parquet': df = pl.scan_parquet(df)
-                else: raise ValueError(f"Can't read dataframe of suffix {df.suffix}")
+            case Path() as fp:
+                if fp.suffix == '.csv': df = pl.scan_csv(df)
+                elif fp.suffix == '.parquet': df = pl.scan_parquet(df)
+                else: raise ValueError(f"Can't read dataframe from file of suffix {fp.suffix}")
             case pd.DataFrame(): df = pl.from_pandas(df, include_index=True).lazy()
             case pl.DataFrame(): df = df.lazy()
             case _: raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
 
-        read_columns = ['subject_id']
-        df = cls._filter_col_inclusion(
-            df, {subject_id_col: list(subject_ids_map.keys())}
-        ).with_columns(
+        col_exprs = [
             pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias('subject_id')
-        )
-
+        ]
         for in_col, out_dt in columns:
             match out_dt:
-                case InputDataType.FLOAT: col_expr = pl.col(in_col).cast(pl.Float32)
-                case InputDataType.CATEGORICAL: col_expr = pl.col(in_col).cast(pl.Float32)
-                case InputDataType.TIMESTAMP: col_expr = pl.col(in_col).cast(pl.Datetime)
+                case InputDataType.FLOAT: col_exprs.append(pl.col(in_col).cast(pl.Float32, strict=False))
+                case InputDataType.CATEGORICAL: col_exprs.append(pl.col(in_col).cast(pl.Categorical))
+                case InputDataType.TIMESTAMP: col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=False))
                 case (InputDataType.TIMESTAMP, str() as ts_format):
-                    col_expr = pl.col(in_col).str.strptime(ts_format)
+                    col_exprs.append(pl.col(in_col).str.strptime(pl.Datetime, ts_format, strict=False))
                 case _: raise ValueError(f"Invalid out data type {out_dt}!")
-            read_columns.append(in_col)
-            df = df.with_columns(col_epxr)
 
-        return df.select(read_columns)
+        return cls._filter_col_inclusion(
+            df, {subject_id_col: list(subject_ids_map.keys())}
+        ).select(col_exprs)
 
     @classmethod
     def resolve_ts_col(cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> DF_T:
@@ -100,29 +96,30 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         return df.with_columns(ts_expr.alias(out_name)).drop(ts_to_drop)
 
     @classmethod
-    def process_events_and_measurments_df(
+    def process_events_and_measurements_df(
         cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
     ) -> Tuple[DF_T, Optional[DF_T]]:
         """
         Performs the following pre-processing steps on an input events and measurements dataframe:
-          1. Produces a unified timestamp column representing the minimum of passed timestamps, with the name,
-             `'timestamp'`.
-          2. Adds a categorical event type column with value `event_type`.
-          3. Extracts and renames the columns present in `columns_schema`.
-          4. Adds an integer `event_id` column.
+          1. Adds a categorical event type column with value `event_type`.
+          2. Extracts and renames the columns present in `columns_schema`.
+          3. Adds an integer `event_id` column.
           4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
              and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
         """
 
         df = df.with_row_count('event_id').with_columns(
             pl.lit(event_type).cast(pl.Categorical).alias('event_type')
+        ).filter(
+            pl.col('timestamp').is_not_null() & pl.col('subject_id').is_not_null()
         )
 
         events_df = df.select('event_id', 'subject_id', 'timestamp', 'event_type')
-        measurements_df = df.drop('subject_id', 'timestamp', 'event_type')
 
-        if measurements_df.shape[1] > 1: return events_df, measurements_df
-        else: return events_df, None
+        if len(df.columns) > 4: dynamic_measurements_df = df.drop('subject_id', 'timestamp', 'event_type')
+        else: dynamic_measurements_df = None
+
+        return events_df, dynamic_measurements_df
 
     @classmethod
     def split_range_events_df(cls, df: DF_T) -> Tuple[DF_T, DF_T, DF_T]:
@@ -157,12 +154,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         Increments the values in a column by a given amount and returns a dataframe with the incremented
         column.
         """
-        return df.with_columns(pl.col(col) + inc_by)
+        return df.with_columns(pl.col(col) + inc_by).collect()
 
     @classmethod
-    def _concat_dfs(dfs: List[DF_T]) -> DF_T:
+    def _concat_dfs(cls, dfs: List[DF_T]) -> DF_T:
         """ Concatenates a list of dataframes into a single dataframe. """
-        return pl.concat(dfs, how='diagonal').collect()
+        return pl.concat(dfs, how='diagonal')
 
     @classmethod
     def _read_df(cls, fp: Path, **kwargs) -> DF_T: return pl.read_parquet(fp)

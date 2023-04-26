@@ -8,8 +8,7 @@ from typing import Any, Dict, Hashable, List, Optional, Set, Sequence, Tuple, Un
 
 from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin
 from .time_dependent_functor import AgeFunctor, TimeOfDayFunctor, TimeDependentFunctor
-from .types import TemporalityType, DataModality
-#from .types import InputDFType, InputDataType
+from .types import TemporalityType, DataModality, InputDFType, InputDataType
 from .vocabulary import Vocabulary
 
 DF_COL = Union[str, Sequence[str]]
@@ -36,14 +35,15 @@ class InputDFSchema(JSONableMixin):
     ts_format: Optional[str] = "%Y-%m-%d %H:%M:%S"
     start_ts_format: Optional[str] = None
     end_ts_format: Optional[str] = None
-    data_cols: Optional[List[DF_COL]] = None
 
     do_make_unique: Optional[bool] = None
-    data_schema: Optional[Sequence[DF_SCHEMA]] = None
+    data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
 
     def __post_init__(self):
         if self.type is None: raise ValueError("Missing mandatory parameter type!")
         if self.event_type is None: raise ValueError("Missing mandatory parameter event_type!")
+        if type(self.data_schema) is not list and self.data_schema is not None:
+            self.data_schema = [self.data_schema]
 
         self.columns_to_load = []
 
@@ -66,6 +66,7 @@ class InputDFSchema(JSONableMixin):
                     for c in self.ts_col:
                         self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.ts_format)))
                 else: self.columns_to_load.append((self.ts_col, (InputDataType.TIMESTAMP, self.ts_format)))
+
             case InputDFType.RANGE:
                 if self.start_ts_col is None:
                     raise ValueError("Missing mandatory range parameter start_ts_col!")
