@@ -124,7 +124,10 @@ def get_embeddings(
         config.task_specific_params['pooling_method'] = pooling_method
 
         if config.max_seq_len != data_config.max_seq_len:
-            print(f"Warning: `config.max_seq_len` ({config.max_seq_len}) != `data_config.max_seq_len` ({data_config.max_seq_len}).")
+            print(
+                f"Warning: `config.max_seq_len` ({config.max_seq_len}) != `data_config.max_seq_len` "
+                f"({data_config.max_seq_len})."
+            )
             data_config.max_seq_len = config.max_seq_len
 
     # Creating training/tuning datasets

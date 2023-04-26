@@ -444,7 +444,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
         if n_data_elements_new < n_data_elements_old:
             data_delta = n_data_elements_old - n_data_elements_new
             new_dynamic_indices = torch.nn.functional.pad(new_dynamic_indices, (0, data_delta), value=0)
-            new_dynamic_measurement_indices = torch.nn.functional.pad(new_dynamic_measurement_indices, (0, data_delta), value=0)
+            new_dynamic_measurement_indices = torch.nn.functional.pad(
+                new_dynamic_measurement_indices, (0, data_delta), value=0
+            )
             new_dynamic_values = torch.nn.functional.pad(new_dynamic_values, (0, data_delta), value=0)
             new_dynamic_values_mask = torch.nn.functional.pad(new_dynamic_values_mask, (0, data_delta), value=False)
         elif n_data_elements_new > n_data_elements_old:

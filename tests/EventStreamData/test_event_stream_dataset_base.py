@@ -152,7 +152,7 @@ class ESDMock(EventStreamDatasetBase[dict, dict]):
         return {}
 
     @classmethod
-    def _concat_dfs(dfs: List[dict]) -> dict:
+    def _concat_dfs(cls, dfs: List[dict]) -> dict:
         cls.FUNCTIONS_CALLED['_concat_dfs'].append((dfs,))
         return {}
 
@@ -358,6 +358,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     def test_preprocess_measurements(self):
         def fit_measurements(self, *args, **kwargs):
             self.functions_called['fit_measurements'].append((args, kwargs))
+
         def transform_measurements(self, *args, **kwargs):
             self.functions_called['transform_measurements'].append((args, kwargs))
 

@@ -391,7 +391,6 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
             {},
             DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
             DEFAULT_NESTED_ATTENTION_DICT,
-            #DEFAULT_LOGNORMAL_MIXTURE_DICT,
             DEFAULT_EXPONENTIAL_DICT,
         ):
             cfg = StructuredEventStreamTransformerConfig(**params)

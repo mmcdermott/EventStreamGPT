@@ -40,8 +40,10 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     def subjects_fp(cls, save_dir: Path) -> Path: return save_dir / f"{cls.SUBJECTS_FN}.{cls.DF_SAVE_FORMAT}"
+
     @classmethod
     def events_fp(cls, save_dir: Path) -> Path: return save_dir / f"{cls.EVENTS_FN}.{cls.DF_SAVE_FORMAT}"
+
     @classmethod
     def dynamic_measurements_fp(cls, save_dir: Path) -> Path:
         return save_dir / f"{cls.DYNAMIC_MEASUREMENTS_FN}.{cls.DF_SAVE_FORMAT}"
@@ -150,8 +152,8 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
                             df=df, event_type=schema.event_type, columns_schema=schema.unified_schema,
                         ))
                     case InputDFType.RANGE:
-                        df = cls.resolve_ts_col(df, start_ts_col, 'start_time')
-                        df = cls.resolve_ts_col(df, end_ts_col, 'end_time')
+                        df = cls.resolve_ts_col(df, schema.start_ts_col, 'start_time')
+                        df = cls.resolve_ts_col(df, schema.end_ts_col, 'end_time')
                         eq, st, end = cls.split_range_events_df(df=df)
                         all_events_and_measurements.append(cls.process_events_and_measurements_df(
                             eq, columns_schema=schema.unified_schema, event_type=schema.event_type
@@ -444,9 +446,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
     @property
     def train_subjects_df(self) -> DF_T:
         return self._filter_col_inclusion(self.subjects_df, {'subject_id': self.split_subjects['train']})
+
     @property
     def tuning_subjects_df(self) -> DF_T:
         return self._filter_col_inclusion(self.subjects_df, {'subject_id': self.split_subjects['tuning']})
+
     @property
     def held_out_subjects_df(self) -> DF_T:
         return self._filter_col_inclusion(self.subjects_df, {'subject_id': self.split_subjects['held_out']})
@@ -454,9 +458,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
     @property
     def train_events_df(self) -> DF_T:
         return self._filter_col_inclusion(self.events_df, {'subject_id': self.split_subjects['train']})
+
     @property
     def tuning_events_df(self) -> DF_T:
         return self._filter_col_inclusion(self.events_df, {'subject_id': self.split_subjects['tuning']})
+
     @property
     def held_out_events_df(self) -> DF_T:
         return self._filter_col_inclusion(self.events_df, {'subject_id': self.split_subjects['held_out']})
@@ -756,15 +762,16 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
     def dynamic_numerical_columns(self):
         """Returns all numerical metadata column key-column, value-column pairs."""
         return [
-            (k, cfg.values_column) for k, cfg in self.measurement_configs.items() \
-                if (cfg.is_numeric and cfg.temporality == TemporalityType.DYNAMIC)
+            (k, cfg.values_column) for k, cfg in self.measurement_configs.items()
+            if (cfg.is_numeric and cfg.temporality == TemporalityType.DYNAMIC)
         ]
+
     @property
     def time_dependent_numerical_columns(self):
         """Returns all numerical metadata column key-column, value-column pairs."""
         return [
-            k for k, cfg in self.measurement_configs.items() \
-                if (cfg.is_numeric and cfg.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT)
+            k for k, cfg in self.measurement_configs.items()
+            if (cfg.is_numeric and cfg.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT)
         ]
 
     @property

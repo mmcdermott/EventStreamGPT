@@ -395,6 +395,7 @@ class MeasurementConfig(JSONableMixin):
 
     @property
     def is_dropped(self) -> bool: return self.modality == DataModality.DROPPED
+
     @property
     def is_numeric(self) -> bool:
         return self.modality in (

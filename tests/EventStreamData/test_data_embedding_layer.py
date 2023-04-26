@@ -663,8 +663,6 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 'params': {
                     **valid_params,
                     'static_embedding_mode': StaticEmbeddingMode.SUM_ALL,
-                    #'static_embedding_weight': 1/2,
-                    #'dynamic_embedding_weight': 1/2,
                 },
                 'batch': default_batch,
                 'want': torch.Tensor([

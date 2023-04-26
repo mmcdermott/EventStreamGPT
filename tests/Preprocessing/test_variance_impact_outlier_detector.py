@@ -109,8 +109,6 @@ class TestVarianceImpactOutlierDetector(MLTypeEqualityCheckableMixin, unittest.T
 
         actual_delta_1 = M._max_deviation_factor(28, 0.1)*want_inliers.std() + 1
         actual_delta_2 = M._max_deviation_factor(30, 0.1)*want_inliers.std() + 100
-        #print('actual delta 1', actual_delta_1)
-        #print('actual delta 2', actual_delta_2)
 
         def max_L_mock(_, N): return 0*N + 3
         M._max_L = max_L_mock.__get__(M, VarianceImpactOutlierDetector)

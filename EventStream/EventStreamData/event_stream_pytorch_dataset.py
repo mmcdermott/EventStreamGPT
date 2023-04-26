@@ -66,6 +66,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             (pd.api.types.is_float_dtype, None),
         ],
     }
+
     @classmethod
     def normalize_task(cls, val: pd.Series) -> Tuple[str, pd.Series]:
         for task_type, checkers in cls.TYPE_CHECKERS.items():
@@ -173,8 +174,8 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
                 **{c: pl.col(c).first() for c in self.cached_data.columns if c not in time_dep_cols},
                 **{c: pl.col(c).first() for c in self.tasks},
                 **{
-                    t: pl.col(t).arr.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr) \
-                        for t in time_dep_cols
+                    t: pl.col(t).arr.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr)
+                    for t in time_dep_cols
                 },
             ).drop('__id')
 

@@ -277,7 +277,7 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
             [1, -1, 0, 1],
             [-1, -1, -1, 1],
             [-1, -1, 1, 1],
-            #[0, 0, 1, 1], # In reality, this is what the gradient in this case should be.
+            # [0, 0, 1, 1], # In reality, this is what the gradient in this case should be.
             [0, 0, 0, 0], # but in practice it is all NaNs as autograd can't recognize some stuff.
         ])
 

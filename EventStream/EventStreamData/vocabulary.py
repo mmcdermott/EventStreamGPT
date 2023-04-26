@@ -45,6 +45,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             return self.idxmap.get(q, 0)
 
     def __len__(self): return len(self.vocabulary)
+
     def __eq__(self, other: 'Vocabulary'):
         return (
             (type(self) is type(other)) and

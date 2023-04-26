@@ -1,4 +1,7 @@
-# Based on https://raw.githubusercontent.com/huggingface/transformers/e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+# Based on "
+# https://raw.githubusercontent.com/huggingface/transformers/
+# e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+# "
 """ PyTorch StructuredEventStreamTransformer model."""
 
 import math, torch, torch.utils.checkpoint
@@ -456,7 +459,7 @@ class StructuredEventStreamInputLayer(torch.nn.Module):
     def forward(self, batch: EventStreamPytorchBatch) -> torch.Tensor:
         data_embed = self.data_embedding_layer(batch)
         # data_embed is either of shape (batch_size, sequence_length, config.hidden_size) or of shape
-        #(batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
+        # (batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
 
         time_embed = self.time_embedding_layer(batch['time'])
         # time_embed is of shape (batch_size, sequence_length, config.hidden_size)
@@ -494,13 +497,13 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
         # TODO(mmd): Replace this with InnerBlock for a non-structured version.
         if config.structured_event_processing_mode == 'nested_attention':
             self.h = nn.ModuleList([
-                StructuredEventStreamTransformerBlock(config, layer_id=i) \
-                    for i in range(config.num_hidden_layers)
+                StructuredEventStreamTransformerBlock(config, layer_id=i)
+                for i in range(config.num_hidden_layers)
             ])
         elif config.structured_event_processing_mode == 'conditionally_independent':
             self.h = nn.ModuleList([
-                InnerBlock(config, layer_id=i, is_seq=True) \
-                    for i in range(config.num_hidden_layers)
+                InnerBlock(config, layer_id=i, is_seq=True)
+                for i in range(config.num_hidden_layers)
             ])
         else: raise ValueError(
             "Invalid `config.structured_event_processing_mode`! Got "

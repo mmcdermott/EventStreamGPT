@@ -51,15 +51,25 @@ class GreedySearchDecoderOnlyOutput(ModelOutput):
     Args:
         batch (`EventStreamPytorchBatch`):
             The generated sequences.
-        scores (`tuple(GenerativeSequenceModelPredictions)` *optional*, returned when `output_scores=True` is passed or when `config.output_scores=True`):
+        scores (
+            `tuple(GenerativeSequenceModelPredictions)` *optional*, returned when `output_scores=True` is
+            passed or when `config.output_scores=True`
+        ):
             Processed predictions of the generative sequence modeling head, as torch distributions at each
             generation step.
-        attentions (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_attentions=True` is passed or `config.output_attentions=True`):
-            Tuple (one element for each generated token) of tuples (one element for each layer of the decoder) of
-            `torch.FloatTensor` of shape `(batch_size, num_heads, generated_length, sequence_length)`.
-        hidden_states (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+        attentions (
+            `tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_attentions=True` is passed or
+            `config.output_attentions=True`
+        ):
             Tuple (one element for each generated token) of tuples (one element for each layer of the decoder)
-            of `torch.FloatTensor` of shape `(batch_size, generated_length, dependency_graph_len, hidden_size)`.
+            of `torch.FloatTensor` of shape `(batch_size, num_heads, generated_length, sequence_length)`.
+        hidden_states (
+            `tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_hidden_states=True` is passed
+            or when `config.output_hidden_states=True`
+        ):
+            Tuple (one element for each generated token) of tuples (one element for each layer of the decoder)
+            of `torch.FloatTensor` of shape `(batch_size, generated_length, dependency_graph_len,
+            hidden_size)`.
     """
 
     batch: Optional[EventStreamPytorchBatch] = None
@@ -77,15 +87,25 @@ class SampleDecoderOnlyOutput(ModelOutput):
     Args:
         batch (`EventStreamPytorchBatch`):
             The generated sequences.
-        scores (`tuple(GenerativeSequenceModelPredictions)` *optional*, returned when `output_scores=True` is passed or when `config.output_scores=True`):
+        scores (
+            `tuple(GenerativeSequenceModelPredictions)` *optional*, returned when `output_scores=True` is
+            passed or when `config.output_scores=True`
+        ):
             Processed predictions of the generative sequence modeling head, as torch distributions at each
             generation step.
-        attentions (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_attentions=True` is passed or `config.output_attentions=True`):
-            Tuple (one element for each generated token) of tuples (one element for each layer of the decoder) of
-            `torch.FloatTensor` of shape `(batch_size, num_heads, generated_length, sequence_length)`.
-        hidden_states (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+        attentions (
+            `tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_attentions=True` is passed or
+            `config.output_attentions=True`
+        ):
             Tuple (one element for each generated token) of tuples (one element for each layer of the decoder)
-            of `torch.FloatTensor` of shape `(batch_size, generated_length, dependency_graph_len, hidden_size)`.
+            of `torch.FloatTensor` of shape `(batch_size, num_heads, generated_length, sequence_length)`.
+        hidden_states (
+            `tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_hidden_states=True` is passed
+            or when `config.output_hidden_states=True`
+        ):
+            Tuple (one element for each generated token) of tuples (one element for each layer of the decoder)
+            of `torch.FloatTensor` of shape `(batch_size, generated_length, dependency_graph_len,
+            hidden_size)`.
     """
 
     scores: Optional[Tuple[GenerativeSequenceModelPredictions]] = None
@@ -269,59 +289,83 @@ class StructuredEventStreamGenerationMixin:
                 prompt.
             max_new_events (`int`, *optional*):
                 The maximum numbers of tokens to generate, ignoring the number of events in the prompt.
-            do_sample (`bool`, *optional*, defaults to `model.config.do_sample` or `False` if the config does not set any value):
+            do_sample (
+                `bool`, *optional*, defaults to `model.config.do_sample` or `False` if the config does not set
+                any value
+            ):
                 Whether or not to use sampling ; use greedy decoding otherwise.
-            temperature (`float`, *optional*, defaults to `model.config.temperature` or 1.0 if the config does not set any value):
+            temperature (
+                `float`, *optional*, defaults to `model.config.temperature` or 1.0 if the config does not set
+                any value
+            ):
                 The value used to modulate the next token probabilities.
 
-            num_return_sequences(`int`, *optional*, defaults to `model.config.num_return_sequences` or 1 if the config does not set any value):
+            num_return_sequences(
+                `int`, *optional*, defaults to `model.config.num_return_sequences` or 1 if the config does not
+                set any value
+            ):
                 The number of independently computed returned sequences for each element in the batch.
             max_time(`float`, *optional*):
                 The maximum amount of time you allow the computation to run for in seconds. generation will still
                 finish the current pass after allocated time has been passed.
             attention_mask (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Mask to avoid performing attention on padding token indices. Mask values are in `[0, 1]`, 1 for tokens
-                that are not masked, and 0 for masked tokens. If not provided, will default to a tensor the same shape
-                as `input_ids` that masks the pad token. [What are attention masks?](../glossary#attention-mask)
+                Mask to avoid performing attention on padding token indices. Mask values are in `[0, 1]`, 1
+                for tokens that are not masked, and 0 for masked tokens. If not provided, will default to a
+                tensor the same shape as `input_ids` that masks the pad token.
             use_cache (`bool`, *optional*, defaults to `True`):
-                Whether or not the model should use the past last key/values attentions (if applicable to the model) to
-                speed up decoding.
+                Whether or not the model should use the past last key/values attentions (if applicable to the
+                model) to speed up decoding.
             stopping_criteria (`StoppingCriteriaList`, *optional*):
-                 Custom stopping criteria that complement the default stopping criteria built from arguments and a
-                 model's config. If a stopping criteria is passed that is already created with the arguments or a
-                 model's config an error is thrown. This feature is intended for advanced users.
-            output_attentions (`bool`, *optional*, defaults to `model.config.output_attentions` or `False` if the config does not set any value):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more details.
-            output_hidden_states (`bool`, *optional*, defaults to `model.config.output_hidden_states` or `False` if the config does not set any value):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
-                for more details.
-            output_scores (`bool`, *optional*, defaults to `model.config.output_scores` or `False` if the config does not set any value):
-                Whether or not to return the prediction scores. See `scores` under returned tensors for more details.
-            return_dict_in_generate (`bool`, *optional*, defaults to `model.config.return_dict_in_generate` or `False` if the config does not set any value):
+                 Custom stopping criteria that complement the default stopping criteria built from arguments
+                 and a model's config. If a stopping criteria is passed that is already created with the
+                 arguments or a model's config an error is thrown. This feature is intended for advanced
+                 users.
+            output_attentions (
+                `bool`, *optional*, defaults to `model.config.output_attentions` or `False` if the config does
+                not set any value
+            ):
+                Whether or not to return the attentions tensors of all attention layers. See `attentions`
+                under returned tensors for more details.
+            output_hidden_states (
+                `bool`, *optional*, defaults to `model.config.output_hidden_states` or `False` if the config
+                does not set any value
+            ):
+                Whether or not to return the hidden states of all layers. See `hidden_states` under returned
+                tensors for more details.
+            output_scores (
+                `bool`, *optional*, defaults to `model.config.output_scores` or `False` if the config does not
+                set any value
+            ):
+                Whether or not to return the prediction scores. See `scores` under returned tensors for more
+                details.
+            return_dict_in_generate (
+                `bool`, *optional*, defaults to `model.config.return_dict_in_generate` or `False` if the
+                config does not set any value
+            ):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
 
             model_kwargs:
-                Additional model specific kwargs will be forwarded to the `forward` function of the model. If the model
-                is an encoder-decoder model, encoder specific kwargs should not be prefixed and decoder specific kwargs
-                should be prefixed with *decoder_*.
+                Additional model specific kwargs will be forwarded to the `forward` function of the model. If
+                the model is an encoder-decoder model, encoder specific kwargs should not be prefixed and
+                decoder specific kwargs should be prefixed with *decoder_*.
 
         Return:
-            [`~utils.ModelOutput`] or `torch.LongTensor`: A [`~utils.ModelOutput`] (if `return_dict_in_generate=True`
-            or when `config.return_dict_in_generate=True`) or a `torch.FloatTensor`.
+            [`~utils.ModelOutput`] or `torch.LongTensor`: A [`~utils.ModelOutput`] (if
+            `return_dict_in_generate=True` or when `config.return_dict_in_generate=True`) or a
+            `torch.FloatTensor`.
 
-                If the model is *not* an encoder-decoder model (`model.config.is_encoder_decoder=False`), the possible
-                [`~utils.ModelOutput`] types are:
+                If the model is *not* an encoder-decoder model (`model.config.is_encoder_decoder=False`), the
+                possible [`~utils.ModelOutput`] types are:
 
                     - [`~generation_utils.GreedySearchDecoderOnlyOutput`],
                     - [`~generation_utils.SampleDecoderOnlyOutput`],
                     - [`~generation_utils.BeamSearchDecoderOnlyOutput`],
                     - [`~generation_utils.BeamSampleDecoderOnlyOutput`]
 
-                If the model is an encoder-decoder model (`model.config.is_encoder_decoder=True`), the possible
-                [`~utils.ModelOutput`] types are:
+                If the model is an encoder-decoder model (`model.config.is_encoder_decoder=True`), the
+                possible [`~utils.ModelOutput`] types are:
 
                     - [`~generation_utils.GreedySearchEncoderDecoderOutput`],
                     - [`~generation_utils.SampleEncoderDecoderOutput`],
@@ -348,8 +392,8 @@ class StructuredEventStreamGenerationMixin:
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict_in_generate = (
-            return_dict_in_generate if return_dict_in_generate is not None\
-                else self.config.return_dict_in_generate
+            return_dict_in_generate if return_dict_in_generate is not None
+            else self.config.return_dict_in_generate
         )
 
         # 3. Define other model kwargs
@@ -588,13 +632,6 @@ class StructuredEventStreamGenerationMixin:
                 match sample_fn:
                     case 'greedy': next_event = next_event_preds.mode(batch.event_mask)
                     case 'sample': next_event = next_event_preds.sample(batch.event_mask)
-
-                # TODO(mmd): Adapt this
-                # finished sentences should have their next token be a padding token
-                #if eos_token_id is not None:
-                #    if pad_token_id is None:
-                #        raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
-                #    next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
                 # update batch for next step
                 if measurements_to_fill == {'time'}:

@@ -22,23 +22,28 @@ from EventStream.EventStreamData.vocabulary import Vocabulary
 
 class TestNormalizer(Preprocessor):
     def __init__(self, *args, **kwargs): pass
+
     @classmethod
     def params_schema(self) -> Dict[str, pl.DataType]:
         return {'min': pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
         return pl.struct([column.min().alias('min')])
+
     @classmethod
     def predict_from_polars(cls, column: pl.Expr, model: pl.Expr) -> pl.Expr:
         return (column - model.struct.field('min').round(0))
 
 class TestOutlierDetector(Preprocessor):
     def __init__(self, *args, **kwargs): pass
+
     @classmethod
     def params_schema(self) -> Dict[str, pl.DataType]:
         return {'mean': pl.Float64}
+
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
         return pl.struct([column.mean().alias('mean')])
+
     @classmethod
     def predict_from_polars(cls, column: pl.Expr, model: pl.Expr) -> pl.Expr:
         return ((column - model.struct.field('mean')) > 10).cast(pl.Boolean)
@@ -55,7 +60,9 @@ class TestAgeFunctor(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.UNIVARIATE_REGRESSION
 
     def __init__(self): self.link_static_cols = [DOB_COL]
+
     def __call__(self): return None
+
     def pl_expr(self):
         return (pl.col('timestamp') - pl.col(DOB_COL)).dt.nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
 
@@ -63,6 +70,7 @@ class TestTimeOfDayFunctor(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.SINGLE_LABEL_CLASSIFICATION
 
     def __call__(self): return None
+
     def pl_expr(self):
         return pl.when(
             pl.col('timestamp').dt.hour() < 6
@@ -201,8 +209,8 @@ want_event_times = {
     want_id: in_event_times[in_ids[0]] for want_id, in_ids in want_event_agg_mapping.items()
 }
 want_event_TODs = {
-    k: 'EARLY_AM' if v.hour < 6 else 'UNK' if v.hour < 12 else 'PM' if v.hour < 21 else 'LATE_PM' \
-        for k, v in want_event_times.items()
+    k: 'EARLY_AM' if v.hour < 6 else 'UNK' if v.hour < 12 else 'PM' if v.hour < 21 else 'LATE_PM'
+    for k, v in want_event_times.items()
 }
 
 subject_dobs = {
@@ -246,15 +254,15 @@ want_events_ts_ages_lt_90_is_inlier = {
     k: None if (v > 90) else bool(v-outlier_mean_lt_90 < 10) for k, v in want_event_ts_ages.items()
 }
 want_events_ts_ages_lt_90 = {
-    k: (v - normalizer_min_lt_90.round()) if (v < 90) and want_events_ts_ages_lt_90_is_inlier[k] else np.NaN \
-        for k, v in want_event_ts_ages.items()
+    k: (v - normalizer_min_lt_90.round()) if (v < 90) and want_events_ts_ages_lt_90_is_inlier[k] else np.NaN
+    for k, v in want_event_ts_ages.items()
 }
 want_events_ts_ages_all_is_inlier = {
     k: bool(v-outlier_mean_all < 10) for k, v in want_event_ts_ages.items()
 }
 want_events_ts_ages_all = {
-    k: (v - normalizer_min_all.round()) if want_events_ts_ages_all_is_inlier[k] else np.NaN \
-        for k, v in want_event_ts_ages.items()
+    k: (v - normalizer_min_all.round()) if want_events_ts_ages_all_is_inlier[k] else np.NaN
+    for k, v in want_event_ts_ages.items()
 }
 
 IN_SUBJECTS_DF = pl.DataFrame(

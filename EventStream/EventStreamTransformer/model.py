@@ -31,9 +31,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
     # TODO(mmd): Allow for use of NLL-beta throughout?
     # TODO(mmd): Per-subject, NLL should be averaged over total duration, not # of events?
     def __init__(
-            self,
-            config: StructuredEventStreamTransformerConfig,
-        ):
+        self,
+        config: StructuredEventStreamTransformerConfig,
+    ):
         super().__init__()
 
         self.config = config
@@ -222,7 +222,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             measurement_idx = self.config.measurements_idxmap[measurement]
             vocab_start   = self.config.vocab_offsets_by_measurement[measurement]
             vocab_end     = min(
-                o for o in list(self.config.vocab_offsets_by_measurement.values()) + [self.config.vocab_size]\
+                o for o in list(self.config.vocab_offsets_by_measurement.values()) + [self.config.vocab_size]
                 if o > vocab_start
             )
 
@@ -586,9 +586,9 @@ class StructuredEventStreamTransformerForGenerativeSequenceModeling(
     StructuredEventStreamGenerationMixin, StructuredEventStreamTransformerPreTrainedModel
 ):
     def __init__(
-            self,
-            config: StructuredEventStreamTransformerConfig,
-        ):
+        self,
+        config: StructuredEventStreamTransformerConfig,
+    ):
         super().__init__(config)
 
         self.encoder = StructuredEventStreamTransformer(config)
@@ -608,9 +608,9 @@ class StructuredEventStreamTransformerForGenerativeSequenceModeling(
 
 class StructuredEventStreamTransformerForStreamClassification(StructuredEventStreamTransformerPreTrainedModel):
     def __init__(
-            self,
-            config: StructuredEventStreamTransformerConfig,
-        ):
+        self,
+        config: StructuredEventStreamTransformerConfig,
+    ):
         super().__init__(config)
 
         self.task = config.finetuning_task
