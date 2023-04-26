@@ -57,6 +57,8 @@ class Visualizer(JSONableMixin):
     dob_col: Optional[str] = None
     n_age_buckets: Optional[int] = 200
 
+    min_sub_to_plot_age_dist: Optional[int] = 50
+
     def to_dict(self) -> Dict[str, Any]:
         """Represents this configuation object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
@@ -238,10 +240,19 @@ class Visualizer(JSONableMixin):
         )
 
         for static_covariate in self.static_covariates:
+
+            if self.min_sub_to_plot_age_dist is not None:
+                val_counts = subjects_df[static_covariate].value_counts()
+                valid_categories = val_counts.filter(
+                    pl.col('counts') > self.min_sub_to_plot_age_dist
+                )[static_covariate].to_list()
+
+                cross_df = cross_df.filter(pl.col(static_covariate).is_in(valid_categories))
+
             figures.append(px.density_heatmap(
                 self._normalize_to_pandas(cross_df, static_covariate), x='timestamp', y=self.age_col,
                 facet_col=static_covariate, nbinsy=self.n_age_buckets, nbinsx=n_time_bins,
-                marginal_y='histogram',
+                marginal_y='histogram', histnorm='probability'
             ))
 
         return figures
