@@ -279,7 +279,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         super()._save(self.config.save_dir / 'E.pkl', **kwargs)
 
         vocab_config_fp = self.config.save_dir / 'vocabulary_config.json'
-        self.vocabulary_config.to_json_file(vocab_config_fp)
+
+        if 'do_overwrite' in kwargs:
+            self.vocabulary_config.to_json_file(vocab_config_fp, do_overwrite=kwargs['do_overwrite'])
+        else:
+            self.vocabulary_config.to_json_file(vocab_config_fp)
 
         subjects_fp = self.subjects_fp(self.config.save_dir)
         events_fp = self.events_fp(self.config.save_dir)
