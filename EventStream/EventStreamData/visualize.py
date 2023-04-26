@@ -97,11 +97,25 @@ class Visualizer(JSONableMixin):
         if self.plot_by_time and self.time_unit is None:
             raise ValueError("Can't plot by time if time_unit is unspecified!")
 
-    def plot_counts_over_time(self, events_df: pl.DataFrame) -> List[Figure]:
+    def _normalize_to_pandas(self, df: pl.DataFrame, covariate: Optional[str] = None) -> pd.DataFrame:
+        df = df.to_pandas()
+
+        if covariate is None: return df
+
+        if df[covariate].isna().any():
+            if 'UNK' not in df[covariate].cat.categories:
+                df[covariate] = df[covariate].cat.add_categories('UNK')
+
+            df[covariate] = df[covariate].fillna('UNK')
+        df[covariate] = df[covariate].cat.remove_unused_categories()
+
+        return df
+
+    def plot_counts_over_time(self, in_events_df: pl.DataFrame) -> List[Figure]:
         figures = []
         if not self.plot_by_time: return figures
 
-        events_df = events_df.sort(
+        in_events_df = in_events_df.sort(
             'timestamp', descending=False
         ).with_columns(
             pl.when(
@@ -140,7 +154,7 @@ class Visualizer(JSONableMixin):
         for static_covariate in self.static_covariates:
             plt_kwargs = {'x': 'timestamp', 'color': static_covariate}
 
-            events_df = events_df.groupby(
+            events_df = in_events_df.groupby(
                 'timestamp', static_covariate
             ).agg(
                 pl.col('n_subjects').sum(),
@@ -155,13 +169,14 @@ class Visualizer(JSONableMixin):
             # who have at least one event before $t$ and have not yet had their last event at $t$).
             # "Cumulative Subjects": $y$ = the number of cumulative subjects at time $t$ (i.e., the number of
             # subjects who have at least one event before $t$).
-            subjects_as_of_time = events_df.select(
+            subjects_as_of_time = self._normalize_to_pandas(events_df.select(
                 'timestamp', static_covariate,
                 pl.col('active_subjects_delta').cumsum().over(static_covariate).alias('Active Subjects'),
                 pl.col('cumulative_subjects_delta').cumsum().over(static_covariate).alias(
                     'Cumulative Subjects'
                 ),
-            ).to_pandas()
+            ), static_covariate)
+
             figures.extend([
                 px.line(subjects_as_of_time, y='Active Subjects', **plt_kwargs),
                 px.line(subjects_as_of_time, y='Cumulative Subjects', **plt_kwargs),
@@ -174,7 +189,7 @@ class Visualizer(JSONableMixin):
             # "Events / (Subject, Time)": $y$ = the average rate of events per unit time per subject at time
             # $t$
 
-            events_as_of_time = events_df.select(
+            events_as_of_time = self._normalize_to_pandas(events_df.select(
                 'timestamp', static_covariate,
                 pl.col('n_events').cumsum().over(static_covariate).alias('Cumulative Events'),
                 (
@@ -182,7 +197,8 @@ class Visualizer(JSONableMixin):
                     pl.col('cumulative_subjects_delta').cumsum().over(static_covariate)
                 ).alias('Average Events / Subject'),
                 pl.col('events_per_subject_per_time').alias('New Events / Subject / time'),
-            ).to_pandas()
+            ), static_covariate)
+
             figures.extend([
                 px.line(events_as_of_time, y='Cumulative Events', **plt_kwargs),
                 px.line(events_as_of_time, y='Average Events / Subject', **plt_kwargs),
@@ -216,13 +232,16 @@ class Visualizer(JSONableMixin):
             (pl.col('start_time') <= pl.col('timestamp')) & (pl.col('timestamp') <= pl.col('end_time'))
         ).select(
             'timestamp', *self.static_covariates,
-            (pl.col('timestamp') - pl.col(self.dob_col)).alias(self.age_col),
-        ).to_pandas()
+            (
+                (pl.col('timestamp') - pl.col(self.dob_col)).dt.nanoseconds() / (1e9 * 60 * 60 * 24 * 365.25)
+            ).alias(self.age_col),
+        )
 
         for static_covariate in self.static_covariates:
             figures.append(px.density_heatmap(
-                cross_df, x='timestamp', y=self.age_col, facet_col=static_covariate, nbinsy=self.n_age_buckets,
-                nbinsx=n_time_bins, marginal_y='histogram',
+                self._normalize_to_pandas(cross_df, static_covariate), x='timestamp', y=self.age_col,
+                facet_col=static_covariate, nbinsy=self.n_age_buckets, nbinsx=n_time_bins,
+                marginal_y='histogram',
             ))
 
         return figures
@@ -253,7 +272,7 @@ class Visualizer(JSONableMixin):
         for static_covariate in self.static_covariates:
             plt_kwargs = {'x': self.age_col, 'color': static_covariate}
 
-            counts_at_age = events_df.groupby(
+            counts_at_age = self._normalize_to_pandas(events_df.groupby(
                 self.age_col, static_covariate
             ).agg(
                 pl.col('n_subjects').sum().alias('Subjects with Event @ Age'),
@@ -265,7 +284,7 @@ class Visualizer(JSONableMixin):
                 ).alias('Events / Subject @ Age | has event'),
             ).sort(
                 self.age_col, descending=False
-            ).to_pandas()
+            ), static_covariate)
 
             figures.extend([
                 px.line(counts_at_age, y='Subjects with Event @ Age', **plt_kwargs),
@@ -281,10 +300,11 @@ class Visualizer(JSONableMixin):
             'subject_id', *self.static_covariates
         ).agg(
             pl.col('event_id').n_unique().alias('# of Events')
-        ).to_pandas()
+        )
 
         return [
-            px.histogram(events_per_patient, x='# of Events', color=c) for c in self.static_covariates
+            px.histogram(self._normalize_to_pandas(events_per_patient, c), x='# of Events', color=c)
+            for c in self.static_covariates
         ]
 
     def plot(
