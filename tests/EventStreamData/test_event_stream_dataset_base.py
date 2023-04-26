@@ -120,21 +120,21 @@ class ESDMock(EventStreamDatasetBase[dict, dict]):
         return events_df
 
     @classmethod
-    def load_input_df(
+    def _load_input_df(
         cls, df: dict, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
         subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
     ) -> dict:
-        cls.FUNCTIONS_CALLED['load_input_df'].append(
+        cls.FUNCTIONS_CALLED['_load_input_df'].append(
             (df, columns, subject_id_col, subject_ids_map, subject_id_dtype)
         )
         return {}
 
     @classmethod
-    def process_events_and_measurments_df(
+    def process_events_and_measurements_df(
         cls, df: dict, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
         ts_col: Union[str, List[str]]
     ) -> Tuple[dict, Optional[dict]]:
-        cls.FUNCTIONS_CALLED['process_events_and_measurments_df'].append(
+        cls.FUNCTIONS_CALLED['process_events_and_measurements_df'].append(
             (df, event_type, columns_schema, ts_col)
         )
         return {}, None
