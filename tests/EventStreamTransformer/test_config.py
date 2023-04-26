@@ -45,6 +45,7 @@ class TestEventStreamOptimizationConfig(unittest.TestCase):
         self.assertEqual(10 * 3, cfg.max_training_steps)
         self.assertEqual(6, cfg.lr_num_warmup_steps)
 
+
 DEFAULT_MAIN_CONFIG_DICT = dict(
     vocab_sizes_by_measurement = None,
     vocab_offsets_by_measurement = None,

@@ -16,6 +16,7 @@ class MeasIndexGroupOptions(StrEnum):
     @classmethod
     def values(cls): return list(map(lambda c: c.value, cls))
 
+
 MEAS_INDEX_GROUP_T = Union[int, Tuple[int, MeasIndexGroupOptions]]
 
 class StaticEmbeddingMode(StrEnum):

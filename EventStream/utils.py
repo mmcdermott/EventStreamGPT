@@ -91,6 +91,7 @@ class StrEnum(str, enum.Enum):
     def _generate_next_value_(name, *_):
         return name.lower()
 
+
 # Create a generic variable that can be 'JSONableMixin', or any subclass.
 JSONABLE_INSTANCE_T = TypeVar('JSONABLE_INSTANCE_T', bound='JSONableMixin')
 

@@ -1631,4 +1631,5 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 self.assertEqual(C['want_preds'], out.preds)
                 self.assertEqual(C['want_loss'], out.loss)
 
+
 if __name__ == '__main__': unittest.main()

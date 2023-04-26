@@ -277,4 +277,5 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 got_dist = idx_distribution(D, case['slice'])
                 self.assertDistributionsEqual(case['want_dist'], got_dist)
 
+
 if __name__ == '__main__': unittest.main()

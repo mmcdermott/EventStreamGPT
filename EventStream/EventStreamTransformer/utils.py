@@ -61,6 +61,7 @@ def weighted_loss(loss_per_event: torch.Tensor, event_mask: torch.Tensor) -> tor
     loss_per_subject, events_per_subject = safe_weighted_avg(loss_per_event, event_mask)
     return safe_weighted_avg(loss_per_subject, (events_per_subject > 0))[0]
 
+
 _PROBS_LOGITS_NOT_BOTH_DISTRIBUTIONS = (
     torch.distributions.Bernoulli,
     torch.distributions.Binomial,

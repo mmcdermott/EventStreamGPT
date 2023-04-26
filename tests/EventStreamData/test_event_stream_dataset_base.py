@@ -518,4 +518,5 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     def test_transform_measurements(self):
         raise NotImplementedError()
 
+
 if __name__ == '__main__': unittest.main()

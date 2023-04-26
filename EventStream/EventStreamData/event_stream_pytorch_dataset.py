@@ -239,11 +239,18 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
         full_subj_data.pop('subject_id')
         full_subj_data.pop('start_time')
 
-        for k in (
-            'time', 'static_indices', 'static_measurement_indices', 'dynamic_indices', 'dynamic_values',
-            'dynamic_measurement_indices'
-        ):
+        for k in ('time', 'static_indices', 'static_measurement_indices'):
             full_subj_data[k] = full_subj_data[k].to_list()[0]
+
+        lens = []
+        for k in ('dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices'):
+            list_data = full_subj_data[k].to_list()[0]
+            if k == 'dynamic_indices':
+                lens = [len(x) for x in list_data]
+            elif k == 'dynamic_values':
+                list_data = [[None]*L if x is None else x for x, L in zip(list_data, lens)]
+            full_subj_data[k] = list_data
+
         if self.tasks:
             for k in self.tasks: full_subj_data[k] = full_subj_data[k][0]
 

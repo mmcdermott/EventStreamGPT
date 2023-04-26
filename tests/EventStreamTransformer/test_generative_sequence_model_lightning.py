@@ -51,4 +51,5 @@ class TestStructuredEventStreamForGenerativeSequenceModelingLightningModule(
             config=config, optimization_config=optimization_config
         )
 
+
 if __name__ == '__main__': unittest.main()

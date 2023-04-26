@@ -140,28 +140,6 @@ DL_REP_DF = pl.DataFrame(
         'dynamic_measurement_indices': pl.List(pl.List(pl.UInt64)),
         'dynamic_values': pl.List(pl.List(pl.Float64)),
     }
-).with_columns(
-    pl.when(
-        pl.col('dynamic_indices').arr.lengths() == 0
-    ).then(
-        pl.lit(None)
-    ).otherwise(
-        pl.col('dynamic_indices')
-    ).alias('dynamic_indices'),
-    pl.when(
-        pl.col('dynamic_measurement_indices').arr.lengths() == 0
-    ).then(
-        pl.lit(None)
-    ).otherwise(
-        pl.col('dynamic_measurement_indices')
-    ).alias('dynamic_measurement_indices'),
-    pl.when(
-        pl.col('dynamic_values').arr.lengths() == 0
-    ).then(
-        pl.lit(None)
-    ).otherwise(
-        pl.col('dynamic_values')
-    ).alias('dynamic_values'),
 )
 
 WANT_SUBJ_1_UNCUT = {
@@ -663,5 +641,6 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         })
 
         self.assertNestedDictEqual(asdict(want_out), asdict(out))
+
 
 if __name__ == '__main__': unittest.main()

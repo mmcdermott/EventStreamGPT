@@ -54,6 +54,7 @@ class TestESD(EventStreamDataset):
         'normalizer': TestNormalizer,
     }
 
+
 DOB_COL = 'dob'
 
 class TestAgeFunctor(TimeDependentFunctor):
@@ -79,6 +80,7 @@ class TestTimeOfDayFunctor(TimeDependentFunctor):
         ).then('AM').when(
             pl.col('timestamp').dt.hour() < 21
         ).then('PM').otherwise('LATE_PM')
+
 
 TEST_CONFIG = EventStreamDatasetConfig(
     min_valid_column_observations = 0.5,

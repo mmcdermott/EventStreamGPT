@@ -113,9 +113,9 @@ class SampleDecoderOnlyOutput(ModelOutput):
     attentions: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
     hidden_states: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
 
+
 GreedySearchOutput = GreedySearchDecoderOnlyOutput
 SampleOutput = SampleDecoderOnlyOutput
-
 
 class StructuredEventStreamGenerationMixin:
     """
