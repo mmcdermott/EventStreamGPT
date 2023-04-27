@@ -368,8 +368,10 @@ class TemporalPositionEncoding(torch.nn.Module):
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
-        div_term      = torch.exp(
-            torch.arange(0, embedding_dim, 2, device=device) * (-math.log(max_timepoint) / embedding_dim)
+        div_term = torch.nn.Parameter(
+            torch.exp(
+                torch.arange(0, embedding_dim, 2, device=device) * (-math.log(max_timepoint) / embedding_dim)
+            ), requires_grad=False
         )
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos

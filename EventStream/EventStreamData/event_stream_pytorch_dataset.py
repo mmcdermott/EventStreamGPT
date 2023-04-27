@@ -183,6 +183,11 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
                 pl.col('time').arr.lengths() >= config.min_seq_len
             ).sort('task_row_num').drop('task_row_num')
 
+        with self._time_as('convert_to_rows'):
+            self.cached_data = self.cached_data.drop('subject_id', 'start_time')
+            self.columns = self.cached_data.columns
+            self.cached_data = self.cached_data.rows()
+
     @property
     def has_task(self) -> bool: return (self.task_df is not None)
 
@@ -196,7 +201,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
         if self.has_task:
             out.task_df = self.task_df.iloc[sub_idx]
 
-        out.cached_data = out.cached_data.iloc[sub_idx]
+        out.cached_data = [out.cached_data[i] for i in sub_idx]
         assert len(out) == subset_size
 
         return out
@@ -235,24 +240,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             3. `mod_time = mod_TTE.cumsum()` Re-sum the modified inter-event times to get modified raw times.
         """
 
-        full_subj_data = self.cached_data[idx].to_dict()
-        full_subj_data.pop('subject_id')
-        full_subj_data.pop('start_time')
-
-        for k in ('time', 'static_indices', 'static_measurement_indices'):
-            full_subj_data[k] = full_subj_data[k].to_list()[0]
-
-        lens = []
-        for k in ('dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices'):
-            list_data = full_subj_data[k].to_list()[0]
-            if k == 'dynamic_indices':
-                lens = [len(x) for x in list_data]
-            elif k == 'dynamic_values':
-                list_data = [[None]*L if x is None else x for x, L in zip(list_data, lens)]
-            full_subj_data[k] = list_data
-
-        if self.tasks:
-            for k in self.tasks: full_subj_data[k] = full_subj_data[k][0]
+        full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
 
         # If we need to truncate to `self.max_seq_len`, grab a random full-size span to capture that.
         # TODO(mmd): This will proportionally underweight the front and back ends of the subjects data
@@ -330,6 +318,8 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             data_elements = defaultdict(list)
             for k in ('dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices'):
                 for vs in e[k]:
+                    if vs is None: vs = [np.NaN] * max_n_data
+
                     data_delta = max_n_data - len(vs)
                     vs = [v if v is not None else np.NaN for v in vs]
 

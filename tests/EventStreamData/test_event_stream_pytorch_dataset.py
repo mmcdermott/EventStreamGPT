@@ -218,7 +218,7 @@ WANT_SUBJ_3_UNCUT = {
         [MEASUREMENTS_IDXMAP['event_type'], MEASUREMENTS_IDXMAP['single_label_classification']],
         [MEASUREMENTS_IDXMAP['event_type']],
     ],
-    'dynamic_values': [[None], [None, None], [None]],
+    'dynamic_values': [None, None, None],
 }
 
 TASK_DF = pd.DataFrame({
@@ -283,6 +283,16 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
                     self.assertEqual(C['want_type'], got_type)
                     self.assertEqual(C['want_vals'], got_vals)
 
+    def test_get_item_should_collate(self):
+        config = EventStreamPytorchDatasetConfig(
+            max_seq_len = 4, min_seq_len = 2,
+        )
+        pyd_kwargs = {'data': DL_REP_DF, 'config': config, 'vocabulary_config': VocabularyConfig()}
+        pyd = EventStreamPytorchDataset(**pyd_kwargs)
+
+        items = [pyd._seeded_getitem(i, seed=1) for i in range(3)]
+        batch = pyd.collate(items)
+
     def test_get_item(self):
         cases = [
             {
@@ -338,7 +348,10 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
                     for k, v in it.items(): want_it[k] = v[st:end] if k in time_dep_cols else v
 
                     got_it = pyd._seeded_getitem(i, seed=1)
-                    self.assertNestedDictEqual(want_it, got_it, msg=f'Item {i} does not match.')
+
+                    self.assertNestedDictEqual(
+                        want_it, got_it, msg=f'Item {i} does not match:\n{want_it}\n{got_it}.'
+                    )
 
     def test_dynamic_collate_fn(self):
         """collate_fn should appropriately combine two batches of ragged tensors."""
