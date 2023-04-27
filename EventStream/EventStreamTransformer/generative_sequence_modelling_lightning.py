@@ -375,9 +375,9 @@ def fit_generative_sequence_model(
     config: StructuredEventStreamTransformerConfig,
     optimization_config: EventStreamOptimizationConfig,
     data_config: EventStreamPytorchDatasetConfig,
-    wandb_name: Optional[str] = 'generative_mimic_model',
-    wandb_project: Optional[str] = 'medFMs',
-    wandb_team: Optional[str] = 'icu_lsp',
+    wandb_name: Optional[str] = 'generative_event_stream_transformer',
+    wandb_project: Optional[str] = None,
+    wandb_team: Optional[str] = None,
     num_dataloader_workers: int = 1,
     do_detect_anomaly: bool = False,
     log_every_n_steps: int = 50,
@@ -458,8 +458,6 @@ def fit_generative_sequence_model(
 
     do_use_wandb = wandb_name is not None
     if do_use_wandb:
-        assert wandb_name is not None and wandb_project is not None and wandb_team is not None
-
         wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
         wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
         wandb_logger = WandbLogger(
