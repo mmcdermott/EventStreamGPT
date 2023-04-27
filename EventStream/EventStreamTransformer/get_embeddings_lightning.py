@@ -114,7 +114,6 @@ def get_embeddings(
         print(f"Embeddings already exist at {embeddings_fps}. To overwrite, set `do_overwrite=True`.")
         return [torch.load(fp) for fp in embeddings_fps]
 
-
     if data_config is None:
         data_config = EventStreamPytorchDatasetConfig.from_json_file(load_model_dir / 'data_config.json')
 

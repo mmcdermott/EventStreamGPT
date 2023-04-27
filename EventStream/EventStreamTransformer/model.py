@@ -59,18 +59,18 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         self.ClassificationLayer = torch.nn.Linear(config.hidden_size, config.vocab_size)
 
         self.classification_criteria = {}
-        for measurement in config.measurements_per_generative_mode[DataModality.SINGLE_LABEL_CLASSIFICATION]:
+        for measurement in config.measurements_for(DataModality.SINGLE_LABEL_CLASSIFICATION):
             self.classification_criteria[measurement] = torch.nn.CrossEntropyLoss(reduction='none')
-        for measurement in config.measurements_per_generative_mode[DataModality.MULTI_LABEL_CLASSIFICATION]:
+        for measurement in config.measurements_for(DataModality.MULTI_LABEL_CLASSIFICATION):
             self.classification_criteria[measurement] = torch.nn.BCEWithLogitsLoss(reduction='none')
 
         self.regression_layers   = torch.nn.ModuleDict({})
-        for measurement in config.measurements_per_generative_mode[DataModality.MULTIVARIATE_REGRESSION]:
+        for measurement in config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
             self.regression_layers[measurement] = GaussianIndexedRegressionLayer(
                 n_regression_targets = config.vocab_sizes_by_measurement[measurement],
                 in_dim = config.hidden_size,
             )
-        for measurement in config.measurements_per_generative_mode[DataModality.UNIVARIATE_REGRESSION]:
+        for measurement in config.measurements_for(DataModality.UNIVARIATE_REGRESSION):
             if measurement in self.regression_layers: raise ValueError(f"{measurement} duplicated!")
             self.regression_layers[measurement] = GaussianRegressionLayer(in_dim=config.hidden_size)
 
@@ -361,7 +361,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         regression_dists       = {}
         regression_labels      = {}
         regression_indices     = {}
-        for measurement in self.config.measurements_per_generative_mode[DataModality.MULTIVARIATE_REGRESSION]:
+        for measurement in self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
             if measurement not in valid_measurements: continue
 
             if event_type_mask_per_measurement is not None:
@@ -414,7 +414,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             regression_labels[measurement]      = values_observed_or_zero
             regression_indices[measurement]     = indices_measured_or_zero
 
-        for measurement in self.config.measurements_per_generative_mode[DataModality.UNIVARIATE_REGRESSION]:
+        for measurement in self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION):
             if measurement not in valid_measurements: continue
 
             if event_type_mask_per_measurement is not None:
@@ -494,7 +494,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
         classification_measurements = set(self.classification_mode_per_measurement.keys())
         regression_measurements = set(
-            self.config.measurements_per_generative_mode[DataModality.MULTIVARIATE_REGRESSION]
+            self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION)
         )
 
         event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)

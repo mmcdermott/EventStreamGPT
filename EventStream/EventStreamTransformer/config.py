@@ -599,6 +599,9 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
 
         super().__init__(**kwargs)
 
+    def measurements_for(self, modality: DataModality) -> List[str]:
+        return self.measurements_per_generative_mode.get(modality, [])
+
     @staticmethod
     def expand_attention_types_params(attention_types):
         """Expands the attention syntax from the easy-to-enter syntax to one for the model."""

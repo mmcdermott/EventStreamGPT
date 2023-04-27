@@ -637,7 +637,6 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
         #     [0, 0, 1, 1],
         # ]
 
-
         cases = [
             {
                 'msg': (
