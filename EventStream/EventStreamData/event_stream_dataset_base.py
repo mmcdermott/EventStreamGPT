@@ -838,7 +838,6 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
             if cfg.present_in_event_types is None: event_types_per_measurement[m] = self.event_types
             else: event_types_per_measurement[m] = list(cfg.present_in_event_types)
 
-
         return VocabularyConfig(
             vocab_sizes_by_measurement = {m: len(idxmap) for m, idxmap in self.measurement_idxmaps.items()},
             vocab_offsets_by_measurement = self.unified_vocabulary_offsets,

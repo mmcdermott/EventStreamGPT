@@ -970,7 +970,6 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
                 null_source = null_source.with_columns(pl.lit(None).cast(pl.Boolean).alias(inliers_col_name))
             return null_source.drop(cols_to_drop_at_end)
 
-
         # 5. Add inlier/outlier indices and remove learned outliers.
         if self.config.outlier_detector_config is not None:
             M = self._get_metadata_model(self.config.outlier_detector_config, for_fit=False)

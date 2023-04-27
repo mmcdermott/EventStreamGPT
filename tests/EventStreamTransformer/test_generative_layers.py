@@ -108,7 +108,6 @@ class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
         obs_3_grad_signs = [1, 0, -1, 1, -1, 1]
         obs_4_grad_signs = [1, -1, 1, 1, -1, -1]
 
-
         want_X_grad_sign = torch.Tensor([
             obs_1_grad_signs,
             obs_2_grad_signs,
