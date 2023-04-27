@@ -731,16 +731,6 @@ WANT_MEASUREMENTS_DF = pl.DataFrame(
             *([1]*2 + [6]*2),
             2, 3, 4, 7, 8, 9, 10, 11, 12,
         ],
-        'event_type': [
-            *(['MVR']*17),
-            *(['DDIC']*4),
-            *(['DPV']*9),
-        ],
-        'subject_id': [
-            *([1]*8 + [2]*9),
-            *([1]*2 + [2]*2),
-            1, 1, 1, 2, 2, 3, 3, 3, 3,
-        ],
 
         # Has pre-set vocab ['foo', 'bar'], occurs on 'DPV' events.
         'dynamic_preset_vocab': [
@@ -895,8 +885,6 @@ WANT_MEASUREMENTS_DF = pl.DataFrame(
     schema={
         'measurement_id': pl.UInt8,
         'event_id': pl.UInt8,
-        'event_type': pl.Categorical,
-        'subject_id': pl.UInt8,
         'dynamic_preset_vocab': pl.Categorical,
         'dynamic_dropped_insufficient_occurrences': pl.Categorical,
 

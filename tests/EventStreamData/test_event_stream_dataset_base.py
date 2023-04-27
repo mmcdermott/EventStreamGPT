@@ -168,7 +168,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         super().setUp()
         self.config = EventStreamDatasetConfig()
         self.subjects_df = {'name': 'subjects'}
-        self.events_df = {'name': 'events'}
+        self.events_df = {'name': 'events', 'event_id': [1, 2]}
         self.dynamic_measurements_df = {'name': 'dynamic_measurements'}
 
         self.E = ESDMock(self.config, self.subjects_df, self.events_df, self.dynamic_measurements_df)
@@ -308,7 +308,10 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 'want_attr': 'dynamic_measurements_df', 'want_df': self.dynamic_measurements_df,
                 'want_id': 'measurement_id',
                 'want_fn': '_filter_col_inclusion',
-                'want_fn_arg': (self.dynamic_measurements_df, {'event_type': ['a'], 'subject_id': [1, 2, 3]}),
+                'want_fn_arg': [
+                    (self.events_df, {'event_type': ['a'], 'subject_id': [1, 2, 3]}),
+                    (self.dynamic_measurements_df, {'event_id': [1, 2]}),
+                ],
             }, {
                 'msg': (
                     "Should filter to the appropriate event types only and return the measurements df "
@@ -318,7 +321,10 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 'want_attr': 'dynamic_measurements_df', 'want_df': self.dynamic_measurements_df,
                 'want_id': 'measurement_id',
                 'want_fn': '_filter_col_inclusion',
-                'want_fn_arg': (self.dynamic_measurements_df, {'event_type': ['a']}),
+                'want_fn_arg': [
+                    (self.events_df, {'event_type': ['a']}),
+                    (self.dynamic_measurements_df, {'event_id': [1, 2]}),
+                ]
             }, {
                 'msg': "Should filter to train and return subjects_df when passed a static measurement",
                 'config': static, 'do_only_train': True,
@@ -352,6 +358,8 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 self.assertEqual(C['want_df'], got_df)
                 if C['want_fn'] is None:
                     self.assertEqual({}, self.E.functions_called)
+                elif type(C['want_fn_arg']) is list:
+                    self.assertNestedDictEqual({C['want_fn']: C['want_fn_arg']}, self.E.functions_called)
                 else:
                     self.assertNestedDictEqual({C['want_fn']: [C['want_fn_arg']]}, self.E.functions_called)
 
