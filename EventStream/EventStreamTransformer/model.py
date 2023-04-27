@@ -13,6 +13,7 @@ from .generative_layers import (
     ExponentialTTELayer,
     LogNormalMixtureTTELayer,
     GaussianIndexedRegressionLayer,
+    GaussianRegressionLayer,
 )
 from .model_output import (
     GenerativeSequenceModelLosses,
@@ -69,6 +70,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 n_regression_targets = config.vocab_sizes_by_measurement[measurement],
                 in_dim = config.hidden_size,
             )
+        for measurement in config.measurements_per_generative_mode[DataModality.UNIVARIATE_REGRESSION]:
+            if measurement in self.regression_layers: raise ValueError(f"{measurement} duplicated!")
+            self.regression_layers[measurement] = GaussianRegressionLayer(in_dim=config.hidden_size)
 
         self.classification_mode_per_measurement = {}
         for generative_mode, measurements in config.measurements_per_generative_mode.items():
@@ -409,6 +413,50 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             regression_dists[measurement]       = regr_dist
             regression_labels[measurement]      = values_observed_or_zero
             regression_indices[measurement]     = indices_measured_or_zero
+
+        for measurement in self.config.measurements_per_generative_mode[DataModality.UNIVARIATE_REGRESSION]:
+            if measurement not in valid_measurements: continue
+
+            if event_type_mask_per_measurement is not None:
+                event_mask = event_type_mask_per_measurement[measurement] & batch['event_mask']
+            else:
+                event_mask = batch['event_mask']
+
+            measurement_idx = self.config.measurements_idxmap[measurement]
+
+            # TODO(mmd): If we wanted, we could have `indices_measured_or_zero` reflect just the former part
+            # of this `&`, and thus have predictions on all indices, even for those we don't observe values
+            # for, but for now this functionality is not required, so we standardize them.
+            tensor_idx = (
+                (batch['dynamic_measurement_indices'] == measurement_idx) & batch['dynamic_values_mask']
+            )
+
+            regr_dist = self.regression_layers[measurement](X=encoded)
+
+            values_observed_or_zero = torch.where(
+                tensor_idx,
+                batch['dynamic_values'],
+                torch.zeros_like(batch['dynamic_values']),
+            ).float()
+
+            # We don't need to shift here, as given this is a structured model, we'll always rely on elements
+            # of the dependency graph that don't include these inputs to predict them (e.g., predict the
+            # contents of the event given the time at which the event occurred).
+
+            # TODO(mmd): Use NLL-\beta?
+            if is_generation:
+                loss_overall = None
+            else:
+                loss_per_label    = -regr_dist.log_prob(values_observed_or_zero)
+                loss_per_event, _ = safe_weighted_avg(loss_per_label, tensor_idx)
+
+                events_with_label = event_mask & tensor_idx.any(dim=-1)
+                loss_overall = weighted_loss(loss_per_event, events_with_label)
+
+            regression_loss_values[measurement] = loss_overall
+            regression_dists[measurement]       = regr_dist
+            regression_labels[measurement]      = values_observed_or_zero
+            regression_indices[measurement]     = None
 
         return (
             regression_loss_values,

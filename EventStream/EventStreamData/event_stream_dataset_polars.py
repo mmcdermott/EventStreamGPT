@@ -108,10 +108,17 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
              and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
         """
 
-        df = df.with_row_count('event_id').with_columns(
+        cols_select_exprs = [
+            'timestamp', 'subject_id', 'event_id',
             pl.lit(event_type).cast(pl.Categorical).alias('event_type')
-        ).filter(
+        ]
+        for in_col, (out_col, _) in columns_schema.items():
+            cols_select_exprs.append(pl.col(in_col).alias(out_col))
+
+        df = df.filter(
             pl.col('timestamp').is_not_null() & pl.col('subject_id').is_not_null()
+        ).with_row_count('event_id').select(
+            cols_select_exprs
         )
 
         events_df = df.select('event_id', 'subject_id', 'timestamp', 'event_type')

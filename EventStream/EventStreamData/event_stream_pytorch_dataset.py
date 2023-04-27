@@ -108,7 +108,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             assert self.config.save_dir is not None
             assert split is not None
 
-            data = self.config.save_dir / 'DL_reps' / f'{split}.parquet'
+            data = self.config.save_dir / 'DL_reps' / f'{split}*.parquet'
             vocabulary_config = self.config.save_dir / 'vocabulary_config.json'
         else:
             assert vocabulary_config is not None

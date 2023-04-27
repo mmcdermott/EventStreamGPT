@@ -612,6 +612,8 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         """Set various configuration parameters to match `dataset`."""
         self.measurements_idxmap = dataset.vocabulary_config.measurements_idxmap
         self.measurements_per_generative_mode = dataset.vocabulary_config.measurements_per_generative_mode
+        for k in DataModality.values():
+            if k not in self.measurements_per_generative_mode: self.measurements_per_generative_mode[k] = []
 
         self.event_types_per_measurement = dataset.vocabulary_config.event_types_per_measurement
         self.event_types_idxmap = dataset.vocabulary_config.event_types_idxmap

@@ -150,3 +150,47 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
 
         # TODO(mmd): validate args
         return torch.distributions.normal.Normal(loc=mean, scale=std)
+
+class GaussianRegressionLayer(torch.nn.Module):
+    """
+    This module implements a probabilistic regression layer. Given an input `X`, this module
+    predicts probabilistic regression outputs for each input in `X` for one regression target.
+    """
+
+    def __init__(self, in_dim: int):
+        """
+        Initializes the layer.
+        Args:
+            `n_regression_targets` (`int`): How many regression targets there are.
+            `in_dim` (`int`): The input dimensionality.
+        """
+        super().__init__()
+
+        # We multiply `n_regression_targets` by 2 becuse we need both mean and standard deviation outputs.
+        self.proj = torch.nn.Linear(in_dim, 2)
+
+    def forward(self, X: torch.Tensor) -> torch.distributions.normal.Normal:
+        """
+        Returns the `Normal` distribution according to the indexed regression task on `X` for indices `idx`.
+
+        Args:
+            `X` is a float Tensor of shape `(batch_size, sequence_length, in_dim)`.
+            `idx` is an optional long Tensor of shape `(batch_size, sequence_length, num_predictions)`
+
+        Returns:
+            The `torch.distributions.normal.Normal` distribution with parameters `self.proj(X)` on indices
+            specified by `idx`, which will have output shape `(batch_size, sequence_length, num_predictions)`,
+            unless `idx` is None in which case it will have predictions for all indices and have shape
+            `(batch_size, sequence_length, n_regression_targets)`.
+        """
+
+        Z = self.proj(X)
+
+        Z_mean = Z[..., 0::2]
+
+        # torch.nn.functional.elu has idxmage (-1, 1), but we need our std parameter to be > 0. So we need to
+        # add 1 to the output here. To ensure validity given numerical imprecision, we also add a buffer given
+        # by the smallest possible positive value permissible given the type of `T`.
+        Z_std  = torch.nn.functional.elu(Z[..., 1::2]) + 1 + torch.finfo(X.dtype).tiny
+
+        return torch.distributions.normal.Normal(loc=Z_mean, scale=Z_std)
