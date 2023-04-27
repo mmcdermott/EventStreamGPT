@@ -291,7 +291,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         pyd = EventStreamPytorchDataset(**pyd_kwargs)
 
         items = [pyd._seeded_getitem(i, seed=1) for i in range(3)]
-        batch = pyd.collate(items)
+        pyd.collate(items)
 
     def test_get_item(self):
         cases = [
