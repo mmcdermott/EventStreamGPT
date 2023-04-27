@@ -381,22 +381,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
 
         if dynamic_measurements_df is not None:
             linked_ids = {}
-            to_join_cols = []
             if events_df is not None:
-                if 'event_type' not in dynamic_measurements_df: to_join_cols.append('event_type')
                 linked_ids['event_id'] = event_id_type
-            if subjects_df is not None:
-                if 'subject_id' in dynamic_measurements_df: linked_ids['subject_id'] = subjects_id_type
-                else: to_join_cols.append('subject_id')
 
             dynamic_measurements_df, dynamic_measurement_id_types = self._validate_initial_df(
                 dynamic_measurements_df, 'measurement_id', TemporalityType.DYNAMIC, linked_ids
             )
-
-            if to_join_cols:
-                dynamic_measurements_df = dynamic_measurements_df.join(
-                    events_df.select(['event_id'] + to_join_cols), on='event_id', how='left'
-                )
 
         return subjects_df, events_df, dynamic_measurements_df
 

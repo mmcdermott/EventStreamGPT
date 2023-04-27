@@ -183,6 +183,19 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
                 pl.col('time').arr.lengths() >= config.min_seq_len
             ).sort('task_row_num').drop('task_row_num')
 
+        with self._time_as('inter_event_time_norm'):
+            stats = self.cached_data.select(
+                pl.col('time').arr.eval(
+                    (pl.col('').shift(-1) - pl.col('')).log()
+                ).explode().drop_nulls().alias('log_inter_event_time')
+            ).select(
+                pl.col('log_inter_event_time').mean().alias('mean'),
+                pl.col('log_inter_event_time').std().alias('std'),
+            )
+
+            self.mean_log_inter_event_time_min = stats['mean'].item()
+            self.std_log_inter_event_time_min = stats['std'].item()
+
         with self._time_as('convert_to_rows'):
             self.cached_data = self.cached_data.drop('subject_id', 'start_time')
             self.columns = self.cached_data.columns

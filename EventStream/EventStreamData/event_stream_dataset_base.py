@@ -526,16 +526,13 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
             subject_ids = list(set(itertools.chain.from_iterable(self.split_subjects[sp] for sp in splits)))
 
         filter_cols = {}
-        if event_type is not None:
-            filter_cols['event_type'] = [event_type]
-        elif event_types is not None:
-            filter_cols['event_type'] = event_types
-        if subject_id is not None:
-            filter_cols['subject_id'] = [subject_id]
-        elif subject_ids is not None:
-            filter_cols['subject_id'] = subject_ids
+        if event_type is not None: filter_cols['event_type'] = [event_type]
+        elif event_types is not None: filter_cols['event_type'] = event_types
+        if subject_id is not None: filter_cols['subject_id'] = [subject_id]
+        elif subject_ids is not None: filter_cols['subject_id'] = subject_ids
 
-        return self._filter_col_inclusion(self.dynamic_measurements_df, filter_cols)
+        event_ids = self._filter_col_inclusion(self.events_df, filter_cols)['event_id']
+        return self._filter_col_inclusion(self.dynamic_measurements_df, {'event_id': list(event_ids)})
 
     @TimeableMixin.TimeAs
     def preprocess_measurements(self):

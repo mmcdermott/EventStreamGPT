@@ -630,13 +630,8 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         self.max_seq_len = dataset.max_seq_len
 
         if self.TTE_generation_layer_type == TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
-            raise NotImplementedError("Not yet supported.")
-            if dataset.do_normalize_log_inter_event_times:
-                self.mean_log_inter_event_time_min = 0.0
-                self.std_log_inter_event_time_min = 1.0
-            else:
-                self.mean_log_inter_event_time_min = dataset.mean_log_inter_event_time_min
-                self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
+            self.mean_log_inter_event_time_min = dataset.mean_log_inter_event_time_min
+            self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
 
         if dataset.has_task:
             if len(dataset.tasks) == 1:
