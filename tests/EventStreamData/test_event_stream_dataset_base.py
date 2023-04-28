@@ -57,10 +57,6 @@ class ESDMock(EventStreamDatasetBase[dict, dict]):
         )
         return config.measurement_metadata
 
-    def _drop_df_nulls(self, source_df: dict, col: str) -> dict:
-        self.functions_called['_drop_df_nulls'].append((source_df, col))
-        return source_df
-
     def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: dict) -> Vocabulary:
         self.functions_called['_fit_vocabulary'].append(copy.deepcopy((measure, config, source_df)))
         return Vocabulary(['foo', 'bar'], [3/4, 1/4])
@@ -466,9 +462,9 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 ((self.config.measurement_configs['not_present'],), {'do_only_train': True}),
                 ((self.config.measurement_configs['numeric'],), {'do_only_train': True}),
             ],
-            '_drop_df_nulls': [
-                (mock_source_df, 'retained'),
-                (mock_source_df, 'numeric'),
+            '_filter_col_inclusion': [
+                (mock_source_df, {'retained': True}),
+                (mock_source_df, {'numeric': True}),
             ],
             '_fit_measurement_metadata': [(
                 'numeric',
