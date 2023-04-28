@@ -76,7 +76,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
         self.classification_mode_per_measurement = {}
         for generative_mode, measurements in config.measurements_per_generative_mode.items():
-            if generative_mode == DataModality.MULTIVARIATE_REGRESSION: continue
+            if generative_mode in (
+                DataModality.MULTIVARIATE_REGRESSION, DataModality.UNIVARIATE_REGRESSION
+            ): continue
             for measurement in measurements:
                 assert measurement not in self.classification_mode_per_measurement
                 self.classification_mode_per_measurement[measurement] = generative_mode
@@ -286,7 +288,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
                 dists = torch.distributions.Bernoulli(logits=scores)
 
-            else: raise ValueError
+            else: raise ValueError(f"Classification mode {classification_mode} Invalid!")
 
             loss_overall = weighted_loss(loss_per_event, event_mask)
 
@@ -431,13 +433,19 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 (batch['dynamic_measurement_indices'] == measurement_idx) & batch['dynamic_values_mask']
             )
 
+            # As there is only one index of this type for this setting,
+            # we can direclty multiply by the mask and sum
+            events_with_label = tensor_idx.any(dim=-1)
+            event_mask = event_mask & events_with_label
+
             regr_dist = self.regression_layers[measurement](X=encoded)
 
             values_observed_or_zero = torch.where(
                 tensor_idx,
                 batch['dynamic_values'],
                 torch.zeros_like(batch['dynamic_values']),
-            ).float()
+            ).float().sum(dim=-1) * events_with_label.float()
+            values_observed_or_zero = values_observed_or_zero.unsqueeze(-1)
 
             # We don't need to shift here, as given this is a structured model, we'll always rely on elements
             # of the dependency graph that don't include these inputs to predict them (e.g., predict the
@@ -447,8 +455,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             if is_generation:
                 loss_overall = None
             else:
-                loss_per_label    = -regr_dist.log_prob(values_observed_or_zero)
-                loss_per_event, _ = safe_weighted_avg(loss_per_label, tensor_idx)
+                loss_per_event = -regr_dist.log_prob(values_observed_or_zero).squeeze(-1)
 
                 events_with_label = event_mask & tensor_idx.any(dim=-1)
                 loss_overall = weighted_loss(loss_per_event, events_with_label)
@@ -473,7 +480,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         )
 
     def forward(
-            self, batch: EventStreamPytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False,
+        self, batch: EventStreamPytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False,
     ) -> EventStreamTransformerForGenerativeSequenceModelOutput:
         # encoded is of one of two shapes:
         #   1. (batch size, sequence length, config.hidden_size), in the case that
@@ -494,7 +501,8 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
         classification_measurements = set(self.classification_mode_per_measurement.keys())
         regression_measurements = set(
-            self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION)
+            self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION) +
+            self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
         event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
