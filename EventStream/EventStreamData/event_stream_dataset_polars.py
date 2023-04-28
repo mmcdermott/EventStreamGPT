@@ -271,12 +271,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
 
         if drop_lower_bound is not None:
             conditions.append(
-               ((col < drop_lower_bound) | ((col == drop_lower_bound) & drop_lower_bound_inclusive), np.NaN)
+                ((col < drop_lower_bound) | ((col == drop_lower_bound) & drop_lower_bound_inclusive), np.NaN)
             )
 
         if drop_upper_bound is not None:
             conditions.append(
-               ((col > drop_upper_bound) | ((col == drop_upper_bound) & drop_upper_bound_inclusive), np.NaN)
+                ((col > drop_upper_bound) | ((col == drop_upper_bound) & drop_upper_bound_inclusive), np.NaN)
             )
 
         if censor_lower_bound is not None:
@@ -959,7 +959,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         ).when(
             value_type == NumericDataModalitySubtype.CATEGORICAL_FLOAT
         ).then(
-           keys_col + "__EQ_" + vals_col.cast(pl.Utf8)
+            keys_col + "__EQ_" + vals_col.cast(pl.Utf8)
         ).otherwise(keys_col).alias(keys_col_name)
 
         vals_col = pl.when(

@@ -42,16 +42,16 @@ TEST_EVENT_TYPES_IDXMAP = {
 }
 
 BASE_CONFIG_KWARGS = dict(
-    measurements_per_generative_mode = TEST_MEASUREMENTS_PER_GEN_MODE,
-    vocab_sizes_by_measurement = TEST_VOCAB_SIZES_BY_MEASUREMENT,
-    vocab_offsets_by_measurement = TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
-    measurements_idxmap = TEST_MEASUREMENTS_IDXMAP,
-    event_types_idxmap = TEST_EVENT_TYPES_IDXMAP,
-    hidden_size = 4,
-    head_dim = None,
-    num_attention_heads = 2, # Needs to divide hidden_size.
-    mean_log_inter_time = 0,
-    std_log_inter_time = 1,
+    measurements_per_generative_mode=TEST_MEASUREMENTS_PER_GEN_MODE,
+    vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_MEASUREMENT,
+    vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
+    measurements_idxmap=TEST_MEASUREMENTS_IDXMAP,
+    event_types_idxmap=TEST_EVENT_TYPES_IDXMAP,
+    hidden_size=4,
+    head_dim=None,
+    num_attention_heads=2, # Needs to divide hidden_size.
+    mean_log_inter_time=0,
+    std_log_inter_time=1,
 )
 
 BASE_BATCH = {
@@ -703,13 +703,13 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 if C.get('include_event_types_mask', False):
                     event_type_mask_per_measurement = layer.get_event_type_mask_per_measurement(C['batch'])
                     got_losses, got_dists, got_labels = layer.get_classification_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                         event_type_mask_per_measurement = event_type_mask_per_measurement,
                     )
                 else:
                     got_losses, got_dists, got_labels = layer.get_classification_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                     )
 
@@ -862,7 +862,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 config = StructuredEventStreamTransformerConfig(
                     **shared_config_kwargs,
                     **generation_specific_config_kwargs[C['TTE_generation_layer_type']],
-                    TTE_generation_layer_type = C['TTE_generation_layer_type'],
+                    TTE_generation_layer_type=C['TTE_generation_layer_type'],
                 )
 
                 # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab
@@ -1094,10 +1094,10 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [1, 3, 3, 3, 3, 3],
                     ]]),
                     'dynamic_indices': torch.LongTensor([[
-                         [1, 7, 9, 0, 0, 0],
-                         [2, 6, 7, 8, 7, 0],
-                         [2, 7, 7, 7, 8, 9],
-                     ]]),
+                        [1, 7, 9, 0, 0, 0],
+                        [2, 6, 7, 8, 7, 0],
+                        [2, 7, 7, 7, 8, 9],
+                    ]]),
                     'dynamic_values_mask': torch.BoolTensor([[
                         [False, True, True, False, False, False],
                         [False, True, True, True, True, False],
@@ -1344,13 +1344,13 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 if C.get('include_event_types_mask', False):
                     event_type_mask_per_measurement = layer.get_event_type_mask_per_measurement(C['batch'])
                     got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                         event_type_mask_per_measurement = event_type_mask_per_measurement,
                     )
                 else:
                     got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                     )
 

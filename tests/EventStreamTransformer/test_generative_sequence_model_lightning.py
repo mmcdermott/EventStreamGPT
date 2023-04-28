@@ -40,10 +40,10 @@ class TestStructuredEventStreamForGenerativeSequenceModelingLightningModule(
     def test_constructs(self):
         """Tests that the Lightning Module constructs given default configuration options."""
         config = StructuredEventStreamTransformerConfig(
-            measurements_per_generative_mode = TEST_MEASUREMENTS_PER_GEN_MODE,
-            vocab_sizes_by_measurement = TEST_VOCAB_SIZES_BY_MEASUREMENT,
-            vocab_offsets_by_measurement = TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
-            measurements_idxmap = TEST_MEASUREMENTS_IDXMAP,
+            measurements_per_generative_mode=TEST_MEASUREMENTS_PER_GEN_MODE,
+            vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_MEASUREMENT,
+            vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
+            measurements_idxmap=TEST_MEASUREMENTS_IDXMAP,
         )
         optimization_config = EventStreamOptimizationConfig()
 

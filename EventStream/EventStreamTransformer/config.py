@@ -81,11 +81,11 @@ class EventStreamOptimizationConfig(JSONableMixin):
             (math.floor(self.lr_frac_warmup_steps * self.max_training_steps) <= self.lr_num_warmup_steps) and
             (math.ceil(self.lr_frac_warmup_steps * self.max_training_steps) >= self.lr_num_warmup_steps)
         ), (
-           "`self.lr_frac_warmup_steps`, `self.max_training_steps`, and `self.lr_num_warmup_steps` should "
-           "be consistent, but they aren't! Got\n"
-           f"\tself.max_training_steps = {self.max_training_steps}\n"
-           f"\tself.lr_frac_warmup_steps = {self.lr_frac_warmup_steps}\n"
-           f"\tself.lr_num_warmup_steps = {self.lr_num_warmup_steps}"
+            "`self.lr_frac_warmup_steps`, `self.max_training_steps`, and `self.lr_num_warmup_steps` should "
+            "be consistent, but they aren't! Got\n"
+            f"\tself.max_training_steps = {self.max_training_steps}\n"
+            f"\tself.lr_frac_warmup_steps = {self.lr_frac_warmup_steps}\n"
+            f"\tself.lr_num_warmup_steps = {self.lr_num_warmup_steps}"
         )
 
 class StructuredEventProcessingMode(StrEnum):

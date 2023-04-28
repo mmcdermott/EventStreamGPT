@@ -193,8 +193,8 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
         scale = torch.randn(size=(5, 4, 3)).abs()
         transforms = [torch.distributions.transforms.AffineTransform(loc=4, scale=5)]
         D = torch.distributions.TransformedDistribution(
-            base_distribution = torch.distributions.Normal(loc, scale),
-            transforms = transforms,
+            base_distribution=torch.distributions.Normal(loc, scale),
+            transforms=transforms,
         )
 
         cases = [
@@ -202,11 +202,11 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 'msg': "Should work with a complex slice.",
                 'slice': (3, slice(2, 3, 1), slice(None, 2, 1)),
                 'want_dist': torch.distributions.TransformedDistribution(
-                    base_distribution = torch.distributions.Normal(
+                    base_distribution=torch.distributions.Normal(
                         loc=loc[3, 2:3, :2], scale=scale[3, 2:3, :2], validate_args=True
                     ),
-                    transforms = transforms,
-                    validate_args = True,
+                    transforms=transforms,
+                    validate_args=True,
                 ),
             }
         ]
@@ -221,8 +221,8 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
         scale = torch.randn(size=(5, 4, 3)).abs()
         logits = torch.randn(size=(5, 4, 3))
         D = torch.distributions.MixtureSameFamily(
-            component_distribution = torch.distributions.Normal(loc=loc, scale=scale),
-            mixture_distribution = torch.distributions.Categorical(logits=logits),
+            component_distribution=torch.distributions.Normal(loc=loc, scale=scale),
+            mixture_distribution=torch.distributions.Categorical(logits=logits),
         )
 
         cases = [
@@ -230,11 +230,13 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 'msg': "Should work with a complex slice.",
                 'slice': (3, slice(2, 3, 1)),
                 'want_dist': torch.distributions.MixtureSameFamily(
-                    component_distribution = torch.distributions.Normal(
+                    component_distribution=torch.distributions.Normal(
                         loc=loc[3, 2:3], scale=scale[3, 2:3], validate_args=True
-                    ), mixture_distribution = torch.distributions.Categorical(
+                    ),
+                    mixture_distribution=torch.distributions.Categorical(
                         logits=logits[3, 2:3], validate_args=True,
-                    ), validate_args=True,
+                    ),
+                    validate_args=True,
                 ),
             }
         ]

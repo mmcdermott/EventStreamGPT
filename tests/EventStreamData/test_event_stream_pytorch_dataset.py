@@ -285,7 +285,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
     def test_get_item_should_collate(self):
         config = EventStreamPytorchDatasetConfig(
-            max_seq_len = 4, min_seq_len = 2,
+            max_seq_len=4, min_seq_len=2,
         )
         pyd_kwargs = {'data': DL_REP_DF, 'config': config, 'vocabulary_config': VocabularyConfig()}
         pyd = EventStreamPytorchDataset(**pyd_kwargs)
@@ -329,7 +329,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
         for C in cases:
             config = EventStreamPytorchDatasetConfig(
-                max_seq_len = C['max_seq_len'], min_seq_len = C['min_seq_len'],
+                max_seq_len=C['max_seq_len'], min_seq_len=C['min_seq_len'],
             )
             pyd_kwargs = {'data': DL_REP_DF, 'config': config, 'vocabulary_config': VocabularyConfig()}
             if 'task_df' in C: pyd_kwargs.update({'task_df': C['task_df']})

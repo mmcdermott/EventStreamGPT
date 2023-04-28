@@ -474,7 +474,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_split_batch_into_measurement_index_buckets(self):
         batch = EventStreamPytorchBatch(
-            dynamic_measurement_indices = torch.LongTensor([
+            dynamic_measurement_indices=torch.LongTensor([
                 [
                     [1, 1, 2, 3, 3, 3],
                     [2, 2, 1, 1, 0, 0],
@@ -489,7 +489,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
             n_total_embeddings=4,
             out_dim=4,
             static_embedding_mode=StaticEmbeddingMode.DROP,
-            split_by_measurement_indices = [
+            split_by_measurement_indices=[
                 [(1, MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL)],
                 [(2, MeasIndexGroupOptions.CATEGORICAL_ONLY), 3],
                 [(2, MeasIndexGroupOptions.NUMERICAL_ONLY)]
@@ -563,11 +563,11 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
         # The events will have up to 3 dynamic features.
 
         default_batch = EventStreamPytorchBatch(
-            static_indices = torch.LongTensor([
+            static_indices=torch.LongTensor([
                 [1, 0],
                 [2, 3],
             ]),
-            static_measurement_indices = torch.LongTensor([
+            static_measurement_indices=torch.LongTensor([
                 [1, 0],
                 [1, 2],
             ]),
@@ -575,11 +575,11 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 [0, 2],
                 [0, 0],
             ]),
-            event_mask = torch.BoolTensor([
+            event_mask=torch.BoolTensor([
                 [True, True],
                 [True, False],
             ]),
-            dynamic_indices = torch.LongTensor([
+            dynamic_indices=torch.LongTensor([
                 [
                     [1, 2, 3],
                     [2, 3, 0],
