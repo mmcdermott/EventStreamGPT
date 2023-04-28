@@ -127,7 +127,7 @@ class EventStreamDatasetBase(
     @classmethod
     def build_subjects_dfs(cls, schema: InputDFSchema) -> Tuple[DF_T, Dict[Hashable, int]]:
         df = cls._load_input_df(
-            schema.input_df, 
+            schema.input_df,
             [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
             filter_on=schema.filter_on
         ).collect()
@@ -170,7 +170,7 @@ class EventStreamDatasetBase(
                             ))
                         event_types.extend(schema.event_type)
                     case _:
-                        raise ValueError(f"Invalid schema type {schema.type} for {name}.")
+                        raise ValueError(f"Invalid schema type {schema.type}.")
 
         all_events, all_measurements = [], []
         running_event_id_max = 0

@@ -83,5 +83,5 @@ class TestJSONableMixin(unittest.TestCase):
             a: int = 4
             b: str = 'foo'
 
-        obj = Derived(a = 3, b = 'hi')
+        obj = Derived(a=3, b='hi')
         self.assertEqual({'a': 3, 'b': 'hi'}, obj.to_dict())

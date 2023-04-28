@@ -60,12 +60,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         """
         Loads an input dataframe into the format expected by the processing library.
         """
-        if subject_id_col is None: 
+        if subject_id_col is None:
             if subject_ids_map is not None:
                 raise ValueError("Must not set subject_ids_map if subject_id_col is not set")
             if subject_id_dtype is not None:
                 raise ValueError("Must not set subject_id_dtype if subject_id_col is not set")
-        else: 
+        else:
             if subject_ids_map is None:
                 raise ValueError("Must set subject_ids_map if subject_id_col is set")
             if subject_id_dtype is None:
@@ -85,7 +85,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
 
         if filter_on: df = cls._filter_col_inclusion(df, filter_on)
 
-        if subject_id_col is None: 
+        if subject_id_col is None:
             df = df.with_row_count('subject_id')
             col_exprs.append('subject_id')
         else:
@@ -98,7 +98,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
         for in_col, out_dt in columns:
             match out_dt:
                 case InputDataType.FLOAT: col_exprs.append(pl.col(in_col).cast(pl.Float32, strict=False))
-                case InputDataType.CATEGORICAL: 
+                case InputDataType.CATEGORICAL:
                     col_exprs.append(pl.col(in_col).cast(pl.Utf8).cast(pl.Categorical))
                 case InputDataType.BOOLEAN: col_exprs.append(pl.col(in_col).cast(pl.Boolean, strict=False))
                 case InputDataType.TIMESTAMP: col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=False))

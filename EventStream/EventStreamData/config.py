@@ -54,13 +54,13 @@ class DatasetSchema(JSONableMixin):
 
                 if v.subject_id_col != self.static.subject_id_col:
                     print(
-                        f"WARNING: For {k}, subject ID column name ({v.subject_id_col}) differs from static "
+                        f"WARNING: {v.input_df} subject ID col name ({v.subject_id_col}) differs from static "
                         f"({self.static.subject_id_col})."
                     )
 
                 new_dynamic.append(v)
 
-                if v.is_static: raise TypeError(f"Must pass dynamic schemas for dynamic key {k}")
+                if v.is_static: raise TypeError("Must pass dynamic schemas in `self.dynamic`!")
             self.dynamic = new_dynamic
 
         self.dynamic_by_df = defaultdict(list)

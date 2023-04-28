@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import dataclasses, numpy as np, pandas as pd, polars as pl
+import dataclasses, pandas as pd, polars as pl
 
 from typing import Any, Dict, List, Optional
 
