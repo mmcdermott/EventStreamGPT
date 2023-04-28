@@ -141,12 +141,12 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
         # torch.nn.functional.elu has idxmage (-1, 1), but we need our std parameter to be > 0. So we need to
         # add 1 to the output here. To ensure validity given numerical imprecision, we also add a buffer given
         # by the smallest possible positive value permissible given the type of `T`.
-        Z_std  = torch.nn.functional.elu(Z[..., 1::2]) + 1 + torch.finfo(X.dtype).tiny
+        Z_std = torch.nn.functional.elu(Z[..., 1::2]) + 1 + torch.finfo(X.dtype).tiny
 
         if idx is None: return torch.distributions.normal.Normal(loc=Z_mean, scale=Z_std)
 
         mean = Z_mean.gather(-1, idx)
-        std  = Z_std.gather(-1, idx)
+        std = Z_std.gather(-1, idx)
 
         # TODO(mmd): validate args
         return torch.distributions.normal.Normal(loc=mean, scale=std)
@@ -191,6 +191,6 @@ class GaussianRegressionLayer(torch.nn.Module):
         # torch.nn.functional.elu has idxmage (-1, 1), but we need our std parameter to be > 0. So we need to
         # add 1 to the output here. To ensure validity given numerical imprecision, we also add a buffer given
         # by the smallest possible positive value permissible given the type of `T`.
-        Z_std  = torch.nn.functional.elu(Z[..., 1::2]) + 1 + torch.finfo(X.dtype).tiny
+        Z_std = torch.nn.functional.elu(Z[..., 1::2]) + 1 + torch.finfo(X.dtype).tiny
 
         return torch.distributions.normal.Normal(loc=Z_mean, scale=Z_std)

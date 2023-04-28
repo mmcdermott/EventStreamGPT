@@ -316,7 +316,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
         self._register_start('collate_dynamic_padding')
         out = defaultdict(list)
         for e in batch:
-            seq_len   = len(e['time'])
+            seq_len = len(e['time'])
             seq_delta = max_seq_len - seq_len
 
             if self.seq_padding_side == 'right':

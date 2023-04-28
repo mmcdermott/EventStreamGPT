@@ -1568,8 +1568,8 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 # ])
                 # This yields loss 14.048589706420898
                 'want_preds': torch.Tensor([
-                     [-5, 5, -7, 8],
-                     [-5, 5, -7, 8],
+                    [-5, 5, -7, 8],
+                    [-5, 5, -7, 8],
                 ]),
                 'want_labels': torch.LongTensor([0, 2]),
                 'want_loss': torch.tensor(14.048589706420898),
@@ -1600,8 +1600,8 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 # ])
                 # This yields loss 14.126930236816406
                 'want_preds': torch.Tensor([
-                     [-1., 10., -3., 12.],
-                     [-1., 10., -3., 12.],
+                    [-1., 10., -3., 12.],
+                    [-1., 10., -3., 12.],
                 ]),
                 'want_labels': torch.LongTensor([0, 2]),
                 'want_loss': torch.tensor(14.126930236816406),

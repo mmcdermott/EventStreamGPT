@@ -236,11 +236,11 @@ class StructuredEventStreamForStreamClassificationLightningModule(L.LightningMod
             weight_decay = self.optimization_config.weight_decay,
         )
         scheduler = get_polynomial_decay_schedule_with_warmup(
-            optimizer          = opt,
-            num_warmup_steps   = self.optimization_config.lr_num_warmup_steps,
+            optimizer = opt,
+            num_warmup_steps = self.optimization_config.lr_num_warmup_steps,
             num_training_steps = self.optimization_config.max_training_steps,
-            power              = self.optimization_config.lr_decay_power,
-            lr_end             = self.optimization_config.end_lr,
+            power = self.optimization_config.lr_decay_power,
+            lr_end = self.optimization_config.end_lr,
         )
         return  {
             'optimizer': opt,
@@ -359,24 +359,24 @@ def fit_stream_classification_model(
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
         train_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size = optimization_config.batch_size,
         num_workers = num_dataloader_workers,
-        collate_fn  = train_pyd.collate,
-        shuffle     = True,
+        collate_fn = train_pyd.collate,
+        shuffle = True,
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size = optimization_config.batch_size,
         num_workers = num_dataloader_workers,
-        collate_fn  = tuning_pyd.collate,
-        shuffle     = False,
+        collate_fn = tuning_pyd.collate,
+        shuffle = False,
     )
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size = optimization_config.batch_size,
         num_workers = num_dataloader_workers,
-        collate_fn  = held_out_pyd.collate,
-        shuffle     = False,
+        collate_fn = held_out_pyd.collate,
+        shuffle = False,
     )
 
     # Setting up model configurations
@@ -391,12 +391,12 @@ def fit_stream_classification_model(
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     trainer_kwargs = dict(
-        max_epochs        = optimization_config.max_epochs,
-        detect_anomaly    = do_detect_anomaly,
-        logger            = wandb_logger,
+        max_epochs = optimization_config.max_epochs,
+        detect_anomaly = do_detect_anomaly,
+        logger = wandb_logger,
         log_every_n_steps = log_every_n_steps,
-        callbacks         = callbacks,
-        default_root_dir  = checkpoints_dir,
+        callbacks = callbacks,
+        default_root_dir = checkpoints_dir,
     )
 
     if torch.cuda.is_available():

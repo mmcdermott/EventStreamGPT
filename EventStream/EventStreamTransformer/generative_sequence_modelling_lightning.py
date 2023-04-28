@@ -242,7 +242,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
         # those distributions to assess the metric.
         # TODO(mmd): We should likely be able to control how many samples are used, to minimize variance of
         # these results.
-        tte_dist  = results['preds']['time_to_event']
+        tte_dist = results['preds']['time_to_event']
         tte_preds = tte_dist.sample()
 
         # After sampling, we also need to slice this down to just those intra-event-times that are actually
@@ -276,7 +276,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                 if task_type in {
                     DataModality.SINGLE_LABEL_CLASSIFICATION, DataModality.MULTI_LABEL_CLASSIFICATION
                 }:
-                    preds  = results['preds']['classification'][measurement].logits
+                    preds = results['preds']['classification'][measurement].logits
                     labels = results['labels']['classification'][measurement]
 
                     # We need to filter these down to just those corresponding to observed events. Note that
@@ -284,7 +284,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                     # and labels of the events at their indexed position; not for the subsequent event. So we
                     # don't need to shift `results['event_mask']` here to account for that.
 
-                    preds  = preds[mask]
+                    preds = preds[mask]
                     labels = labels[mask].long()
 
                     self._log_metric_dict(
@@ -370,11 +370,11 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
             weight_decay = self.optimization_config.weight_decay,
         )
         scheduler = get_polynomial_decay_schedule_with_warmup(
-            optimizer          = opt,
-            num_warmup_steps   = self.optimization_config.lr_num_warmup_steps,
+            optimizer = opt,
+            num_warmup_steps = self.optimization_config.lr_num_warmup_steps,
             num_training_steps = self.optimization_config.max_training_steps,
-            power              = self.optimization_config.lr_decay_power,
-            lr_end             = self.optimization_config.end_lr,
+            power = self.optimization_config.lr_decay_power,
+            lr_end = self.optimization_config.end_lr,
         )
         return  {
             'optimizer': opt,
@@ -486,24 +486,24 @@ def fit_generative_sequence_model(
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
         train_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size = optimization_config.batch_size,
         num_workers = num_dataloader_workers,
-        collate_fn  = train_pyd.collate,
-        shuffle     = True,
+        collate_fn = train_pyd.collate,
+        shuffle = True,
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size  = optimization_config.batch_size // 2,
+        batch_size = optimization_config.batch_size // 2,
         num_workers = num_dataloader_workers,
-        collate_fn  = tuning_pyd.collate,
-        shuffle     = False,
+        collate_fn = tuning_pyd.collate,
+        shuffle = False,
     )
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size  = optimization_config.batch_size // 2,
+        batch_size = optimization_config.batch_size // 2,
         num_workers = num_dataloader_workers,
-        collate_fn  = held_out_pyd.collate,
-        shuffle     = False,
+        collate_fn = held_out_pyd.collate,
+        shuffle = False,
     )
 
     # Setting up model configurations
@@ -518,11 +518,11 @@ def fit_generative_sequence_model(
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     trainer_kwargs = dict(
-        max_epochs        = optimization_config.max_epochs,
-        detect_anomaly    = do_detect_anomaly,
+        max_epochs = optimization_config.max_epochs,
+        detect_anomaly = do_detect_anomaly,
         log_every_n_steps = log_every_n_steps,
-        callbacks         = callbacks,
-        default_root_dir  = checkpoints_dir,
+        callbacks = callbacks,
+        default_root_dir = checkpoints_dir,
     )
 
     if do_use_wandb:
@@ -569,8 +569,9 @@ def fit_generative_sequence_model(
                     f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
                     "accumulation..."
                 )
-                trainer_kwargs['accumulate_grad_batches'] \
-                    = trainer_kwargs.get('accumulate_grad_batches', 1) * 2
+                trainer_kwargs['accumulate_grad_batches'] = (
+                    trainer_kwargs.get('accumulate_grad_batches', 1) * 2
+                )
                 optimization_config.gradient_accumulation = trainer_kwargs['accumulate_grad_batches']
                 optimization_config.batch_size = optimization_config.batch_size // 2
                 optimization_config.to_json_file(
@@ -579,17 +580,17 @@ def fit_generative_sequence_model(
 
                 train_dataloader = torch.utils.data.DataLoader(
                     train_pyd,
-                    batch_size  = optimization_config.batch_size,
+                    batch_size = optimization_config.batch_size,
                     num_workers = num_dataloader_workers,
-                    collate_fn  = train_pyd.collate,
-                    shuffle     = True,
+                    collate_fn = train_pyd.collate,
+                    shuffle = True,
                 )
                 tuning_dataloader = torch.utils.data.DataLoader(
                     tuning_pyd,
-                    batch_size  = optimization_config.batch_size // 2,
+                    batch_size = optimization_config.batch_size // 2,
                     num_workers = num_dataloader_workers,
-                    collate_fn  = tuning_pyd.collate,
-                    shuffle     = False,
+                    collate_fn = tuning_pyd.collate,
+                    shuffle = False,
                 )
 
         if do_final_validation_on_metrics:

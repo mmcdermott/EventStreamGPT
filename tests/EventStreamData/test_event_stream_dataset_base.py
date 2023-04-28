@@ -32,7 +32,7 @@ class ESDMock(EventStreamDatasetBase[dict, dict]):
         self, subjects_df: dict, events_df: dict, dynamic_measurements_df: dict
     ) -> Tuple[dict, dict, dict]:
         self.functions_called['_validate_initial_dfs'].append((
-             subjects_df, events_df, dynamic_measurements_df
+            subjects_df, events_df, dynamic_measurements_df
         ))
         return subjects_df, events_df, dynamic_measurements_df
 

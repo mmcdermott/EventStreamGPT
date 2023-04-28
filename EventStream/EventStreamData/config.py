@@ -145,7 +145,7 @@ class InputDFSchema(JSONableMixin):
                     case None: raise ValueError("Missing mandatory range parameter event_type!")
                     case (str(), str(), str()): pass
                     case str(): self.event_type = (
-                            self.event_type, f"{self.event_type}_START", f"{self.event_type}_END"
+                        self.event_type, f"{self.event_type}_START", f"{self.event_type}_END"
                     )
                     case _: raise TypeError(
                         "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) for "

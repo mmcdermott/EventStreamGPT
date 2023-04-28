@@ -471,7 +471,7 @@ class EventStreamDatasetBase(
         split_names = [split_names[i] for i in split_names_idx]
         split_fracs = [split_fracs[i] for i in split_names_idx]
 
-        subjects   = np.random.permutation(list(self.subject_ids))
+        subjects = np.random.permutation(list(self.subject_ids))
         split_lens = (np.array(split_fracs[:-1]) * len(subjects)).round().astype(int)
         split_lens = np.append(split_lens, len(subjects) - split_lens.sum())
 

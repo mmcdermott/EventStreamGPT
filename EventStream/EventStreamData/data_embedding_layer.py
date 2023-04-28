@@ -178,25 +178,25 @@ class DataEmbeddingLayer(torch.nn.Module):
             self.embedding_mode = EmbeddingMode.JOINT
             self.embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings = n_total_embeddings,
-                embedding_dim  = out_dim,
-                mode           = 'sum',
-                padding_idx    = 0,
+                embedding_dim = out_dim,
+                mode = 'sum',
+                padding_idx = 0,
             )
         else:
             self.embedding_mode = EmbeddingMode.SPLIT_CATEGORICAL_NUMERICAL
             assert (categorical_embedding_dim is not None) and (numerical_embedding_dim is not None)
             self.categorical_embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings = n_total_embeddings,
-                embedding_dim  = categorical_embedding_dim,
-                mode           = 'sum',
-                padding_idx    = 0,
+                embedding_dim = categorical_embedding_dim,
+                mode = 'sum',
+                padding_idx = 0,
             )
             self.cat_proj = torch.nn.Linear(categorical_embedding_dim, out_dim)
             self.numerical_embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings = n_total_embeddings,
-                embedding_dim  = numerical_embedding_dim,
-                mode           = 'sum',
-                padding_idx    = 0,
+                embedding_dim = numerical_embedding_dim,
+                mode = 'sum',
+                padding_idx = 0,
             )
             self.num_proj = torch.nn.Linear(numerical_embedding_dim, out_dim)
 

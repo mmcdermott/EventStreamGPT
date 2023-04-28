@@ -42,7 +42,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         match self.config.TTE_generation_layer_type:
             case TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
                 self.TTE_layer = LogNormalMixtureTTELayer(
-                    in_dim         = config.hidden_size,
+                    in_dim = config.hidden_size,
                     num_components = config.TTE_lognormal_generation_num_components,
                     mean_log_inter_time = config.mean_log_inter_event_time_min,
                     std_log_inter_time = config.std_log_inter_event_time_min,
@@ -64,7 +64,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         for measurement in config.measurements_for(DataModality.MULTI_LABEL_CLASSIFICATION):
             self.classification_criteria[measurement] = torch.nn.BCEWithLogitsLoss(reduction='none')
 
-        self.regression_layers   = torch.nn.ModuleDict({})
+        self.regression_layers = torch.nn.ModuleDict({})
         for measurement in config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
             self.regression_layers[measurement] = GaussianIndexedRegressionLayer(
                 n_regression_targets = config.vocab_sizes_by_measurement[measurement],
@@ -120,8 +120,8 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
 
         # TTE_dist is a distribution with random variables of shape (batch size, sequence length)
         TTE_obs_mask = (batch['event_mask'][:, 1:] & batch['event_mask'][:, :-1])
-        TTE_delta    = batch['time'].diff()
-        TTE_true     = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
+        TTE_delta = batch['time'].diff()
+        TTE_true = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
         # for generative purposes, we add a fake observation to the last element.
@@ -144,7 +144,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             raise ValueError(f"No observed time-to-event for >= 1 patient in batch: {batch}")
 
         TTE_LL_per_patient = (TTE_LL * TTE_obs_mask_exp.float()).sum(-1) / TTE_obs_mask_exp.float().sum(-1)
-        TTE_LL_overall     = TTE_LL_per_patient.mean()
+        TTE_LL_overall = TTE_LL_per_patient.mean()
 
         return TTE_LL_overall, TTE_dist, TTE_true
 
@@ -226,8 +226,8 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 event_mask = batch['event_mask']
 
             measurement_idx = self.config.measurements_idxmap[measurement]
-            vocab_start   = self.config.vocab_offsets_by_measurement[measurement]
-            vocab_end     = min(
+            vocab_start = self.config.vocab_offsets_by_measurement[measurement]
+            vocab_end = min(
                 o for o in list(self.config.vocab_offsets_by_measurement.values()) + [self.config.vocab_size]
                 if o > vocab_start
             )
@@ -245,7 +245,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 # As there is only one index of this type for this setting,
                 # we can direclty multiply by the mask and sum
                 events_with_label = tensor_idx.any(dim=-1)
-                labels  = (
+                labels = (
                     (dynamic_indices.long() * tensor_idx.long()).sum(dim=-1) -
                     vocab_start
                 ) * events_with_label.long()
@@ -360,9 +360,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         if not valid_measurements: return {}, {}, {}, {}
 
         regression_loss_values = {}
-        regression_dists       = {}
-        regression_labels      = {}
-        regression_indices     = {}
+        regression_dists = {}
+        regression_labels = {}
+        regression_indices = {}
         for measurement in self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
             if measurement not in valid_measurements: continue
 
@@ -405,16 +405,16 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
             if is_generation:
                 loss_overall = None
             else:
-                loss_per_label    = -regr_dist.log_prob(values_observed_or_zero)
+                loss_per_label = -regr_dist.log_prob(values_observed_or_zero)
                 loss_per_event, _ = safe_weighted_avg(loss_per_label, tensor_idx)
 
                 events_with_label = event_mask & tensor_idx.any(dim=-1)
                 loss_overall = weighted_loss(loss_per_event, events_with_label)
 
             regression_loss_values[measurement] = loss_overall
-            regression_dists[measurement]       = regr_dist
-            regression_labels[measurement]      = values_observed_or_zero
-            regression_indices[measurement]     = indices_measured_or_zero
+            regression_dists[measurement] = regr_dist
+            regression_labels[measurement] = values_observed_or_zero
+            regression_indices[measurement] = indices_measured_or_zero
 
         for measurement in self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION):
             if measurement not in valid_measurements: continue
@@ -461,9 +461,9 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                 loss_overall = weighted_loss(loss_per_event, events_with_label)
 
             regression_loss_values[measurement] = loss_overall
-            regression_dists[measurement]       = regr_dist
-            regression_labels[measurement]      = values_observed_or_zero
-            regression_indices[measurement]     = None
+            regression_dists[measurement] = regr_dist
+            regression_labels[measurement] = values_observed_or_zero
+            regression_indices[measurement] = None
 
         return (
             regression_loss_values,
@@ -494,10 +494,10 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
         classification_dists_by_measurement = {}
         classification_losses_by_measurement = None if is_generation else {}
         classification_labels_by_measurement = None if is_generation else {}
-        regression_dists       = {}
+        regression_dists = {}
         regression_loss_values = None if is_generation else {}
-        regression_labels      = None if is_generation else {}
-        regression_indices     = None if is_generation else {}
+        regression_labels = None if is_generation else {}
+        regression_indices = None if is_generation else {}
 
         classification_measurements = set(self.classification_mode_per_measurement.keys())
         regression_measurements = set(

@@ -53,10 +53,10 @@ class EventStreamOptimizationConfig(JSONableMixin):
     """
     init_lr:               float = 1e-2
     end_lr:                float = 1e-7
-    max_epochs:            int   = 100
-    batch_size:            int   = 32
+    max_epochs:            int = 100
+    batch_size:            int = 32
     lr_frac_warmup_steps:  Optional[float] = 0.01
-    lr_num_warmup_steps:   Optional[int]   = None
+    lr_num_warmup_steps:   Optional[int] = None
     max_training_steps:    Optional[int] = None
     lr_decay_power:        float = 1.0
     weight_decay:          float = 0.01
@@ -379,7 +379,7 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
         **kwargs
     ):
         # Reseting default values to appropriate types
-        if vocab_sizes_by_measurement is None: vocab_sizes_by_measurement  = {}
+        if vocab_sizes_by_measurement is None: vocab_sizes_by_measurement = {}
         if vocab_offsets_by_measurement is None: vocab_offsets_by_measurement = {}
         if measurements_idxmap is None: measurements_idxmap = {}
         if measurements_per_generative_mode is None: measurements_per_generative_mode = {}
@@ -577,10 +577,10 @@ class StructuredEventStreamTransformerConfig(PretrainedConfig):
 
         self.vocab_size = max(sum(self.vocab_sizes_by_measurement.values()), 1)
 
-        self.head_dim                       = head_dim
-        self.hidden_size                    = hidden_size
-        self.num_attention_heads            = num_attention_heads
-        self.num_hidden_layers              = num_hidden_layers
+        self.head_dim = head_dim
+        self.hidden_size = hidden_size
+        self.num_attention_heads = num_attention_heads
+        self.num_hidden_layers = num_hidden_layers
         self.attention_dropout = attention_dropout
         self.input_dropout = input_dropout
         self.resid_dropout = resid_dropout

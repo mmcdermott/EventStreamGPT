@@ -43,7 +43,7 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> Tuple[torch.Ten
 
     torch._assert(weights.shape == X.shape, f"weights, {weights.shape} must be the same shape as X {X.shape}")
 
-    denom      = weights.float().sum(dim=-1)
+    denom = weights.float().sum(dim=-1)
     safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
     return torch.where(
         denom > 0,

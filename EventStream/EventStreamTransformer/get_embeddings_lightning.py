@@ -173,10 +173,10 @@ def get_embeddings(
         # Setting up torch dataloader
         dataloader = torch.utils.data.DataLoader(
             pyd,
-            batch_size  = batch_size,
+            batch_size = batch_size,
             num_workers = num_dataloader_workers,
-            collate_fn  = pyd.collate,
-            shuffle     = False,
+            collate_fn = pyd.collate,
+            shuffle = False,
         )
 
         checkpoints_dir = save_embeddings_dir / "model_checkpoints"
