@@ -134,7 +134,9 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                         'weighted_AUPRC': MultilabelAveragePrecision(**metric_kwargs, average='weighted'),
                         'micro_AUPRC': MultilabelAveragePrecision(**metric_kwargs, average='micro'),
                     })
-                elif task_type == DataModality.MULTIVARIATE_REGRESSION:
+                elif task_type in (
+                    DataModality.MULTIVARIATE_REGRESSION, DataModality.UNIVARIATE_REGRESSION
+                ):
                     # As we have multiple regression tasks here (unlike TTE), we have to use both macro and
                     # weighted explained variance. We also use MSE. For some reason (TODO(mmd)) MSLE was
                     # erroring out so is not tracked.
@@ -272,8 +274,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
 
             for task_type, metrics in metrics_dict.items():
                 if task_type in {
-                    DataModality.SINGLE_LABEL_CLASSIFICATION,
-                    DataModality.MULTI_LABEL_CLASSIFICATION
+                    DataModality.SINGLE_LABEL_CLASSIFICATION, DataModality.MULTI_LABEL_CLASSIFICATION
                 }:
                     preds  = results['preds']['classification'][measurement].logits
                     labels = results['labels']['classification'][measurement]
@@ -313,8 +314,8 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                     # We also need to reflect just those data elements for which values were observed:
                     data_el_mask = results['dynamic_values_mask'][mask]
 
-                    preds = dist.sample()[mask][data_el_mask]
-                    labels = results['labels']['regression'][measurement][mask][data_el_mask]
+                    preds = preds[data_el_mask]
+                    labels = labels[data_el_mask]
                     preds_indices = preds_indices[data_el_mask]
                     labels_indices = labels_indices[data_el_mask]
 
@@ -324,6 +325,20 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                     self._log_metric_dict(
                         preds=preds_expanded, labels=labels_expanded, metrics=metrics,
                         measurement=measurement, **log_metric_kwargs
+                    )
+                if task_type == DataModality.UNIVARIATE_REGRESSION:
+                    # Here, like for TTE, we need to sample from the returned distribution before we can use
+                    # it directly. Here we also need to limit to just those events that are actually observed.
+                    # Like above, the assumption here is that preds and labels correspond to predictions for
+                    # and labels of the events at their indexed position; not for the subsequent event. So we
+                    # don't need to shift `results['event_mask']` here to account for that.
+                    dist = results['preds']['regression'][measurement]
+                    preds = dist.sample()[mask]
+                    labels = results['labels']['regression'][measurement][mask]
+
+                    self._log_metric_dict(
+                        preds=preds, labels=labels, metrics=metrics, measurement=measurement,
+                        **log_metric_kwargs
                     )
 
     def training_step(self, batch: EventStreamPytorchBatch, batch_idx: int) -> torch.Tensor:

@@ -172,6 +172,8 @@ class DataEmbeddingLayer(torch.nn.Module):
         self.categorical_weight = categorical_weight / (categorical_weight + numerical_weight)
         self.numerical_weight = numerical_weight / (categorical_weight + numerical_weight)
 
+        self.n_total_embeddings = n_total_embeddings
+
         if categorical_embedding_dim is None and numerical_embedding_dim is None:
             self.embedding_mode = EmbeddingMode.JOINT
             self.embed_layer = torch.nn.EmbeddingBag(
@@ -278,6 +280,10 @@ class DataEmbeddingLayer(torch.nn.Module):
         values_mask: Optional[torch.Tensor] = None,
         cat_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        torch._assert(
+            indices.max() < self.n_total_embeddings,
+            f"Invalid embedding! {indices.max()} >= {self.n_total_embeddings}"
+        )
         match self.embedding_mode:
             case EmbeddingMode.JOINT:
                 return self.joint_embed(indices, measurement_indices, values, values_mask)
