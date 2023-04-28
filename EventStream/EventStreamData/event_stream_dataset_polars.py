@@ -53,35 +53,60 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
     @classmethod
     def _load_input_df(
         cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
-        subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
+        subject_id_col: Optional[str] = None, subject_ids_map: Optional[Dict[Any, int]] = None,
+        subject_id_dtype: Optional[Any] = None,
+        filter_on: Optional[Dict[str, Union[bool, List[Any]]]] = None,
     ) -> DF_T:
         """
         Loads an input dataframe into the format expected by the processing library.
         """
+        if subject_id_col is None: 
+            if subject_ids_map is not None:
+                raise ValueError("Must not set subject_ids_map if subject_id_col is not set")
+            if subject_id_dtype is not None:
+                raise ValueError("Must not set subject_id_dtype if subject_id_col is not set")
+        else: 
+            if subject_ids_map is None:
+                raise ValueError("Must set subject_ids_map if subject_id_col is set")
+            if subject_id_dtype is None:
+                raise ValueError("Must set subject_id_dtype if subject_id_col is set")
+
         match df:
             case Path() as fp:
-                if fp.suffix == '.csv': df = pl.scan_csv(df)
+                if fp.suffix == '.csv': df = pl.scan_csv(df, null_values='')
                 elif fp.suffix == '.parquet': df = pl.scan_parquet(df)
                 else: raise ValueError(f"Can't read dataframe from file of suffix {fp.suffix}")
             case pd.DataFrame(): df = pl.from_pandas(df, include_index=True).lazy()
             case pl.DataFrame(): df = df.lazy()
+            case pl.LazyFrame(): pass
             case _: raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
 
-        col_exprs = [
-            pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias('subject_id')
-        ]
+        col_exprs = []
+
+        if filter_on: df = cls._filter_col_inclusion(df, filter_on)
+
+        if subject_id_col is None: 
+            df = df.with_row_count('subject_id')
+            col_exprs.append('subject_id')
+        else:
+            df = df.with_columns(pl.col(subject_id_col).cast(pl.Utf8).cast(pl.Categorical))
+            df = cls._filter_col_inclusion(df, {subject_id_col: list(subject_ids_map.keys())})
+            col_exprs.append(
+                pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias('subject_id')
+            )
+
         for in_col, out_dt in columns:
             match out_dt:
                 case InputDataType.FLOAT: col_exprs.append(pl.col(in_col).cast(pl.Float32, strict=False))
-                case InputDataType.CATEGORICAL: col_exprs.append(pl.col(in_col).cast(pl.Categorical))
+                case InputDataType.CATEGORICAL: 
+                    col_exprs.append(pl.col(in_col).cast(pl.Utf8).cast(pl.Categorical))
+                case InputDataType.BOOLEAN: col_exprs.append(pl.col(in_col).cast(pl.Boolean, strict=False))
                 case InputDataType.TIMESTAMP: col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=False))
                 case (InputDataType.TIMESTAMP, str() as ts_format):
                     col_exprs.append(pl.col(in_col).str.strptime(pl.Datetime, ts_format, strict=False))
                 case _: raise ValueError(f"Invalid out data type {out_dt}!")
 
-        return cls._filter_col_inclusion(
-            df, {subject_id_col: list(subject_ids_map.keys())}
-        ).select(col_exprs)
+        return df.select(col_exprs)
 
     @classmethod
     def resolve_ts_col(cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> DF_T:
@@ -142,7 +167,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
              (c) An "end" dataframe, with end events.
         """
 
-        df = df.filter(pl.col('end_time') < pl.col('start_time'))
+        df = df.filter(pl.col('start_time') <= pl.col('end_time'))
 
         eq_df = df.filter(pl.col('start_time') == pl.col('end_time'))
         ne_df = df.filter(pl.col('start_time') != pl.col('end_time'))
@@ -479,10 +504,15 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
             self.subject_ids.update(subjects_with_no_events)
 
     @classmethod
-    def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: Dict[str, Sequence[Any]]) -> DF_T:
+    def _filter_col_inclusion(
+        cls, df: DF_T, col_inclusion_targets: Dict[str, Union[bool, Sequence[Any]]]
+    ) -> DF_T:
         filter_exprs = []
         for col, incl_targets in col_inclusion_targets.items():
-            filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
+            match incl_targets:
+                case True: filter_exprs.append(pl.col(col).is_not_null())
+                case False: filter_exprs.append(pl.col(col).is_null())
+                case _: filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
 
         return df.filter(pl.all(filter_exprs))
 
@@ -533,9 +563,6 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
             ).drop(join_cols)
         else:
             self.events_df = self.events_df.with_columns(exprs)
-
-    @classmethod
-    def _drop_df_nulls(cls, source_df: DF_T, col: str) -> DF_T: return source_df.drop_nulls(col)
 
     @TimeableMixin.TimeAs
     def _prep_numerical_source(

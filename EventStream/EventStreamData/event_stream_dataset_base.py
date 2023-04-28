@@ -1,13 +1,13 @@
 import abc, copy, itertools, numpy as np, pandas as pd
 
 from collections import defaultdict
-from mixins import SeedableMixin, SaveableMixin, TimeableMixin
+from mixins import SeedableMixin, SaveableMixin, TimeableMixin, TQDMableMixin
 from pathlib import Path
 from plotly.graph_objs._figure import Figure
 from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Union
 
 from .config import (
-    EventStreamDatasetConfig, InputDFSchema, MeasurementConfig, VocabularyConfig,
+    EventStreamDatasetConfig, InputDFSchema, MeasurementConfig, VocabularyConfig, DatasetSchema
 )
 from .visualize import Visualizer
 from .types import DataModality, TemporalityType, InputDataType, InputDFType
@@ -20,7 +20,9 @@ INPUT_DF_T = TypeVar('INPUT_DF_T')
 # This defines the type of internal dataframes -- e.g. polars DataFrames.
 DF_T = TypeVar('DF_T')
 
-class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, SaveableMixin, TimeableMixin):
+class EventStreamDatasetBase(
+    abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, SaveableMixin, TimeableMixin, TQDMableMixin
+):
     """
     A unified base class for dataset objects using different processing libraries.
     """
@@ -52,7 +54,9 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
     @abc.abstractmethod
     def _load_input_df(
         cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
-        subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
+        subject_id_col: Optional[str] = None, subject_ids_map: Optional[Dict[Any, int]] = None,
+        subject_id_dtype: Optional[Any] = None,
+        filter_on: Optional[Dict[str, Union[bool, List[Any]]]] = None,
     ) -> DF_T:
         """
         Loads an input dataframe into the format expected by the processing library.
@@ -121,56 +125,62 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         raise NotImplementedError("Must be implemented by subclass.")
 
     @classmethod
+    def build_subjects_dfs(cls, schema: InputDFSchema) -> Tuple[DF_T, Dict[Hashable, int]]:
+        df = cls._load_input_df(
+            schema.input_df, 
+            [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
+            filter_on=schema.filter_on
+        ).collect()
+
+        return df, {o: n for o, n in zip(df[schema.subject_id_col], df['subject_id'])}
+
+    @classmethod
     def build_event_and_measurement_dfs(
         cls,
         subject_ids_map: Dict[Any, int],
         subject_id_col: str,
         subject_id_dtype: Any,
-        dfs: Dict[str, INPUT_DF_T],
-        schemas: Dict[str, Union[InputDFSchema, List[InputDFSchema]]],
+        schemas_by_df: Dict[INPUT_DF_T, List[InputDFSchema]],
     ) -> Tuple[DF_T, DF_T]:
         all_events_and_measurements = []
+        event_types = []
 
-        if set(schemas.keys()) != set(dfs.keys()):
-            raise ValueError(
-                f"Must have schemas for all dfs. Found {set(schemas.keys())} schemas for {set(dfs.keys())} dfs."
-            )
-        schemas = {k: v if type(v) is list else [v] for k, v in schemas.items()}
-
-        for name, df in dfs.items():
+        for df, schemas in schemas_by_df.items():
             all_columns = []
 
-            all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas[name]))
+            all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
             df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
 
-            for schema in schemas[name]:
+            for schema in schemas:
+                if schema.filter_on: df = cls._filter_col_inclusion(schema.filter_on)
                 match schema.type:
                     case InputDFType.EVENT:
                         df = cls.resolve_ts_col(df, schema.ts_col, 'timestamp')
                         all_events_and_measurements.append(cls.process_events_and_measurements_df(
                             df=df, event_type=schema.event_type, columns_schema=schema.unified_schema,
                         ))
+                        event_types.append(schema.event_type)
                     case InputDFType.RANGE:
                         df = cls.resolve_ts_col(df, schema.start_ts_col, 'start_time')
                         df = cls.resolve_ts_col(df, schema.end_ts_col, 'end_time')
-                        eq, st, end = cls.split_range_events_df(df=df)
-                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
-                            eq, columns_schema=schema.unified_schema, event_type=schema.event_type
-                        ))
-                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
-                            st, columns_schema=schema.unified_schema, event_type=f"{schema.event_type}_START"
-                        ))
-                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
-                            end, columns_schema=schema.unified_schema, event_type=f"{schema.event_type}_END"
-                        ))
+                        for et, sp_df in zip(schema.event_type, cls.split_range_events_df(df=df)):
+                            all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                                sp_df, columns_schema=schema.unified_schema, event_type=et
+                            ))
+                        event_types.extend(schema.event_type)
                     case _:
                         raise ValueError(f"Invalid schema type {schema.type} for {name}.")
 
         all_events, all_measurements = [], []
         running_event_id_max = 0
-        for events, measurements in all_events_and_measurements:
-            all_events.append(cls._inc_df_col(events, 'event_id', running_event_id_max))
+        for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
+            new_events = cls._inc_df_col(events, 'event_id', running_event_id_max)
+            if len(new_events) == 0:
+                print(f"Empty new events dataframe of type {event_type}!")
+                continue
+
+            all_events.append(new_events)
             if measurements is not None:
                 all_measurements.append(cls._inc_df_col(measurements, 'event_id', running_event_id_max))
 
@@ -301,6 +311,8 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         subjects_df: Optional[DF_T] = None,
         events_df: Optional[DF_T] = None,
         dynamic_measurements_df: Optional[DF_T] = None,
+        input_schema: Optional[DatasetSchema] = None,
+        **kwargs
     ):
         """
         Builds the `EventStreamDataset` object.
@@ -320,6 +332,33 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
             `config` (`EventStreamDatasetConfig`):
                 Configuration objects for this dataset. Largely details how metadata should be processed.
         """
+        super().__init__(**kwargs)
+
+        if (
+            (subjects_df is None or events_df is None or dynamic_measurements_df is None) and
+            input_schema is None
+        ):
+            raise ValueError(
+                "Must set input_schema if subjects_df, events_df, or dynamic_measurements_df are None!"
+            )
+
+        if input_schema is None:
+            if subjects_df is None: raise ValueError("Must set subjects_df if input_schema is None!")
+            if events_df is None: raise ValueError("Must set events_df if input_schema is None!")
+            if dynamic_measurements_df is None:
+                raise ValueError("Must set dynamic_measurements_df if input_schema is None!")
+        else:
+            if subjects_df is not None: raise ValueError("Can't set subjects_df if input_schema is not None!")
+            if events_df is not None: raise ValueError("Can't set events_df if input_schema is not None!")
+            if dynamic_measurements_df is not None:
+                raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
+
+            subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
+            subject_id_dtype = subjects_df['subject_id'].dtype
+
+            events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
+                ID_map, input_schema.static.subject_id_col, subject_id_dtype, input_schema.dynamic_by_df,
+            )
 
         self.config = config
         self._is_fit = False
@@ -442,7 +481,9 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
     @classmethod
     @abc.abstractmethod
-    def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: Dict[str, Sequence[Any]]) -> DF_T:
+    def _filter_col_inclusion(
+        cls, df: DF_T, col_inclusion_targets: Dict[str, Union[bool, Sequence[Any]]]
+    ) -> DF_T:
         """Filters the given dataframe to only the rows such that the column `col` is in incl_target."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -608,7 +649,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
                 continue
 
             total_possible, total_observed = self._total_possible_and_observed(measure, config, source_df)
-            source_df = self._drop_df_nulls(source_df, measure)
+            source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
                 print(f"Found no possible events for {measure}!")
@@ -659,11 +700,6 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
     ) -> pd.DataFrame:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
-    @classmethod
-    @abc.abstractmethod
-    def _drop_df_nulls(cls, source_df: DF_T, col: str) -> DF_T:
-        raise NotImplementedError("This method must be implemented by a subclass.")
-
     @TimeableMixin.TimeAs
     @abc.abstractmethod
     def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: DF_T) -> Vocabulary:
@@ -675,7 +711,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         for measure, config in self.measurement_configs.items():
             source_attr, id_col, source_df = self._get_source_df(config, do_only_train=False)
 
-            source_df = self._drop_df_nulls(source_df, measure)
+            source_df = self._filter_col_inclusion(source_df, {measure: True})
             updated_cols = [measure]
 
             try:
@@ -811,7 +847,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
             )
             subject_chunks = [list(c) for c in subject_chunks]
 
-        for chunk_idx, subjects_list in enumerate(subject_chunks):
+        for chunk_idx, subjects_list in self._tqdm(list(enumerate(subject_chunks))):
             cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
 
             for split, subjects in self.split_subjects.items():
@@ -904,10 +940,24 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
         """ Un-normalizes the column `col` in df `events_df`. """
         raise NotImplementedError("This method must be implemented by a subclass.")
 
+    def describe(
+        self,
+        do_print_measurement_summaries: bool = True,
+        viz_config: Optional[Visualizer] = None,
+    ) -> Optional[List[Figure]]:
+        if do_print_measurement_summaries:
+            print(f"Dataset has {len(self.measurement_configs)} measurements:")
+            for meas, cfg in self.measurement_configs.items():
+                if cfg.name is None: cfg.name = meas
+                cfg.describe(line_width=60)
+                print()
+
+        if viz_config is not None:
+            return self.visualize(viz_config)
+
     def visualize(
         self,
         viz_config: Visualizer,
-        save_dir: Optional[Path] = None,
     ) -> List[Figure]:
         """
         Visualizes the dataset, along the following axes:
@@ -919,9 +969,6 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, 
 
         if viz_config.subset_size is not None:
             viz_config.subset_random_seed = self._seed(seed=viz_config.subset_random_seed, key='visualize')
-
-        if save_dir is not None:
-            viz_config.to_json_file(save_dir / 'viz_config.json')
 
         if viz_config.subset_size is not None:
             subject_ids = list(np.random.choice(list(self.subject_ids), viz_config.subset_size))

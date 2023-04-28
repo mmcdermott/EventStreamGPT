@@ -4,6 +4,7 @@ from typing import Dict, Optional, Union
 from ..utils import StrEnum
 
 class InputDFType(StrEnum):
+    STATIC = enum.auto()
     EVENT = enum.auto()
     RANGE = enum.auto()
 
@@ -11,6 +12,7 @@ class InputDataType(StrEnum):
     CATEGORICAL = enum.auto()
     FLOAT = enum.auto()
     TIMESTAMP = enum.auto()
+    BOOLEAN = enum.auto()
 
 @dataclasses.dataclass
 class EventStreamPytorchBatch:

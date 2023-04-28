@@ -117,3 +117,10 @@ class JSONableMixin():
     def from_json_file(cls: Type[JSONABLE_INSTANCE_T], fp: Path) -> JSONABLE_INSTANCE_T:
         """Build configuration object from contents of `fp` interpreted as a dictionary stored in json."""
         with open(fp, mode='r') as f: return cls.from_dict(json.load(f))
+
+def num_initial_spaces(s: str) -> int:
+    out = 0
+    while s.startswith(' '):
+        out += 1
+        s = s[1:]
+    return out

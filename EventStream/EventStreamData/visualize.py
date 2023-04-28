@@ -221,25 +221,36 @@ class Visualizer(JSONableMixin):
 
         subj_ranges = subj_ranges.join(
             subjects_df.select('subject_id', self.dob_col, *self.static_covariates), on='subject_id'
-        ).drop('subject_id')
+        )
 
         time_points = pl.DataFrame({
             'timestamp': pl.date_range(start_time, end_time, interval=self.time_unit)
         })
         n_time_bins = len(time_points)+1
 
-        cross_df = subj_ranges.join(
+        cross_df_all = subj_ranges.join(
             time_points, how='cross'
         ).filter(
             (pl.col('start_time') <= pl.col('timestamp')) & (pl.col('timestamp') <= pl.col('end_time'))
         ).select(
-            'timestamp', *self.static_covariates,
+            'timestamp', 'subject_id', *self.static_covariates,
             (
                 (pl.col('timestamp') - pl.col(self.dob_col)).dt.nanoseconds() / (1e9 * 60 * 60 * 24 * 365.25)
             ).alias(self.age_col),
+            pl.col('subject_id').n_unique().over('timestamp').alias('num_subjects')
+        ).filter(
+            pl.col('num_subjects') > 20
         )
 
+
         for static_covariate in self.static_covariates:
+            cross_df = cross_df_all.with_columns(
+                pl.col('subject_id').n_unique().over('timestamp', static_covariate).alias('num_subjects')
+            ).filter(
+                pl.col('num_subjects') > 20
+            ).with_columns(
+                (1 / pl.col('num_subjects')).alias('% Subjects @ time')
+            )
 
             if self.min_sub_to_plot_age_dist is not None:
                 val_counts = subjects_df[static_covariate].value_counts()
@@ -250,9 +261,10 @@ class Visualizer(JSONableMixin):
                 cross_df = cross_df.filter(pl.col(static_covariate).is_in(valid_categories))
 
             figures.append(px.density_heatmap(
-                self._normalize_to_pandas(cross_df, static_covariate), x='timestamp', y=self.age_col,
+                self._normalize_to_pandas(cross_df, static_covariate),
+                x='timestamp', y=self.age_col, z='% Subjects @ time',
                 facet_col=static_covariate, nbinsy=self.n_age_buckets, nbinsx=n_time_bins,
-                marginal_y='histogram', histnorm='probability'
+                histnorm=None, histfunc='sum',
             ))
 
         return figures
@@ -263,19 +275,16 @@ class Visualizer(JSONableMixin):
 
         min_age = events_df[self.age_col].min()
         max_age = events_df[self.age_col].max()
-
-        age_buckets = list(np.linspace(min_age, max_age, self.n_age_buckets + 1))
+        age_bucket_size = (max_age - min_age) / (self.n_age_buckets)
 
         events_df = events_df.with_columns(
-            pl.lit(age_buckets).search_sorted(pl.col(self.age_col)).alias('age_bucket_idx'),
+            (pl.col('age') / age_bucket_size).round(0).cast(pl.Int64).alias('age_bucket')
         ).groupby(
-            'age_bucket_idx', *self.static_covariates
+            'age_bucket', *self.static_covariates
         ).agg(
             pl.col(self.age_col).mean(),
             pl.col('event_id').n_unique().alias('n_events'),
-            pl.col('subject_id').n_unique().alias('n_subjects'),
-        ).sort(
-            self.age_col, descending=False
+            pl.col('subject_id').n_unique().alias('n_subjects')
         ).with_columns(
             pl.col('n_events').cumsum().over(*self.static_covariates).alias('Cumulative Events'),
         )
@@ -284,8 +293,11 @@ class Visualizer(JSONableMixin):
             plt_kwargs = {'x': self.age_col, 'color': static_covariate}
 
             counts_at_age = self._normalize_to_pandas(events_df.groupby(
-                self.age_col, static_covariate
+                'age_bucket', static_covariate
             ).agg(
+                (
+                    (pl.col(self.age_col) * pl.col('n_subjects')).sum() / pl.col('n_subjects').sum()
+                ).alias(self.age_col),
                 pl.col('n_subjects').sum().alias('Subjects with Event @ Age'),
                 pl.col('n_events').sum().alias('Events @ Age'),
                 pl.col('Cumulative Events').sum().alias('Events <= Age'),
