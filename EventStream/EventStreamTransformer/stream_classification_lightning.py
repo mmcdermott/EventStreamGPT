@@ -242,7 +242,7 @@ class StructuredEventStreamForStreamClassificationLightningModule(L.LightningMod
             power = self.optimization_config.lr_decay_power,
             lr_end = self.optimization_config.end_lr,
         )
-        return  {
+        return {
             'optimizer': opt,
             'lr_scheduler': {
                 'scheduler': scheduler,
@@ -345,7 +345,7 @@ def fit_stream_classification_model(
         config, optimization_config, pretrained_weights_fp=pretrained_weights_fp
     )
 
-    wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
+    wandb_logger_savedir = save_dir  # Wandb automatically adds a "wandb" suffix.
     wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
     wandb_logger = WandbLogger(
         name=wandb_name, project=wandb_project, save_dir=wandb_logger_savedir,

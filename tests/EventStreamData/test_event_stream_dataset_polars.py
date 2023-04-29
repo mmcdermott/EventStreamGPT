@@ -179,8 +179,8 @@ in_event_times = {
     7: datetime(2010, 1, 5, 14),   # DPV, Subj 1, PM
     8: datetime(2010, 1, 8, 23),   # DPV, Subj 1, LATE_PM
     9: datetime(2010, 1, 9, 22, 30),   # DPV, Subj 1, LATE_PM
-    10: datetime(2010, 1, 10, 3), # DPV, Subj 2, EARLY_AM,
-    11: datetime(2010, 1, 11, 15), # DPV, Subj 2, PM
+    10: datetime(2010, 1, 10, 3),  # DPV, Subj 2, EARLY_AM,
+    11: datetime(2010, 1, 11, 15),  # DPV, Subj 2, PM
     12: datetime(2010, 1, 1, 23),  # DPV, Subj 3, LATE_PM
     13: datetime(2010, 1, 2, 23),  # DPV, Subj 3, LATE_PM
     14: datetime(2010, 1, 3, 22),  # DPV, Subj 3, LATE_PM
@@ -915,7 +915,6 @@ WANT_DL_REP_DF = pl.DataFrame(
             None,
             None,
         ],
-        # 'static': ['foo', 'foo', 'bar', 'bar', 'bar'],
         'static_indices': [
             [WANT_UNIFIED_VOCABULARY_IDXMAP['static']['foo']],
             [WANT_UNIFIED_VOCABULARY_IDXMAP['static']['foo']],
@@ -930,11 +929,6 @@ WANT_DL_REP_DF = pl.DataFrame(
             [WANT_MEASUREMENTS_IDXMAP['static']],
             [WANT_MEASUREMENTS_IDXMAP['static']],
         ],
-        #'event_id': [
-        #    *([0]*8 + [5]*9),
-        #    *([1]*2 + [6]*2),
-        #    2, 3, 4, 7, 8, 9, 10, 11, 12,
-        #],
         'dynamic_indices': [
             [
                 [

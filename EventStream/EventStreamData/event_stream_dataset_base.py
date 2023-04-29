@@ -875,7 +875,7 @@ class EventStreamDatasetBase(
             vocab_sizes_by_measurement = {m: len(idxmap) for m, idxmap in self.measurement_idxmaps.items()},
             vocab_offsets_by_measurement = self.unified_vocabulary_offsets,
             measurements_idxmap = self.unified_measurements_idxmap,
-            event_types_idxmap = self.unified_vocabulary_idxmap['event_type'], # TODO(mmd): remove
+            event_types_idxmap = self.unified_vocabulary_idxmap['event_type'],
             measurements_per_generative_mode = dict(measurements_per_generative_mode),
             event_types_per_measurement = event_types_per_measurement,
         )

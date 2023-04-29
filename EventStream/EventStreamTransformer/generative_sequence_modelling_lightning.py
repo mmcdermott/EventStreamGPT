@@ -90,8 +90,8 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
         #   3. Mean Squared Log Error
         self.tte_metrics = torch.nn.ModuleDict({
             'explained_var': torchmetrics.ExplainedVariance(),
-            'MSE':           torchmetrics.MeanSquaredError(),
-            'MSLE':          torchmetrics.MeanSquaredLogError(),
+            'MSE': torchmetrics.MeanSquaredError(),
+            'MSLE': torchmetrics.MeanSquaredLogError(),
         })
 
         self.metrics = torch.nn.ModuleDict()
@@ -145,7 +145,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                         'weighted_explained_var': torchmetrics.ExplainedVariance(
                             multioutput='variance_weighted'
                         ),
-                        'MSE':  torchmetrics.MeanSquaredError(),
+                        'MSE': torchmetrics.MeanSquaredError(),
                     })
 
     def _log_metric_dict(
@@ -376,7 +376,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
             power = self.optimization_config.lr_decay_power,
             lr_end = self.optimization_config.end_lr,
         )
-        return  {
+        return {
             'optimizer': opt,
             'lr_scheduler': {
                 'scheduler': scheduler,
@@ -473,7 +473,7 @@ def fit_generative_sequence_model(
 
     do_use_wandb = wandb_name is not None
     if do_use_wandb:
-        wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
+        wandb_logger_savedir = save_dir  # Wandb automatically adds a "wandb" suffix.
         wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
         wandb_logger = WandbLogger(
             name=wandb_name, project=wandb_project, entity=wandb_team, save_dir=wandb_logger_savedir,

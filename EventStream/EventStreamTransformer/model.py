@@ -281,7 +281,7 @@ class StructuredEventStreamGenerativeOutputLayer(torch.nn.Module):
                     dim=2, index=data_labels_or_zero, value=1,
                 )
 
-                labels = labels[:, :, 1:] # Drop the omitted labels...
+                labels = labels[:, :, 1:]  # Drop the omitted labels...
 
                 loss_per_label = self.classification_criteria[measurement](scores, labels)
                 loss_per_event = loss_per_label.mean(dim=-1)

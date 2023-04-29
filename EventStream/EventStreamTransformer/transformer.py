@@ -298,7 +298,7 @@ class InnerBlock(nn.Module):
         hidden_states = residual + feed_forward_hidden_states
 
         if not use_cache: outputs.pop('present_key_value')
-        return hidden_states, outputs # hidden_states, {(present), (attentions)}
+        return hidden_states, outputs
 
 
 class StructuredEventStreamTransformerBlock(nn.Module):

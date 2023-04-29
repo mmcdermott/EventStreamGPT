@@ -123,18 +123,11 @@ class InputDFSchema(JSONableMixin):
                     case _: raise TypeError(f"event_type must be a string for events. Got {self.event_type}")
                 if self.subject_id_col is not None:
                     raise ValueError("subject_id_col should be None for non-static types!")
-                if (
-                    (self.start_ts_col is not None) or (self.end_ts_col is not None) or
-                    (self.start_ts_format is not None) or (self.end_ts_format is not None)
-                ):
-                    raise ValueError(
-                        "start_ts_col, end_ts_col, start_ts_format, and end_ts_format should be `None` "
-                        f"for {self.type} schemas! Got:\n"
-                        f"  start_ts_col: {self.start_ts_col}\n"
-                        f"  end_ts_col: {self.end_ts_col}\n"
-                        f"  start_ts_format: {self.start_ts_format}\n"
-                        f"  end_ts_format: {self.end_ts_format}"
-                    )
+                for param in ('start_ts_col', 'end_ts_col', 'start_ts_format', 'end_ts_format'):
+                    val = getattr(self, param)
+                    if val is not None:
+                        raise ValueError(f"{param} should be None for {self.type} schema: Got {val}")
+
                 if type(self.ts_col) is list:
                     for c in self.ts_col:
                         self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.ts_format)))

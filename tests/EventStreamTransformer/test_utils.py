@@ -34,7 +34,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_safe_masked_max(self):
         X = torch.FloatTensor([
-            [1.3, 1.1,  2.0,  1.2],
+            [1.3, 1.1, 2.0, 1.2],
             [1.0, -1.0, 2.0, -2.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
@@ -67,7 +67,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_safe_weighted_avg(self):
         X = torch.Tensor([
-            [1.0, 1.0,  2.0,  1.0],
+            [1.0, 1.0, 2.0, 1.0],
             [1.0, -1.0, 2.0, -2.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
@@ -107,7 +107,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_safe_weighted_avg_errors_with_negative_weights(self):
         X = torch.Tensor([
-            [1.0, 1.0,  2.0,  1.0],
+            [1.0, 1.0, 2.0, 1.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
 
@@ -121,7 +121,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_weighted_loss(self):
         X = torch.Tensor([
-            [1.0, 1.0,  2.0,  1.0],
+            [1.0, 1.0, 2.0, 1.0],
             [1.0, -1.0, 2.0, -2.0],
             [5.0, -1.0, 3.2, -2.0],
         ])

@@ -137,7 +137,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         return cls(vocabulary=vocab, obs_frequencies=freq)
 
     def describe(
-        self, line_width: int=60, wrap_lines: bool = True, n_head: int=3, n_tail: int=2,
+        self, line_width: int = 60, wrap_lines: bool = True, n_head: int = 3, n_tail: int = 2,
         stream: Optional[TextIOBase] = None
     ) -> Optional[int]:
         lines = []

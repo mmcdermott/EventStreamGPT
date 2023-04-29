@@ -15,7 +15,7 @@ from EventStream.EventStreamTransformer.config import (
 
 TEST_MEASUREMENTS_PER_GEN_MODE = {
     DataModality.SINGLE_LABEL_CLASSIFICATION: ['event_type'],
-    DataModality.MULTI_LABEL_CLASSIFICATION:  ['multi_label_col', 'regression_col'],
+    DataModality.MULTI_LABEL_CLASSIFICATION: ['multi_label_col', 'regression_col'],
     DataModality.MULTIVARIATE_REGRESSION: ['regression_col'],
 }
 TEST_MEASUREMENTS_IDXMAP = {

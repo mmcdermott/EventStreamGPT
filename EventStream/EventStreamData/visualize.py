@@ -242,7 +242,6 @@ class Visualizer(JSONableMixin):
             pl.col('num_subjects') > 20
         )
 
-
         for static_covariate in self.static_covariates:
             cross_df = cross_df_all.with_columns(
                 pl.col('subject_id').n_unique().over('timestamp', static_covariate).alias('num_subjects')

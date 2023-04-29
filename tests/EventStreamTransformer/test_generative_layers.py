@@ -16,13 +16,13 @@ class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
             in_dim=6, num_components=2,
         )
         L.proj.weight = torch.nn.Parameter(torch.Tensor([
-            [1, 0, 0, 0, 0, 0], # Loc for Component 1
-            [0, 1, 0, 0, 0, 0], # Log scale for Component 1
-            [0, 0, 1, 0, 0, 0], # Log weight for Component 1
+            [1, 0, 0, 0, 0, 0],  # Loc for Component 1
+            [0, 1, 0, 0, 0, 0],  # Log scale for Component 1
+            [0, 0, 1, 0, 0, 0],  # Log weight for Component 1
 
-            [0, 0, 0, 1, 0, 0], # Loc for Component 2
-            [0, 0, 0, 0, 1, 0], # Log scale for Component 2
-            [0, 0, 0, 0, 0, 1], # Log weight for Component 2
+            [0, 0, 0, 1, 0, 0],  # Loc for Component 2
+            [0, 0, 0, 0, 1, 0],  # Log scale for Component 2
+            [0, 0, 0, 0, 0, 1],  # Log weight for Component 2
         ]))
         L.proj.bias = torch.nn.Parameter(torch.Tensor([
             0,
@@ -34,10 +34,10 @@ class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
         ]))
 
         X = torch.Tensor([
-            [0, 0, 0, 0, 0, torch.finfo(torch.float32).min], # A standard lognormal in the 1st component.
-            [0, 0, torch.finfo(torch.float32).min, 2, 1, 0], # A nonstandard lognormal in the 2nd component.
-            [0, 0, 1, 2, 1, 1], # An equal combo of the first two.
-            [0, 0, math.log(2/3), 2, 1, math.log(1/3)], # An unequal combo of the first two.
+            [0, 0, 0, 0, 0, torch.finfo(torch.float32).min],  # A standard lognormal in the 1st component.
+            [0, 0, torch.finfo(torch.float32).min, 2, 1, 0],  # A nonstandard lognormal in the 2nd component.
+            [0, 0, 1, 2, 1, 1],  # An equal combo of the first two.
+            [0, 0, math.log(2/3), 2, 1, math.log(1/3)],  # An unequal combo of the first two.
         ])
         X.requires_grad = True
 
@@ -73,7 +73,7 @@ class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         obs = torch.Tensor([
             3,   # Guaranteed to be larger than the mode of the first lognormal.
-            0.1, # Guaranteed to be smaller than the mode of the second lognormal.
+            0.1,  # Guaranteed to be smaller than the mode of the second lognormal.
             # The mode of the first component.
             math.exp(0-math.exp(0)**2),
             # The mode of the second component.
@@ -239,10 +239,10 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
         # the gradient -- when it is equal to our buffer of epsilon. Given saturation, we'd then expect a
         # gradient value of 0, regardless of the observed value.
         obs = torch.Tensor([
-            [-5, 2], # Mean is far to the right, then right on top.
-            [5, 1.05], # Mean is far to the left, then close to the left.
-            [-0.05, 5], # Mean is close to the right, then far to the left.
-            [-0.05, 5], # Mean is close to the right, then far to the left.
+            [-5, 2],  # Mean is far to the right, then right on top.
+            [5, 1.05],  # Mean is far to the left, then close to the left.
+            [-0.05, 5],  # Mean is close to the right, then far to the left.
+            [-0.05, 5],  # Mean is close to the right, then far to the left.
         ])
 
         NLL = -got.log_prob(obs)
@@ -276,8 +276,8 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
             [1, -1, 0, 1],
             [-1, -1, -1, 1],
             [-1, -1, 1, 1],
-            # [0, 0, 1, 1], # In reality, this is what the gradient in this case should be.
-            [0, 0, 0, 0], # but in practice it is all NaNs as autograd can't recognize some stuff.
+            # [0, 0, 1, 1],  # In reality, this is what the gradient in this case should be.
+            [0, 0, 0, 0],  # but in practice it is all NaNs as autograd can't recognize some stuff.
         ])
 
         self.assertEqual(

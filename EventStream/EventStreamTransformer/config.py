@@ -51,16 +51,16 @@ class EventStreamOptimizationConfig(JSONableMixin):
         `gradient_accumulation` (`Optional[int]`, *optional*, default is None):
             The number of gradient accumulation steps to use. If None, gradient accumulation is not used.
     """
-    init_lr:               float = 1e-2
-    end_lr:                float = 1e-7
-    max_epochs:            int = 100
-    batch_size:            int = 32
-    lr_frac_warmup_steps:  Optional[float] = 0.01
-    lr_num_warmup_steps:   Optional[int] = None
-    max_training_steps:    Optional[int] = None
-    lr_decay_power:        float = 1.0
-    weight_decay:          float = 0.01
-    patience:              Optional[int] = None
+    init_lr: float = 1e-2
+    end_lr: float = 1e-7
+    max_epochs: int = 100
+    batch_size: int = 32
+    lr_frac_warmup_steps: Optional[float] = 0.01
+    lr_num_warmup_steps: Optional[int] = None
+    max_training_steps: Optional[int] = None
+    lr_decay_power: float = 1.0
+    weight_decay: float = 0.01
+    patience: Optional[int] = None
     gradient_accumulation: Optional[int] = None
 
     def set_to_dataset(self, dataset: EventStreamPytorchDataset):

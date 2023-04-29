@@ -99,7 +99,7 @@ def idx_distribution(
         )
     elif isinstance(D, torch.distributions.TransformedDistribution):
         transforms = D.transforms
-        for transform in transforms: assert transform.sign in (-1, 1) # Asserts transforms are univariate bij
+        for transform in transforms: assert transform.sign in (-1, 1)  # Asserts transforms are univariate bij
 
         base_dist = D.base_dist
         result = torch.distributions.TransformedDistribution(

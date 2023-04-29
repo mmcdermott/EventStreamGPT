@@ -14,7 +14,7 @@ from EventStream.EventStreamTransformer.config import (
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     'single_label_classification': ['event_type'],
-    'multi_label_classification':  ['multi_label_col', 'regression_col'],
+    'multi_label_classification': ['multi_label_col', 'regression_col'],
     'partially_observed_regression': ['regression_col'],
 }
 TEST_DATA_TYPES_IDXMAP = {
@@ -50,7 +50,7 @@ BASE_CONFIG_KWARGS = dict(
     hidden_size=4,
     num_hidden_layers=2,
     head_dim=None,
-    num_attention_heads=2, # Needs to divide hidden_size.
+    num_attention_heads=2,  # Needs to divide hidden_size.
     mean_log_inter_time=0,
     std_log_inter_time=1,
 
@@ -97,7 +97,7 @@ class TestStructuredEventStreamTransformer(ConfigComparisonsMixin, unittest.Test
         config = StructuredEventStreamTransformerConfig(**BASE_CONFIG_KWARGS)
 
         M = StructuredEventStreamTransformer(config)
-        M.eval() # So layernorm and dropout don't affect anything.
+        M.eval()  # So layernorm and dropout don't affect anything.
 
         batch = EventStreamPytorchBatch(**copy.deepcopy(BASE_BATCH))
         batch2 = copy.deepcopy(batch)

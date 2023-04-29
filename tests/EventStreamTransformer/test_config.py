@@ -376,7 +376,9 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
                     setattr(pyd.vocabulary_config, k, v)
                 for k, v in C['pyd_spec'].items(): setattr(pyd, k, v)
 
-                cfg = StructuredEventStreamTransformerConfig()
+                cfg = StructuredEventStreamTransformerConfig(
+                    **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                )
                 cfg.set_to_dataset(pyd)
                 for k, v in C['want'].items():
                     self.assertEqual(v, getattr(cfg, k))

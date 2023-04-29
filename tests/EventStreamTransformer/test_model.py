@@ -17,7 +17,7 @@ from EventStream.EventStreamTransformer.config import (
 
 TEST_MEASUREMENTS_PER_GEN_MODE = {
     DataModality.SINGLE_LABEL_CLASSIFICATION: ['event_type'],
-    DataModality.MULTI_LABEL_CLASSIFICATION:  ['multi_label_col', 'regression_col'],
+    DataModality.MULTI_LABEL_CLASSIFICATION: ['multi_label_col', 'regression_col'],
     DataModality.MULTIVARIATE_REGRESSION: ['regression_col'],
 }
 TEST_MEASUREMENTS_IDXMAP = {
@@ -49,7 +49,7 @@ BASE_CONFIG_KWARGS = dict(
     event_types_idxmap=TEST_EVENT_TYPES_IDXMAP,
     hidden_size=4,
     head_dim=None,
-    num_attention_heads=2, # Needs to divide hidden_size.
+    num_attention_heads=2,  # Needs to divide hidden_size.
     mean_log_inter_time=0,
     std_log_inter_time=1,
 )
@@ -1327,7 +1327,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 config = StructuredEventStreamTransformerConfig(**{
                     **BASE_CONFIG_KWARGS,
                     **C.get('config_kwargs', {}),
-                    'hidden_size': 8, # 2 * number of regression components (4)
+                    'hidden_size': 8,  # 2 * number of regression components (4)
                 })
 
                 # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab
