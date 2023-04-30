@@ -539,7 +539,7 @@ class MeasurementConfig(JSONableMixin):
 
         return cls(**as_dict)
 
-    def __eq__(self, other: EventStreamDatasetConfig) -> bool:
+    def __eq__(self, other: MeasurementConfig) -> bool:
         return self.to_dict() == other.to_dict()
 
     def describe(self, line_width: int = 60, wrap_lines: bool = False, stream: Optional[TextIOBase] = None) -> Optional[int]:
@@ -636,15 +636,24 @@ class EventStreamDatasetConfig(JSONableMixin):
             the specified class. The API of these objects is expected to mirror scikit-learn normalization
             system APIs.
             If `None`, numerical values are not normalized.
+
+        `save_dir`
+
+        `agg_by_time_scale` (`Optional[str]`...
+            Uses the string language described here:
+            https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
     """
 
     measurement_configs: Dict[str, MeasurementConfig] = dataclasses.field(default_factory = lambda: {})
+
+    min_events_per_subject: Optional[int] = None
+
+    agg_by_time_scale: Optional[str] = '1h'
 
     min_valid_column_observations: Optional[COUNT_OR_PROPORTION] = None
     min_valid_vocab_element_observations: Optional[COUNT_OR_PROPORTION] = None
     min_true_float_frequency: Optional[PROPORTION] = None
     min_unique_numerical_observations: Optional[COUNT_OR_PROPORTION] = None
-    min_events_per_subject: Optional[int] = None
 
     outlier_detector_config: Optional[Dict[str, Any]] = None
     normalizer_config: Optional[Dict[str, Any]] = None

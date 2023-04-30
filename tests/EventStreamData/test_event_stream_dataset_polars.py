@@ -88,8 +88,10 @@ TEST_CONFIG = EventStreamDatasetConfig(
     min_true_float_frequency=1/2,
     min_unique_numerical_observations=0.99,
 
-    outlier_detector_config = {'cls': 'outlier'},
-    normalizer_config = {'cls': 'normalizer'},
+    outlier_detector_config={'cls': 'outlier'},
+    normalizer_config={'cls': 'normalizer'},
+
+    agg_by_time_scale=None,
 
     measurement_configs = {
         'pre_dropped': MeasurementConfig(

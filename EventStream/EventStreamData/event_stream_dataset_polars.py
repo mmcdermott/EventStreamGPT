@@ -430,9 +430,21 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
 
         event_id_dt = self.events_df['event_id'].dtype
 
-        grouped = self.events_df.groupby(
-            ['subject_id', 'timestamp'], maintain_order=True
-        ).agg(
+        if self.config.agg_by_time_scale is None:
+            grouped = self.events_df.groupby(['subject_id', 'timestamp'], maintain_order=True)
+        else:
+            grouped = self.events_df.sort(
+                ['subject_id', 'timestamp'], descending=False
+            ).groupby_dynamic(
+                'timestamp',
+                every=self.config.agg_by_time_scale,
+                truncate=True,
+                closed='left',
+                start_by='datapoint',
+                by='subject_id',
+            )
+
+        grouped = grouped.agg(
             pl.col('event_type').unique().sort(),
             pl.col('event_id').unique().alias('old_event_id')
         ).sort(

@@ -377,6 +377,7 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             normalizer_config = None,
             save_dir = None,
             min_events_per_subject = None,
+            agg_by_time_scale = '1h',
         )
         nontrivial_measurement_configs = {
             'col_A': MeasurementConfig(
