@@ -1,6 +1,5 @@
 import torch
 
-from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
 class TakeExistingEventEmbedding(torch.nn.Module):
@@ -38,8 +37,8 @@ class StructuredAttention(torch.nn.Module):
     ):
         super().__init__()
 
-        self.event_pooler     = event_pooler
-        self.seq_module       = seq_module
+        self.event_pooler = event_pooler
+        self.seq_module = seq_module
         self.dep_graph_module = dep_graph_module
         self.do_update_to_contextualized_event = do_update_to_contextualized_event
 
@@ -144,7 +143,7 @@ class StructuredAttention(torch.nn.Module):
         # To produce the contextualized view of the _history_ prior to an event i, we pad the start of this
         # set of contextualized events with a zero vector and drop the last event.
         contextualized_history = torch.cat(
-                (torch.zeros_like(contextualized_events[:, :1, :]), contextualized_events[:, :-1, :]), dim=1
+            (torch.zeros_like(contextualized_events[:, :1, :]), contextualized_events[:, :-1, :]), dim=1
         )
         # contextualized_history is of shape (batch size, seq len, hidden_size)
 

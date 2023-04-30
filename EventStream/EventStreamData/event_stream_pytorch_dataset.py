@@ -1,15 +1,12 @@
-import copy, itertools, torch, numpy as np, pandas as pd, polars as pl
+import copy, torch, numpy as np, pandas as pd, polars as pl
 
 from collections import defaultdict
-from datetime import datetime
-from functools import cached_property
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin
 from pathlib import Path
-from tqdm.auto import tqdm
-from typing import Dict, Hashable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from .config import EventStreamPytorchDatasetConfig, VocabularyConfig
-from .types import DataModality, EventStreamPytorchBatch, TemporalityType
+from .types import EventStreamPytorchBatch
 
 DATA_ITEM_T = Dict[str, List[float]]
 
@@ -69,6 +66,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             (pd.api.types.is_float_dtype, None),
         ],
     }
+
     @classmethod
     def normalize_task(cls, val: pd.Series) -> Tuple[str, pd.Series]:
         for task_type, checkers in cls.TYPE_CHECKERS.items():
@@ -110,7 +108,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             assert self.config.save_dir is not None
             assert split is not None
 
-            data = self.config.save_dir / 'DL_reps' / f'{split}.parquet'
+            data = self.config.save_dir / 'DL_reps' / f'{split}*.parquet'
             vocabulary_config = self.config.save_dir / 'vocabulary_config.json'
         else:
             assert vocabulary_config is not None
@@ -176,14 +174,32 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
                 **{c: pl.col(c).first() for c in self.cached_data.columns if c not in time_dep_cols},
                 **{c: pl.col(c).first() for c in self.tasks},
                 **{
-                    t: pl.col(t).arr.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr) \
-                        for t in time_dep_cols
+                    t: pl.col(t).arr.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr)
+                    for t in time_dep_cols
                 },
             ).drop('__id')
 
             self.cached_data = self.cached_data.filter(
                 pl.col('time').arr.lengths() >= config.min_seq_len
             ).sort('task_row_num').drop('task_row_num')
+
+        with self._time_as('inter_event_time_norm'):
+            stats = self.cached_data.select(
+                pl.col('time').arr.eval(
+                    (pl.col('').shift(-1) - pl.col('')).log()
+                ).explode().drop_nulls().alias('log_inter_event_time')
+            ).select(
+                pl.col('log_inter_event_time').mean().alias('mean'),
+                pl.col('log_inter_event_time').std().alias('std'),
+            )
+
+            self.mean_log_inter_event_time_min = stats['mean'].item()
+            self.std_log_inter_event_time_min = stats['std'].item()
+
+        with self._time_as('convert_to_rows'):
+            self.cached_data = self.cached_data.drop('subject_id', 'start_time')
+            self.columns = self.cached_data.columns
+            self.cached_data = self.cached_data.rows()
 
     @property
     def has_task(self) -> bool: return (self.task_df is not None)
@@ -198,7 +214,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
         if self.has_task:
             out.task_df = self.task_df.iloc[sub_idx]
 
-        out.cached_data = out.cached_data.iloc[sub_idx]
+        out.cached_data = [out.cached_data[i] for i in sub_idx]
         assert len(out) == subset_size
 
         return out
@@ -237,17 +253,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             3. `mod_time = mod_TTE.cumsum()` Re-sum the modified inter-event times to get modified raw times.
         """
 
-        full_subj_data = self.cached_data[idx].to_dict()
-        full_subj_data.pop('subject_id')
-        full_subj_data.pop('start_time')
-
-        for k in (
-            'time', 'static_indices', 'static_measurement_indices', 'dynamic_indices', 'dynamic_values',
-            'dynamic_measurement_indices'
-        ):
-            full_subj_data[k] = full_subj_data[k].to_list()[0]
-        if self.tasks:
-            for k in self.tasks: full_subj_data[k] = full_subj_data[k][0]
+        full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
 
         # If we need to truncate to `self.max_seq_len`, grab a random full-size span to capture that.
         # TODO(mmd): This will proportionally underweight the front and back ends of the subjects data
@@ -310,7 +316,7 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
         self._register_start('collate_dynamic_padding')
         out = defaultdict(list)
         for e in batch:
-            seq_len   = len(e['time'])
+            seq_len = len(e['time'])
             seq_delta = max_seq_len - seq_len
 
             if self.seq_padding_side == 'right':
@@ -325,6 +331,8 @@ class EventStreamPytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, tor
             data_elements = defaultdict(list)
             for k in ('dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices'):
                 for vs in e[k]:
+                    if vs is None: vs = [np.NaN] * max_n_data
+
                     data_delta = max_n_data - len(vs)
                     vs = [v if v is not None else np.NaN for v in vs]
 

@@ -3,11 +3,11 @@ sys.path.append('../..')
 
 from ..mixins import ConfigComparisonsMixin
 
-import copy, unittest, numpy as np, pandas as pd, polars as pl
+import unittest, numpy as np, pandas as pd, polars as pl
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict
+from typing import Dict
 
 from EventStream.Preprocessing import Preprocessor
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
@@ -22,23 +22,28 @@ from EventStream.EventStreamData.vocabulary import Vocabulary
 
 class TestNormalizer(Preprocessor):
     def __init__(self, *args, **kwargs): pass
+
     @classmethod
     def params_schema(self) -> Dict[str, pl.DataType]:
         return {'min': pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
         return pl.struct([column.min().alias('min')])
+
     @classmethod
     def predict_from_polars(cls, column: pl.Expr, model: pl.Expr) -> pl.Expr:
         return (column - model.struct.field('min').round(0))
 
 class TestOutlierDetector(Preprocessor):
     def __init__(self, *args, **kwargs): pass
+
     @classmethod
     def params_schema(self) -> Dict[str, pl.DataType]:
         return {'mean': pl.Float64}
+
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
         return pl.struct([column.mean().alias('mean')])
+
     @classmethod
     def predict_from_polars(cls, column: pl.Expr, model: pl.Expr) -> pl.Expr:
         return ((column - model.struct.field('mean')) > 10).cast(pl.Boolean)
@@ -49,13 +54,16 @@ class TestESD(EventStreamDataset):
         'normalizer': TestNormalizer,
     }
 
+
 DOB_COL = 'dob'
 
 class TestAgeFunctor(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.UNIVARIATE_REGRESSION
 
     def __init__(self): self.link_static_cols = [DOB_COL]
+
     def __call__(self): return None
+
     def pl_expr(self):
         return (pl.col('timestamp') - pl.col(DOB_COL)).dt.nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
 
@@ -63,6 +71,7 @@ class TestTimeOfDayFunctor(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.SINGLE_LABEL_CLASSIFICATION
 
     def __call__(self): return None
+
     def pl_expr(self):
         return pl.when(
             pl.col('timestamp').dt.hour() < 6
@@ -72,35 +81,38 @@ class TestTimeOfDayFunctor(TimeDependentFunctor):
             pl.col('timestamp').dt.hour() < 21
         ).then('PM').otherwise('LATE_PM')
 
-TEST_CONFIG = EventStreamDatasetConfig(
-    min_valid_column_observations = 0.5,
-    min_valid_vocab_element_observations = 2,
-    min_true_float_frequency = 1/2,
-    min_unique_numerical_observations = 0.99,
 
-    outlier_detector_config = {'cls': 'outlier'},
-    normalizer_config = {'cls': 'normalizer'},
+TEST_CONFIG = EventStreamDatasetConfig(
+    min_valid_column_observations=0.5,
+    min_valid_vocab_element_observations=2,
+    min_true_float_frequency=1/2,
+    min_unique_numerical_observations=0.99,
+
+    outlier_detector_config={'cls': 'outlier'},
+    normalizer_config={'cls': 'normalizer'},
+
+    agg_by_time_scale=None,
 
     measurement_configs = {
         'pre_dropped': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.DROPPED
+            temporality=TemporalityType.DYNAMIC, modality = DataModality.DROPPED
         ),
         'not_present_dropped': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.SINGLE_LABEL_CLASSIFICATION,
+            temporality=TemporalityType.DYNAMIC, modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
         ),
         'dynamic_preset_vocab': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTI_LABEL_CLASSIFICATION,
-            present_in_event_types = ['DPV'], vocabulary = Vocabulary(['bar', 'foo'], [1, 2]),
+            temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+            present_in_event_types=['DPV'], vocabulary=Vocabulary(['bar', 'foo'], [1, 2]),
         ),
         'dynamic_dropped_insufficient_occurrences': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.SINGLE_LABEL_CLASSIFICATION,
-            present_in_event_types = ['DDIC'],
+            temporality=TemporalityType.DYNAMIC, modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+            present_in_event_types=['DDIC'],
         ),
         'static': MeasurementConfig(
-            temporality = TemporalityType.STATIC, modality = DataModality.SINGLE_LABEL_CLASSIFICATION,
+            temporality=TemporalityType.STATIC, modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
         ),
         'time_dependent_age_lt_90': MeasurementConfig(
-            temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor = TestAgeFunctor(),
+            temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=TestAgeFunctor(),
             measurement_metadata = pd.Series(
                 [90, False], index=pd.Index(
                     ['drop_upper_bound', 'drop_upper_bound_inclusive'],
@@ -108,15 +120,15 @@ TEST_CONFIG = EventStreamDatasetConfig(
             )
         ),
         'time_dependent_age_all': MeasurementConfig(
-            temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor = TestAgeFunctor(),
+            temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=TestAgeFunctor(),
         ),
         'time_dependent_time_of_day': MeasurementConfig(
-            temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor = TestTimeOfDayFunctor(),
+            temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=TestTimeOfDayFunctor(),
         ),
         'multivariate_regression_bounded_outliers': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTIVARIATE_REGRESSION,
-            values_column = 'mrbo_vals',
-            present_in_event_types = ['MVR'],
+            temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTIVARIATE_REGRESSION,
+            values_column='mrbo_vals',
+            present_in_event_types=['MVR'],
             measurement_metadata = pd.DataFrame(
                 {
                     'drop_lower_bound': [-1.1, -10.1, None],
@@ -130,9 +142,9 @@ TEST_CONFIG = EventStreamDatasetConfig(
             ),
         ),
         'multivariate_regression_preset_value_type': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTIVARIATE_REGRESSION,
-            values_column = 'pvt_vals',
-            present_in_event_types = ['MVR'],
+            temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTIVARIATE_REGRESSION,
+            values_column='pvt_vals',
+            present_in_event_types=['MVR'],
             measurement_metadata = pd.DataFrame(
                 {
                     'value_type': [
@@ -150,14 +162,14 @@ TEST_CONFIG = EventStreamDatasetConfig(
             ),
         ),
         'multivariate_regression_no_preset': MeasurementConfig(
-            temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTIVARIATE_REGRESSION,
-            values_column = 'mrnp_vals',
-            present_in_event_types = ['MVR'],
+            temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTIVARIATE_REGRESSION,
+            values_column='mrnp_vals',
+            present_in_event_types=['MVR'],
         ),
     },
 )
 
-TEST_SPLIT = {'train': {1, 2, 4, 5}, 'held_out': {3,}}
+TEST_SPLIT = {'train': {1, 2, 4, 5}, 'held_out': {3}}
 
 in_event_times = {
     1: datetime(2010, 1, 1, 2),   # MVR, Subj 1, Agg 1, EARLY_AM
@@ -169,8 +181,8 @@ in_event_times = {
     7: datetime(2010, 1, 5, 14),   # DPV, Subj 1, PM
     8: datetime(2010, 1, 8, 23),   # DPV, Subj 1, LATE_PM
     9: datetime(2010, 1, 9, 22, 30),   # DPV, Subj 1, LATE_PM
-    10: datetime(2010, 1, 10, 3), # DPV, Subj 2, EARLY_AM,
-    11: datetime(2010, 1, 11, 15), # DPV, Subj 2, PM
+    10: datetime(2010, 1, 10, 3),  # DPV, Subj 2, EARLY_AM,
+    11: datetime(2010, 1, 11, 15),  # DPV, Subj 2, PM
     12: datetime(2010, 1, 1, 23),  # DPV, Subj 3, LATE_PM
     13: datetime(2010, 1, 2, 23),  # DPV, Subj 3, LATE_PM
     14: datetime(2010, 1, 3, 22),  # DPV, Subj 3, LATE_PM
@@ -201,8 +213,8 @@ want_event_times = {
     want_id: in_event_times[in_ids[0]] for want_id, in_ids in want_event_agg_mapping.items()
 }
 want_event_TODs = {
-    k: 'EARLY_AM' if v.hour < 6 else 'UNK' if v.hour < 12 else 'PM' if v.hour < 21 else 'LATE_PM' \
-        for k, v in want_event_times.items()
+    k: 'EARLY_AM' if v.hour < 6 else 'UNK' if v.hour < 12 else 'PM' if v.hour < 21 else 'LATE_PM'
+    for k, v in want_event_times.items()
 }
 
 subject_dobs = {
@@ -246,15 +258,15 @@ want_events_ts_ages_lt_90_is_inlier = {
     k: None if (v > 90) else bool(v-outlier_mean_lt_90 < 10) for k, v in want_event_ts_ages.items()
 }
 want_events_ts_ages_lt_90 = {
-    k: (v - normalizer_min_lt_90.round()) if (v < 90) and want_events_ts_ages_lt_90_is_inlier[k] else np.NaN \
-        for k, v in want_event_ts_ages.items()
+    k: (v - normalizer_min_lt_90.round()) if (v < 90) and want_events_ts_ages_lt_90_is_inlier[k] else np.NaN
+    for k, v in want_event_ts_ages.items()
 }
 want_events_ts_ages_all_is_inlier = {
     k: bool(v-outlier_mean_all < 10) for k, v in want_event_ts_ages.items()
 }
 want_events_ts_ages_all = {
-    k: (v - normalizer_min_all.round()) if want_events_ts_ages_all_is_inlier[k] else np.NaN \
-        for k, v in want_event_ts_ages.items()
+    k: (v - normalizer_min_all.round()) if want_events_ts_ages_all_is_inlier[k] else np.NaN
+    for k, v in want_event_ts_ages.items()
 }
 
 IN_SUBJECTS_DF = pl.DataFrame(
@@ -460,30 +472,30 @@ WANT_UNIFIED_VOCABULARY_OFFSETS = {
 
 WANT_INFERRED_MEASUREMENT_CONFIGS = {
     'not_present_dropped': MeasurementConfig(
-        name = 'not_present_dropped',
-        temporality = TemporalityType.DYNAMIC, modality = DataModality.DROPPED,
+        name='not_present_dropped',
+        temporality=TemporalityType.DYNAMIC, modality=DataModality.DROPPED,
     ),
     'dynamic_preset_vocab': MeasurementConfig(
-        name = 'dynamic_preset_vocab',
-        temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTI_LABEL_CLASSIFICATION,
-        present_in_event_types=['DPV'], vocabulary = Vocabulary(['UNK', 'foo', 'bar'], [0, 2/3, 1/3]),
+        name='dynamic_preset_vocab',
+        temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+        present_in_event_types=['DPV'], vocabulary=Vocabulary(['UNK', 'foo', 'bar'], [0, 2/3, 1/3]),
         observation_frequency=1,
     ),
     'dynamic_dropped_insufficient_occurrences': MeasurementConfig(
-        name = 'dynamic_dropped_insufficient_occurrences',
-        temporality = TemporalityType.DYNAMIC, modality = DataModality.DROPPED,
-        present_in_event_types = ['DDIC'],
+        name='dynamic_dropped_insufficient_occurrences',
+        temporality=TemporalityType.DYNAMIC, modality=DataModality.DROPPED,
+        present_in_event_types=['DDIC'],
         observation_frequency=0.5
     ),
     'static': MeasurementConfig(
-        name = 'static',
-        temporality = TemporalityType.STATIC, modality = DataModality.SINGLE_LABEL_CLASSIFICATION,
-        observation_frequency = 1,
-        vocabulary = Vocabulary(['UNK', 'bar', 'foo'], [0, 0.5, 0.5]),
+        name='static',
+        temporality=TemporalityType.STATIC, modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+        observation_frequency=1,
+        vocabulary=Vocabulary(['UNK', 'bar', 'foo'], [0, 0.5, 0.5]),
     ),
     'time_dependent_age_lt_90': MeasurementConfig(
-        name = 'time_dependent_age_lt_90',
-        temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor = TestAgeFunctor(),
+        name='time_dependent_age_lt_90',
+        temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=TestAgeFunctor(),
         measurement_metadata = pd.Series(
             [
                 90, False,
@@ -494,14 +506,14 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
             ]),
             name='time_dependent_age_lt_90',
         ),
-        observation_frequency = 1,
-        vocabulary = None,
+        observation_frequency=1,
+        vocabulary=None,
     ),
     'time_dependent_age_all': MeasurementConfig(
-        name = 'time_dependent_age_all',
-        temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor = TestAgeFunctor(),
-        observation_frequency = 1,
-        vocabulary = None,
+        name='time_dependent_age_all',
+        temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=TestAgeFunctor(),
+        observation_frequency=1,
+        vocabulary=None,
         measurement_metadata = pd.Series(
             [NumericDataModalitySubtype.FLOAT, {'mean': outlier_mean_all}, {'min': normalizer_min_all}],
             index=pd.Index(['value_type', 'outlier_model', 'normalizer']),
@@ -509,10 +521,10 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         ),
     ),
     'time_dependent_time_of_day': MeasurementConfig(
-        name = 'time_dependent_time_of_day',
-        temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor = TestTimeOfDayFunctor(),
-        observation_frequency = 1,
-        vocabulary = Vocabulary(['UNK', 'EARLY_AM', 'PM', 'LATE_PM'], [0, 4, 3, 2]),
+        name='time_dependent_time_of_day',
+        temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=TestTimeOfDayFunctor(),
+        observation_frequency=1,
+        vocabulary=Vocabulary(['UNK', 'EARLY_AM', 'PM', 'LATE_PM'], [0, 4, 3, 2]),
     ),
     # Keys and Values:
     # 'mrbo1': -1.2, -1.1, 0.1, 0.7,
@@ -527,10 +539,10 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
     # 'mrbo2': 0.05 / -5.1,
     # 'mrbo3': -5 / -10.1,
     'multivariate_regression_bounded_outliers': MeasurementConfig(
-        name = 'multivariate_regression_bounded_outliers',
-        temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTIVARIATE_REGRESSION,
-        values_column = 'mrbo_vals',
-        present_in_event_types = ['MVR'],
+        name='multivariate_regression_bounded_outliers',
+        temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTIVARIATE_REGRESSION,
+        values_column='mrbo_vals',
+        present_in_event_types=['MVR'],
         measurement_metadata = pd.DataFrame(
             {
                 'drop_lower_bound': [-1.1, -10.1, None],
@@ -559,14 +571,14 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
                 ['mrbo1', 'mrbo2', 'mrbo3'], name='multivariate_regression_bounded_outliers'
             ),
         ),
-        observation_frequency = 1,
-        vocabulary = Vocabulary(['UNK', 'mrbo1', 'mrbo2', 'mrbo3'], [0, 1, 1, 1]),
+        observation_frequency=1,
+        vocabulary=Vocabulary(['UNK', 'mrbo1', 'mrbo2', 'mrbo3'], [0, 1, 1, 1]),
     ),
     'multivariate_regression_preset_value_type': MeasurementConfig(
-        name = 'multivariate_regression_preset_value_type',
-        temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTIVARIATE_REGRESSION,
-        values_column = 'pvt_vals',
-        present_in_event_types = ['MVR'],
+        name='multivariate_regression_preset_value_type',
+        temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTIVARIATE_REGRESSION,
+        values_column='pvt_vals',
+        present_in_event_types=['MVR'],
         measurement_metadata = pd.DataFrame(
             {
                 'value_type': [
@@ -597,7 +609,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
                 name='multivariate_regression_preset_value_type'
             ),
         ),
-        observation_frequency = 1,
+        observation_frequency=1,
         vocabulary = Vocabulary(
             [
                 'UNK', 'pvt_added', 'pvt_cat_flt__EQ_1.0', 'pvt_cat_flt__EQ_2.0', 'pvt_cat_int__EQ_1',
@@ -606,11 +618,11 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         ),
     ),
     'multivariate_regression_no_preset': MeasurementConfig(
-        name = 'multivariate_regression_no_preset',
-        temporality = TemporalityType.DYNAMIC, modality = DataModality.MULTIVARIATE_REGRESSION,
-        values_column = 'mrnp_vals',
-        present_in_event_types = ['MVR'],
-        observation_frequency = 1,
+        name='multivariate_regression_no_preset',
+        temporality=TemporalityType.DYNAMIC, modality=DataModality.MULTIVARIATE_REGRESSION,
+        values_column='mrnp_vals',
+        present_in_event_types=['MVR'],
+        observation_frequency=1,
         vocabulary = Vocabulary(
             [
                 'UNK', 'mrnp_flt', 'mrnp_int', 'mrnp_cat_int__EQ_3', 'mrnp_cat_int__EQ_1',
@@ -707,12 +719,6 @@ WANT_EVENTS_DF = pl.DataFrame(
     }
 )
 
-# min_valid_column_observations = 0.5,
-# min_valid_vocab_element_observations = 2,
-# min_true_float_frequency = 1/2,
-# min_unique_numerical_observations = 0.99,
-# 16 observations of MVR first, then 4 of DDIC, then 6 of DPV.
-
 WANT_MEASUREMENTS_DF = pl.DataFrame(
     data={
         'measurement_id': list(range(30)),
@@ -720,16 +726,6 @@ WANT_MEASUREMENTS_DF = pl.DataFrame(
             *([0]*8 + [5]*9),
             *([1]*2 + [6]*2),
             2, 3, 4, 7, 8, 9, 10, 11, 12,
-        ],
-        'event_type': [
-            *(['MVR']*17),
-            *(['DDIC']*4),
-            *(['DPV']*9),
-        ],
-        'subject_id': [
-            *([1]*8 + [2]*9),
-            *([1]*2 + [2]*2),
-            1, 1, 1, 2, 2, 3, 3, 3, 3,
         ],
 
         # Has pre-set vocab ['foo', 'bar'], occurs on 'DPV' events.
@@ -885,8 +881,6 @@ WANT_MEASUREMENTS_DF = pl.DataFrame(
     schema={
         'measurement_id': pl.UInt8,
         'event_id': pl.UInt8,
-        'event_type': pl.Categorical,
-        'subject_id': pl.UInt8,
         'dynamic_preset_vocab': pl.Categorical,
         'dynamic_dropped_insufficient_occurrences': pl.Categorical,
 
@@ -923,7 +917,6 @@ WANT_DL_REP_DF = pl.DataFrame(
             None,
             None,
         ],
-        # 'static': ['foo', 'foo', 'bar', 'bar', 'bar'],
         'static_indices': [
             [WANT_UNIFIED_VOCABULARY_IDXMAP['static']['foo']],
             [WANT_UNIFIED_VOCABULARY_IDXMAP['static']['foo']],
@@ -938,11 +931,6 @@ WANT_DL_REP_DF = pl.DataFrame(
             [WANT_MEASUREMENTS_IDXMAP['static']],
             [WANT_MEASUREMENTS_IDXMAP['static']],
         ],
-        #'event_id': [
-        #    *([0]*8 + [5]*9),
-        #    *([1]*2 + [6]*2),
-        #    2, 3, 4, 7, 8, 9, 10, 11, 12,
-        #],
         'dynamic_indices': [
             [
                 [
@@ -1456,12 +1444,6 @@ class TestEventStreamDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual(WANT_MEASUREMENTS_IDXMAP, E.unified_measurements_idxmap)
         self.assertEqual(WANT_UNIFIED_VOCABULARY_OFFSETS, E.unified_vocabulary_offsets)
         self.assertNestedDictEqual(WANT_UNIFIED_VOCABULARY_IDXMAP, E.unified_vocabulary_idxmap)
-
-        round_expr = pl.col('dynamic_values').arr.eval(
-            pl.col('').arr.eval(
-                pl.col('').round(6)
-            )
-        ).alias('dynamic_values')
 
         got_DL_rep = E.build_DL_cached_representation(do_sort_outputs=True)
         self.assertEqual(WANT_DL_REP_DF.drop('dynamic_values'), got_DL_rep.drop('dynamic_values'))

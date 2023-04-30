@@ -1,6 +1,6 @@
 import enum, torch
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from ..utils import StrEnum
 from .types import EventStreamPytorchBatch
@@ -15,6 +15,7 @@ class MeasIndexGroupOptions(StrEnum):
 
     @classmethod
     def values(cls): return list(map(lambda c: c.value, cls))
+
 
 MEAS_INDEX_GROUP_T = Union[int, Tuple[int, MeasIndexGroupOptions]]
 
@@ -100,7 +101,7 @@ class DataEmbeddingLayer(torch.nn.Module):
                 The weight of the dynamic embeddings. Only used if `static_embedding_mode` is not
                 `StaticEmbeddingMode.DROP`.
             `categorical_weight` (`float`, *default* = `1/2`):
-                The weight of the categorical embeddings. Only used if `categorical_embedding_dim` and 
+                The weight of the categorical embeddings. Only used if `categorical_embedding_dim` and
                 `numerical_embedding_dim` are not `None`.
             `numerical_weight` (`float`, *default* = `1/2`):
                 The weight of the numerical embeddings. Only used if `categorical_embedding_dim` and
@@ -113,7 +114,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         if type(n_total_embeddings) is not int: raise TypeError("`n_total_embeddings` must be an `int`.")
         if n_total_embeddings <= 0: raise ValueError("`n_total_embeddings` must be positive.")
 
-        if static_embedding_mode not in StaticEmbeddingMode.values(): 
+        if static_embedding_mode not in StaticEmbeddingMode.values():
             raise TypeError(
                 "`static_embedding_mode` must be a `StaticEmbeddingMode` enum member: "
                 f"{StaticEmbeddingMode.values()}."
@@ -171,29 +172,31 @@ class DataEmbeddingLayer(torch.nn.Module):
         self.categorical_weight = categorical_weight / (categorical_weight + numerical_weight)
         self.numerical_weight = numerical_weight / (categorical_weight + numerical_weight)
 
+        self.n_total_embeddings = n_total_embeddings
+
         if categorical_embedding_dim is None and numerical_embedding_dim is None:
             self.embedding_mode = EmbeddingMode.JOINT
             self.embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings = n_total_embeddings,
-                embedding_dim  = out_dim,
-                mode           = 'sum',
-                padding_idx    = 0,
+                embedding_dim = out_dim,
+                mode = 'sum',
+                padding_idx = 0,
             )
         else:
             self.embedding_mode = EmbeddingMode.SPLIT_CATEGORICAL_NUMERICAL
             assert (categorical_embedding_dim is not None) and (numerical_embedding_dim is not None)
             self.categorical_embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings = n_total_embeddings,
-                embedding_dim  = categorical_embedding_dim,
-                mode           = 'sum',
-                padding_idx    = 0,
+                embedding_dim = categorical_embedding_dim,
+                mode = 'sum',
+                padding_idx = 0,
             )
             self.cat_proj = torch.nn.Linear(categorical_embedding_dim, out_dim)
             self.numerical_embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings = n_total_embeddings,
-                embedding_dim  = numerical_embedding_dim,
-                mode           = 'sum',
-                padding_idx    = 0,
+                embedding_dim = numerical_embedding_dim,
+                mode = 'sum',
+                padding_idx = 0,
             )
             self.num_proj = torch.nn.Linear(numerical_embedding_dim, out_dim)
 
@@ -277,6 +280,10 @@ class DataEmbeddingLayer(torch.nn.Module):
         values_mask: Optional[torch.Tensor] = None,
         cat_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        torch._assert(
+            indices.max() < self.n_total_embeddings,
+            f"Invalid embedding! {indices.max()} >= {self.n_total_embeddings}"
+        )
         match self.embedding_mode:
             case EmbeddingMode.JOINT:
                 return self.joint_embed(indices, measurement_indices, values, values_mask)

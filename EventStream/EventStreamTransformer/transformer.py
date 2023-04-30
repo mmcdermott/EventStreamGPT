@@ -1,14 +1,14 @@
-# Based on https://raw.githubusercontent.com/huggingface/transformers/e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+# Based on "
+# https://raw.githubusercontent.com/huggingface/transformers/
+# e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+# "
 """ PyTorch StructuredEventStreamTransformer model."""
 
-import math, os, torch, torch.utils.checkpoint
-from dataclasses import dataclass
+import math, torch, torch.utils.checkpoint
 from torch import nn
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import (
-    add_code_sample_docstrings, add_start_docstrings, add_start_docstrings_to_model_forward, logging
-)
+from transformers.utils import logging
 from typing import Dict, Optional, Tuple, Union
 
 from ..EventStreamData.data_embedding_layer import DataEmbeddingLayer
@@ -106,7 +106,7 @@ class InnerSelfAttention(nn.Module):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
+        causal_mask = self.bias[:, :, key_length - query_length:key_length, :key_length].to(torch.bool)
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error:
         # `RuntimeError: expected scalar type float but found double`.
@@ -298,7 +298,7 @@ class InnerBlock(nn.Module):
         hidden_states = residual + feed_forward_hidden_states
 
         if not use_cache: outputs.pop('present_key_value')
-        return hidden_states, outputs # hidden_states, {(present), (attentions)}
+        return hidden_states, outputs
 
 
 class StructuredEventStreamTransformerBlock(nn.Module):
@@ -368,8 +368,10 @@ class TemporalPositionEncoding(torch.nn.Module):
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
-        div_term      = torch.exp(
-            torch.arange(0, embedding_dim, 2, device=device) * (-math.log(max_timepoint) / embedding_dim)
+        div_term = torch.nn.Parameter(
+            torch.exp(
+                torch.arange(0, embedding_dim, 2, device=device) * (-math.log(max_timepoint) / embedding_dim)
+            ), requires_grad=False
         )
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
@@ -459,7 +461,7 @@ class StructuredEventStreamInputLayer(torch.nn.Module):
     def forward(self, batch: EventStreamPytorchBatch) -> torch.Tensor:
         data_embed = self.data_embedding_layer(batch)
         # data_embed is either of shape (batch_size, sequence_length, config.hidden_size) or of shape
-        #(batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
+        # (batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
 
         time_embed = self.time_embedding_layer(batch['time'])
         # time_embed is of shape (batch_size, sequence_length, config.hidden_size)
@@ -497,13 +499,13 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
         # TODO(mmd): Replace this with InnerBlock for a non-structured version.
         if config.structured_event_processing_mode == 'nested_attention':
             self.h = nn.ModuleList([
-                StructuredEventStreamTransformerBlock(config, layer_id=i) \
-                    for i in range(config.num_hidden_layers)
+                StructuredEventStreamTransformerBlock(config, layer_id=i)
+                for i in range(config.num_hidden_layers)
             ])
         elif config.structured_event_processing_mode == 'conditionally_independent':
             self.h = nn.ModuleList([
-                InnerBlock(config, layer_id=i, is_seq=True) \
-                    for i in range(config.num_hidden_layers)
+                InnerBlock(config, layer_id=i, is_seq=True)
+                for i in range(config.num_hidden_layers)
             ])
         else: raise ValueError(
             "Invalid `config.structured_event_processing_mode`! Got "
@@ -538,11 +540,7 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if past is None:
-            past_length = 0
-            past = tuple([None] * len(self.h))
-        else:
-            past_length = past[0][0].size(-2)
+        if past is None: past = tuple([None] * len(self.h))
 
         if input_embeds is None:
             assert batch is not None
@@ -550,7 +548,7 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
 
             input_embeds = self.input_layer(batch)
             seq_mask = batch['event_mask']
-        else: assert batch is None, f"Can't specify both input_embeds and batch."
+        else: assert batch is None, "Can't specify both input_embeds and batch."
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -570,7 +568,7 @@ class StructuredEventStreamTransformer(StructuredEventStreamTransformerPreTraine
                 if use_cache:
                     logger.warning(
                         "`use_cache=True` is incompatible with gradient checkpointing. "
-                        f"Setting `use_cache=False`..."
+                        "Setting `use_cache=False`..."
                     )
                     use_cache = False
 

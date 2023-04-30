@@ -1,14 +1,9 @@
-import dataclasses, json, torch, pandas as pd, lightning as L
+import torch, pandas as pd, lightning as L
 from pathlib import Path
 from tqdm.auto import tqdm
-from transformers import get_polynomial_decay_schedule_with_warmup
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
-from .config import (
-    StructuredEventProcessingMode,
-    StructuredEventStreamTransformerConfig,
-    EventStreamOptimizationConfig,
-)
+from .config import StructuredEventProcessingMode, StructuredEventStreamTransformerConfig
 from .transformer import StructuredEventStreamTransformer, StructuredEventStreamTransformerPreTrainedModel
 from .utils import safe_masked_max, safe_weighted_avg
 from ..EventStreamData.event_stream_dataset import EventStreamDataset
@@ -36,7 +31,7 @@ class StructuredEventStreamForEmbeddingLightningModule(L.LightningModule):
             config (`Union[StructuredEventstreamTransformerConfig, Dict[str, Any]]`):
                 The configuration for the underlying
                 `StructuredEventStreamTransformerForGenerativeSequenceModeling` model. Should be
-                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary 
+                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary
                 parseable as such.
             pretrained_weights_fp (`pathlib.Path`):
                 The path to the pre-trained model that should be loaded whose embeddings will be retreived.
@@ -59,11 +54,11 @@ class StructuredEventStreamForEmbeddingLightningModule(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         """This should not be used."""
-        raise NotImplementedError(f"This class can't train; only get pre-trained embeddings!")
+        raise NotImplementedError("This class can't train; only get pre-trained embeddings!")
 
     def validation_step(self, batch, batch_idx):
         """This should not be used."""
-        raise NotImplementedError(f"This class can't validate; only get pre-trained embeddings!")
+        raise NotImplementedError("This class can't validate; only get pre-trained embeddings!")
 
     def predict_step(self, batch, batch_idx):
         """Retrieves the embeddings and returns them."""
@@ -119,7 +114,6 @@ def get_embeddings(
         print(f"Embeddings already exist at {embeddings_fps}. To overwrite, set `do_overwrite=True`.")
         return [torch.load(fp) for fp in embeddings_fps]
 
-
     if data_config is None:
         data_config = EventStreamPytorchDatasetConfig.from_json_file(load_model_dir / 'data_config.json')
 
@@ -129,7 +123,10 @@ def get_embeddings(
         config.task_specific_params['pooling_method'] = pooling_method
 
         if config.max_seq_len != data_config.max_seq_len:
-            print(f"Warning: `config.max_seq_len` ({config.max_seq_len}) != `data_config.max_seq_len` ({data_config.max_seq_len}).")
+            print(
+                f"Warning: `config.max_seq_len` ({config.max_seq_len}) != `data_config.max_seq_len` "
+                f"({data_config.max_seq_len})."
+            )
             data_config.max_seq_len = config.max_seq_len
 
     # Creating training/tuning datasets
@@ -176,10 +173,10 @@ def get_embeddings(
         # Setting up torch dataloader
         dataloader = torch.utils.data.DataLoader(
             pyd,
-            batch_size  = batch_size,
+            batch_size = batch_size,
             num_workers = num_dataloader_workers,
-            collate_fn  = pyd.collate,
-            shuffle     = False,
+            collate_fn = pyd.collate,
+            shuffle = False,
         )
 
         checkpoints_dir = save_embeddings_dir / "model_checkpoints"

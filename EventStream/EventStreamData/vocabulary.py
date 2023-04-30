@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import copy, dataclasses, numpy as np, pandas as pd
+import copy, dataclasses, math, numpy as np, pandas as pd
 
 from collections import Counter
+from io import TextIOBase
 from functools import cached_property
+from textwrap import shorten, wrap
 from typing import Dict, Generic, List, Optional, Sequence, Set, TypeVar, Union
+from sparklines import sparklines
 
-from ..utils import COUNT_OR_PROPORTION, is_monotonically_nonincreasing
+from ..utils import COUNT_OR_PROPORTION, num_initial_spaces
 
 VOCAB_ELEMENT = TypeVar('T')
 NESTED_VOCAB_SEQUENCE = Union[VOCAB_ELEMENT, Sequence['NESTED_VOCAB_SEQUENCE']]
@@ -45,6 +48,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             return self.idxmap.get(q, 0)
 
     def __len__(self): return len(self.vocabulary)
+
     def __eq__(self, other: 'Vocabulary'):
         return (
             (type(self) is type(other)) and
@@ -61,7 +65,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         assert len(self.vocabulary) == len(vocab_set)
 
         self.element_types = set(type(v) for v in self.vocabulary if v != 'UNK')
-        assert int not in self.element_types, f"Integer vocabularies are not supported."
+        assert int not in self.element_types, "Integer vocabularies are not supported."
 
         self.obs_frequencies = np.array(self.obs_frequencies)
         self.obs_frequencies = self.obs_frequencies / self.obs_frequencies.sum()
@@ -131,3 +135,47 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         vocab = list(counter.keys())
         freq = [counter[k] / len(observations) for k in vocab]
         return cls(vocabulary=vocab, obs_frequencies=freq)
+
+    def describe(
+        self, line_width: int = 60, wrap_lines: bool = True, n_head: int = 3, n_tail: int = 2,
+        stream: Optional[TextIOBase] = None
+    ) -> Optional[int]:
+        lines = []
+        lines.append(f"{len(self)} elements, {self.obs_frequencies[0]*100:.1f}% UNKs")
+
+        sparkline_prefix = "Frequencies:"
+        W = line_width - len(sparkline_prefix) - 2
+
+        if W > len(self): freqs = self.obs_frequencies[1:]
+        else: freqs = self.obs_frequencies[1:len(self):int(math.ceil(len(self) / W))]
+
+        lines.append(f"{sparkline_prefix} {sparklines(freqs)[0]}")
+        if len(self) - 1 <= (n_head + n_tail):
+            lines.append("Elements:")
+            for v, f in zip(self.vocabulary[1:], self.obs_frequencies[1:]):
+                lines.append(f"  ({f*100:.1f}%) {v}")
+        else:
+            lines.append("Examples:")
+            for i in range(n_head):
+                lines.append(f"  ({self.obs_frequencies[i+1]*100:.1f}%) {self.vocabulary[i+1]}")
+            lines.append('  ...')
+            for i in range(n_tail):
+                lines.append(f"  ({self.obs_frequencies[-n_tail+i]*100:.1f}%) {self.vocabulary[-n_tail+i]}")
+
+        line_indents = [num_initial_spaces(line) for line in lines]
+        if wrap_lines:
+            lines = [
+                wrap(line, width=line_width, initial_indent='', subsequent_indent=(' '*ind))
+                for line, ind in zip(lines, line_indents)
+            ]
+        else:
+            lines = [
+                shorten(line, width=line_width, initial_indent=(' '*ind))
+                for line, ind in zip(lines, line_indents)
+            ]
+
+        desc = '\n'.join(lines)
+        if stream is None:
+            print(desc)
+            return
+        return stream.write(desc)

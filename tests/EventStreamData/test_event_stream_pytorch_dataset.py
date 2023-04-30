@@ -4,14 +4,11 @@ sys.path.append('../..')
 import copy, torch, unittest, numpy as np, pandas as pd, polars as pl
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from typing import List, Optional, Set
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.event_stream_pytorch_dataset import EventStreamPytorchDataset
 from EventStream.EventStreamData.config import EventStreamPytorchDatasetConfig, VocabularyConfig
-from EventStream.EventStreamData.time_dependent_functor import TimeOfDayFunctor, AgeFunctor
-from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBatch
-from EventStream.EventStreamData.vocabulary import Vocabulary
+from EventStream.EventStreamData.types import EventStreamPytorchBatch
 
 MEASUREMENTS_IDXMAP = {
     'event_type': 1,
@@ -143,28 +140,6 @@ DL_REP_DF = pl.DataFrame(
         'dynamic_measurement_indices': pl.List(pl.List(pl.UInt64)),
         'dynamic_values': pl.List(pl.List(pl.Float64)),
     }
-).with_columns(
-    pl.when(
-        pl.col('dynamic_indices').arr.lengths() == 0
-    ).then(
-        pl.lit(None)
-    ).otherwise(
-        pl.col('dynamic_indices')
-    ).alias('dynamic_indices'),
-    pl.when(
-        pl.col('dynamic_measurement_indices').arr.lengths() == 0
-    ).then(
-        pl.lit(None)
-    ).otherwise(
-        pl.col('dynamic_measurement_indices')
-    ).alias('dynamic_measurement_indices'),
-    pl.when(
-        pl.col('dynamic_values').arr.lengths() == 0
-    ).then(
-        pl.lit(None)
-    ).otherwise(
-        pl.col('dynamic_values')
-    ).alias('dynamic_values'),
 )
 
 WANT_SUBJ_1_UNCUT = {
@@ -243,7 +218,7 @@ WANT_SUBJ_3_UNCUT = {
         [MEASUREMENTS_IDXMAP['event_type'], MEASUREMENTS_IDXMAP['single_label_classification']],
         [MEASUREMENTS_IDXMAP['event_type']],
     ],
-    'dynamic_values': [[None], [None, None], [None]],
+    'dynamic_values': [None, None, None],
 }
 
 TASK_DF = pd.DataFrame({
@@ -308,6 +283,16 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
                     self.assertEqual(C['want_type'], got_type)
                     self.assertEqual(C['want_vals'], got_vals)
 
+    def test_get_item_should_collate(self):
+        config = EventStreamPytorchDatasetConfig(
+            max_seq_len=4, min_seq_len=2,
+        )
+        pyd_kwargs = {'data': DL_REP_DF, 'config': config, 'vocabulary_config': VocabularyConfig()}
+        pyd = EventStreamPytorchDataset(**pyd_kwargs)
+
+        items = [pyd._seeded_getitem(i, seed=1) for i in range(3)]
+        pyd.collate(items)
+
     def test_get_item(self):
         cases = [
             {
@@ -344,7 +329,7 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
         for C in cases:
             config = EventStreamPytorchDatasetConfig(
-                max_seq_len = C['max_seq_len'], min_seq_len = C['min_seq_len'],
+                max_seq_len=C['max_seq_len'], min_seq_len=C['min_seq_len'],
             )
             pyd_kwargs = {'data': DL_REP_DF, 'config': config, 'vocabulary_config': VocabularyConfig()}
             if 'task_df' in C: pyd_kwargs.update({'task_df': C['task_df']})
@@ -356,7 +341,6 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
 
                 for i, it in enumerate(C['want_items']):
                     it = copy.deepcopy(it)
-                    N = len(it['time'])
                     st = C['want_start_idx'][i] if 'want_start_idx' in C else 0
                     end = C['want_end_idx'][i] if 'want_end_idx' in C else st + C['max_seq_len']
 
@@ -364,7 +348,10 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
                     for k, v in it.items(): want_it[k] = v[st:end] if k in time_dep_cols else v
 
                     got_it = pyd._seeded_getitem(i, seed=1)
-                    self.assertNestedDictEqual(want_it, got_it, msg=f'Item {i} does not match.')
+
+                    self.assertNestedDictEqual(
+                        want_it, got_it, msg=f'Item {i} does not match:\n{want_it}\n{got_it}.'
+                    )
 
     def test_dynamic_collate_fn(self):
         """collate_fn should appropriately combine two batches of ragged tensors."""
@@ -630,8 +617,8 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
                     [1, 8, 9, 13, 0, 0, 0, 0],
                     [1, 7, 9, 14, 0, 0, 0, 0],
                 ], [
-                    [1, 7, 9, 12,0, 0, 0, 0],
-                    [2, 4, 5, 9, 11,0, 0, 0],
+                    [1, 7, 9, 12, 0, 0, 0, 0],
+                    [2, 4, 5, 9, 11, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0],
                 ]
@@ -667,5 +654,6 @@ class TestEventStreamPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestC
         })
 
         self.assertNestedDictEqual(asdict(want_out), asdict(out))
+
 
 if __name__ == '__main__': unittest.main()

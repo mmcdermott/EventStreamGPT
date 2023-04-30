@@ -1,19 +1,28 @@
 import abc, copy, itertools, numpy as np, pandas as pd
 
 from collections import defaultdict
-from datetime import datetime
-from mixins import SeedableMixin, SaveableMixin, TimeableMixin
+from mixins import SeedableMixin, SaveableMixin, TimeableMixin, TQDMableMixin
 from pathlib import Path
-from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Set, Union
+from plotly.graph_objs._figure import Figure
+from typing import Any, Dict, Generic, Hashable, List, Optional, Tuple, TypeVar, Sequence, Union
 
-from .config import EventStreamDatasetConfig, MeasurementConfig, VocabularyConfig
-from .types import DataModality, TemporalityType, NumericDataModalitySubtype
+from .config import (
+    EventStreamDatasetConfig, InputDFSchema, MeasurementConfig, VocabularyConfig, DatasetSchema
+)
+from .visualize import Visualizer
+from .types import DataModality, TemporalityType, InputDataType, InputDFType
 from .vocabulary import Vocabulary
 from ..utils import lt_count_or_proportion
 
+# This defines the type of the allowable input dataframes -- e.g., databases, filepaths, dataframes, etc.
+INPUT_DF_T = TypeVar('INPUT_DF_T')
+
+# This defines the type of internal dataframes -- e.g. polars DataFrames.
 DF_T = TypeVar('DF_T')
 
-class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixin, TimeableMixin):
+class EventStreamDatasetBase(
+    abc.ABC, Generic[DF_T, INPUT_DF_T], SeedableMixin, SaveableMixin, TimeableMixin, TQDMableMixin
+):
     """
     A unified base class for dataset objects using different processing libraries.
     """
@@ -33,77 +42,151 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
 
     @classmethod
     def subjects_fp(cls, save_dir: Path) -> Path: return save_dir / f"{cls.SUBJECTS_FN}.{cls.DF_SAVE_FORMAT}"
+
     @classmethod
     def events_fp(cls, save_dir: Path) -> Path: return save_dir / f"{cls.EVENTS_FN}.{cls.DF_SAVE_FORMAT}"
+
     @classmethod
     def dynamic_measurements_fp(cls, save_dir: Path) -> Path:
         return save_dir / f"{cls.DYNAMIC_MEASUREMENTS_FN}.{cls.DF_SAVE_FORMAT}"
 
-    @staticmethod
-    def to_events_and_metadata(
-        df:            pd.DataFrame,
-        event_type:    str,
-        subject_col:   str,
-        time_col:      str,
-        metadata_cols: Optional[List[str]] = None,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    @classmethod
+    @abc.abstractmethod
+    def _load_input_df(
+        cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        subject_id_col: Optional[str] = None, subject_ids_map: Optional[Dict[Any, int]] = None,
+        subject_id_dtype: Optional[Any] = None,
+        filter_on: Optional[Dict[str, Union[bool, List[Any]]]] = None,
+    ) -> DF_T:
         """
-        Converts `df` into the format of an `events_df`, `meatadata_df` pair as expected by
-        `EventStreamDataset`.
-        TODO(mmd): this function is inefficient, computationally. Should do computation on a single copy of
-        the dataframe, then split into `events` vs. `metadata`.
-        TODO(mmd): Should rename `events_df -> events_df` and `metadata -> joint_metadata_df` following
-        EventStreamDataset convention or otherwise standardize.
-        TODO(mmd): Optimize this!
-
-        Args:
-            `df` (`pd.DataFrame'):
-                The dataframe to be converted. Must have one row per event (or be collapsible into such) and
-                capture only a single event type.
-            `event_type` (`str`): What type of event this dataframe captures.
-            `subject_col` (`str`): The name of the column containing the subject ID.
-            `time_col` (`str`): The name of the column containing the timestamp of the event.
-            `metadata_cols` (`List[str]`, *optional*, default is `[]`):
-                A list of the columns that should be captured as event-specific metadata. They will be
-                extracted into a separate metadata_df with a shared index for the extracted events_df. As they
-                are all sourced from the same underlying dataframe, they will have the same number of samples
-                here, though that relationship need not hold in general within an `EventStreamDataset` object.
-
-        Returns:
-            * `events` (`pd.DataFrame`):
-                A copy of `df` with the following modifications:
-                    * `time_col` renamed to `'timestamp'`
-                    * `subject_col` renamed to `'subject_id'`
-                    * A column named `'event_type'` added with the value `event_type`
-                    * The index _overwritten_ with an `'event_id'` index which is a range index following
-                      the order of the records in `df`.
-            * `metadata` (`pd.DataFrame`):
-                A copy of `df[[subject_col] + metadata_cols]` with the following modifications:
-                    * `subject_col` renamed to `subject_id`.
-                    * Columns added corresponding to `'event_id'` and `'event_type'`, matching `events`.
-                    * The index _overwritten_ with a `'metadata_id'` index which is a range index following
-                      the order of the records in `df`.
+        Loads an input dataframe into the format expected by the processing library.
         """
-        if metadata_cols is None: metadata_cols = []
+        raise NotImplementedError("Must be implemented by subclass.")
 
-        events = df[[subject_col, time_col]].rename(
-            columns={time_col: 'timestamp', subject_col: 'subject_id'}
-        ).copy()
-        events['event_type'] = pd.Series(
-            [event_type] * len(events), dtype='category', index=events.index
-        )
-        events['event_id'] = np.arange(len(df))
-        events.set_index('event_id', inplace=True)
+    @classmethod
+    @abc.abstractmethod
+    def process_events_and_measurements_df(
+        cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
+        ts_col: Union[str, List[str]]
+    ) -> Tuple[DF_T, Optional[DF_T]]:
+        """
+        Performs the following pre-processing steps on an input events and measurements dataframe:
+          1. Produces a unified timestamp column representing the minimum of passed timestamps, with the name,
+             `'timestamp'`.
+          2. Adds a categorical event type column with value `event_type`.
+          3. Extracts and renames the columns present in `columns_schema`.
+          4. Adds an integer `event_id` column.
+          4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
+             and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-        metadata = df[[subject_col] + metadata_cols].copy().rename(columns={subject_col: 'subject_id'})
-        metadata['event_id'] = np.arange(len(df))
-        metadata['metadata_id'] = np.arange(len(metadata))
-        metadata.set_index('metadata_id', inplace=True)
-        metadata['event_type'] = pd.Series(
-            [event_type] * len(metadata), dtype='category', index=metadata.index
-        )
+    @classmethod
+    @abc.abstractmethod
+    def split_range_events_df(
+        cls, df: DF_T, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
+    ) -> Tuple[DF_T, DF_T, DF_T]:
+        """
+        Performs the following steps:
+          1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
+             timestamps, respectively.
+          2. Filters out records where the end timestamp is earlier than the start timestamp.
+          3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
+             `'timestamp'`:
+             (a) An "EQ" dataframe, where start_ts_col == end_ts_col,
+             (b) A "start" dataframe, with start events, and
+             (c) An "end" dataframe, with end events.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
 
-        return events, metadata[['event_id', 'event_type', 'subject_id', *metadata_cols]]
+    @classmethod
+    @abc.abstractmethod
+    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+        """
+        Increments the values in a column by a given amount and returns a dataframe with the incremented
+        column.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
+
+    @classmethod
+    @abc.abstractmethod
+    def _concat_dfs(cls, dfs: List[DF_T]) -> DF_T:
+        """
+        Concatenates a list of dataframes into a single dataframe.
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
+
+    @classmethod
+    @abc.abstractmethod
+    def resolve_ts_col(cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> DF_T:
+        """
+        Produces an output column of type datetime that contains the minimum of the passed columns in `ts_col`
+        """
+        raise NotImplementedError("Must be implemented by subclass.")
+
+    @classmethod
+    def build_subjects_dfs(cls, schema: InputDFSchema) -> Tuple[DF_T, Dict[Hashable, int]]:
+        df = cls._load_input_df(
+            schema.input_df,
+            [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
+            filter_on=schema.filter_on
+        ).collect()
+
+        return df, {o: n for o, n in zip(df[schema.subject_id_col], df['subject_id'])}
+
+    @classmethod
+    def build_event_and_measurement_dfs(
+        cls,
+        subject_ids_map: Dict[Any, int],
+        subject_id_col: str,
+        subject_id_dtype: Any,
+        schemas_by_df: Dict[INPUT_DF_T, List[InputDFSchema]],
+    ) -> Tuple[DF_T, DF_T]:
+        all_events_and_measurements = []
+        event_types = []
+
+        for df, schemas in schemas_by_df.items():
+            all_columns = []
+
+            all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
+
+            df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
+
+            for schema in schemas:
+                if schema.filter_on: df = cls._filter_col_inclusion(schema.filter_on)
+                match schema.type:
+                    case InputDFType.EVENT:
+                        df = cls.resolve_ts_col(df, schema.ts_col, 'timestamp')
+                        all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                            df=df, event_type=schema.event_type, columns_schema=schema.unified_schema,
+                        ))
+                        event_types.append(schema.event_type)
+                    case InputDFType.RANGE:
+                        df = cls.resolve_ts_col(df, schema.start_ts_col, 'start_time')
+                        df = cls.resolve_ts_col(df, schema.end_ts_col, 'end_time')
+                        for et, sp_df in zip(schema.event_type, cls.split_range_events_df(df=df)):
+                            all_events_and_measurements.append(cls.process_events_and_measurements_df(
+                                sp_df, columns_schema=schema.unified_schema, event_type=et
+                            ))
+                        event_types.extend(schema.event_type)
+                    case _:
+                        raise ValueError(f"Invalid schema type {schema.type}.")
+
+        all_events, all_measurements = [], []
+        running_event_id_max = 0
+        for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
+            new_events = cls._inc_df_col(events, 'event_id', running_event_id_max)
+            if len(new_events) == 0:
+                print(f"Empty new events dataframe of type {event_type}!")
+                continue
+
+            all_events.append(new_events)
+            if measurements is not None:
+                all_measurements.append(cls._inc_df_col(measurements, 'event_id', running_event_id_max))
+
+            running_event_id_max = all_events[-1]['event_id'].max() + 1
+
+        return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
 
     @classmethod
     def _get_metadata_model(
@@ -208,7 +291,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         super()._save(self.config.save_dir / 'E.pkl', **kwargs)
 
         vocab_config_fp = self.config.save_dir / 'vocabulary_config.json'
-        self.vocabulary_config.to_json_file(vocab_config_fp)
+
+        if 'do_overwrite' in kwargs:
+            self.vocabulary_config.to_json_file(vocab_config_fp, do_overwrite=kwargs['do_overwrite'])
+        else:
+            self.vocabulary_config.to_json_file(vocab_config_fp)
 
         subjects_fp = self.subjects_fp(self.config.save_dir)
         events_fp = self.events_fp(self.config.save_dir)
@@ -224,6 +311,8 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         subjects_df: Optional[DF_T] = None,
         events_df: Optional[DF_T] = None,
         dynamic_measurements_df: Optional[DF_T] = None,
+        input_schema: Optional[DatasetSchema] = None,
+        **kwargs
     ):
         """
         Builds the `EventStreamDataset` object.
@@ -243,6 +332,33 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             `config` (`EventStreamDatasetConfig`):
                 Configuration objects for this dataset. Largely details how metadata should be processed.
         """
+        super().__init__(**kwargs)
+
+        if (
+            (subjects_df is None or events_df is None or dynamic_measurements_df is None) and
+            input_schema is None
+        ):
+            raise ValueError(
+                "Must set input_schema if subjects_df, events_df, or dynamic_measurements_df are None!"
+            )
+
+        if input_schema is None:
+            if subjects_df is None: raise ValueError("Must set subjects_df if input_schema is None!")
+            if events_df is None: raise ValueError("Must set events_df if input_schema is None!")
+            if dynamic_measurements_df is None:
+                raise ValueError("Must set dynamic_measurements_df if input_schema is None!")
+        else:
+            if subjects_df is not None: raise ValueError("Can't set subjects_df if input_schema is not None!")
+            if events_df is not None: raise ValueError("Can't set events_df if input_schema is not None!")
+            if dynamic_measurements_df is not None:
+                raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
+
+            subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
+            subject_id_dtype = subjects_df['subject_id'].dtype
+
+            events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
+                ID_map, input_schema.static.subject_id_col, subject_id_dtype, input_schema.dynamic_by_df,
+            )
 
         self.config = config
         self._is_fit = False
@@ -266,7 +382,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         )
 
         if self.events_df is not None:
-            self.agg_by_time_type()
+            self.agg_by_time()
             self.sort_events()
         self._update_subject_event_properties()
 
@@ -286,12 +402,26 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
+    def filter_subjects(self):
+        if self.config.min_events_per_subject is None: return
+
+        subjects_to_keep = [
+            s for s, n in self.n_events_per_subject.items() if n >= self.config.min_events_per_subject
+        ]
+        self.subjects_df = self._filter_col_inclusion(self.subjects_df, {'subject_id': subjects_to_keep})
+        self.events_df = self._filter_col_inclusion(self.events_df, {'subject_id': subjects_to_keep})
+        self.dynamic_measurements_df = self._filter_col_inclusion(
+            self.dynamic_measurements_df,
+            {'event_id': list(self.events_df['event_id'])}
+        )
+
+    @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def agg_by_time_type(self):
+    def agg_by_time(self):
         """
-        Aggregates the events_df by subject_id, timestamp, and event_type, tracking all associated metadata.
-        Note that no numerical aggregation (e.g., mean, etc.) happens here; all data is retained, and only
-        dynamic measurement event IDs are updated.
+        Aggregates the events_df by subject_id, timestamp, combining event_types into grouped categories,
+        tracking all associated metadata. Note that no numerical aggregation (e.g., mean, etc.) happens here;
+        all data is retained, and only dynamic measurement event IDs are updated.
         """
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -341,7 +471,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         split_names = [split_names[i] for i in split_names_idx]
         split_fracs = [split_fracs[i] for i in split_names_idx]
 
-        subjects   = np.random.permutation(list(self.subject_ids))
+        subjects = np.random.permutation(list(self.subject_ids))
         split_lens = (np.array(split_fracs[:-1]) * len(subjects)).round().astype(int)
         split_lens = np.append(split_lens, len(subjects) - split_lens.sum())
 
@@ -351,7 +481,9 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
 
     @classmethod
     @abc.abstractmethod
-    def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: Dict[str, Sequence[Any]]) -> DF_T:
+    def _filter_col_inclusion(
+        cls, df: DF_T, col_inclusion_targets: Dict[str, Union[bool, Sequence[Any]]]
+    ) -> DF_T:
         """Filters the given dataframe to only the rows such that the column `col` is in incl_target."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -359,9 +491,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
     @property
     def train_subjects_df(self) -> DF_T:
         return self._filter_col_inclusion(self.subjects_df, {'subject_id': self.split_subjects['train']})
+
     @property
     def tuning_subjects_df(self) -> DF_T:
         return self._filter_col_inclusion(self.subjects_df, {'subject_id': self.split_subjects['tuning']})
+
     @property
     def held_out_subjects_df(self) -> DF_T:
         return self._filter_col_inclusion(self.subjects_df, {'subject_id': self.split_subjects['held_out']})
@@ -369,9 +503,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
     @property
     def train_events_df(self) -> DF_T:
         return self._filter_col_inclusion(self.events_df, {'subject_id': self.split_subjects['train']})
+
     @property
     def tuning_events_df(self) -> DF_T:
         return self._filter_col_inclusion(self.events_df, {'subject_id': self.split_subjects['tuning']})
+
     @property
     def held_out_events_df(self) -> DF_T:
         return self._filter_col_inclusion(self.events_df, {'subject_id': self.split_subjects['held_out']})
@@ -431,20 +567,18 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             subject_ids = list(set(itertools.chain.from_iterable(self.split_subjects[sp] for sp in splits)))
 
         filter_cols = {}
-        if event_type is not None:
-            filter_cols['event_type'] = [event_type]
-        elif event_types is not None:
-            filter_cols['event_type'] = event_types
-        if subject_id is not None:
-            filter_cols['subject_id'] = [subject_id]
-        elif subject_ids is not None:
-            filter_cols['subject_id'] = subject_ids
+        if event_type is not None: filter_cols['event_type'] = [event_type]
+        elif event_types is not None: filter_cols['event_type'] = event_types
+        if subject_id is not None: filter_cols['subject_id'] = [subject_id]
+        elif subject_ids is not None: filter_cols['subject_id'] = subject_ids
 
-        return self._filter_col_inclusion(self.dynamic_measurements_df, filter_cols)
+        event_ids = self._filter_col_inclusion(self.events_df, filter_cols)['event_id']
+        return self._filter_col_inclusion(self.dynamic_measurements_df, {'event_id': list(event_ids)})
 
     @TimeableMixin.TimeAs
     def preprocess_measurements(self):
         """Fits all metadata over the train set, then transforms all metadata."""
+        self.filter_subjects()
         self.add_time_dependent_measurements()
         self.fit_measurements()
         self.transform_measurements()
@@ -461,7 +595,7 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             case TemporalityType.DYNAMIC:
                 source_attr = 'dynamic_measurements_df'
                 source_id = 'measurement_id'
-                if do_only_train: 
+                if do_only_train:
                     source_df = self._filter_measurements_df(
                         event_types=config.present_in_event_types, split='train'
                     )
@@ -481,6 +615,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return source_attr, source_id, source_df
 
     @TimeableMixin.TimeAs
+    @abc.abstractmethod
+    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+        raise NotImplementedError("This method must be implemented by a subclass.")
+
+    @TimeableMixin.TimeAs
     def fit_measurements(self):
         """
         Fits preprocessing models, variables, and vocabularies over all metadata, including both numerical and
@@ -488,20 +627,29 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         """
         self._is_fit = False
 
+        # Get valid event types per measure
+        event_types_obs_per_measure = self._get_valid_event_types()
+
         for measure, config in self.config.measurement_configs.items():
             if config.is_dropped: continue
 
-            _, _, source_df = self._get_source_df(config, do_only_train=True)
-
             self.inferred_measurement_configs[measure] = copy.deepcopy(config)
             config = self.inferred_measurement_configs[measure]
+
+            # Add inferred event type limitations:
+            if (
+                (config.temporality == TemporalityType.DYNAMIC) and
+                (config.present_in_event_types is None)
+            ): config.present_in_event_types = event_types_obs_per_measure.get(measure, None)
+
+            _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
                 config.drop()
                 continue
 
             total_possible, total_observed = self._total_possible_and_observed(measure, config, source_df)
-            source_df = self._drop_df_nulls(source_df, measure)
+            source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
                 print(f"Found no possible events for {measure}!")
@@ -552,11 +700,6 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
     ) -> pd.DataFrame:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
-    @classmethod
-    @abc.abstractmethod
-    def _drop_df_nulls(cls, source_df: DF_T, col: str) -> DF_T:
-        raise NotImplementedError("This method must be implemented by a subclass.")
-
     @TimeableMixin.TimeAs
     @abc.abstractmethod
     def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: DF_T) -> Vocabulary:
@@ -568,23 +711,24 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         for measure, config in self.measurement_configs.items():
             source_attr, id_col, source_df = self._get_source_df(config, do_only_train=False)
 
-            source_df = self._drop_df_nulls(source_df, measure)
+            source_df = self._filter_col_inclusion(source_df, {measure: True})
             updated_cols = [measure]
 
-            if config.is_numeric:
-                try:
+            try:
+                if config.is_numeric:
                     source_df = self._transform_numerical_measurement(measure, config, source_df)
-                except BaseException as e:
-                    raise ValueError(f"Transforming measurement failed for measure {measure}!") from e
 
-                if config.modality == DataModality.MULTIVARIATE_REGRESSION:
-                    updated_cols.append(config.values_column)
+                    if config.modality == DataModality.MULTIVARIATE_REGRESSION:
+                        updated_cols.append(config.values_column)
 
-                if self.config.outlier_detector_config is not None:
-                    updated_cols.append(f"{measure}_is_inlier")
+                    if self.config.outlier_detector_config is not None:
+                        updated_cols.append(f"{measure}_is_inlier")
 
-            if config.vocabulary is not None:
-                source_df = self._transform_categorical_measurement(measure, config, source_df)
+                if config.vocabulary is not None:
+                    source_df = self._transform_categorical_measurement(measure, config, source_df)
+
+            except BaseException as e:
+                raise ValueError(f"Transforming measurement failed for measure {measure}!") from e
 
             self.update_attr_df(source_attr, id_col, source_df, updated_cols)
 
@@ -655,15 +799,16 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
     def dynamic_numerical_columns(self):
         """Returns all numerical metadata column key-column, value-column pairs."""
         return [
-            (k, cfg.values_column) for k, cfg in self.measurement_configs.items() \
-                if (cfg.is_numeric and cfg.temporality == TemporalityType.DYNAMIC)
+            (k, cfg.values_column) for k, cfg in self.measurement_configs.items()
+            if (cfg.is_numeric and cfg.temporality == TemporalityType.DYNAMIC)
         ]
+
     @property
     def time_dependent_numerical_columns(self):
         """Returns all numerical metadata column key-column, value-column pairs."""
         return [
-            k for k, cfg in self.measurement_configs.items() \
-                if (cfg.is_numeric and cfg.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT)
+            k for k, cfg in self.measurement_configs.items()
+            if (cfg.is_numeric and cfg.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT)
         ]
 
     @property
@@ -684,22 +829,32 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return vocabs
 
     @TimeableMixin.TimeAs
-    def cache_deep_learning_representation(self):
+    def cache_deep_learning_representation(self, subjects_per_output_file: Optional[int] = None):
         """
         Produces a cached, batched representation of the dataset suitable for deep learning applications and
         writes it to cache_fp in the specified format.
         """
 
-        cached_df = self.build_DL_cached_representation()
-
         DL_dir = self.config.save_dir / "DL_reps"
         DL_dir.mkdir(exist_ok=True, parents=True)
 
-        for split, subjects in self.split_subjects.items():
-            fp = DL_dir / f"{split}.{self.DF_SAVE_FORMAT}"
+        if subjects_per_output_file is None:
+            subject_chunks = [None]
+        else:
+            subjects = np.random.permutation(list(self.subject_ids))
+            subject_chunks = np.array_split(
+                subjects, np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file)
+            )
+            subject_chunks = [list(c) for c in subject_chunks]
 
-            split_cached_df = self._filter_col_inclusion(cached_df, {'subject_id': subjects})
-            self._write_df(split_cached_df, fp)
+        for chunk_idx, subjects_list in self._tqdm(list(enumerate(subject_chunks))):
+            cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
+
+            for split, subjects in self.split_subjects.items():
+                fp = DL_dir / f"{split}_{chunk_idx}.{self.DF_SAVE_FORMAT}"
+
+                split_cached_df = self._filter_col_inclusion(cached_df, {'subject_id': subjects})
+                self._write_df(split_cached_df, fp)
 
     @property
     def vocabulary_config(self) -> VocabularyConfig:
@@ -716,12 +871,11 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
             if cfg.present_in_event_types is None: event_types_per_measurement[m] = self.event_types
             else: event_types_per_measurement[m] = list(cfg.present_in_event_types)
 
-
         return VocabularyConfig(
             vocab_sizes_by_measurement = {m: len(idxmap) for m, idxmap in self.measurement_idxmaps.items()},
             vocab_offsets_by_measurement = self.unified_vocabulary_offsets,
             measurements_idxmap = self.unified_measurements_idxmap,
-            event_types_idxmap = self.unified_vocabulary_idxmap['event_type'], # TODO(mmd): remove
+            event_types_idxmap = self.unified_vocabulary_idxmap['event_type'],
             measurements_per_generative_mode = dict(measurements_per_generative_mode),
             event_types_per_measurement = event_types_per_measurement,
         )
@@ -754,7 +908,9 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         return idxmaps
 
     @abc.abstractmethod
-    def build_DL_cached_representation(self) -> DF_T:
+    def build_DL_cached_representation(
+        self, subject_ids: Optional[List[int]] = None, do_sort_outputs: bool = False
+    ) -> DF_T:
         """
         Produces a format with the below syntax:
 
@@ -778,3 +934,57 @@ class EventStreamDatasetBase(abc.ABC, Generic[DF_T], SeedableMixin, SaveableMixi
         """
 
         raise NotImplementedError("This method must be implemented by a subclass.")
+
+    @abc.abstractmethod
+    def denormalize(self, events_df: DF_T, col: str) -> DF_T:
+        """ Un-normalizes the column `col` in df `events_df`. """
+        raise NotImplementedError("This method must be implemented by a subclass.")
+
+    def describe(
+        self,
+        do_print_measurement_summaries: bool = True,
+        viz_config: Optional[Visualizer] = None,
+    ) -> Optional[List[Figure]]:
+        if do_print_measurement_summaries:
+            print(f"Dataset has {len(self.measurement_configs)} measurements:")
+            for meas, cfg in self.measurement_configs.items():
+                if cfg.name is None: cfg.name = meas
+                cfg.describe(line_width=60)
+                print()
+
+        if viz_config is not None:
+            return self.visualize(viz_config)
+
+    def visualize(
+        self,
+        viz_config: Visualizer,
+    ) -> List[Figure]:
+        """
+        Visualizes the dataset, along the following axes:
+
+          1. By time
+          2. By subject age at event
+          3. Overall histograms
+        """
+
+        if viz_config.subset_size is not None:
+            viz_config.subset_random_seed = self._seed(seed=viz_config.subset_random_seed, key='visualize')
+
+        if viz_config.subset_size is not None:
+            subject_ids = list(np.random.choice(list(self.subject_ids), viz_config.subset_size))
+
+            subjects_df = self._filter_col_inclusion(self.subjects_df, {'subject_id': subject_ids})
+            events_df = self._filter_col_inclusion(self.events_df, {'subject_id': subject_ids})
+            dynamic_measurements_df = self._filter_col_inclusion(
+                self.dynamic_measurements_df, {'event_id': list(events_df['event_id'])}
+            )
+        else:
+            subjects_df = self.subjects_df
+            events_df = self.events_df
+            dynamic_measurements_df = self.dynamic_measurements_df
+
+        if viz_config.age_col is not None:
+            events_df = self.denormalize(events_df, viz_config.age_col)
+
+        figs = viz_config.plot(subjects_df, events_df, dynamic_measurements_df)
+        return figs

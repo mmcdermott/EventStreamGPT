@@ -1,4 +1,4 @@
-import dataclasses, json, torch, torchmetrics, wandb, lightning as L
+import dataclasses, torch, torchmetrics, wandb, lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import LearningRateMonitor
@@ -11,7 +11,7 @@ from torchmetrics.classification import (
     MulticlassAveragePrecision,
     MultilabelAveragePrecision,
 )
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, Union
 from transformers import get_polynomial_decay_schedule_with_warmup
 
 from .config import StructuredEventStreamTransformerConfig, EventStreamOptimizationConfig
@@ -42,7 +42,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
             config (`Union[StructuredEventstreamTransformerConfig, Dict[str, Any]]`):
                 The configuration for the underlying
                 `StructuredEventStreamTransformerForGenerativeSequenceModeling` model. Should be
-                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary 
+                in the dedicated `StructuredEventStreamTransformerConfig` class or be a dictionary
                 parseable as such.
             optimization_config (`Union[EventStreamOptimizationConfig, Dict[str, Any]]`):
                 The configuration for the optimization process handled by the Lightning module. Should
@@ -84,14 +84,14 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
         """Build the various torchmetrics we'll use to track performance."""
 
         # For judging our ability to predict time-to-event, we'll use the following scores:
-        #   1. Explained Variance: 
+        #   1. Explained Variance:
         #      (e.g., https://scikit-learn.org/stable/modules/generated/sklearn.metrics.explained_variance_score.html)
         #   2. Mean Squared Error
         #   3. Mean Squared Log Error
         self.tte_metrics = torch.nn.ModuleDict({
             'explained_var': torchmetrics.ExplainedVariance(),
-            'MSE':           torchmetrics.MeanSquaredError(),
-            'MSLE':          torchmetrics.MeanSquaredLogError(),
+            'MSE': torchmetrics.MeanSquaredError(),
+            'MSLE': torchmetrics.MeanSquaredLogError(),
         })
 
         self.metrics = torch.nn.ModuleDict()
@@ -134,7 +134,9 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                         'weighted_AUPRC': MultilabelAveragePrecision(**metric_kwargs, average='weighted'),
                         'micro_AUPRC': MultilabelAveragePrecision(**metric_kwargs, average='micro'),
                     })
-                elif task_type == DataModality.MULTIVARIATE_REGRESSION:
+                elif task_type in (
+                    DataModality.MULTIVARIATE_REGRESSION, DataModality.UNIVARIATE_REGRESSION
+                ):
                     # As we have multiple regression tasks here (unlike TTE), we have to use both macro and
                     # weighted explained variance. We also use MSE. For some reason (TODO(mmd)) MSLE was
                     # erroring out so is not tracked.
@@ -143,7 +145,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                         'weighted_explained_var': torchmetrics.ExplainedVariance(
                             multioutput='variance_weighted'
                         ),
-                        'MSE':  torchmetrics.MeanSquaredError(),
+                        'MSE': torchmetrics.MeanSquaredError(),
                     })
 
     def _log_metric_dict(
@@ -240,7 +242,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
         # those distributions to assess the metric.
         # TODO(mmd): We should likely be able to control how many samples are used, to minimize variance of
         # these results.
-        tte_dist  = results['preds']['time_to_event']
+        tte_dist = results['preds']['time_to_event']
         tte_preds = tte_dist.sample()
 
         # After sampling, we also need to slice this down to just those intra-event-times that are actually
@@ -272,10 +274,9 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
 
             for task_type, metrics in metrics_dict.items():
                 if task_type in {
-                    DataModality.SINGLE_LABEL_CLASSIFICATION,
-                    DataModality.MULTI_LABEL_CLASSIFICATION
+                    DataModality.SINGLE_LABEL_CLASSIFICATION, DataModality.MULTI_LABEL_CLASSIFICATION
                 }:
-                    preds  = results['preds']['classification'][measurement].logits
+                    preds = results['preds']['classification'][measurement].logits
                     labels = results['labels']['classification'][measurement]
 
                     # We need to filter these down to just those corresponding to observed events. Note that
@@ -283,7 +284,7 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                     # and labels of the events at their indexed position; not for the subsequent event. So we
                     # don't need to shift `results['event_mask']` here to account for that.
 
-                    preds  = preds[mask]
+                    preds = preds[mask]
                     labels = labels[mask].long()
 
                     self._log_metric_dict(
@@ -313,8 +314,8 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                     # We also need to reflect just those data elements for which values were observed:
                     data_el_mask = results['dynamic_values_mask'][mask]
 
-                    preds = dist.sample()[mask][data_el_mask]
-                    labels = results['labels']['regression'][measurement][mask][data_el_mask]
+                    preds = preds[data_el_mask]
+                    labels = labels[data_el_mask]
                     preds_indices = preds_indices[data_el_mask]
                     labels_indices = labels_indices[data_el_mask]
 
@@ -324,6 +325,20 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
                     self._log_metric_dict(
                         preds=preds_expanded, labels=labels_expanded, metrics=metrics,
                         measurement=measurement, **log_metric_kwargs
+                    )
+                if task_type == DataModality.UNIVARIATE_REGRESSION:
+                    # Here, like for TTE, we need to sample from the returned distribution before we can use
+                    # it directly. Here we also need to limit to just those events that are actually observed.
+                    # Like above, the assumption here is that preds and labels correspond to predictions for
+                    # and labels of the events at their indexed position; not for the subsequent event. So we
+                    # don't need to shift `results['event_mask']` here to account for that.
+                    dist = results['preds']['regression'][measurement]
+                    preds = dist.sample()[mask]
+                    labels = results['labels']['regression'][measurement][mask]
+
+                    self._log_metric_dict(
+                        preds=preds, labels=labels, metrics=metrics, measurement=measurement,
+                        **log_metric_kwargs
                     )
 
     def training_step(self, batch: EventStreamPytorchBatch, batch_idx: int) -> torch.Tensor:
@@ -355,13 +370,13 @@ class StructuredEventStreamForGenerativeSequenceModelingLightningModule(L.Lightn
             weight_decay = self.optimization_config.weight_decay,
         )
         scheduler = get_polynomial_decay_schedule_with_warmup(
-            optimizer          = opt,
-            num_warmup_steps   = self.optimization_config.lr_num_warmup_steps,
+            optimizer = opt,
+            num_warmup_steps = self.optimization_config.lr_num_warmup_steps,
             num_training_steps = self.optimization_config.max_training_steps,
-            power              = self.optimization_config.lr_decay_power,
-            lr_end             = self.optimization_config.end_lr,
+            power = self.optimization_config.lr_decay_power,
+            lr_end = self.optimization_config.end_lr,
         )
-        return  {
+        return {
             'optimizer': opt,
             'lr_scheduler': {
                 'scheduler': scheduler,
@@ -375,9 +390,9 @@ def fit_generative_sequence_model(
     config: StructuredEventStreamTransformerConfig,
     optimization_config: EventStreamOptimizationConfig,
     data_config: EventStreamPytorchDatasetConfig,
-    wandb_name: Optional[str] = 'generative_mimic_model',
-    wandb_project: Optional[str] = 'medFMs',
-    wandb_team: Optional[str] = 'icu_lsp',
+    wandb_name: Optional[str] = 'generative_event_stream_transformer',
+    wandb_project: Optional[str] = None,
+    wandb_team: Optional[str] = None,
     num_dataloader_workers: int = 1,
     do_detect_anomaly: bool = False,
     log_every_n_steps: int = 50,
@@ -458,9 +473,7 @@ def fit_generative_sequence_model(
 
     do_use_wandb = wandb_name is not None
     if do_use_wandb:
-        assert wandb_name is not None and wandb_project is not None and wandb_team is not None
-
-        wandb_logger_savedir = save_dir # Wandb automatically adds a "wandb" suffix.
+        wandb_logger_savedir = save_dir  # Wandb automatically adds a "wandb" suffix.
         wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
         wandb_logger = WandbLogger(
             name=wandb_name, project=wandb_project, entity=wandb_team, save_dir=wandb_logger_savedir,
@@ -473,24 +486,24 @@ def fit_generative_sequence_model(
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
         train_pyd,
-        batch_size  = optimization_config.batch_size,
+        batch_size = optimization_config.batch_size,
         num_workers = num_dataloader_workers,
-        collate_fn  = train_pyd.collate,
-        shuffle     = True,
+        collate_fn = train_pyd.collate,
+        shuffle = True,
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size  = optimization_config.batch_size // 2,
+        batch_size = optimization_config.batch_size // 2,
         num_workers = num_dataloader_workers,
-        collate_fn  = tuning_pyd.collate,
-        shuffle     = False,
+        collate_fn = tuning_pyd.collate,
+        shuffle = False,
     )
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size  = optimization_config.batch_size // 2,
+        batch_size = optimization_config.batch_size // 2,
         num_workers = num_dataloader_workers,
-        collate_fn  = held_out_pyd.collate,
-        shuffle     = False,
+        collate_fn = held_out_pyd.collate,
+        shuffle = False,
     )
 
     # Setting up model configurations
@@ -505,18 +518,18 @@ def fit_generative_sequence_model(
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     trainer_kwargs = dict(
-        max_epochs        = optimization_config.max_epochs,
-        detect_anomaly    = do_detect_anomaly,
+        max_epochs = optimization_config.max_epochs,
+        detect_anomaly = do_detect_anomaly,
         log_every_n_steps = log_every_n_steps,
-        callbacks         = callbacks,
-        default_root_dir  = checkpoints_dir,
+        callbacks = callbacks,
+        default_root_dir = checkpoints_dir,
     )
 
     if do_use_wandb:
         trainer_kwargs['logger'] = wandb_logger
 
     if (
-        (optimization_config.gradient_accumulation is not None) and 
+        (optimization_config.gradient_accumulation is not None) and
         (optimization_config.gradient_accumulation > 1)
     ):
         trainer_kwargs['accumulate_grad_batches'] = optimization_config.gradient_accumulation
@@ -556,8 +569,9 @@ def fit_generative_sequence_model(
                     f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
                     "accumulation..."
                 )
-                trainer_kwargs['accumulate_grad_batches'] \
-                    = trainer_kwargs.get('accumulate_grad_batches', 1) * 2
+                trainer_kwargs['accumulate_grad_batches'] = (
+                    trainer_kwargs.get('accumulate_grad_batches', 1) * 2
+                )
                 optimization_config.gradient_accumulation = trainer_kwargs['accumulate_grad_batches']
                 optimization_config.batch_size = optimization_config.batch_size // 2
                 optimization_config.to_json_file(
@@ -566,17 +580,17 @@ def fit_generative_sequence_model(
 
                 train_dataloader = torch.utils.data.DataLoader(
                     train_pyd,
-                    batch_size  = optimization_config.batch_size,
+                    batch_size = optimization_config.batch_size,
                     num_workers = num_dataloader_workers,
-                    collate_fn  = train_pyd.collate,
-                    shuffle     = True,
+                    collate_fn = train_pyd.collate,
+                    shuffle = True,
                 )
                 tuning_dataloader = torch.utils.data.DataLoader(
                     tuning_pyd,
-                    batch_size  = optimization_config.batch_size // 2,
+                    batch_size = optimization_config.batch_size // 2,
                     num_workers = num_dataloader_workers,
-                    collate_fn  = tuning_pyd.collate,
-                    shuffle     = False,
+                    collate_fn = tuning_pyd.collate,
+                    shuffle = False,
                 )
 
         if do_final_validation_on_metrics:

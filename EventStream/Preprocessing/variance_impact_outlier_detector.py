@@ -14,7 +14,7 @@ class VarianceImpactOutlierDetector(Preprocessor):
     deviation.
     """
     @classmethod
-    def params_schema(cls) -> Dict[str, pl.DataType]: 
+    def params_schema(cls) -> Dict[str, pl.DataType]:
         return {'thresh_large_': pl.Float64, 'thresh_small_': pl.Float64}
 
     def __init__(
@@ -136,7 +136,6 @@ class VarianceImpactOutlierDetector(Preprocessor):
         mx = curr_mean + sqrt(((N+1)/(1 - delta))**2 * (1/N) - (N+1)) * curr_std
         """
 
-        #valid_delta = delta >= 1 - ((N+1)/N)**0.5
         return (((N+1)/(1 - delta))**2 * (1/N) - (N+1))**0.5
 
     @staticmethod

@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../..')
 
-import torch, unittest, pandas as pd
+import unittest
 from unittest.mock import MagicMock
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -17,20 +17,20 @@ from EventStream.EventStreamTransformer.config import (
 )
 
 DEFAULT_OPT_CONFIG_DICT = dict(
-    init_lr    = 1e-2,
-    end_lr     = 1e-7,
-    max_epochs = 2,
-    batch_size = 32,
-    lr_frac_warmup_steps = 0.01,
-    lr_num_warmup_steps  = None,
-    max_training_steps   = None,
-    lr_decay_power       = 1.0,
-    weight_decay         = 0.01,
+    init_lr=1e-2,
+    end_lr=1e-7,
+    max_epochs=2,
+    batch_size=32,
+    lr_frac_warmup_steps=0.01,
+    lr_num_warmup_steps=None,
+    max_training_steps=None,
+    lr_decay_power=1.0,
+    weight_decay=0.01,
 )
 
 class TestEventStreamOptimizationConfig(unittest.TestCase):
     def test_set_to_dataset(self):
-        cfg = EventStreamOptimizationConfig( **{
+        cfg = EventStreamOptimizationConfig(**{
             **DEFAULT_OPT_CONFIG_DICT,
             'max_epochs': 10,
             'batch_size': 2,
@@ -45,59 +45,60 @@ class TestEventStreamOptimizationConfig(unittest.TestCase):
         self.assertEqual(10 * 3, cfg.max_training_steps)
         self.assertEqual(6, cfg.lr_num_warmup_steps)
 
+
 DEFAULT_MAIN_CONFIG_DICT = dict(
-    vocab_sizes_by_measurement = None,
-    vocab_offsets_by_measurement = None,
-    measurements_idxmap = None,
-    measurements_per_generative_mode = None,
-    measurements_per_dep_graph_level = None,
-    max_seq_len = 256,
-    hidden_size = 256,
-    head_dim = 64,
-    num_hidden_layers = 2,
-    num_attention_heads = 4,
-    seq_attention_types = None,
-    seq_window_size = 32,
-    intermediate_size = 32,
-    activation_function = "gelu",
-    attention_dropout = 0.1,
-    input_dropout = 0.1,
-    resid_dropout = 0.1,
-    init_std = 0.02,
-    layer_norm_epsilon = 1e-5,
-    use_cache = True,
+    vocab_sizes_by_measurement=None,
+    vocab_offsets_by_measurement=None,
+    measurements_idxmap=None,
+    measurements_per_generative_mode=None,
+    measurements_per_dep_graph_level=None,
+    max_seq_len=256,
+    hidden_size=256,
+    head_dim=64,
+    num_hidden_layers=2,
+    num_attention_heads=4,
+    seq_attention_types=None,
+    seq_window_size=32,
+    intermediate_size=32,
+    activation_function="gelu",
+    attention_dropout=0.1,
+    input_dropout=0.1,
+    resid_dropout=0.1,
+    init_std=0.02,
+    layer_norm_epsilon=1e-5,
+    use_cache=True,
 )
 
 DEFAULT_NESTED_ATTENTION_DICT = dict(
-    structured_event_processing_mode = StructuredEventProcessingMode.NESTED_ATTENTION,
-    dep_graph_attention_types = None,
-    dep_graph_window_size = 2,
-    do_full_block_in_dep_graph_attention = True,
-    do_full_block_in_seq_attention = False,
-    do_add_temporal_position_embeddings_to_data_embeddings = False,
+    structured_event_processing_mode=StructuredEventProcessingMode.NESTED_ATTENTION,
+    dep_graph_attention_types=None,
+    dep_graph_window_size=2,
+    do_full_block_in_dep_graph_attention=True,
+    do_full_block_in_seq_attention=False,
+    do_add_temporal_position_embeddings_to_data_embeddings=False,
 )
 
 DEFAULT_CONDITIONALLY_INDEPENDENT_DICT = dict(
-    structured_event_processing_mode = StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
-    dep_graph_attention_types = None,
-    dep_graph_window_size = None,
-    do_full_block_in_dep_graph_attention = None,
-    do_full_block_in_seq_attention = None,
-    do_add_temporal_position_embeddings_to_data_embeddings = None,
+    structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
+    dep_graph_attention_types=None,
+    dep_graph_window_size=None,
+    do_full_block_in_dep_graph_attention=None,
+    do_full_block_in_seq_attention=None,
+    do_add_temporal_position_embeddings_to_data_embeddings=None,
 )
 
 DEFAULT_EXPONENTIAL_DICT = dict(
-    TTE_generation_layer_type = TimeToEventGenerationHeadType.EXPONENTIAL,
-    TTE_lognormal_generation_num_components = None,
-    mean_log_inter_event_time_min = None,
-    std_log_inter_event_time_min = None,
+    TTE_generation_layer_type=TimeToEventGenerationHeadType.EXPONENTIAL,
+    TTE_lognormal_generation_num_components=None,
+    mean_log_inter_event_time_min=None,
+    std_log_inter_event_time_min=None,
 )
 
 DEFAULT_LOGNORMAL_MIXTURE_DICT = dict(
-    TTE_generation_layer_type = TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE,
-    TTE_lognormal_generation_num_components = 3,
-    mean_log_inter_event_time_min = None,
-    std_log_inter_event_time_min = 1.0,
+    TTE_generation_layer_type=TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE,
+    TTE_lognormal_generation_num_components=3,
+    mean_log_inter_event_time_min=None,
+    std_log_inter_event_time_min=1.0,
 )
 
 class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittest.TestCase):
@@ -220,9 +221,9 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
                 for args_dict in kwargs:
                     if 'should_raise' in C:
                         with self.assertRaises(C['should_raise']):
-                            cfg = StructuredEventStreamTransformerConfig(**args_dict)
+                            StructuredEventStreamTransformerConfig(**args_dict)
                     else:
-                        cfg = StructuredEventStreamTransformerConfig(**args_dict)
+                        StructuredEventStreamTransformerConfig(**args_dict)
 
     def test_expand_attention_types_params(self):
         for C in [
@@ -375,7 +376,9 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
                     setattr(pyd.vocabulary_config, k, v)
                 for k, v in C['pyd_spec'].items(): setattr(pyd, k, v)
 
-                cfg = StructuredEventStreamTransformerConfig()
+                cfg = StructuredEventStreamTransformerConfig(
+                    **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                )
                 cfg.set_to_dataset(pyd)
                 for k, v in C['want'].items():
                     self.assertEqual(v, getattr(cfg, k))
@@ -391,7 +394,6 @@ class TestStructuredEventStreamTransformerConfig(ConfigComparisonsMixin, unittes
             {},
             DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
             DEFAULT_NESTED_ATTENTION_DICT,
-            #DEFAULT_LOGNORMAL_MIXTURE_DICT,
             DEFAULT_EXPONENTIAL_DICT,
         ):
             cfg = StructuredEventStreamTransformerConfig(**params)

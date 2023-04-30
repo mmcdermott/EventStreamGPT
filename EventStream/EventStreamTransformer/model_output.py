@@ -3,14 +3,13 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from mixins import SeedableMixin
 from transformers.utils import ModelOutput
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence, Set
+from typing import Any, Dict, List, Optional, Tuple, Union, Set
 
 from .utils import INDEX_SELECT_T, idx_distribution, expand_indexed_regression
 from .config import StructuredEventStreamTransformerConfig, MEAS_INDEX_GROUP_T
 from ..EventStreamData.types import TemporalityType, DataModality, EventStreamPytorchBatch
 from ..EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from ..EventStreamData.data_embedding_layer import MeasIndexGroupOptions
-from ..EventStreamData.config import MeasurementConfig
 
 CATEGORICAL_DIST_T = Union[torch.distributions.Bernoulli, torch.distributions.Categorical]
 
@@ -445,7 +444,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
         if n_data_elements_new < n_data_elements_old:
             data_delta = n_data_elements_old - n_data_elements_new
             new_dynamic_indices = torch.nn.functional.pad(new_dynamic_indices, (0, data_delta), value=0)
-            new_dynamic_measurement_indices = torch.nn.functional.pad(new_dynamic_measurement_indices, (0, data_delta), value=0)
+            new_dynamic_measurement_indices = torch.nn.functional.pad(
+                new_dynamic_measurement_indices, (0, data_delta), value=0
+            )
             new_dynamic_values = torch.nn.functional.pad(new_dynamic_values, (0, data_delta), value=0)
             new_dynamic_values_mask = torch.nn.functional.pad(new_dynamic_values_mask, (0, data_delta), value=False)
         elif n_data_elements_new > n_data_elements_old:
@@ -520,7 +521,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
     ) -> EventStreamPytorchBatch:
         """This function updates the last batch element from self."""
         if 'time' in measurements_to_fill:
-            raise ValueError(f"You shouldn't ever be trying to fill the 'time' aspect of a batch!")
+            raise ValueError("You shouldn't ever be trying to fill the 'time' aspect of a batch!")
 
         prev_dynamic_indices = batch.dynamic_indices[:, -1]
         prev_dynamic_measurement_indices = batch.dynamic_measurement_indices[:, -1]

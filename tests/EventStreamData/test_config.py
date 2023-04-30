@@ -3,17 +3,13 @@ sys.path.append('../..')
 
 from ..mixins import ConfigComparisonsMixin
 
-import dataclasses, unittest, numpy as np, pandas as pd
-from pathlib import Path
-from typing import Optional
+import dataclasses, unittest, pandas as pd
 
 from EventStream.EventStreamData.config import (
     EventStreamDatasetConfig, MeasurementConfig, EventStreamPytorchDatasetConfig
 )
 from EventStream.EventStreamData.time_dependent_functor import AgeFunctor
-from EventStream.EventStreamData.types import (
-    DataModality, NumericDataModalitySubtype, TemporalityType,
-)
+from EventStream.EventStreamData.types import DataModality, TemporalityType
 from EventStream.EventStreamData.vocabulary import Vocabulary
 
 class TestEventStreamPytorchDatasetConfig(unittest.TestCase):
@@ -56,9 +52,8 @@ class TestEventStreamPytorchDatasetConfig(unittest.TestCase):
         for C in cases:
             with self.subTest(C['msg']):
                 if C.get('should_raise', None) is not None:
-                    with self.assertRaises(C['should_raise']):
-                        cfg = EventStreamPytorchDatasetConfig(**C['kwargs'])
-                else: cfg = EventStreamPytorchDatasetConfig(**C['kwargs'])
+                    with self.assertRaises(C['should_raise']): EventStreamPytorchDatasetConfig(**C['kwargs'])
+                else: EventStreamPytorchDatasetConfig(**C['kwargs'])
 
 class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
     def test_validates_params(self):
@@ -84,7 +79,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 functor=AgeFunctor('dob'),
             )
         ]
-        for kwargs in valid_kwargs: config = MeasurementConfig(**kwargs)
+        for kwargs in valid_kwargs: MeasurementConfig(**kwargs)
 
         invalid_kwargs = [
             dict(
@@ -103,10 +98,6 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 functor=AgeFunctor('dob'),
             ), dict(
                 temporality = TemporalityType.STATIC,
-                modality = DataModality.UNIVARIATE_REGRESSION,
-                measurement_metadata = pd.Series([None]),
-            ), dict(
-                temporality = TemporalityType.DYNAMIC,
                 modality = DataModality.UNIVARIATE_REGRESSION,
                 measurement_metadata = pd.Series([None]),
             ), dict(
@@ -133,7 +124,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         for kwargs in invalid_kwargs:
             with self.subTest(str(kwargs)):
                 with self.assertRaises((AssertionError, ValueError, NotImplementedError)):
-                    config = MeasurementConfig(**kwargs)
+                    MeasurementConfig(**kwargs)
 
     def test_add_missing_mandatory_metadata_cols(self):
         config = MeasurementConfig(
@@ -385,6 +376,8 @@ class TestEventStreamDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             outlier_detector_config = None,
             normalizer_config = None,
             save_dir = None,
+            min_events_per_subject = None,
+            agg_by_time_scale = '1h',
         )
         nontrivial_measurement_configs = {
             'col_A': MeasurementConfig(
