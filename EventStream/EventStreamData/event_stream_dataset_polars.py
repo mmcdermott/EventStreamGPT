@@ -1,4 +1,4 @@
-import numpy as np, pandas as pd, polars as pl
+import dataclasses, multiprocessing, numpy as np, pandas as pd, polars as pl
 
 from mixins import TimeableMixin
 from pathlib import Path
@@ -16,8 +16,16 @@ from ..Preprocessing import (
 
 pl.toggle_string_cache(True)
 
+@dataclasses.dataclass
+class Query:
+    connection_uri: str
+    query: Union[str, Path, List[Union[str, Path]]]
+    partition_on: Optional[str] = None
+    partition_num: Optional[int] = None
+
+
 DF_T = Union[pl.LazyFrame, pl.DataFrame, pl.Expr, pl.Series]
-INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame]
+INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame, Query]
 
 class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
     # Dictates what models can be fit on numerical metadata columns, for both outlier detection and
@@ -79,6 +87,14 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
             case pd.DataFrame(): df = pl.from_pandas(df, include_index=True).lazy()
             case pl.DataFrame(): df = df.lazy()
             case pl.LazyFrame(): pass
+            case Query() as q:
+                partition_on = subject_id_col if q.partition_on is None else q.partition_on
+                partition_num = multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
+
+                df = pl.read_database(
+                    query=q.query, connection_uri=q.connection_uri, partition_on=partition_on,
+                    partition_num=partition_num,
+                ).lazy()
             case _: raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
 
         col_exprs = []
