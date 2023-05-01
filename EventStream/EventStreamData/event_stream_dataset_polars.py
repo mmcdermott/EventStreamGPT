@@ -1,26 +1,33 @@
-import copy, numpy as np, pandas as pd, polars as pl, warnings
+import dataclasses, multiprocessing, numpy as np, pandas as pd, polars as pl
 
-from collections import Counter
-from datetime import datetime
-from mixins import SeedableMixin, SaveableMixin, TimeableMixin
+from mixins import TimeableMixin
 from pathlib import Path
-from typing import Any, Dict, Hashable, List, Optional, Tuple, Sequence, Set, Union
+from typing import Any, Dict, List, Optional, Tuple, Sequence, Union
 
-from .config import EventStreamDatasetConfig, MeasurementConfig
+from .config import MeasurementConfig
 from .event_stream_dataset_base import EventStreamDatasetBase
-from .types import DataModality, TemporalityType, NumericDataModalitySubtype
+from .types import DataModality, InputDataType, TemporalityType, NumericDataModalitySubtype
 from .vocabulary import Vocabulary
 
-from ..utils import lt_count_or_proportion, flatten_dict, to_sklearn_np
+from ..utils import lt_count_or_proportion
 from ..Preprocessing import (
     Preprocessor, StddevCutoffOutlierDetector, StandardScaler
 )
 
 pl.toggle_string_cache(True)
 
-DF_T = Union[pl.DataFrame, pl.Expr, pl.Series]
+@dataclasses.dataclass
+class Query:
+    connection_uri: str
+    query: Union[str, Path, List[Union[str, Path]]]
+    partition_on: Optional[str] = None
+    partition_num: Optional[int] = None
 
-class EventStreamDataset(EventStreamDatasetBase[DF_T]):
+
+DF_T = Union[pl.LazyFrame, pl.DataFrame, pl.Expr, pl.Series]
+INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame, Query]
+
+class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
     # Dictates what models can be fit on numerical metadata columns, for both outlier detection and
     # normalization.
     PREPROCESSORS: Dict[str, Preprocessor] = {
@@ -45,11 +52,162 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
 
     @staticmethod
     def get_smallest_valid_int_type(num: Union[int, float, pl.Expr]) -> pl.DataType:
-        if num >= (2**64)-1: raise ValueError(f"Value is too large to be expressed as an int!")
+        if num >= (2**64)-1: raise ValueError("Value is too large to be expressed as an int!")
         if num >= (2**32)-1: return pl.UInt64
         elif num >= (2**16)-1: return pl.UInt32
         elif num >= (2**8)-1: return pl.UInt16
         else: return pl.UInt8
+
+    @classmethod
+    def _load_input_df(
+        cls, df: INPUT_DF_T, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        subject_id_col: Optional[str] = None, subject_ids_map: Optional[Dict[Any, int]] = None,
+        subject_id_dtype: Optional[Any] = None,
+        filter_on: Optional[Dict[str, Union[bool, List[Any]]]] = None,
+    ) -> DF_T:
+        """
+        Loads an input dataframe into the format expected by the processing library.
+        """
+        if subject_id_col is None:
+            if subject_ids_map is not None:
+                raise ValueError("Must not set subject_ids_map if subject_id_col is not set")
+            if subject_id_dtype is not None:
+                raise ValueError("Must not set subject_id_dtype if subject_id_col is not set")
+        else:
+            if subject_ids_map is None:
+                raise ValueError("Must set subject_ids_map if subject_id_col is set")
+            if subject_id_dtype is None:
+                raise ValueError("Must set subject_id_dtype if subject_id_col is set")
+
+        match df:
+            case Path() as fp:
+                if fp.suffix == '.csv': df = pl.scan_csv(df, null_values='')
+                elif fp.suffix == '.parquet': df = pl.scan_parquet(df)
+                else: raise ValueError(f"Can't read dataframe from file of suffix {fp.suffix}")
+            case pd.DataFrame(): df = pl.from_pandas(df, include_index=True).lazy()
+            case pl.DataFrame(): df = df.lazy()
+            case pl.LazyFrame(): pass
+            case Query() as q:
+                partition_on = subject_id_col if q.partition_on is None else q.partition_on
+                partition_num = multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
+
+                df = pl.read_database(
+                    query=q.query, connection_uri=q.connection_uri, partition_on=partition_on,
+                    partition_num=partition_num,
+                ).lazy()
+            case _: raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
+
+        col_exprs = []
+
+        if filter_on: df = cls._filter_col_inclusion(df, filter_on)
+
+        if subject_id_col is None:
+            df = df.with_row_count('subject_id')
+            col_exprs.append('subject_id')
+        else:
+            df = df.with_columns(pl.col(subject_id_col).cast(pl.Utf8).cast(pl.Categorical))
+            df = cls._filter_col_inclusion(df, {subject_id_col: list(subject_ids_map.keys())})
+            col_exprs.append(
+                pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias('subject_id')
+            )
+
+        for in_col, out_dt in columns:
+            match out_dt:
+                case InputDataType.FLOAT: col_exprs.append(pl.col(in_col).cast(pl.Float32, strict=False))
+                case InputDataType.CATEGORICAL:
+                    col_exprs.append(pl.col(in_col).cast(pl.Utf8).cast(pl.Categorical))
+                case InputDataType.BOOLEAN: col_exprs.append(pl.col(in_col).cast(pl.Boolean, strict=False))
+                case InputDataType.TIMESTAMP: col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=False))
+                case (InputDataType.TIMESTAMP, str() as ts_format):
+                    col_exprs.append(pl.col(in_col).str.strptime(pl.Datetime, ts_format, strict=False))
+                case _: raise ValueError(f"Invalid out data type {out_dt}!")
+
+        return df.select(col_exprs)
+
+    @classmethod
+    def resolve_ts_col(cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> DF_T:
+        match ts_col:
+            case list():
+                ts_expr = pl.min(ts_col)
+                ts_to_drop = [c for c in ts_col if c != out_name]
+            case str():
+                ts_expr = pl.col(ts_col)
+                ts_to_drop = [ts_col] if ts_col != out_name else []
+
+        return df.with_columns(ts_expr.alias(out_name)).drop(ts_to_drop)
+
+    @classmethod
+    def process_events_and_measurements_df(
+        cls, df: DF_T, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
+    ) -> Tuple[DF_T, Optional[DF_T]]:
+        """
+        Performs the following pre-processing steps on an input events and measurements dataframe:
+          1. Adds a categorical event type column with value `event_type`.
+          2. Extracts and renames the columns present in `columns_schema`.
+          3. Adds an integer `event_id` column.
+          4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
+             and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
+        """
+
+        cols_select_exprs = [
+            'timestamp', 'subject_id', 'event_id',
+            pl.lit(event_type).cast(pl.Categorical).alias('event_type')
+        ]
+        for in_col, (out_col, _) in columns_schema.items():
+            cols_select_exprs.append(pl.col(in_col).alias(out_col))
+
+        df = df.filter(
+            pl.col('timestamp').is_not_null() & pl.col('subject_id').is_not_null()
+        ).with_row_count('event_id').select(
+            cols_select_exprs
+        )
+
+        events_df = df.select('event_id', 'subject_id', 'timestamp', 'event_type')
+
+        if len(df.columns) > 4: dynamic_measurements_df = df.drop('subject_id', 'timestamp', 'event_type')
+        else: dynamic_measurements_df = None
+
+        return events_df, dynamic_measurements_df
+
+    @classmethod
+    def split_range_events_df(cls, df: DF_T) -> Tuple[DF_T, DF_T, DF_T]:
+        """
+        Performs the following steps:
+          1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
+             timestamps, respectively.
+          2. Filters out records where the end timestamp is earlier than the start timestamp.
+          3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
+             `'timestamp'`:
+             (a) An "EQ" dataframe, where start_ts_col == end_ts_col,
+             (b) A "start" dataframe, with start events, and
+             (c) An "end" dataframe, with end events.
+        """
+
+        df = df.filter(pl.col('start_time') <= pl.col('end_time'))
+
+        eq_df = df.filter(pl.col('start_time') == pl.col('end_time'))
+        ne_df = df.filter(pl.col('start_time') != pl.col('end_time'))
+
+        st_col, end_col = pl.col('start_time').alias('timestamp'), pl.col('end_time').alias('timestamp')
+        drop_cols = ['start_time', 'end_time']
+        return (
+            eq_df.with_columns(st_col).drop(drop_cols),
+            ne_df.with_columns(st_col).drop(drop_cols),
+            ne_df.with_columns(end_col).drop(drop_cols)
+        )
+
+    @classmethod
+    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+        """
+        Increments the values in a column by a given amount and returns a dataframe with the incremented
+        column.
+        """
+        return df.with_columns(pl.col(col) + inc_by).collect()
+
+    @classmethod
+    def _concat_dfs(cls, dfs: List[DF_T]) -> DF_T:
+        """ Concatenates a list of dataframes into a single dataframe. """
+        return pl.concat(dfs, how='diagonal')
 
     @classmethod
     def _read_df(cls, fp: Path, **kwargs) -> DF_T: return pl.read_parquet(fp)
@@ -129,12 +287,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
 
         if drop_lower_bound is not None:
             conditions.append(
-               ((col < drop_lower_bound) | ((col == drop_lower_bound) & drop_lower_bound_inclusive), np.NaN)
+                ((col < drop_lower_bound) | ((col == drop_lower_bound) & drop_lower_bound_inclusive), np.NaN)
             )
 
         if drop_upper_bound is not None:
             conditions.append(
-               ((col > drop_upper_bound) | ((col == drop_upper_bound) & drop_upper_bound_inclusive), np.NaN)
+                ((col > drop_upper_bound) | ((col == drop_upper_bound) & drop_upper_bound_inclusive), np.NaN)
             )
 
         if censor_lower_bound is not None:
@@ -256,30 +414,20 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             {'subject_id': subjects_id_type} if subjects_df is not None else None,
         )
         if events_df is not None:
-            if 'event_type' not in events_df: raise ValueError(f"Missing event_type column!")
+            if 'event_type' not in events_df: raise ValueError("Missing event_type column!")
             events_df = events_df.with_columns(pl.col('event_type').cast(pl.Categorical))
 
             if 'timestamp' not in events_df or events_df['timestamp'].dtype != pl.Datetime:
-                raise ValueError(f"Malformed timestamp column!")
+                raise ValueError("Malformed timestamp column!")
 
         if dynamic_measurements_df is not None:
             linked_ids = {}
-            to_join_cols = []
             if events_df is not None:
-                if 'event_type' not in dynamic_measurements_df: to_join_cols.append('event_type')
                 linked_ids['event_id'] = event_id_type
-            if subjects_df is not None:
-                if 'subject_id' in dynamic_measurements_df: linked_ids['subject_id'] = subjects_id_type
-                else: to_join_cols.append('subject_id')
 
             dynamic_measurements_df, dynamic_measurement_id_types = self._validate_initial_df(
                 dynamic_measurements_df, 'measurement_id', TemporalityType.DYNAMIC, linked_ids
             )
-
-            if to_join_cols:
-                dynamic_measurements_df = dynamic_measurements_df.join(
-                    events_df.select(['event_id'] + to_join_cols), on='event_id', how='left'
-                )
 
         return subjects_df, events_df, dynamic_measurements_df
 
@@ -287,6 +435,56 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
     def sort_events(self):
         """Sorts events by subject ID and timestamp in ascending order."""
         self.events_df = self.events_df.sort('subject_id', 'timestamp', descending=False)
+
+    @TimeableMixin.TimeAs
+    def agg_by_time(self):
+        """
+        Aggregates the events_df by subject_id, timestamp, combining event_types into grouped categories,
+        tracking all associated metadata. Note that no numerical aggregation (e.g., mean, etc.) happens here;
+        all data is retained, and only dynamic measurement event IDs are updated.
+        """
+
+        event_id_dt = self.events_df['event_id'].dtype
+
+        if self.config.agg_by_time_scale is None:
+            grouped = self.events_df.groupby(['subject_id', 'timestamp'], maintain_order=True)
+        else:
+            grouped = self.events_df.sort(
+                ['subject_id', 'timestamp'], descending=False
+            ).groupby_dynamic(
+                'timestamp',
+                every=self.config.agg_by_time_scale,
+                truncate=True,
+                closed='left',
+                start_by='datapoint',
+                by='subject_id',
+            )
+
+        grouped = grouped.agg(
+            pl.col('event_type').unique().sort(),
+            pl.col('event_id').unique().alias('old_event_id')
+        ).sort(
+            'subject_id', 'timestamp', descending=False
+        ).with_row_count(
+            'event_id'
+        ).with_columns(
+            pl.col('event_id').cast(event_id_dt),
+            pl.col(
+                'event_type'
+            ).arr.eval(
+                pl.col('').cast(pl.Utf8)
+            ).arr.join('&').cast(pl.Categorical).alias('event_type')
+        )
+
+        new_to_old_set = grouped[['event_id', 'old_event_id']].explode('old_event_id')
+
+        self.events_df = grouped.drop('old_event_id')
+
+        self.dynamic_measurements_df = self.dynamic_measurements_df.rename(
+            {'event_id': 'old_event_id'}
+        ).join(
+            new_to_old_set, on='old_event_id', how='left'
+        ).drop('old_event_id')
 
     @TimeableMixin.TimeAs
     def agg_by_time_type(self):
@@ -334,12 +532,44 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             self.subject_ids.update(subjects_with_no_events)
 
     @classmethod
-    def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: Dict[str, Sequence[Any]]) -> DF_T:
+    def _filter_col_inclusion(
+        cls, df: DF_T, col_inclusion_targets: Dict[str, Union[bool, Sequence[Any]]]
+    ) -> DF_T:
         filter_exprs = []
         for col, incl_targets in col_inclusion_targets.items():
-            filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
+            match incl_targets:
+                case True: filter_exprs.append(pl.col(col).is_not_null())
+                case False: filter_exprs.append(pl.col(col).is_null())
+                case _: filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
 
         return df.filter(pl.all(filter_exprs))
+
+    @TimeableMixin.TimeAs
+    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+        measures = []
+        for measure, config in self.config.measurement_configs.items():
+            if (
+                (config.is_dropped) or
+                (config.temporality != TemporalityType.DYNAMIC) or
+                (config.present_in_event_types is not None) or
+                (measure not in self.dynamic_measurements_df.columns)
+            ): continue
+            measures.append(measure)
+
+        if not measures: return {}
+
+        event_type_cnts = self._filter_measurements_df(
+            split='train'
+        ).join(
+            self.train_events_df.select('event_id', 'event_type'), on='event_id'
+        ).groupby('event_type').agg(
+            *[pl.col(c).drop_nulls().count() for c in measures]
+        )
+
+        out = {}
+        for measure in measures:
+            out[measure] = event_type_cnts.filter(pl.col(measure) > 0)['event_type'].to_list()
+        return out
 
     @TimeableMixin.TimeAs
     def add_time_dependent_measurements(self):
@@ -362,9 +592,6 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         else:
             self.events_df = self.events_df.with_columns(exprs)
 
-    @classmethod
-    def _drop_df_nulls(cls, source_df: DF_T, col: str) -> DF_T: return source_df.drop_nulls(col)
-
     @TimeableMixin.TimeAs
     def _prep_numerical_source(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
@@ -377,15 +604,9 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             case DataModality.UNIVARIATE_REGRESSION:
                 key_col = 'const_key'
                 val_col = measure
-                try:
-                    metadata_as_polars = pl.DataFrame(
-                        {key_col: [measure], **{c: [v] for c, v in metadata.items()}}
-                    )
-                except:
-                    print(metadata)
-                    print({c: [v] for c, v in metadata.items()})
-                    print(measure)
-                    raise
+                metadata_as_polars = pl.DataFrame(
+                    {key_col: [measure], **{c: [v] for c, v in metadata.items()}}
+                )
                 source_df = source_df.with_columns(pl.lit(measure).cast(pl.Categorical).alias(key_col))
             case DataModality.MULTIVARIATE_REGRESSION:
                 key_col = measure
@@ -541,7 +762,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             measure, config, source_df
         )
         # 1. Determines which vocab elements should be dropped due to insufficient occurrences.
-        if not self.config.min_valid_vocab_element_observations is None:
+        if self.config.min_valid_vocab_element_observations is not None:
             if config.temporality == TemporalityType.DYNAMIC:
                 num_possible = source_df.select(pl.col('event_id').n_unique()).item()
                 num_non_null = pl.col('event_id').filter(pl.col(vocab_keys_col).is_not_null()).n_unique()
@@ -689,11 +910,11 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             case DataModality.UNIVARIATE_REGRESSION:
                 if config.measurement_metadata.value_type == NumericDataModalitySubtype.CATEGORICAL_INTEGER:
                     observations = source_df.with_columns(
-                        f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
+                        (f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)).alias(measure)
                     ).get_column(measure)
                 elif config.measurement_metadata.value_type == NumericDataModalitySubtype.CATEGORICAL_FLOAT:
                     observations = source_df.with_columns(
-                        f"{measure}__EQ_" + pl.col(measure).cast(pl.Utf8)
+                        (f"{measure}__EQ_" + pl.col(measure).cast(pl.Utf8)).alias(measure)
                     ).get_column(measure)
                 else: return
             case _: observations = source_df.get_column(measure)
@@ -766,7 +987,7 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         ).when(
             value_type == NumericDataModalitySubtype.CATEGORICAL_FLOAT
         ).then(
-           keys_col + "__EQ_" + vals_col.cast(pl.Utf8)
+            keys_col + "__EQ_" + vals_col.cast(pl.Utf8)
         ).otherwise(keys_col).alias(keys_col_name)
 
         vals_col = pl.when(
@@ -793,7 +1014,6 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             if self.config.outlier_detector_config is not None:
                 null_source = null_source.with_columns(pl.lit(None).cast(pl.Boolean).alias(inliers_col_name))
             return null_source.drop(cols_to_drop_at_end)
-
 
         # 5. Add inlier/outlier indices and remove learned outliers.
         if self.config.outlier_detector_config is not None:
@@ -856,18 +1076,22 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             ).otherwise(
                 pl.col(config.values_column)
             ).alias(config.values_column))
+            vocab_el_col = pl.col(measure)
+        elif config.modality == DataModality.UNIVARIATE_REGRESSION:
+            vocab_el_col = pl.col('const_key')
+        else: vocab_el_col = pl.col(measure)
 
         transform_expr.append(
             pl.when(
-                pl.col(measure).is_null()
+                vocab_el_col.is_null()
             ).then(
                 None
             ).when(
-                ~pl.col(measure).is_in(list(config.vocabulary.vocab_set))
+                ~vocab_el_col.is_in(list(config.vocabulary.vocab_set))
             ).then(
                 'UNK'
             ).otherwise(
-                pl.col(measure)
+                vocab_el_col
             ).cast(
                 pl.Categorical
             ).alias(measure)
@@ -887,6 +1111,9 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
 
     def melt_df(self, source_df: DF_T, id_cols: Sequence[str], measures: List[str]) -> pl.Expr:
         struct_exprs = []
+        total_vocab_size = self.vocabulary_config.total_vocab_size
+        idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
+
         for m in measures:
             if m == 'event_type':
                 cfg = None
@@ -895,18 +1122,15 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
                 cfg = self.measurement_configs[m]
                 modality = cfg.modality
 
-            total_vocab_size = self.vocabulary_config.total_vocab_size
-            idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
-
             if m in self.measurement_vocabs:
                 idx_present_expr = pl.col(m).is_not_null() & pl.col(m).is_in(self.measurement_vocabs[m])
-                idx_value_expr = pl.col(m).map_dict(self.unified_vocabulary_idxmap[m])
+                idx_value_expr = pl.col(m).map_dict(self.unified_vocabulary_idxmap[m], return_dtype=idx_dt)
             else:
                 idx_present_expr = pl.col(m).is_not_null()
-                idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m])
+                idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m]).cast(idx_dt)
 
             idx_present_expr = idx_present_expr.cast(pl.Boolean).alias('present')
-            idx_value_expr = idx_value_expr.cast(idx_dt).alias('index')
+            idx_value_expr = idx_value_expr.alias('index')
 
             if (
                 (modality == DataModality.UNIVARIATE_REGRESSION) and
@@ -937,7 +1161,9 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
             pl.col('value').struct.field('value').alias('value'),
         )
 
-    def build_DL_cached_representation(self, do_sort_outputs: bool = False) -> DF_T:
+    def build_DL_cached_representation(
+        self, subject_ids: Optional[List[int]] = None, do_sort_outputs: bool = False
+    ) -> DF_T:
         """
         Produces a format with the below syntax:
 
@@ -970,8 +1196,12 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
                 case _: raise ValueError(f'Unknown temporality type {temporality} for {m}')
 
         # 1. Process subject data into the right format.
-        #    self.subjects_df has columns subject_id, ...static_meas_columns...
-        static_data = self.melt_df(self.subjects_df, ['subject_id'], subject_measures).groupby(
+        if subject_ids:
+            subjects_df = self._filter_col_inclusion(self.subjects_df, {'subject_id': subject_ids})
+        else:
+            subjects_df = self.subjects_df
+
+        static_data = self.melt_df(subjects_df, ['subject_id'], subject_measures).groupby(
             'subject_id'
         ).agg(
             pl.col('measurement_index').alias('static_measurement_indices'),
@@ -979,11 +1209,24 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         )
 
         # 2. Process event data into the right format.
-        event_data = self.melt_df(self.events_df, ['subject_id', 'timestamp', 'event_id'], event_measures)
+        if subject_ids:
+            events_df = self._filter_col_inclusion(self.events_df, {'subject_id': subject_ids})
+            event_ids = list(events_df['event_id'])
+        else:
+            events_df = self.events_df
+            event_ids = None
+        event_data = self.melt_df(events_df, ['subject_id', 'timestamp', 'event_id'], event_measures)
 
         # 3. Process measurement data into the right base format:
+        if event_ids:
+            dynamic_measurements_df = self._filter_col_inclusion(
+                self.dynamic_measurements_df, {'event_id': event_ids}
+            )
+        else:
+            dynamic_measurements_df = self.dynamic_measurements_df
+
         dynamic_ids = ['event_id', 'measurement_id'] if do_sort_outputs else ['event_id']
-        dynamic_data = self.melt_df(self.dynamic_measurements_df, dynamic_ids, dynamic_measures)
+        dynamic_data = self.melt_df(dynamic_measurements_df, dynamic_ids, dynamic_measures)
 
         if do_sort_outputs: dynamic_data = dynamic_data.sort('event_id', 'measurement_id')
 
@@ -1008,3 +1251,17 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T]):
         if do_sort_outputs: out = out.sort('subject_id')
 
         return out
+
+    def denormalize(self, events_df: DF_T, col: str) -> DF_T:
+        if self.config.normalizer_config is None: return events_df
+        elif self.config.normalizer_config['cls'] != 'standard_scaler':
+            raise ValueError(f"De-normalizing from {self.config.normalizer_config} not yet supported!")
+
+        config = self.measurement_configs[col]
+        if config.modality != DataModality.UNIVARIATE_REGRESSION:
+            raise ValueError(f"De-normalizing {config.modality} is not currently supported.")
+
+        normalizer_params = config.measurement_metadata.normalizer
+        return events_df.with_columns(
+            ((pl.col(col)*normalizer_params['std_']) + normalizer_params['mean_']).alias(col)
+        )

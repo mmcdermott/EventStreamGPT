@@ -1,14 +1,14 @@
 import inspect, torch
 
-from typing import Optional, Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union
 
 VALID_INDEX_T = Union[int, slice, type(Ellipsis)]
 INDEX_SELECT_T = Union[VALID_INDEX_T, Sequence[VALID_INDEX_T]]
 
-def expand_indexed_regression(X: torch.Tensor, I: torch.Tensor, vocab_size: int):
-    """Expands values `X` with indices `I` into a dense representation."""
-    expanded = torch.zeros(*I.shape[:-1], vocab_size, device=X.device, dtype=X.dtype)
-    return expanded.scatter(-1, I, X)
+def expand_indexed_regression(X: torch.Tensor, idx: torch.Tensor, vocab_size: int):
+    """Expands values `X` with indices `idx` into a dense representation."""
+    expanded = torch.zeros(*idx.shape[:-1], vocab_size, device=X.device, dtype=X.dtype)
+    return expanded.scatter(-1, idx, X)
 
 def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -43,7 +43,7 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> Tuple[torch.Ten
 
     torch._assert(weights.shape == X.shape, f"weights, {weights.shape} must be the same shape as X {X.shape}")
 
-    denom      = weights.float().sum(dim=-1)
+    denom = weights.float().sum(dim=-1)
     safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
     return torch.where(
         denom > 0,
@@ -60,6 +60,7 @@ def weighted_loss(loss_per_event: torch.Tensor, event_mask: torch.Tensor) -> tor
     """
     loss_per_subject, events_per_subject = safe_weighted_avg(loss_per_event, event_mask)
     return safe_weighted_avg(loss_per_subject, (events_per_subject > 0))[0]
+
 
 _PROBS_LOGITS_NOT_BOTH_DISTRIBUTIONS = (
     torch.distributions.Bernoulli,
@@ -98,7 +99,7 @@ def idx_distribution(
         )
     elif isinstance(D, torch.distributions.TransformedDistribution):
         transforms = D.transforms
-        for transform in transforms: assert transform.sign in (-1, 1) # Asserts transforms are univariate bij
+        for transform in transforms: assert transform.sign in (-1, 1)  # Asserts transforms are univariate bij
 
         base_dist = D.base_dist
         result = torch.distributions.TransformedDistribution(

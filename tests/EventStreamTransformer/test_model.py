@@ -1,17 +1,11 @@
 import sys
 sys.path.append('../..')
 
-import math, torch, unittest, numpy as np
+import torch, unittest, numpy as np
 from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 
 from ..mixins import MLTypeEqualityCheckableMixin
 from EventStream.EventStreamData.types import DataModality, EventStreamPytorchBatch
-from EventStream.EventStreamTransformer.model_output import (
-    EventStreamTransformerForGenerativeSequenceModelOutput,
-    GenerativeSequenceModelLosses,
-    GenerativeSequenceModelLabels,
-    GenerativeSequenceModelPredictions,
-)
 from EventStream.EventStreamTransformer.model import (
     StructuredEventStreamGenerativeOutputLayer,
     StructuredEventStreamTransformerForStreamClassification,
@@ -19,12 +13,11 @@ from EventStream.EventStreamTransformer.model import (
 from EventStream.EventStreamTransformer.config import (
     StructuredEventStreamTransformerConfig,
     StructuredEventProcessingMode,
-    TimeToEventGenerationHeadType,
 )
 
 TEST_MEASUREMENTS_PER_GEN_MODE = {
     DataModality.SINGLE_LABEL_CLASSIFICATION: ['event_type'],
-    DataModality.MULTI_LABEL_CLASSIFICATION:  ['multi_label_col', 'regression_col'],
+    DataModality.MULTI_LABEL_CLASSIFICATION: ['multi_label_col', 'regression_col'],
     DataModality.MULTIVARIATE_REGRESSION: ['regression_col'],
 }
 TEST_MEASUREMENTS_IDXMAP = {
@@ -49,16 +42,16 @@ TEST_EVENT_TYPES_IDXMAP = {
 }
 
 BASE_CONFIG_KWARGS = dict(
-    measurements_per_generative_mode = TEST_MEASUREMENTS_PER_GEN_MODE,
-    vocab_sizes_by_measurement = TEST_VOCAB_SIZES_BY_MEASUREMENT,
-    vocab_offsets_by_measurement = TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
-    measurements_idxmap = TEST_MEASUREMENTS_IDXMAP,
-    event_types_idxmap = TEST_EVENT_TYPES_IDXMAP,
-    hidden_size = 4,
-    head_dim = None,
-    num_attention_heads = 2, # Needs to divide hidden_size.
-    mean_log_inter_time = 0,
-    std_log_inter_time = 1,
+    measurements_per_generative_mode=TEST_MEASUREMENTS_PER_GEN_MODE,
+    vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_MEASUREMENT,
+    vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
+    measurements_idxmap=TEST_MEASUREMENTS_IDXMAP,
+    event_types_idxmap=TEST_EVENT_TYPES_IDXMAP,
+    hidden_size=4,
+    head_dim=None,
+    num_attention_heads=2,  # Needs to divide hidden_size.
+    mean_log_inter_time=0,
+    std_log_inter_time=1,
 )
 
 BASE_BATCH = {
@@ -99,7 +92,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
     def test_constructs(self):
         """Tests that the Model Output Layer constructs given default configuration options."""
         config = StructuredEventStreamTransformerConfig(**BASE_CONFIG_KWARGS)
-        layer = StructuredEventStreamGenerativeOutputLayer(config)
+        StructuredEventStreamGenerativeOutputLayer(config)
 
     def test_get_event_type_mask_per_measurement(self):
         config = StructuredEventStreamTransformerConfig(**{
@@ -681,7 +674,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 },
                 'want_labels': {'event_type': torch.LongTensor([[0, 0, 0]])},
                 'want_losses': {
-                    # event_type has no valid observations, so should return a loss of 0. 
+                    # event_type has no valid observations, so should return a loss of 0.
                     'event_type': torch.tensor(0.),
                 },
             },
@@ -710,13 +703,13 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 if C.get('include_event_types_mask', False):
                     event_type_mask_per_measurement = layer.get_event_type_mask_per_measurement(C['batch'])
                     got_losses, got_dists, got_labels = layer.get_classification_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                         event_type_mask_per_measurement = event_type_mask_per_measurement,
                     )
                 else:
                     got_losses, got_dists, got_labels = layer.get_classification_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                     )
 
@@ -811,8 +804,8 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 # the parameters for each component, with log_weights being the logits for the component
                 # distributions):
                 # See here for pdf: https://en.wikipedia.org/wiki/Log-normal_distribution
-                # It's formula is 
-                # pdf(x) = (1/(x*math.exp(scale)*math.sqrt(2*math.pi))) * 
+                # It's formula is
+                # pdf(x) = (1/(x*math.exp(scale)*math.sqrt(2*math.pi))) *
                 #          math.exp(-(math.log(x) - loc)**2/(2*(math.exp(scale)**2)))
                 # LL = 1/2 * (
                 #   math.log(
@@ -869,7 +862,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 config = StructuredEventStreamTransformerConfig(
                     **shared_config_kwargs,
                     **generation_specific_config_kwargs[C['TTE_generation_layer_type']],
-                    TTE_generation_layer_type = C['TTE_generation_layer_type'],
+                    TTE_generation_layer_type=C['TTE_generation_layer_type'],
                 )
 
                 # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab
@@ -896,7 +889,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
 
                 self.assertEqual(C['want_label'], got_label)
                 self.assertDistributionsEqual(C['want_dist'], got_dist)
-                self.assertEqual(C['want_LL'], got_LL, f"Log likelihoods differ")
+                self.assertEqual(C['want_LL'], got_LL, "Log likelihoods differ")
 
     def test_get_regression_outputs(self):
         cases = [
@@ -926,7 +919,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [0, 0, 0, 1.1, -1.1, 0.0],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1032,7 +1025,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                     },
                 },
                 'include_event_types_mask': True,
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1101,10 +1094,10 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [1, 3, 3, 3, 3, 3],
                     ]]),
                     'dynamic_indices': torch.LongTensor([[
-                         [1, 7, 9, 0, 0, 0],
-                         [2, 6, 7, 8, 7, 0],
-                         [2, 7, 7, 7, 8, 9],
-                     ]]),
+                        [1, 7, 9, 0, 0, 0],
+                        [2, 6, 7, 8, 7, 0],
+                        [2, 7, 7, 7, 8, 9],
+                    ]]),
                     'dynamic_values_mask': torch.BoolTensor([[
                         [False, True, True, False, False, False],
                         [False, True, True, True, True, False],
@@ -1116,7 +1109,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [np.NaN, -1.2, 2.0, 4.5, -4.0, -5.0],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1196,7 +1189,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [np.NaN, np.NaN, np.NaN, np.NaN, np.NaN, np.NaN],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1277,7 +1270,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                         [0, 0, 0, 1.1, -1.1, 0],
                     ]]),
                 },
-                'valid_measurements': {'regression_col',},
+                'valid_measurements': {'regression_col'},
                 'encoded': torch.Tensor([
                     [
                         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -1334,7 +1327,7 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 config = StructuredEventStreamTransformerConfig(**{
                     **BASE_CONFIG_KWARGS,
                     **C.get('config_kwargs', {}),
-                    'hidden_size': 8, # 2 * number of regression components (4)
+                    'hidden_size': 8,  # 2 * number of regression components (4)
                 })
 
                 # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab
@@ -1351,13 +1344,13 @@ class TestStructuredEventStreamGenerativeOutputLayer(MLTypeEqualityCheckableMixi
                 if C.get('include_event_types_mask', False):
                     event_type_mask_per_measurement = layer.get_event_type_mask_per_measurement(C['batch'])
                     got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                         event_type_mask_per_measurement = event_type_mask_per_measurement,
                     )
                 else:
                     got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
-                        batch = C['batch'], encoded = C['encoded'],
+                        batch=C['batch'], encoded=C['encoded'],
                         valid_measurements = C['valid_measurements'],
                     )
 
@@ -1452,7 +1445,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 'weight': torch.nn.Parameter(torch.Tensor([[1, 0, 0, 0]])),
                 'bias': torch.nn.Parameter(torch.Tensor([0])),
                 'batch': {'stream_labels': {'test': torch.FloatTensor([0, 1])}},
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [1., 2., 3., 4.],
@@ -1487,7 +1480,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                     do_add_temporal_position_embeddings_to_data_embeddings=None,
                 ),
                 'mock_encoder': HiddenStateNoDepGraphLevel,
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [1., 2., 3., 4.],
@@ -1519,7 +1512,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
             }, {
                 'msg': "It should select from the dep_graph in the nested attention, CLS case.",
                 'kwargs': dict(),
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [-1., 0., -3., 4.],
@@ -1551,7 +1544,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
             }, {
                 'msg': "It should select from the dep_graph in the nested attention, mean case.",
                 'kwargs': {'task_specific_params': {'pooling_method': 'mean'}},
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [-1., 0., -3., 4.],
@@ -1575,15 +1568,15 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 # ])
                 # This yields loss 14.048589706420898
                 'want_preds': torch.Tensor([
-                     [-5, 5, -7, 8],
-                     [-5, 5, -7, 8],
+                    [-5, 5, -7, 8],
+                    [-5, 5, -7, 8],
                 ]),
                 'want_labels': torch.LongTensor([0, 2]),
                 'want_loss': torch.tensor(14.048589706420898),
             }, {
                 'msg': "It should select from the dep_graph in the nested attention, max case.",
                 'kwargs': {'task_specific_params': {'pooling_method': 'max'}},
-                # event_encoded should be 
+                # event_encoded should be
                 # torch.Tensor([
                 #     [
                 #         [-1., 2., -3., 4.],
@@ -1607,8 +1600,8 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 # ])
                 # This yields loss 14.126930236816406
                 'want_preds': torch.Tensor([
-                     [-1., 10., -3., 12.],
-                     [-1., 10., -3., 12.],
+                    [-1., 10., -3., 12.],
+                    [-1., 10., -3., 12.],
                 ]),
                 'want_labels': torch.LongTensor([0, 2]),
                 'want_loss': torch.tensor(14.126930236816406),
@@ -1624,6 +1617,7 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 class MockEncoder(torch.nn.Module):
                     def __init__(self):
                         super().__init__()
+
                     def forward(self, *args, **kwargs):
                         return C.get('mock_encoder', default_encoder)()
 
@@ -1636,5 +1630,6 @@ class TestStructuredEventStreamTransformerForStreamClassification(
                 self.assertEqual(C['want_labels'], out.labels)
                 self.assertEqual(C['want_preds'], out.preds)
                 self.assertEqual(C['want_loss'], out.loss)
+
 
 if __name__ == '__main__': unittest.main()

@@ -91,6 +91,7 @@ class StrEnum(str, enum.Enum):
     def _generate_next_value_(name, *_):
         return name.lower()
 
+
 # Create a generic variable that can be 'JSONableMixin', or any subclass.
 JSONABLE_INSTANCE_T = TypeVar('JSONABLE_INSTANCE_T', bound='JSONableMixin')
 
@@ -104,7 +105,7 @@ class JSONableMixin():
 
     def to_dict(self) -> Dict[str, Any]:
         if dataclasses.is_dataclass(self): return dataclasses.asdict(self)
-        raise NotImplementedError(f"This must be overwritten in non-dataclass derived classes!")
+        raise NotImplementedError("This must be overwritten in non-dataclass derived classes!")
 
     def to_json_file(self, fp: Path, do_overwrite: bool = False):
         """Writes configuration object to a json file as a plain dictionary."""
@@ -116,3 +117,10 @@ class JSONableMixin():
     def from_json_file(cls: Type[JSONABLE_INSTANCE_T], fp: Path) -> JSONABLE_INSTANCE_T:
         """Build configuration object from contents of `fp` interpreted as a dictionary stored in json."""
         with open(fp, mode='r') as f: return cls.from_dict(json.load(f))
+
+def num_initial_spaces(s: str) -> int:
+    out = 0
+    while s.startswith(' '):
+        out += 1
+        s = s[1:]
+    return out

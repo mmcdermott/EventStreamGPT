@@ -55,7 +55,7 @@ class MLTypeEqualityCheckableMixin():
         types_match = isinstance(want, type(got)) or isinstance(got, type(want))
 
         try: types_match = (want == got) or types_match
-        except: pass
+        except Exception: pass
 
         self.assertTrue(types_match, msg=f"{m}: Want type {type(want)}, got type {type(got)}")
 
@@ -108,7 +108,6 @@ class MLTypeEqualityCheckableMixin():
             else: m = f"Dictionaries aren't equal (key {k})"
 
             self.assertNestedEqual(want_val, got_val, m)
-
 
     def assertDistributionsEqual(
         self,

@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../..')
 
-import copy, math, torch, unittest, pandas as pd
+import copy, torch, unittest
 
 from ..mixins import ConfigComparisonsMixin
 
@@ -14,7 +14,7 @@ from EventStream.EventStreamTransformer.config import (
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     'single_label_classification': ['event_type'],
-    'multi_label_classification':  ['multi_label_col', 'regression_col'],
+    'multi_label_classification': ['multi_label_col', 'regression_col'],
     'partially_observed_regression': ['regression_col'],
 }
 TEST_DATA_TYPES_IDXMAP = {
@@ -36,23 +36,23 @@ TEST_VOCAB_OFFSETS_BY_DATA_TYPE = {
 
 BASE_CONFIG_KWARGS = dict(
     structured_event_processing_mode = StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
-    dep_graph_attention_types = None,
-    dep_graph_window_size = None,
-    do_full_block_in_dep_graph_attention = None,
-    do_full_block_in_seq_attention = None,
-    do_add_temporal_position_embeddings_to_data_embeddings = None,
+    dep_graph_attention_types=None,
+    dep_graph_window_size=None,
+    do_full_block_in_dep_graph_attention=None,
+    do_full_block_in_seq_attention=None,
+    do_add_temporal_position_embeddings_to_data_embeddings=None,
 
-    measurements_per_generative_mode = TEST_DATA_TYPES_PER_GEN_MODE,
-    vocab_sizes_by_measurement = TEST_VOCAB_SIZES_BY_DATA_TYPE,
-    vocab_offsets_by_measurement = TEST_VOCAB_OFFSETS_BY_DATA_TYPE,
-    measurements_idxmap = TEST_DATA_TYPES_IDXMAP,
-    vocab_size = 10,
-    hidden_size = 4,
-    num_hidden_layers = 2,
-    head_dim = None,
-    num_attention_heads = 2, # Needs to divide hidden_size.
-    mean_log_inter_time = 0,
-    std_log_inter_time = 1,
+    measurements_per_generative_mode=TEST_DATA_TYPES_PER_GEN_MODE,
+    vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_DATA_TYPE,
+    vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_DATA_TYPE,
+    measurements_idxmap=TEST_DATA_TYPES_IDXMAP,
+    vocab_size=10,
+    hidden_size=4,
+    num_hidden_layers=2,
+    head_dim=None,
+    num_attention_heads=2,  # Needs to divide hidden_size.
+    mean_log_inter_time=0,
+    std_log_inter_time=1,
 
     use_cache=False,
 )
@@ -97,7 +97,7 @@ class TestStructuredEventStreamTransformer(ConfigComparisonsMixin, unittest.Test
         config = StructuredEventStreamTransformerConfig(**BASE_CONFIG_KWARGS)
 
         M = StructuredEventStreamTransformer(config)
-        M.eval() # So layernorm and dropout don't affect anything.
+        M.eval()  # So layernorm and dropout don't affect anything.
 
         batch = EventStreamPytorchBatch(**copy.deepcopy(BASE_BATCH))
         batch2 = copy.deepcopy(batch)

@@ -3,25 +3,24 @@ sys.path.append('../..')
 
 from .test_config import ConfigComparisonsMixin
 
-import copy, unittest, numpy as np, pandas as pd
+import copy, unittest, pandas as pd
 from collections import defaultdict
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import Any, Dict, Tuple, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
 from EventStream.EventStreamData.event_stream_dataset_base import EventStreamDatasetBase
 from EventStream.EventStreamData.types import (
     DataModality,
     TemporalityType,
+    InputDataType
 )
-from EventStream.EventStreamData.time_dependent_functor import (
-    AgeFunctor,
-    TimeOfDayFunctor,
-)
+from EventStream.EventStreamData.time_dependent_functor import AgeFunctor
 from EventStream.EventStreamData.vocabulary import Vocabulary
 
-class ESDMock(EventStreamDatasetBase[dict]):
+class ESDMock(EventStreamDatasetBase[dict, dict]):
+    FUNCTIONS_CALLED = defaultdict(list)
+
     def __init__(self, *args, **kwargs):
         self.functions_called = defaultdict(list)
         super().__init__(*args, **kwargs)
@@ -33,15 +32,15 @@ class ESDMock(EventStreamDatasetBase[dict]):
         self, subjects_df: dict, events_df: dict, dynamic_measurements_df: dict
     ) -> Tuple[dict, dict, dict]:
         self.functions_called['_validate_initial_dfs'].append((
-             subjects_df, events_df, dynamic_measurements_df
+            subjects_df, events_df, dynamic_measurements_df
         ))
         return subjects_df, events_df, dynamic_measurements_df
 
     def _update_subject_event_properties(self):
         self.functions_called['_update_subject_event_properties'].append(())
 
-    def agg_by_time_type(self):
-        self.functions_called['agg_by_time_type'].append(())
+    def agg_by_time(self):
+        self.functions_called['agg_by_time'].append(())
 
     def sort_events(self):
         self.functions_called['sort_events'].append(())
@@ -57,10 +56,6 @@ class ESDMock(EventStreamDatasetBase[dict]):
             copy.deepcopy((measure, config, source_df))
         )
         return config.measurement_metadata
-
-    def _drop_df_nulls(self, source_df: dict, col: str) -> dict:
-        self.functions_called['_drop_df_nulls'].append((source_df, col))
-        return source_df
 
     def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: dict) -> Vocabulary:
         self.functions_called['_fit_vocabulary'].append(copy.deepcopy((measure, config, source_df)))
@@ -78,13 +73,17 @@ class ESDMock(EventStreamDatasetBase[dict]):
     def _transform_numerical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: dict
     ) -> dict:
-        self.functions_called['_transform_numerical_measurement'].append((measure, config, source_df))
+        self.functions_called['_transform_numerical_measurement'].append(
+            copy.deepcopy((measure, config, source_df))
+        )
         return source_df
 
     def _transform_categorical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: dict
     ) -> dict:
-        self.functions_called['_transform_categorical_measurement'].append((measure, config, source_df))
+        self.functions_called['_transform_categorical_measurement'].append(
+            copy.deepcopy((measure, config, source_df))
+        )
 
     def _filter_col_inclusion(self, df: dict, col: Dict[str, Sequence[Any]]) -> dict:
         self.functions_called['_filter_col_inclusion'].append((df, col))
@@ -108,6 +107,56 @@ class ESDMock(EventStreamDatasetBase[dict]):
     def build_DL_cached_representation(self):
         self.functions_called['build_DL_cached_representation'].append(())
 
+    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+        self.functions_called['_get_valid_event_types'].append(())
+        return {}
+
+    def denormalize(self, events_df: dict, col: str) -> dict:
+        self.functions_called['denormalize'].append((events_df, col))
+        return events_df
+
+    @classmethod
+    def _load_input_df(
+        cls, df: dict, columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        subject_id_col: str, subject_ids_map: Dict[Any, int], subject_id_dtype: Any
+    ) -> dict:
+        cls.FUNCTIONS_CALLED['_load_input_df'].append(
+            (df, columns, subject_id_col, subject_ids_map, subject_id_dtype)
+        )
+        return {}
+
+    @classmethod
+    def process_events_and_measurements_df(
+        cls, df: dict, event_type: str, columns_schema: Dict[str, Tuple[str, InputDataType]],
+        ts_col: Union[str, List[str]]
+    ) -> Tuple[dict, Optional[dict]]:
+        cls.FUNCTIONS_CALLED['process_events_and_measurements_df'].append(
+            (df, event_type, columns_schema, ts_col)
+        )
+        return {}, None
+
+    @classmethod
+    def split_range_events_df(
+        cls, df: dict, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
+    ) -> Tuple[dict, dict, dict]:
+        cls.FUNCTIONS_CALLED['split_range_events_df'].append((df, start_ts_col, end_ts_col))
+        return {}, {}, {}
+
+    @classmethod
+    def _inc_df_col(cls, df: dict, col: str, inc_by: int) -> dict:
+        cls.FUNCTIONS_CALLED['_inc_df_col'].append((df, col, inc_by))
+        return {}
+
+    @classmethod
+    def _concat_dfs(cls, dfs: List[dict]) -> dict:
+        cls.FUNCTIONS_CALLED['_concat_dfs'].append((dfs,))
+        return {}
+
+    @classmethod
+    def resolve_ts_col(cls, df: dict, ts_col: Union[str, List[str]], out_name: str = 'timestamp') -> dict:
+        cls.FUNCTIONS_CALLED['resolve_ts_col'].append((df, ts_col, out_name))
+        return {}
+
 class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     """Tests the `EventStreamDataset` class."""
 
@@ -115,7 +164,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         super().setUp()
         self.config = EventStreamDatasetConfig()
         self.subjects_df = {'name': 'subjects'}
-        self.events_df = {'name': 'events'}
+        self.events_df = {'name': 'events', 'event_id': [1, 2]}
         self.dynamic_measurements_df = {'name': 'dynamic_measurements'}
 
         self.E = ESDMock(self.config, self.subjects_df, self.events_df, self.dynamic_measurements_df)
@@ -137,7 +186,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         want_functions_called = {
             '_validate_initial_dfs': [(self.subjects_df, self.events_df, self.dynamic_measurements_df)],
             '_update_subject_event_properties': [()],
-            'agg_by_time_type': [()],
+            'agg_by_time': [()],
             'sort_events': [()],
         }
         self.assertEqual(want_functions_called, self.E.functions_called)
@@ -255,7 +304,10 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 'want_attr': 'dynamic_measurements_df', 'want_df': self.dynamic_measurements_df,
                 'want_id': 'measurement_id',
                 'want_fn': '_filter_col_inclusion',
-                'want_fn_arg': (self.dynamic_measurements_df, {'event_type': ['a'], 'subject_id': [1, 2, 3]}),
+                'want_fn_arg': [
+                    (self.events_df, {'event_type': ['a'], 'subject_id': [1, 2, 3]}),
+                    (self.dynamic_measurements_df, {'event_id': [1, 2]}),
+                ],
             }, {
                 'msg': (
                     "Should filter to the appropriate event types only and return the measurements df "
@@ -265,7 +317,10 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 'want_attr': 'dynamic_measurements_df', 'want_df': self.dynamic_measurements_df,
                 'want_id': 'measurement_id',
                 'want_fn': '_filter_col_inclusion',
-                'want_fn_arg': (self.dynamic_measurements_df, {'event_type': ['a']}),
+                'want_fn_arg': [
+                    (self.events_df, {'event_type': ['a']}),
+                    (self.dynamic_measurements_df, {'event_id': [1, 2]}),
+                ]
             }, {
                 'msg': "Should filter to train and return subjects_df when passed a static measurement",
                 'config': static, 'do_only_train': True,
@@ -299,12 +354,15 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 self.assertEqual(C['want_df'], got_df)
                 if C['want_fn'] is None:
                     self.assertEqual({}, self.E.functions_called)
+                elif type(C['want_fn_arg']) is list:
+                    self.assertNestedDictEqual({C['want_fn']: C['want_fn_arg']}, self.E.functions_called)
                 else:
                     self.assertNestedDictEqual({C['want_fn']: [C['want_fn_arg']]}, self.E.functions_called)
 
     def test_preprocess_measurements(self):
         def fit_measurements(self, *args, **kwargs):
             self.functions_called['fit_measurements'].append((args, kwargs))
+
         def transform_measurements(self, *args, **kwargs):
             self.functions_called['transform_measurements'].append((args, kwargs))
 
@@ -331,7 +389,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         }
 
         def get_source_df(self, *args, **kwargs):
-            self.functions_called['_get_source_df'].append((args, kwargs))
+            self.functions_called['_get_source_df'].append(copy.deepcopy((args, kwargs)))
             return None, None, mock_source_df
 
         base_measurement_config_kwargs = {
@@ -404,9 +462,9 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 ((self.config.measurement_configs['not_present'],), {'do_only_train': True}),
                 ((self.config.measurement_configs['numeric'],), {'do_only_train': True}),
             ],
-            '_drop_df_nulls': [
-                (mock_source_df, 'retained'),
-                (mock_source_df, 'numeric'),
+            '_filter_col_inclusion': [
+                (mock_source_df, {'retained': True}),
+                (mock_source_df, {'numeric': True}),
             ],
             '_fit_measurement_metadata': [(
                 'numeric',
@@ -432,6 +490,7 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 ('retained', partial_retained_config_init, mock_source_df),
                 ('numeric', partial_numeric_config_init, mock_source_df),
             ],
+            '_get_valid_event_types': [()],
         }
         self.assertNestedDictEqual(want_functions_called, self.E.functions_called)
 
@@ -462,5 +521,6 @@ class TestEventStreamDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     @unittest.skip("TODO: Implement this test!")
     def test_transform_measurements(self):
         raise NotImplementedError()
+
 
 if __name__ == '__main__': unittest.main()

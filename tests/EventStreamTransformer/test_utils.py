@@ -19,12 +19,12 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
             [1, 3.4],
             [2.0, 0.0],
         ])
-        I = torch.LongTensor([
+        idx = torch.LongTensor([
             [0, 2],
             [3, 1],
         ])
 
-        got = expand_indexed_regression(X, I, vocab_size=5)
+        got = expand_indexed_regression(X, idx, vocab_size=5)
         want = torch.Tensor([
             [1, 0, 3.4, 0, 0],
             [0, 0, 0, 2, 0],
@@ -34,7 +34,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_safe_masked_max(self):
         X = torch.FloatTensor([
-            [1.3, 1.1,  2.0,  1.2],
+            [1.3, 1.1, 2.0, 1.2],
             [1.0, -1.0, 2.0, -2.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
@@ -67,7 +67,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_safe_weighted_avg(self):
         X = torch.Tensor([
-            [1.0, 1.0,  2.0,  1.0],
+            [1.0, 1.0, 2.0, 1.0],
             [1.0, -1.0, 2.0, -2.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
@@ -107,7 +107,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_safe_weighted_avg_errors_with_negative_weights(self):
         X = torch.Tensor([
-            [1.0, 1.0,  2.0,  1.0],
+            [1.0, 1.0, 2.0, 1.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
 
@@ -121,7 +121,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
     def test_weighted_loss(self):
         X = torch.Tensor([
-            [1.0, 1.0,  2.0,  1.0],
+            [1.0, 1.0, 2.0, 1.0],
             [1.0, -1.0, 2.0, -2.0],
             [5.0, -1.0, 3.2, -2.0],
         ])
@@ -193,8 +193,8 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
         scale = torch.randn(size=(5, 4, 3)).abs()
         transforms = [torch.distributions.transforms.AffineTransform(loc=4, scale=5)]
         D = torch.distributions.TransformedDistribution(
-            base_distribution = torch.distributions.Normal(loc, scale),
-            transforms = transforms,
+            base_distribution=torch.distributions.Normal(loc, scale),
+            transforms=transforms,
         )
 
         cases = [
@@ -202,11 +202,11 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 'msg': "Should work with a complex slice.",
                 'slice': (3, slice(2, 3, 1), slice(None, 2, 1)),
                 'want_dist': torch.distributions.TransformedDistribution(
-                    base_distribution = torch.distributions.Normal(
+                    base_distribution=torch.distributions.Normal(
                         loc=loc[3, 2:3, :2], scale=scale[3, 2:3, :2], validate_args=True
                     ),
-                    transforms = transforms,
-                    validate_args = True,
+                    transforms=transforms,
+                    validate_args=True,
                 ),
             }
         ]
@@ -221,8 +221,8 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
         scale = torch.randn(size=(5, 4, 3)).abs()
         logits = torch.randn(size=(5, 4, 3))
         D = torch.distributions.MixtureSameFamily(
-            component_distribution = torch.distributions.Normal(loc=loc, scale=scale),
-            mixture_distribution = torch.distributions.Categorical(logits=logits),
+            component_distribution=torch.distributions.Normal(loc=loc, scale=scale),
+            mixture_distribution=torch.distributions.Categorical(logits=logits),
         )
 
         cases = [
@@ -230,11 +230,13 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 'msg': "Should work with a complex slice.",
                 'slice': (3, slice(2, 3, 1)),
                 'want_dist': torch.distributions.MixtureSameFamily(
-                    component_distribution = torch.distributions.Normal(
+                    component_distribution=torch.distributions.Normal(
                         loc=loc[3, 2:3], scale=scale[3, 2:3], validate_args=True
-                    ), mixture_distribution = torch.distributions.Categorical(
+                    ),
+                    mixture_distribution=torch.distributions.Categorical(
                         logits=logits[3, 2:3], validate_args=True,
-                    ), validate_args=True,
+                    ),
+                    validate_args=True,
                 ),
             }
         ]
@@ -276,5 +278,6 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
             with self.subTest(case['msg']):
                 got_dist = idx_distribution(D, case['slice'])
                 self.assertDistributionsEqual(case['want_dist'], got_dist)
+
 
 if __name__ == '__main__': unittest.main()

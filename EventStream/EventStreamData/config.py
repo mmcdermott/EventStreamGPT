@@ -2,14 +2,233 @@ from __future__ import annotations
 
 import dataclasses, pandas as pd
 
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
+from io import StringIO, TextIOBase
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Tuple, Union
+from textwrap import shorten, wrap
+from typing import Any, Dict, Hashable, List, Optional, Set, Sequence, Tuple, Union
 
-from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin
-from .time_dependent_functor import *
-from .types import TemporalityType, DataModality, NumericDataModalitySubtype
+from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin, num_initial_spaces
+from .time_dependent_functor import AgeFunctor, TimeOfDayFunctor, TimeDependentFunctor
+from .types import TemporalityType, DataModality, InputDFType, InputDataType
 from .vocabulary import Vocabulary
+
+DF_COL = Union[str, Sequence[str]]
+
+INPUT_COL_T = Union[InputDataType, Tuple[InputDataType, str]]
+
+DF_SCHEMA = Union[
+    # For cases where you specify a list of columns of a constant type.
+    Tuple[List[DF_COL], INPUT_COL_T],
+    # For specifying a single column and type.
+    Tuple[DF_COL, INPUT_COL_T],
+    # For specifying a dictionary of columns to types.
+    Dict[DF_COL, INPUT_COL_T],
+    # For specifying a dictionary of column in names to column out names and types.
+    Dict[DF_COL, Tuple[str, INPUT_COL_T]],
+    # For specifying a dictionary of column in names to out names, all of a constant type.
+    Tuple[Dict[DF_COL, str], INPUT_COL_T],
+]
+
+@dataclasses.dataclass
+class DatasetSchema(JSONableMixin):
+    static: Optional[Union[Dict[str, Any], InputDFSchema]] = None
+    dynamic: List[Union[InputDFSchema, Dict[str, Any]]] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self):
+        if self.static is None:
+            raise ValueError("Must specify a static schema!")
+
+        if type(self.static) is dict:
+            self.static = InputDFSchema(**self.static)
+            if not self.static.is_static: raise TypeError("Must pass a static schema config for static.")
+
+        if self.static.subject_id_col is None:
+            raise ValueError("Must specify a subject_id_col source for the static dataframe!")
+
+        if self.dynamic is not None:
+            new_dynamic = []
+            for v in self.dynamic:
+                if type(v) is dict: v = InputDFSchema(**v)
+                if v.subject_id_col is None: v.subject_id_col = self.static.subject_id_col
+
+                if v.subject_id_col != self.static.subject_id_col:
+                    print(
+                        f"WARNING: {v.input_df} subject ID col name ({v.subject_id_col}) differs from static "
+                        f"({self.static.subject_id_col})."
+                    )
+
+                new_dynamic.append(v)
+
+                if v.is_static: raise TypeError("Must pass dynamic schemas in `self.dynamic`!")
+            self.dynamic = new_dynamic
+
+        self.dynamic_by_df = defaultdict(list)
+        for v in self.dynamic: self.dynamic_by_df[v.input_df].append(v)
+        self.dynamic_by_df = {k: v for k, v in self.dynamic_by_df.items()}
+
+@dataclasses.dataclass
+class InputDFSchema(JSONableMixin):
+    input_df: Optional[Any] = None
+
+    type: Optional[InputDFType] = None
+    event_type: Optional[Union[str, Tuple[str, str, str]]] = None
+
+    subject_id_col: Optional[str] = None
+    ts_col: Optional[DF_COL] = None
+    start_ts_col: Optional[DF_COL] = None
+    end_ts_col: Optional[DF_COL] = None
+    ts_format: Optional[str] = "%Y-%m-%d %H:%M:%S"
+    start_ts_format: Optional[str] = None
+    end_ts_format: Optional[str] = None
+
+    data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
+
+    must_have: List[Union[str, Tuple[str, List[Any]]]] = dataclasses.field(default_factory=list)
+
+    @property
+    def is_static(self): return self.type == InputDFType.STATIC
+
+    def __post_init__(self):
+        if self.input_df is None: raise ValueError("Missing mandatory parameter input_df!")
+        if self.type is None: raise ValueError("Missing mandatory parameter type!")
+        if type(self.data_schema) is not list and self.data_schema is not None:
+            self.data_schema = [self.data_schema]
+
+        self.filter_on = {}
+        for filter_col in self.must_have:
+            match filter_col:
+                case str(): self.filter_on[filter_col] = True
+                case (str() as filter_col, list() as vals): self.filter_on[filter_col] = vals
+                case _: raise ValueError(f"Malformed filter: {filter_col}")
+
+        self.columns_to_load = []
+
+        match self.type:
+            case InputDFType.STATIC:
+                if self.subject_id_col is None:
+                    raise ValueError("Must set subject_id_col for static source!")
+                if self.event_type is not None:
+                    raise ValueError("Event_type can't be set if type == 'static'!")
+
+                for param in ('ts_col', 'start_ts_col', 'end_ts_col'):
+                    if getattr(self, param) is not None:
+                        raise ValueError(f"Set invalid param {param} for static source!")
+
+            case InputDFType.EVENT:
+                if self.ts_col is None: raise ValueError("Missing mandatory event parameter ts_col!")
+                match self.event_type:
+                    case None: raise ValueError("Missing mandatory range parameter event_type!")
+                    case str(): pass
+                    case _: raise TypeError(f"event_type must be a string for events. Got {self.event_type}")
+                if self.subject_id_col is not None:
+                    raise ValueError("subject_id_col should be None for non-static types!")
+                for param in ('start_ts_col', 'end_ts_col', 'start_ts_format', 'end_ts_format'):
+                    val = getattr(self, param)
+                    if val is not None:
+                        raise ValueError(f"{param} should be None for {self.type} schema: Got {val}")
+
+                if type(self.ts_col) is list:
+                    for c in self.ts_col:
+                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.ts_format)))
+                else: self.columns_to_load.append((self.ts_col, (InputDataType.TIMESTAMP, self.ts_format)))
+
+            case InputDFType.RANGE:
+                match self.event_type:
+                    case None: raise ValueError("Missing mandatory range parameter event_type!")
+                    case (str(), str(), str()): pass
+                    case str(): self.event_type = (
+                        self.event_type, f"{self.event_type}_START", f"{self.event_type}_END"
+                    )
+                    case _: raise TypeError(
+                        "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) for "
+                        f"ranges. Got {self.event_type}."
+                    )
+
+                if self.start_ts_col is None:
+                    raise ValueError("Missing mandatory range parameter start_ts_col!")
+                if self.end_ts_col is None:
+                    raise ValueError("Missing mandatory range parameter end_ts_col!")
+                if self.ts_col is not None:
+                    raise ValueError(f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}.")
+                if self.subject_id_col is not None:
+                    raise ValueError("subject_id_col should be None for non-static types!")
+                if self.start_ts_format is not None:
+                    if self.end_ts_format is None:
+                        raise ValueError(
+                            "If start_ts_format is specified, end_ts_format must also be specified!"
+                        )
+                    if self.ts_format is not None:
+                        raise ValueError(
+                            "If start_ts_format is specified, ts_format must be `None`!"
+                        )
+                else:
+                    if self.end_ts_format is not None:
+                        raise ValueError(
+                            "If end_ts_format is specified, start_ts_format must also be specified!"
+                        )
+                    if self.ts_format is None:
+                        raise ValueError(
+                            "If start_ts_format is not specified, ts_format must be specified!"
+                        )
+                    self.start_ts_format = self.ts_format
+                    self.end_ts_format = self.ts_format
+                    self.ts_format = None
+
+                if self.start_ts_col is list:
+                    for c in self.start_ts_col:
+                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.start_ts_format)))
+                else:
+                    self.columns_to_load.append((
+                        self.start_ts_col, (InputDataType.TIMESTAMP, self.start_ts_format)
+                    ))
+                if self.end_ts_col is list:
+                    for c in self.end_ts_col:
+                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.end_ts_format)))
+                else:
+                    self.columns_to_load.append((
+                        self.end_ts_col, (InputDataType.TIMESTAMP, self.end_ts_format)
+                    ))
+
+        self._set_unified_schema()
+
+    def __add_to_schema(self, in_col: str, dt: INPUT_COL_T, out_col: Optional[str] = None):
+        if out_col is None: out_col = in_col
+
+        if in_col in self.unified_schema:
+            raise ValueError(
+                f"Column {in_col} is repeated in schema!\n"
+                f"Existing: {self.unified_schema[in_col]}\n"
+                f"New: ({out_col}, {dt})"
+            )
+        elif type(in_col) is not str or type(out_col) is not str:
+            raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
+        self.unified_schema[in_col] = (out_col, dt)
+        self.columns_to_load.append((in_col, dt))
+
+    def _set_unified_schema(self):
+        self.unified_schema = {}
+        if self.data_schema is None: return
+
+        for schema in self.data_schema:
+            match schema:
+                case (str() as col, (InputDataType() | (InputDataType(), str())) as dt):
+                    self.__add_to_schema(in_col=col, dt=dt)
+                case (list() as cols, (InputDataType() | (InputDataType(), str())) as dt):
+                    for c in cols: self.__add_to_schema(in_col=c, dt=dt)
+                case dict():
+                    for in_col, schema_info in schema.items():
+                        match schema_info:
+                            case (out_col, (InputDataType() | (InputDataType(), str())) as dt):
+                                self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
+                            case (InputDataType() | (InputDataType(), str())) as dt:
+                                self.__add_to_schema(in_col=in_col, dt=dt)
+                            case _: raise ValueError(f"Schema Unprocessable!\n{schema_info}")
+                case (dict() as col_names_map, (InputDataType() | (InputDataType(), str())) as dt):
+                    for in_col, out_col in col_names_map.items():
+                        self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
+                case _:
+                    raise ValueError(f"Schema Unprocessable!\n{schema}")
 
 @dataclasses.dataclass
 class VocabularyConfig(JSONableMixin):
@@ -202,10 +421,6 @@ class MeasurementConfig(JSONableMixin):
             case TemporalityType.DYNAMIC:
                 assert self.functor is None
 
-                if self.modality == DataModality.UNIVARIATE_REGRESSION:
-                    raise NotImplementedError(
-                        f"Dynamic measures don't yet support fully observed regression measures."
-                    )
             case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
                 assert self.functor is not None
                 assert self.present_in_event_types is None
@@ -240,6 +455,7 @@ class MeasurementConfig(JSONableMixin):
 
     @property
     def is_dropped(self) -> bool: return self.modality == DataModality.DROPPED
+
     @property
     def is_numeric(self) -> bool:
         return self.modality in (
@@ -325,6 +541,49 @@ class MeasurementConfig(JSONableMixin):
     def __eq__(self, other: MeasurementConfig) -> bool:
         return self.to_dict() == other.to_dict()
 
+    def describe(self, line_width: int = 60, wrap_lines: bool = False, stream: Optional[TextIOBase] = None) -> Optional[int]:
+        lines = []
+        lines.append(
+            f"{self.name}: {self.temporality}, {self.modality} observed {100*self.observation_frequency:.1f}%"
+        )
+
+        match self.modality:
+            case DataModality.UNIVARIATE_REGRESSION:
+                lines.append(f"Value is a {self.measurement_metadata.value_type}")
+            case DataModality.MULTIVARIATE_REGRESSION:
+                lines.append("Value Types:")
+                for t, cnt in self.measurement_metadata.value_type.value_counts().items():
+                    lines.append(f"  {cnt} {t}")
+            case DataModality.MULTI_LABEL_CLASSIFICATION: pass
+            case DataModality.SINGLE_LABEL_CLASSIFICATION: pass
+            case _: raise ValueError(f"Can't describe {self.modality} measure {self.name}!")
+
+        if self.vocabulary is not None:
+            SIO = StringIO()
+            self.vocabulary.describe(
+                line_width=line_width-2, stream=SIO, wrap_lines=wrap_lines
+            )
+            lines.append("Vocabulary:")
+            lines.extend(f"  {line}" for line in SIO.getvalue().split('\n'))
+
+        line_indents = [num_initial_spaces(line) for line in lines]
+        if wrap_lines:
+            lines = [
+                wrap(line, width=line_width, initial_indent='', subsequent_indent=(' '*ind))
+                for line, ind in zip(lines, line_indents)
+            ]
+        else:
+            lines = [
+                shorten(line, width=line_width, initial_indent=(' '*ind))
+                for line, ind in zip(lines, line_indents)
+            ]
+
+        desc = '\n'.join(lines)
+        if stream is None:
+            print(desc)
+            return
+        return stream.write(desc)
+
 @dataclasses.dataclass
 class EventStreamDatasetConfig(JSONableMixin):
     """
@@ -376,9 +635,19 @@ class EventStreamDatasetConfig(JSONableMixin):
             the specified class. The API of these objects is expected to mirror scikit-learn normalization
             system APIs.
             If `None`, numerical values are not normalized.
+
+        `save_dir`
+
+        `agg_by_time_scale` (`Optional[str]`...
+            Uses the string language described here:
+            https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
     """
 
     measurement_configs: Dict[str, MeasurementConfig] = dataclasses.field(default_factory = lambda: {})
+
+    min_events_per_subject: Optional[int] = None
+
+    agg_by_time_scale: Optional[str] = '1h'
 
     min_valid_column_observations: Optional[COUNT_OR_PROPORTION] = None
     min_valid_vocab_element_observations: Optional[COUNT_OR_PROPORTION] = None
@@ -416,7 +685,7 @@ class EventStreamDatasetConfig(JSONableMixin):
             val = getattr(self, var)
             if val is not None: assert type(val) is dict and 'cls' in val
 
-        for k, v in self.measurement_configs.items(): 
+        for k, v in self.measurement_configs.items():
             try: v._validate()
             except Exception as e:
                 raise ValueError(f"Measurement config {k} invalid!") from e
@@ -443,9 +712,9 @@ class EventStreamDatasetConfig(JSONableMixin):
     @classmethod
     def from_simple_args(
         cls,
-        dynamic_measurement_columns: Optional[Sequnce[Union[str, Tuple[str, str]]]] = None,
-        static_measurement_columns: Optional[Sequnce[str]] = None,
-        time_dependent_measurement_columns: Optional[Sequnce[Tuple[str, TimeDependentFunctor]]] = None,
+        dynamic_measurement_columns: Optional[Sequence[Union[str, Tuple[str, str]]]] = None,
+        static_measurement_columns: Optional[Sequence[str]] = None,
+        time_dependent_measurement_columns: Optional[Sequence[Tuple[str, TimeDependentFunctor]]] = None,
         **kwargs
     ) -> 'EventStreamDatasetConfig':
         """

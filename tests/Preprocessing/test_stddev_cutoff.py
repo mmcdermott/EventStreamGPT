@@ -1,10 +1,9 @@
 import sys
 sys.path.append('../..')
 
-import math, unittest, numpy as np, polars as pl
+import unittest, numpy as np, polars as pl
 
 from ..mixins import MLTypeEqualityCheckableMixin
-from typing import Dict
 
 from EventStream.Preprocessing.stddev_cutoff import StddevCutoffOutlierDetector
 

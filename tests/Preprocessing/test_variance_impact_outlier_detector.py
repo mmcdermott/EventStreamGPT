@@ -4,13 +4,8 @@ sys.path.append('../..')
 import math, unittest, numpy as np, polars as pl
 
 from ..mixins import MLTypeEqualityCheckableMixin
-from typing import Dict
-from unittest.mock import MagicMock
 
-from EventStream.Preprocessing.variance_impact_outlier_detector import (
-    VarianceImpactOutlierDetector
-)
-
+from EventStream.Preprocessing.variance_impact_outlier_detector import VarianceImpactOutlierDetector
 
 class TestVarianceImpactOutlierDetector(MLTypeEqualityCheckableMixin, unittest.TestCase):
     """Tests the VarianceImpactOutlierDetector class."""
@@ -90,9 +85,9 @@ class TestVarianceImpactOutlierDetector(MLTypeEqualityCheckableMixin, unittest.T
 
         got = X.groupby('k').agg(deviations_expr.alias('d'))
 
-        got_deviations = got.select(pl.col('d').struct.field('deviations'))[:,0].to_list()
-        got_count_pos = got.select(pl.col('d').struct.field('count_pos'))[:,0].to_list()
-        got_count_neg = got.select(pl.col('d').struct.field('count_neg'))[:,0].to_list()
+        got_deviations = got.select(pl.col('d').struct.field('deviations'))[:, 0].to_list()
+        got_count_pos = got.select(pl.col('d').struct.field('count_pos'))[:, 0].to_list()
+        got_count_neg = got.select(pl.col('d').struct.field('count_neg'))[:, 0].to_list()
 
         self.assertEqual(want_deviations, got_deviations)
         self.assertEqual(want_count_pos, got_count_pos)
@@ -114,8 +109,6 @@ class TestVarianceImpactOutlierDetector(MLTypeEqualityCheckableMixin, unittest.T
 
         actual_delta_1 = M._max_deviation_factor(28, 0.1)*want_inliers.std() + 1
         actual_delta_2 = M._max_deviation_factor(30, 0.1)*want_inliers.std() + 100
-        #print('actual delta 1', actual_delta_1)
-        #print('actual delta 2', actual_delta_2)
 
         def max_L_mock(_, N): return 0*N + 3
         M._max_L = max_L_mock.__get__(M, VarianceImpactOutlierDetector)

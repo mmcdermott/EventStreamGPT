@@ -3,6 +3,17 @@ from typing import Dict, Optional, Union
 
 from ..utils import StrEnum
 
+class InputDFType(StrEnum):
+    STATIC = enum.auto()
+    EVENT = enum.auto()
+    RANGE = enum.auto()
+
+class InputDataType(StrEnum):
+    CATEGORICAL = enum.auto()
+    FLOAT = enum.auto()
+    TIMESTAMP = enum.auto()
+    BOOLEAN = enum.auto()
+
 @dataclasses.dataclass
 class EventStreamPytorchBatch:
     event_mask: Optional[torch.BoolTensor] = None
@@ -23,20 +34,26 @@ class EventStreamPytorchBatch:
 
     @property
     def batch_size(self) -> int: return self.event_mask.shape[0]
+
     @property
     def sequence_length(self) -> int: return self.event_mask.shape[1]
+
     @property
     def n_data_elements(self) -> int: return self.dynamic_indices.shape[2]
+
     @property
     def n_static_data_elements(self) -> int: return self.static_indices.shape[1]
 
     def __getitem__(self, item: str) -> torch.Tensor: return dataclasses.asdict(self)[item]
+
     def __setitem__(self, item: str, val: torch.Tensor):
         if not hasattr(self, item): raise KeyError(f"Key {item} not found")
         setattr(self, item, val)
 
     def items(self): return dataclasses.asdict(self).items()
+
     def keys(self): return dataclasses.asdict(self).items()
+
     def values(self): return dataclasses.asdict(self).items()
 
 class TemporalityType(StrEnum):

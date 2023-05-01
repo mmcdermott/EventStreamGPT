@@ -5,9 +5,7 @@ import time
 import warnings
 from abc import ABC
 from copy import deepcopy
-from typing import Any, Optional
-
-import torch
+from typing import Optional
 
 from transformers.utils import add_start_docstrings
 
