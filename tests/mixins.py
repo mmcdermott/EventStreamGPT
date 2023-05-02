@@ -6,10 +6,10 @@ from polars.testing import assert_frame_equal as assert_pl_frame_equal
 
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
 
-from EventStream.EventStreamData.config import EventStreamDatasetConfig, MeasurementConfig
-from EventStream.EventStreamData.vocabulary import Vocabulary
-from EventStream.EventStreamTransformer.config import StructuredEventStreamTransformerConfig
-from EventStream.EventStreamTransformer.model_output import EventStreamTransformerOutputWithPast
+from EventStream.data.config import DatasetConfig, MeasurementConfig
+from EventStream.data.vocabulary import Vocabulary
+from EventStream.transformer.config import StructuredTransformerConfig
+from EventStream.transformer.model_output import TransformerOutputWithPast
 
 ASSERT_FN = Callable[[Any, Any, Optional[str]], None]
 
@@ -182,9 +182,9 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
             self.assertEqual(want_metadata, got_metadata, msg=f"{msg}: Series metadata not equal")
 
     def setUp(self):
-        self.addTypeEqualityFunc(StructuredEventStreamTransformerConfig, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(StructuredTransformerConfig, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(MeasurementConfig, self.assert_measurement_config_equal)
-        self.addTypeEqualityFunc(EventStreamDatasetConfig, self.assert_type_and_vars_equal)
-        self.addTypeEqualityFunc(EventStreamTransformerOutputWithPast, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(DatasetConfig, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(TransformerOutputWithPast, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(Vocabulary, self.assert_vocabulary_equal)
         super().setUp()
