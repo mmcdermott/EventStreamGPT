@@ -1,0 +1,106 @@
+program: pretrain.py
+method: bayes
+name: hyperparameter_tuning_sweep
+metric:
+    goal: minimize
+    name: tuning_loss
+parameters:
+    max_seq_len:
+        min: 16
+        max: 512
+    head_dim:
+        min: 2
+        max: 64
+    num_attention_heads:
+        min: 1
+        max: 16
+    num_hidden_layers:
+        min: 1
+        max: 16
+    resid_dropout:
+        min: 0.0
+        max: 0.5
+    input_dropout:
+        min: 0.0
+        max: 0.5
+    attention_dropout:
+        min: 0.0
+        max: 0.5
+
+    structured_event_processing_mode:
+        values: ['conditionally_independent', 'nested_attention']
+    seq_attention_types:
+        values: ['global', 'local', 'local,global', 'global,local']
+    dep_graph_attention_types:
+        values: ['global']
+    seq_window_size:
+        min: 2
+        max: 64
+    do_add_temporal_position_embeddings_to_data_embeddings:
+        values: [True, False]
+    do_full_block_in_seq_attention:
+        values: [True, False]
+    do_full_block_in_dep_graph_attention:
+        values: [True, False]
+
+    TTE_generation_layer_type:
+        values: ['exponential', 'log_normal_mixture']
+    TTE_lognormal_generation_num_components:
+        min: 1
+        max: 16
+
+    static_embedding_mode:
+        values: ['sum_all', 'drop']
+    do_normalize_by_measurement_index:
+        values: [True, False]
+    do_split_embeddings:
+        values: [True, False]
+    categorical_embedding_dim:
+        min: 16
+        max: 128
+    numerical_embedding_dim:
+        min: 16
+        max: 128
+    static_weight:
+        min: 0.0
+        max: 1.0
+    categorical_weight:
+        min: 0.0
+        max: 1.0
+
+    # SPECIALIZE THIS FOR YOUR DATASET
+    # measurement_dependency_graph:
+    #     values:
+    #         - None
+    #         - [['event_type'], ['metric1'], ['metric2']]
+    #         - [['event_type', 'metric1', ('metric2', 'categorical_only')], [('metric2', 'numerical_only')]]
+
+    batch_size:
+        min: 8
+        max: 128
+    lr_frac_warmup_steps:
+        distribution: log_uniform_values
+        min: 1e-6
+        max: 5e-1
+    lr_decay_power:
+        min: 0.5
+        max: 5.0
+    weight_decay:
+        min: 0.0
+        max: 1.0
+    init_lr:
+        distribution: log_uniform_values
+        min: 1e-6
+        max: 1e-2
+    end_lr_frac_of_init_lr:
+        distribution: log_uniform_values
+        min: 1e-4
+        max: 0.9
+early_terminate:
+    type: hyperband
+    min_iter: 1000
+command:
+    - ${env}
+    - ${interpreter}
+    - ${program}
+    - ${args_no_boolean_flags}
