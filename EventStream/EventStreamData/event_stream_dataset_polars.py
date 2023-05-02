@@ -22,6 +22,7 @@ class Query:
     query: Union[str, Path, List[Union[str, Path]]]
     partition_on: Optional[str] = None
     partition_num: Optional[int] = None
+    protocol: str = 'binary'
 
 
 DF_T = Union[pl.LazyFrame, pl.DataFrame, pl.Expr, pl.Series]
@@ -88,12 +89,23 @@ class EventStreamDataset(EventStreamDatasetBase[DF_T, INPUT_DF_T]):
             case pl.DataFrame(): df = df.lazy()
             case pl.LazyFrame(): pass
             case Query() as q:
+
+                query = q.query
+                if type(query) is not list: query = [query]
+                out_query = []
+                for qq in query:
+                    if type(qq) is Path:
+                        with open(qq, mode='r') as f: qq = f.read()
+                    elif type(qq) is not str:
+                        raise ValueError(f"{type(qq)} is an invalid query.")
+                    out_query.append(qq)
+
                 partition_on = subject_id_col if q.partition_on is None else q.partition_on
                 partition_num = multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
 
                 df = pl.read_database(
                     query=q.query, connection_uri=q.connection_uri, partition_on=partition_on,
-                    partition_num=partition_num,
+                    partition_num=partition_num, protocol=q.protocol,
                 ).lazy()
             case _: raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
 

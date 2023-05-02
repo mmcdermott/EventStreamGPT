@@ -83,6 +83,8 @@ class InputDFSchema(JSONableMixin):
     end_ts_format: Optional[str] = None
 
     data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
+    start_data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
+    end_data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
 
     must_have: List[Union[str, Tuple[str, List[Any]]]] = dataclasses.field(default_factory=list)
 
@@ -94,6 +96,10 @@ class InputDFSchema(JSONableMixin):
         if self.type is None: raise ValueError("Missing mandatory parameter type!")
         if type(self.data_schema) is not list and self.data_schema is not None:
             self.data_schema = [self.data_schema]
+        if type(self.start_data_schema) is not list and self.start_data_schema is not None:
+            self.start_data_schema = [self.start_data_schema]
+        if type(self.end_data_schema) is not list and self.end_data_schema is not None:
+            self.end_data_schema = [self.end_data_schema]
 
         self.filter_on = {}
         for filter_col in self.must_have:
@@ -123,7 +129,10 @@ class InputDFSchema(JSONableMixin):
                     case _: raise TypeError(f"event_type must be a string for events. Got {self.event_type}")
                 if self.subject_id_col is not None:
                     raise ValueError("subject_id_col should be None for non-static types!")
-                for param in ('start_ts_col', 'end_ts_col', 'start_ts_format', 'end_ts_format'):
+                for param in (
+                    'start_ts_col', 'end_ts_col', 'start_ts_format', 'end_ts_format', 'start_data_schema',
+                    'end_data_schema',
+                ):
                     val = getattr(self, param)
                     if val is not None:
                         raise ValueError(f"{param} should be None for {self.type} schema: Got {val}")
@@ -144,6 +153,17 @@ class InputDFSchema(JSONableMixin):
                         "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) for "
                         f"ranges. Got {self.event_type}."
                     )
+
+                if self.data_schema is not None:
+                    for param in ('start_data_schema', 'end_data_schema'):
+                        val = getattr(self, param)
+                        if val is not None: 
+                            raise ValueError(
+                                f"{param} can't be simultaneously set with `self.data_schema`! Got {val}"
+                            )
+
+                    self.start_data_schema = self.data_schema
+                    self.end_data_schema = self.data_schema
 
                 if self.start_ts_col is None:
                     raise ValueError("Missing mandatory range parameter start_ts_col!")
@@ -192,22 +212,71 @@ class InputDFSchema(JSONableMixin):
 
         self._set_unified_schema()
 
-    def __add_to_schema(self, in_col: str, dt: INPUT_COL_T, out_col: Optional[str] = None):
+    def _set_unified_schema(self):
+        match self.type:
+            case InputDFType.EVENT: self._set_unified_event_schema()
+            case InputDFType.RANGE: 
+                self._set_unified_start_schema()
+                self._set_unified_end_schema()
+                self._set_unified_joint_st_end_schema()
+            case InputDFType.STATIC: self._set_unified_event_schema()
+
+    @property
+    def columns_to_load(self) -> List[Tuple[str, InputDataType]]:
+        for in_col, (out_col, dt) in self.unified_schema.items():
+            self.columns_to_load.append((in_col, dt))
+
+    @classmethod
+    def __add_to_schema(
+        cls, container: Dict[str, Tuple[str, InputDataType]],
+        in_col: str, dt: INPUT_COL_T, out_col: Optional[str] = None
+    ):
         if out_col is None: out_col = in_col
 
-        if in_col in self.unified_schema:
+        if type(in_col) is not str or type(out_col) is not str:
+            raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
+        elif in_col in container:
             raise ValueError(
                 f"Column {in_col} is repeated in schema!\n"
-                f"Existing: {self.unified_schema[in_col]}\n"
+                f"Existing: {container[in_col]}\n"
                 f"New: ({out_col}, {dt})"
             )
-        elif type(in_col) is not str or type(out_col) is not str:
-            raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
-        self.unified_schema[in_col] = (out_col, dt)
-        self.columns_to_load.append((in_col, dt))
+        container[in_col] = (out_col, dt)
 
-    def _set_unified_schema(self):
+    @classmethod
+    def _unify_schema(
+        cls, data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]]
+    ) -> Dict[str, Tuple[str, InputDataType]]:
+        if data_schema is None: return {}
+
+        unified_schema = {}
+        for schema in data_schema:
+            match schema:
+                case (str() as col, (InputDataType() | (InputDataType(), str())) as dt):
+                    cls.__add_to_schema(unified_schema, in_col=col, dt=dt)
+                case (list() as cols, (InputDataType() | (InputDataType(), str())) as dt):
+                    for c in cols: cls.__add_to_schema(unified_schema, in_col=c, dt=dt)
+                case dict():
+                    for in_col, schema_info in schema.items():
+                        match schema_info:
+                            case (out_col, (InputDataType() | (InputDataType(), str())) as dt):
+                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
+                            case (InputDataType() | (InputDataType(), str())) as dt:
+                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
+                            case _: raise ValueError(f"Schema Unprocessable!\n{schema_info}")
+                case (dict() as col_names_map, (InputDataType() | (InputDataType(), str())) as dt):
+                    for in_col, out_col in col_names_map.items():
+                        cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
+                case _:
+                    raise ValueError(f"Schema Unprocessable!\n{schema}")
+
+        return unified_schema
+
+
+
+    def _set_unified_event_schema(self):
         self.unified_schema = {}
+
         if self.data_schema is None: return
 
         for schema in self.data_schema:
@@ -229,6 +298,12 @@ class InputDFSchema(JSONableMixin):
                         self.__add_to_schema(in_col=in_col, dt=dt, out_col=out_col)
                 case _:
                     raise ValueError(f"Schema Unprocessable!\n{schema}")
+
+    def _set_unified_start_schema(self):
+        self.unified_start_schema = {}
+
+    def _set_unified_end_schema(self):
+        
 
 @dataclasses.dataclass
 class VocabularyConfig(JSONableMixin):
