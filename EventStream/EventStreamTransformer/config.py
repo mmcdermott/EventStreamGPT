@@ -12,6 +12,14 @@ from ..EventStreamData.types import DataModality
 MEAS_INDEX_GROUP_T = Union[str, Tuple[str, MeasIndexGroupOptions]]
 
 @dataclasses.dataclass
+class MetricsConfig(JSONableMixin):
+    n_auc_thresholds: Optional[int] = 100
+    include_explained_variance: bool = False
+    include_auprc: bool = False
+    include_auroc: bool = True
+    include_accuracy: bool = True
+
+@dataclasses.dataclass
 class EventStreamOptimizationConfig(JSONableMixin):
     """
     A configuration object for optimization variables for training a `StructuredEventStreamTransformer` model.
