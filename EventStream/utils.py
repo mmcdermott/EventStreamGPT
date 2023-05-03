@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import dataclasses, enum, json, numpy as np, pandas as pd, polars as pl
+import dataclasses, enum, functools, hydra, json, numpy as np, pandas as pd, polars as pl
+import re
 
 from importlib.util import find_spec
 from pathlib import Path
@@ -146,26 +147,16 @@ def task_wrapper(task_func: Callable) -> Callable:
     ```
     """
 
-    def wrap(cfg: DictConfig):
-        # execute the task
+    @functools.wraps(task_func)
+    def wrap(*args, **kwargs):
         try:
-            fn_return = task_func(cfg=cfg)
-
-        # things to do if exception occurs
+            fn_return = task_func(*args, **kwargs)
         except Exception as ex:
-            # save exception to `.log` file
-            log.exception("")
-
             # some hyperparameter combinations might be invalid or cause out-of-memory errors
             # so when using hparam search plugins like Optuna, you might want to disable
             # raising the below exception to avoid multirun failure
             raise ex
-
-        # things to always do after either success or exception
         finally:
-            # display output dir path in terminal
-            log.info(f"Output dir: {cfg.paths.output_dir}")
-
             # always close wandb run (even if exception occurs so multirun won't fail)
             if find_spec("wandb"):  # check if wandb is installed
                 import wandb
@@ -177,3 +168,30 @@ def task_wrapper(task_func: Callable) -> Callable:
         return fn_return
 
     return wrap
+
+def hydra_dataclass(dataclass: Any) -> Any:
+    """Decorator that allows you to use a dataclass as a hydra config by adding it to the hydra store
+
+    Example:
+    ```
+    @hydra_dataclass
+    class MyConfig:
+        foo: int = 1
+        bar: str = "baz"
+
+    # Name of the config is the snake case version of the (CamelCase) class name
+    @hydra.main(config_name="my_config")
+    def main(cfg: MyConfig) -> None:
+        print(cfg.foo, cfg.bar)
+    ```
+    """
+
+    dataclass = dataclasses.dataclass(dataclass)
+
+    name = dataclass.__name__
+    name = re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+
+    cs = hydra.core.config_store.ConfigStore.instance()
+    cs.store(name=name, node=dataclass)
+
+    return dataclass

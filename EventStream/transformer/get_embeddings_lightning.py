@@ -1,4 +1,4 @@
-import torch, pandas as pd, lightning as L
+import dataclasses, torch, pandas as pd, lightning as L
 from pathlib import Path
 from tqdm.auto import tqdm
 from typing import Any, Dict, Optional, Sequence, Union
@@ -9,6 +9,7 @@ from .utils import safe_masked_max, safe_weighted_avg
 from ..data.dataset_polars import Dataset
 from ..data.config import PytorchDatasetConfig
 from ..data.pytorch_dataset import PytorchDataset
+from ..utils import hydra_dataclass
 
 class EmbeddingsOnlyModel(StructuredTransformerPreTrainedModel):
     def __init__(self, config: StructuredTransformerConfig):
@@ -70,116 +71,119 @@ class ESTForEmbedding(L.LightningModule):
         event_encoded = event_encoded.transpose(1, 2)
 
         match self.pooling_method:
-            case 'cls': return event_encoded[:, :, 0]
             case 'last': return event_encoded[:, :, -1]
             case 'max': return safe_masked_max(event_encoded, batch['event_mask'])
             case 'mean': return safe_weighted_avg(event_encoded, batch['event_mask'])[0]
             case 'none': return event_encoded
             case _: raise ValueError(f"{self.pooling_method} is not a supported pooling method.")
 
-def get_embeddings(
-    load_model_dir: Path,
-    dataset_dir: Optional[Path] = None,
-    dataset: Optional[Dataset] = None,
-    task_df: Optional[pd.DataFrame] = None,
-    task_df_name: Optional[str] = None,
-    batch_size: int = 32,
-    num_dataloader_workers: int = 1,
-    pooling_method: str = 'last',
-    save_embeddings_dir: Optional[Path] = None,
-    config: Optional[StructuredTransformerConfig] = None,
-    data_config: Optional[PytorchDatasetConfig] = None,
-    do_overwrite: bool = False,
-    get_embeddings_on_splits: Sequence[str] = ['held_out'],
-    pyds: Optional[Sequence[PytorchDataset]] = None,
-    do_load_only: bool = False,
-):
+@hydra_dataclass
+class GetEmbeddingsConfig:
+    save_dir: Optional[Union[str, Path]] = None
+    load_model_dir: Union[str, Path] = omegaconf.MISSING
+    do_overwrite: bool = False
+
+    batch_size: int = 32
+    pooling_method: str = 'last'
+    splits: List[str] = dataclasses.field(defaultfactory=lambda: ['train', 'tuning', 'held_out'])
+
+    data_config: Optional[PytorchDatasetConfig] = None
+
+    task_df_name: str = omegaconf.MISSING
+    task_df_fp: Optional[Union[str, Path]] = None
+
+    wandb_name: Optional[str] = 'generative_event_stream_transformer'
+    wandb_project: Optional[str] = None
+    wandb_team: Optional[str] = None
+    extra_wandb_log_params: Optional[Dict[str, Any]] = None
+    log_every_n_steps: int = 50
+
+    num_dataloader_workers: int = 1
+
+    do_detect_anomaly: bool = False
+    do_final_validation_on_metrics: bool = True
+    do_load_only: bool = False
+
+    def __post_init__(self):
+        for param in ('save_dir', 'task_df_fp', 'load_model_dir'):
+            val = getattr(self, param)
+            if type(val) is str and val != omegaconf.MISSING:
+                setattr(self, param, Path(val))
+
+        if self.task_df_name is None and self.task_df_fp is not None:
+            self.task_df_name = self.task_df_fp.stem
+
+def get_embeddings(cfg: GetEmbeddingsConfig, return_early: bool = False):
     """
-    Gets the embeddings for the model saved in `load_model_dir`.
+    Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
+
+    Args: TODO
     """
 
-    assert load_model_dir.is_dir()
+    if not cfg.load_model_dir.is_dir():
+        raise FileNotFoundError(f"The model directory {cfg.load_model_dir} does not exist.")
+    if cfg.save_dir is None:
+        cfg.save_dir = cfg.load_model_dir / 'embeddings'
 
-    if save_embeddings_dir is None:
-        save_embeddings_dir = load_model_dir / 'embeddings'
-        save_embeddings_dir.mkdir(parents=False, exist_ok=True)
+    cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
-    embeddings_fps = [save_embeddings_dir / f'{split}_embeddings.pt' for split in get_embeddings_on_splits]
+    embeddings_fps = [cfg.save_dir / f'{split}.pt' for split in cfg.splits]
     all_present = all([fp.is_file() for fp in embeddings_fps])
 
-    if do_load_only:
-        if all_present: return [torch.load(fp) for fp in embeddings_fps]
-        else: raise FileNotFoundError(f"Embeddings not found at {embeddings_fps}.")
-    elif all_present and not do_overwrite:
-        print(f"Embeddings already exist at {embeddings_fps}. To overwrite, set `do_overwrite=True`.")
+    if cfg.do_load_only:
+        for fp in embeddings_fps:
+            if not fp.is_file():
+                raise FileNotFoundError(f"Embeddings not found at {fp} but do_load_only=True.")
         return [torch.load(fp) for fp in embeddings_fps]
 
-    if data_config is None:
-        data_config = PytorchDatasetConfig.from_json_file(load_model_dir / 'data_config.json')
+    if cfg.data_config is None:
+        cfg.data_config = PytorchDatasetConfig.from_json_file(cfg.load_model_dir / 'data_config.json')
 
-    if config is None:
-        config = StructuredTransformerConfig.from_json_file(load_model_dir / 'config.json')
-        if config.task_specific_params is None: config.task_specific_params = {}
+    config = StructuredTransformerConfig.from_json_file(cfg.load_model_dir / 'config.json')
+    if config.task_specific_params is None: config.task_specific_params = {}
         config.task_specific_params['pooling_method'] = pooling_method
 
-        if config.max_seq_len != data_config.max_seq_len:
+        if config.max_seq_len != cfg.data_config.max_seq_len:
             print(
                 f"Warning: `config.max_seq_len` ({config.max_seq_len}) != `data_config.max_seq_len` "
-                f"({data_config.max_seq_len})."
+                f"({cfg.data_config.max_seq_len}). Resetting data_config to match."
             )
-            data_config.max_seq_len = config.max_seq_len
+            cfg.data_config.max_seq_len = config.max_seq_len
 
-    # Creating training/tuning datasets
-    assert task_df_name is not None
-    if task_df is None:
-        assert dataset_dir is not None
-        task_df = pd.read_csv(dataset_dir / 'task_dfs' / f'{task_df_name}.csv')
+    # Creating training/tuning datasets"${data_config.save_dir}/task_dfs/${task_df_name}.parquet"
+    if cfg.task_df_fp is None:
+        if cfg.task_df_name is None:
+            raise ValueError("Either `task_df_fp` or `task_df_name` must be provided.")
+        cfg.task_df_fp = cfg.data_config.save_dir / 'task_dfs' / f"{cfg.task_df_name}.parquet"
+    task_df = pd.read_parquet(cfg.task_df_fp)
 
     data_config.to_json_file(save_embeddings_dir / "data_config.json", do_overwrite=do_overwrite)
-    task_df.to_csv(save_embeddings_dir / "task_df.csv")
+    task_df.to_parquet(save_embeddings_dir / "task_df.parquet")
     config.to_json_file(save_embeddings_dir / "config.json")
 
     # Datasets
-    if pyds is None:
-        pyds = PytorchDataset.load_or_create(
-            data_dir=dataset_dir,
-            config=data_config,
-            splits=get_embeddings_on_splits,
-            data=dataset,
-            task_df=task_df,
-            task_df_name=task_df_name,
-        )
-
     # Model
-    pretrained_weights_fp = load_model_dir / 'pretrained_weights'
+    pretrained_weights_fp = cfg.load_model_dir / 'pretrained_weights'
     if not pretrained_weights_fp.is_dir():
         raise FileNotFoundError(f"Couldn't find pretrained weights at {pretrained_weights_fp}.")
     LM = ESTForEmbedding(config, pretrained_weights_fp)
 
     out = []
-    for split, embeddings_fp, pyd in tqdm(
-        list(zip(get_embeddings_on_splits, embeddings_fps, pyds)),
-        desc="Getting Embeddings", leave=False
-    ):
+    for split, embeddings_fp in tqdm(list(zip(cfg.splits, embeddings_fps)), desc="Embeddings", leave=False):
         if embeddings_fp.is_file() and not do_overwrite:
             print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
             out.append(torch.load(embeddings_fp))
             continue
 
-        if pyd.max_seq_len != data_config.max_seq_len:
-            print(f"Warning: `pyd.max_seq_len` ({pyd.max_seq_len}) != `data_config.max_seq_len` ({data_config.max_seq_len}).")
-            pyd.max_seq_len = data_config.max_seq_len
+        pyd = PytorchDataset(config=data_config, split=split, task_df=task_df)
 
         # Setting up torch dataloader
         dataloader = torch.utils.data.DataLoader(
-            pyd,
-            batch_size = batch_size,
-            num_workers = num_dataloader_workers,
-            collate_fn = pyd.collate,
-            shuffle = False,
+            pyd, batch_size=cfg.batch_size, num_workers=cfg.num_dataloader_workers, collate_fn=pyd.collate,
+            shuffle=False,
         )
 
-        checkpoints_dir = save_embeddings_dir / "model_checkpoints"
+        checkpoints_dir = cfg.save_dir / "model_checkpoints"
 
         trainer_kwargs = {'max_epochs': 1, 'default_root_dir': checkpoints_dir}
 

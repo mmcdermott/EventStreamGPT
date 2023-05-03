@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import dataclasses, pandas as pd
+import dataclasses, omegaconf, pandas as pd
 
 from collections import defaultdict, OrderedDict
 from io import StringIO, TextIOBase
@@ -8,7 +8,7 @@ from pathlib import Path
 from textwrap import shorten, wrap
 from typing import Any, Dict, Hashable, List, Optional, Set, Sequence, Tuple, Union
 
-from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin, num_initial_spaces
+from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin, num_initial_spaces, hydra_dataclass
 from .time_dependent_functor import AgeFunctor, TimeOfDayFunctor, TimeDependentFunctor
 from .types import TemporalityType, DataModality, InputDFType, InputDataType
 from .vocabulary import Vocabulary
@@ -318,7 +318,7 @@ class VocabularyConfig(JSONableMixin):
             (len(self.vocab_offsets_by_measurement) - len(self.vocab_sizes_by_measurement))
         )
 
-@dataclasses.dataclass
+@hydra_dataclass
 class PytorchDatasetConfig(JSONableMixin):
     """
     Configuration options for building a PyTorch dataset from an `Dataset`.
@@ -335,11 +335,11 @@ class PytorchDatasetConfig(JSONableMixin):
         `do_produce_static_data` (`bool`):
             Whether or not to produce static data when processing the dataset.
     """
+    save_dir: Path = omegaconf.MISSING
+
     max_seq_len: int = 256
     min_seq_len: int = 2
     seq_padding_side: str = 'right'
-
-    save_dir: Optional[Path] = None
 
     def __post_init__(self):
         assert self.seq_padding_side in ('left', 'right')
@@ -347,7 +347,8 @@ class PytorchDatasetConfig(JSONableMixin):
         assert self.max_seq_len >= 1
         assert self.max_seq_len >= self.min_seq_len
 
-        if type(self.save_dir) is str: self.save_dir = Path(self.save_dir)
+        if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
+            self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
         """Represents this configuation object as a plain dictionary."""

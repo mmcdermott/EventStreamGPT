@@ -1,0 +1,23 @@
+max_epochs: 100
+patience: 5
+batch_size:
+  min: 8
+  max: 128
+lr_frac_warmup_steps:
+  distribution: log_uniform_values
+  min: 1e-6
+  max: 5e-1
+lr_decay_power:
+  min: 0.5
+  max: 5.0
+weight_decay:
+  min: 0.0
+  max: 1.0
+init_lr:
+  distribution: log_uniform_values
+  min: 1e-6
+  max: 1e-2
+end_lr_frac_of_init_lr:
+  distribution: log_uniform_values
+  min: 1e-4
+  max: 0.9

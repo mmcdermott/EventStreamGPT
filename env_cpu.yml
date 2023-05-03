@@ -1,5 +1,6 @@
-name: ESML_cpu
+name: RAMMS_cpu
 channels:
+  - plotly
   - pytorch
   - conda-forge
   - defaults
@@ -70,6 +71,7 @@ dependencies:
   - fastapi=0.88.0=pyhd8ed1ab_0
   - ffmpeg=4.2.2=h20bf706_0
   - filelock=3.9.0=py310h06a4308_0
+  - flake8=6.0.0=py310h06a4308_0
   - flit-core=3.8.0=py310h06a4308_0
   - fontconfig=2.14.1=h4c34cd2_2
   - fonttools=4.25.0=pyhd3eb1b0_0
@@ -175,6 +177,7 @@ dependencies:
   - matplotlib=3.7.0=py310h06a4308_0
   - matplotlib-base=3.7.0=py310h1128e8f_0
   - matplotlib-inline=0.1.6=py310h06a4308_0
+  - mccabe=0.7.0=pyhd3eb1b0_0
   - mdurl=0.1.0=pyhd8ed1ab_0
   - mistune=0.8.4=py310h7f8727e_1000
   - mkl=2021.4.0=h06a4308_640
@@ -222,11 +225,12 @@ dependencies:
   - pip=23.0.1=py310h06a4308_0
   - pkginfo=1.9.6=pyhd8ed1ab_0
   - platformdirs=2.5.2=py310h06a4308_0
+  - plotly=5.14.1=py_0
   - ply=3.11=py310h06a4308_0
   - poetry=1.4.2=linux_pyhd8ed1ab_0
   - poetry-core=1.5.2=pyhd8ed1ab_0
   - poetry-plugin-export=1.3.0=pyhd8ed1ab_0
-  - polars=0.16.11=py310h4426083_0
+  - polars=0.17.9=py310hcb5633a_0
   - prometheus_client=0.14.1=py310h06a4308_0
   - prompt-toolkit=3.0.36=py310h06a4308_0
   - prompt_toolkit=3.0.36=hd3eb1b0_0
@@ -235,8 +239,10 @@ dependencies:
   - ptyprocess=0.7.0=pyhd3eb1b0_2
   - pure_eval=0.2.2=pyhd3eb1b0_0
   - pyarrow=10.0.1=py310h468efa6_0
+  - pycodestyle=2.10.0=py310h06a4308_0
   - pycparser=2.21=pyhd3eb1b0_0
   - pydantic=1.10.7=py310h1fa729e_0
+  - pyflakes=3.0.1=py310h06a4308_0
   - pygments=2.11.2=pyhd3eb1b0_0
   - pyjwt=2.6.0=pyhd8ed1ab_0
   - pyopenssl=23.0.0=py310h06a4308_0
@@ -296,6 +302,7 @@ dependencies:
   - starsessions=1.3.0=pyhd8ed1ab_0
   - sympy=1.11.1=py310h06a4308_0
   - tbb=2021.8.0=hdb19cb5_0
+  - tenacity=8.0.1=py310h06a4308_1
   - terminado=0.17.1=py310h06a4308_0
   - threadpoolctl=2.2.0=pyh0d69192_0
   - tinycss2=1.2.1=py310h06a4308_0
@@ -337,9 +344,16 @@ dependencies:
   - zlib=1.2.13=h5eee18b_0
   - zstd=1.5.4=hc292b87_0
   - pip:
+      - antlr4-python3-runtime==4.9.3
+      - future==0.18.3
+      - hydra-core==1.3.2
       - ml-mixins==0.0.3
       - mpmath==1.2.1
+      - omegaconf==2.3.0
       - pyqt5-sip==12.11.0
+      - pyrootutils==1.0.4
+      - python-dotenv==1.0.0
       - pytorch-lognormal-mixture==0.0.1
+      - sparklines==0.4.2
       - xitorch==0.3.0
-prefix: /home/mmd/Programs/miniconda3/envs/ESML_cpu
+prefix: /home/mmd/Programs/miniconda3/envs/RAMMS_cpu

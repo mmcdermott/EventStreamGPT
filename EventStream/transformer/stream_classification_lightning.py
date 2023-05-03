@@ -23,6 +23,7 @@ from .model_output import StreamClassificationModelOutput
 from ..data.dataset_polars import Dataset
 from ..data.config import PytorchDatasetConfig
 from ..data.pytorch_dataset import PytorchDataset
+from ..utils import hydra_dataclass, task_wrapper
 
 def str_summary(T: torch.Tensor):
     return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
@@ -250,119 +251,100 @@ class ESTForStreamClassificationLM(L.LightningModule):
             }
         }
 
-def train(
-    save_dir: Path,
-    optimization_config: OptimizationConfig,
-
-    task_df: Optional[pd.DataFrame] = None,
-    config: Optional[StructuredTransformerConfig] = None,
-    data_config: Optional[PytorchDatasetConfig] = None,
-    wandb_name: str = 'generative_mimic_model',
-    wandb_project: str = 'medFMs',
-    num_dataloader_workers: int = 1,
-    do_detect_anomaly: bool = False,
-    log_every_n_steps: int = 50,
-    return_early: bool = False,
+@hydra_dataclass
+class FinetuneConfig:
+    save_dir: str = omegaconf.MISSING
     pretrained_weights_fp: Optional[Path] = None,
-    do_overwrite: bool = False,
-    train_split: str = 'train',
-    tuning_split: str = 'tuning',
-    held_out_split: str = 'held_out',
-    pyds: Optional[Sequence[PytorchDataset]] = None,
-    extra_wandb_log_params: Optional[Dict[str, Any]] = None,
-):
-    """
-    Runs the end to end training procedure for the ESTForStreamClassification model.
+    do_overwrite: bool = False
 
-    Args:
-        `save_dir` (`pathlib.Path`):
-            In what directory this model and its configurationfiles should be saved. If the directory does not
-            exist, it will be created. If it does exist already, some files within it may be overwritten.
-        `dataset` (`Dataset`):
-            The base dataset object on which this model run will train. This dataset should already be fully
-            processed, including being split into named `'train'`, `'tuning'`, and `'held_out'` splits and
-            having metadata vocabularies fully specified.
-        `config` (`StructuredTransformerConfig`):
-            The model configuration for this run. Will primarily be used to create the underlying encoder
-            transformer.
-        `optimization_config` (`OptimizationConfig`):
-            The optimization configuration for this run. Will primarily be used to set lightning module
-            parameters for optimization.
-        `data_config` (`PytorchDatasetConfig`):
-            The pytorch dataset configuration for this run. Will primarily be used to configure how the
-            pytorch dataset parses the data in `dataset`.
-        `wandb_name` (`str`, *optional*, defaults to `'generative_mimic_model'`):
-            What name to use for tracking this model in Weights & Biases.
-        `wandb_project` (`str`, *optional*, defaults to `'medFMs'`):
-            What project to store this run under in Weights & Biases.
-        `num_dataloader_workers` (`int`, *optional*, defaults to 1):
-            How many dataloader workers to use.
-        `do_detect_anomaly` (`bool`, *optional*, defaults to False):
-            Whether to use the detect anomaly feature in pytorch lightning for this run. Makes the run take
-            longer, but will provide detailed traceback information in the event of a gradient NaN issue.
-        `log_every_n_steps` (`int`, *optional*, defaults to 50):
-            How frequently should this run report log data.
+    config: Dict[str, Any] = dataclasses.field(default_factory=lambda : {
+        '_target_': 'EventStream.transformer.config.StructuredTransformerConfig',
+    })
+    optimization_config: OptimizationConfig = OptimizationConfig()
+    data_config: PytorchDatasetConfig = PytorchDatasetConfig()
+    metrics_config: MetricsConfig = MetricsConfig()
 
-    This function performs the following steps:
-        1. Builds train, tuning, and held out pytorch datasets from the passed `Dataset` and
-           `data_config`.
-        2. Sets the configuration objects to match those built datasets.
-        3. Saves the configuration files to the `save_dir`.
-        4. builds the pytorch lightning module and Weights & Biases logger.
-        5. Trains the lightning module over the pytorch datasets via Lightning.
-        6. Returns the updated configuration file and the fit lightning module.
+    task_df_name: str = omegaconf.MISSING
+    task_df_fp: Optional[Union[str, Path]] = "${data_config.save_dir}/task_dfs/${task_df_name}.parquet"
+
+    wandb_name: Optional[str] = 'generative_event_stream_transformer'
+    wandb_project: Optional[str] = None
+    wandb_team: Optional[str] = None
+    extra_wandb_log_params: Optional[Dict[str, Any]] = None
+    log_every_n_steps: int = 50
+
+    num_dataloader_workers: int = 1
+
+    do_detect_anomaly: bool = False
+    do_final_validation_on_metrics: bool = True
+
+    def __post_init__(self):
+        if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
+            self.save_dir = Path(self.save_dir)
+        if type(self.task_df_fp) is str and self.task_df_fp != omegaconf.MISSING:
+            self.task_df_fp = Path(self.task_df_fp)
+
+        if self.task_df_name is None and self.task_df_fp is not None:
+            self.task_df_name = self.task_df_fp.stem
+
+@task_wrapper
+def train(cfg: FinetuneConfig, return_early: bool = False):
     """
-    save_dir.mkdir(parents=True, exist_ok=True)
+    Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
+
+    Args: TODO
+    """
+    cfg.save_dir.mkdir(parents=True, exist_ok=True)
+
+    task_df = pd.read_parquet(cfg.task_df_fp)
 
     # Creating or loading training/tuning datasets
-    train_pyd = PytorchDataset(data_config, task_df=task_df, split='train')
-    tuning_pyd = PytorchDataset(data_config, task_df=task_df, split='tuning')
-    held_out_pyd = PytorchDataset(data_config, task_df=task_df, split='held_out')
+    train_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split='train')
+    tuning_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split='tuning')
+    held_out_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split='held_out')
 
-    # Setting up configurations
-    assert config is not None
+    config = cfg.config
+    optimization_config = cfg.optimization_config
+    metrics_config = cfg.metrics_config
+
     config.set_to_dataset(train_pyd)
 
-    optimization_config.set_to_dataset(train_pyd)
-
-    config.to_json_file(save_dir / "config.json")
-    optimization_config.to_json_file(save_dir / "optimization_config.json", do_overwrite=do_overwrite)
+    # We don't have 'do_overwrite' support in this class.
+    config_fp = save_dir / 'config.json'
+    if config_fp.exists() and not cfg.do_overwrite: raise FileExistsError(f"{config_fp} already exists!")
+    else: config.to_json_file(save_dir / "config.json")
+ 
+    data_config.to_json_file(save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
+    optimization_config.to_json_file(save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite)
+    metrics_config.to_json_file(save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite)
 
     # Model
     LM = ESTForStreamClassificationLM(
-        config, optimization_config, pretrained_weights_fp=pretrained_weights_fp
+        config=config,
+        optimization_config=optimization_config,
+        metrics_config=metrics_config,
+        pretrained_weights_fp=pretrained_weights_fp,
     )
-
-    wandb_logger_savedir = save_dir  # Wandb automatically adds a "wandb" suffix.
-    wandb_logger_savedir.mkdir(parents=True, exist_ok=True)
-    wandb_logger = WandbLogger(
-        name=wandb_name, project=wandb_project, save_dir=wandb_logger_savedir,
-        log_model=True
-    )
-    # Watching the model naturally tracks parameter values and gradients.
-    wandb_logger.watch(LM, log='all', log_graph=True)
-    if extra_wandb_log_params is not None:
-        wandb_logger.experiment.config.update(extra_wandb_log_params)
 
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
         train_pyd,
         batch_size = optimization_config.batch_size,
-        num_workers = num_dataloader_workers,
+        num_workers = optimization_config.num_dataloader_workers,
         collate_fn = train_pyd.collate,
         shuffle = True,
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size = optimization_config.batch_size,
-        num_workers = num_dataloader_workers,
+        batch_size = optimization_config.batch_size // 2,
+        num_workers = optimization_config.num_dataloader_workers,
         collate_fn = tuning_pyd.collate,
         shuffle = False,
     )
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size = optimization_config.batch_size,
-        num_workers = num_dataloader_workers,
+        batch_size = optimization_config.batch_size // 2,
+        num_workers = optimization_config.num_dataloader_workers,
         collate_fn = held_out_pyd.collate,
         shuffle = False,
     )
@@ -375,37 +357,84 @@ def train(
             monitor='tuning_loss', mode='min', patience=optimization_config.patience
         ))
 
-    checkpoints_dir = save_dir / "model_checkpoints"
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    checkpoints_dir = cfg.save_dir / "model_checkpoints"
+    checkpoints_dir.mkdir(parents=False, exist_ok=True)
 
     trainer_kwargs = dict(
         max_epochs = optimization_config.max_epochs,
-        detect_anomaly = do_detect_anomaly,
-        logger = wandb_logger,
-        log_every_n_steps = log_every_n_steps,
+        detect_anomaly = cfg.do_detect_anomaly,
+        log_every_n_steps = cfg.log_every_n_steps,
         callbacks = callbacks,
         default_root_dir = checkpoints_dir,
     )
 
+    do_use_wandb = cfg.wandb_name is not None
+    if do_use_wandb:
+        wandb_logger_savedir = cfg.save_dir  # Wandb automatically adds a "wandb" suffix.
+        wandb_logger = WandbLogger(
+            name=cfg.wandb_name, project=cfg.wandb_project, entity=cfg.wandb_team,
+            save_dir=wandb_logger_savedir, log_model=True
+        )
+        # Watching the model naturally tracks parameter values and gradients.
+        wandb_logger.watch(LM, log='all', log_graph=True)
+
+        trainer_kwargs['logger'] = wandb_logger
+
+        if extra_wandb_log_params is not None:
+            wandb_logger.experiment.config.update(extra_wandb_log_params)
+
+    if (
+        (optimization_config.gradient_accumulation is not None) and
+        (optimization_config.gradient_accumulation > 1)
+    ):
+        trainer_kwargs['accumulate_grad_batches'] = optimization_config.gradient_accumulation
+
     if torch.cuda.is_available():
         trainer_kwargs.update({'accelerator': "gpu", 'devices': -1})
 
-    trainer = L.Trainer(**trainer_kwargs)
-
     if return_early:
         return (
-            (train_pyd, tuning_pyd, held_out_pyd), (config, optimization_config, data_config),
-            (train_dataloader, tuning_dataloader), (trainer_kwargs, trainer), LM
+            (train_pyd, tuning_pyd), (config, optimization_config, data_config),
+            (train_dataloader, tuning_dataloader), (trainer_kwargs, L.Trainer(**trainer_kwargs)), LM
         )
 
     # Fitting model
-    try:
-        trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
+    n_attempts = 0
+    while n_attempts < 5:
+        n_attempts += 1
+        try:
+            trainer = L.Trainer(**trainer_kwargs)
+            trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
+            break
+        except RuntimeError as e:
+            if n_attempts >= 5: raise
+
+            print(
+                f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
+                "accumulation..."
+            )
+            trainer_kwargs['accumulate_grad_batches'] = trainer_kwargs.get('accumulate_grad_batches', 1) * 2
+            optimization_config.gradient_accumulation = trainer_kwargs['accumulate_grad_batches']
+            optimization_config.batch_size = optimization_config.batch_size // 2
+            optimization_config.to_json_file(cfg.save_dir / "optimization_config.json", do_overwrite=True)
+
+            train_dataloader = torch.utils.data.DataLoader(
+                train_pyd,
+                batch_size = optimization_config.batch_size,
+                num_workers = cfg.num_dataloader_workers,
+                collate_fn = train_pyd.collate,
+                shuffle = True,
+            )
+            tuning_dataloader = torch.utils.data.DataLoader(
+                tuning_pyd,
+                batch_size = optimization_config.batch_size // 2,
+                num_workers = cfg.num_dataloader_workers,
+                collate_fn = tuning_pyd.collate,
+                shuffle = False,
+            )
+
+    if cfg.do_final_validation_on_metrics:
+        trainer.validate(model=LM, dataloaders=tuning_dataloader)
         trainer.test(model=LM, dataloaders=held_out_dataloader)
-    finally:
-        # Even in the case of an error, we want to ensure that wandb exits successfully, otherwise it can lock
-        # up Jupyter notebooks for some reason.
-        wandb_logger.experiment.unwatch(LM)
-        wandb.finish()
 
     return config, LM

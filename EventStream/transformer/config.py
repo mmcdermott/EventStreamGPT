@@ -4,22 +4,24 @@ from transformers import PretrainedConfig
 
 from typing import Dict, Hashable, List, Optional, Tuple, Union
 
-from ..utils import StrEnum, JSONableMixin
+from ..utils import StrEnum, JSONableMixin, hydra_dataclass
 from ..data.data_embedding_layer import StaticEmbeddingMode, MeasIndexGroupOptions
 from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality
 
 MEAS_INDEX_GROUP_T = Union[str, Tuple[str, MeasIndexGroupOptions]]
 
-@dataclasses.dataclass
+@hydra_dataclass
 class MetricsConfig(JSONableMixin):
-    n_auc_thresholds: Optional[int] = 100
+    n_auc_thresholds: Optional[int] = 50
     include_explained_variance: bool = False
     include_auprc: bool = False
     include_auroc: bool = True
     include_accuracy: bool = True
 
-@dataclasses.dataclass
+    do_skip_all_metrics_in_train: bool = True
+
+@hydra_dataclass
 class OptimizationConfig(JSONableMixin):
     """
     A configuration object for optimization variables for training a `StructuredTransformer` model.
@@ -60,7 +62,8 @@ class OptimizationConfig(JSONableMixin):
             The number of gradient accumulation steps to use. If None, gradient accumulation is not used.
     """
     init_lr: float = 1e-2
-    end_lr: float = 1e-7
+    end_lr: Optional[float] = None
+    end_lr_frac_of_init_lr: Optional[float] = 1e-3
     max_epochs: int = 100
     batch_size: int = 32
     lr_frac_warmup_steps: Optional[float] = 0.01
@@ -70,6 +73,19 @@ class OptimizationConfig(JSONableMixin):
     weight_decay: float = 0.01
     patience: Optional[int] = None
     gradient_accumulation: Optional[int] = None
+
+    num_dataloader_workers: int = 0
+
+    def __post_init__(self):
+        if self.end_lr_frac_of_init_lr is not None:
+            if self.end_lr_frac_of_init_lr <= 0.0 or self.end_lr_frac_of_init_lr >= 1.0:
+                raise ValueError("`end_lr_frac_of_init_lr` must be between 0.0 and 1.0!")
+            if self.end_lr is not None and self.end_lr != self.end_lr_frac_of_init_lr * self.init_lr:
+                raise ValueError("If both set, `end_lr` must be equal to `end_lr_frac_of_init_lr * init_lr`!")
+            self.end_lr = self.end_lr_frac_of_init_lr * self.init_lr
+        else:
+            if self.end_lr is None: raise ValueError("Must set either end_lr or end_lr_frac_of_init_lr!")
+            self.end_lr_frac_of_init_lr = self.end_lr / self.init_lr
 
     def set_to_dataset(self, dataset: PytorchDataset):
         """Sets missing parameters in the optimization config to appropriate values given `dataset`'s size."""
@@ -142,6 +158,19 @@ class TimeToEventGenerationHeadType(StrEnum):
     EXPONENTIAL = enum.auto()
     LOG_NORMAL_MIXTURE = enum.auto()
 
+class AttentionLayerType(StrEnum):
+    GLOBAL = enum.auto()
+    LOCAL = enum.auto()
+
+ATTENTION_TYPES_LIST_T = Union[
+    # "global" -- all layers are global.
+    AttentionLayerType,
+    # ["global", "local"] -- alternate global and local layers until you run out of layers.
+    List[AttentionLayerType],
+    # [(["global", "local"], 2), (["global"], 1)]
+    # Do 2 alternating global and local layers, then 1 global layer.
+    List[Tuple[List[AttentionLayerType], int]],
+]
 class StructuredTransformerConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`StructuredTransformer`] model
@@ -243,7 +272,7 @@ class StructuredTransformerConfig(PretrainedConfig):
             Number of attention heads for each attention layer in the Transformer encoder.
         seq_attention_types (`List`, *optional*, defaults to `[[["global", "local"], num_hidden_layers/2]]`):
             The type of attention for each sequence self attention layer in a `List` of the following format
-            `[[["attention_type"], num_layerss]]` e.g. for a 24 layer model `[[["global"], 24]]` or
+            `[[["attention_type"], num_layers]]` e.g. for a 24 layer model `[[["global"], 24]]` or
             `[[["global", "local"], 12]]` Choose the value of `attention_type` from `["global", "local"]`
         seq_window_size (`int`, *optional*, defaults to `32`):
             The window size used in local attention for sequence self attention layers.
@@ -360,9 +389,9 @@ class StructuredTransformerConfig(PretrainedConfig):
         head_dim: Optional[int] = 64,
         num_hidden_layers: int = 2,
         num_attention_heads: int = 4,
-        seq_attention_types: Optional[List[List[Union[List[str], int]]]] = None,
+        seq_attention_types: Optional[ATTENTION_TYPES_LIST_T] = None,
         seq_window_size: int = 32,
-        dep_graph_attention_types: Optional[List[List[Union[List[str], int]]]] = None,
+        dep_graph_attention_types: Optional[ATTENTION_TYPES_LIST_T] = None,
         dep_graph_window_size: Optional[int] = 2,
         intermediate_size: int = 32,
         activation_function: str = "gelu",
@@ -550,10 +579,11 @@ class StructuredTransformerConfig(PretrainedConfig):
                     f"TTE generation param {name} should not be `None`; got {val}."
                 )
             if (name in tte_mandatory_absent_params) and (val is not None):
-                raise ValueError(
+                print(
                     f"For a `'{TTE_generation_layer_type}'` model, "
-                    f"TTE generation param {name} should be `None`; got {val}."
+                    f"TTE generation param {name} should be `None`; got {val}. Setting to None."
                 )
+                tte_params[name] = None
 
         if TTE_generation_layer_type == TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
             if type(TTE_lognormal_generation_num_components) is not int:
@@ -611,13 +641,24 @@ class StructuredTransformerConfig(PretrainedConfig):
         return self.measurements_per_generative_mode.get(modality, [])
 
     @staticmethod
-    def expand_attention_types_params(attention_types):
+    def expand_attention_types_params(attention_types: ATTENTION_TYPES_LIST_T) -> List[AttentionLayerType]:
         """Expands the attention syntax from the easy-to-enter syntax to one for the model."""
-        attentions = []
-        for item in attention_types:
-            for _ in range(item[1]):
-                attentions.extend(item[0])
-        return attentions
+        if isinstance(attention_types, str):
+            return [attention_types] * self.num_hidden_layers
+
+        if not isinstance(attention_types, list):
+            raise TypeError(f"Config Invalid {attention_types} ({type(attention_types)}) is wrong type!")
+
+        if isinstance(attention_types[0], str):
+            return (attention_types * self.num_hidden_layers)[:self.num_hidden_layers]
+
+        if isinstance(attention_types[0], (list, tuple)):
+            attentions = []
+            for sub_list, n_layers in attention_types:
+                attentions.extend(list(sub_list) * n_layers)
+            return attentions[:self.num_hidden_layers]
+
+        raise TypeError(f"Config Invalid {attention_types} El 0 ({type(attention_types[0])}) is wrong type!")
 
     def set_to_dataset(self, dataset: PytorchDataset):
         """Set various configuration parameters to match `dataset`."""
