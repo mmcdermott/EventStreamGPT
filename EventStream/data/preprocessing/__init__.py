@@ -1,4 +1,4 @@
 from .preprocessor import Preprocessor
-from .variance_impact_outlier_detector import VarianceImpactOutlierDetector
-from .stddev_cutoff import StddevCutoffOutlierDetector
 from .standard_scaler import StandardScaler
+from .stddev_cutoff import StddevCutoffOutlierDetector
+from .variance_impact_outlier_detector import VarianceImpactOutlierDetector

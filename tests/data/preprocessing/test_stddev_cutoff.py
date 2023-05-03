@@ -1,11 +1,16 @@
 import sys
-sys.path.append('../..')
 
-import unittest, numpy as np, polars as pl
+sys.path.append("../..")
+
+import unittest
+
+import numpy as np
+import polars as pl
+
+from EventStream.data.preprocessing.stddev_cutoff import StddevCutoffOutlierDetector
 
 from ...mixins import MLTypeEqualityCheckableMixin
 
-from EventStream.data.preprocessing.stddev_cutoff import StddevCutoffOutlierDetector
 
 class TestStddevCutoffOutlierDetector(MLTypeEqualityCheckableMixin, unittest.TestCase):
     """Tests the StddevCutoffOutlierDetector class."""
@@ -20,12 +25,12 @@ class TestStddevCutoffOutlierDetector(MLTypeEqualityCheckableMixin, unittest.Tes
         want_inliers = np.array([-1, 0, 1, -1, 1, -1, 1])
 
         want = {
-            'thresh_small_': mean - 2.1*std,
-            'thresh_large_': mean + 2.1*std,
+            "thresh_small_": mean - 2.1 * std,
+            "thresh_large_": mean + 2.1 * std,
         }
 
         X_pl = pl.from_numpy(X)
-        col = pl.col('column_0')
+        col = pl.col("column_0")
 
         expr = M.fit_from_polars(col)
 
@@ -33,9 +38,9 @@ class TestStddevCutoffOutlierDetector(MLTypeEqualityCheckableMixin, unittest.Tes
         got = {k: round(v, 4) for k, v in X_pl.select(expr).item().items()}
         self.assertEqual(want, got)
 
-        with_params = X_pl.with_columns(expr.alias('outlier_params'))
+        with_params = X_pl.with_columns(expr.alias("outlier_params"))
 
-        outliers_expr = M.predict_from_polars(col, pl.col('outlier_params'))
+        outliers_expr = M.predict_from_polars(col, pl.col("outlier_params"))
         got_inliers = X[~with_params.select(outliers_expr)[:, 0].to_numpy()]
 
         self.assertEqual(got_inliers, want_inliers)

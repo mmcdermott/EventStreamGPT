@@ -17,6 +17,7 @@
 # limitations under the License.
 
 import inspect
+
 from transformers.utils import add_start_docstrings
 
 from ..data.types import PytorchBatch
@@ -49,7 +50,8 @@ class OutputsProcessor:
 
 
 class OutputsWarper:
-    """Abstract base class for all logit warpers that can be applied during generation with multinomial sampling."""
+    """Abstract base class for all logit warpers that can be applied during generation with
+    multinomial sampling."""
 
     @add_start_docstrings(OUTPUTS_PROCESSOR_INPUTS_DOCSTRING)
     def __call__(
@@ -62,9 +64,10 @@ class OutputsWarper:
 
 
 class OutputsProcessorList(list):
-    """
-    This class can be used to create a list of [`OutputsProcessor`] or [`OutputsWarper`] to subsequently process a
-    `outputs` input tensor. This class inherits from list and adds a specific *__call__* method to apply each
+    """This class can be used to create a list of [`OutputsProcessor`] or [`OutputsWarper`] to
+    subsequently process a `outputs` input tensor. This class inherits from list and adds a
+    specific *__call__* method to apply each.
+
     [`OutputsProcessor`] or [`OutputsWarper`] to the inputs.
     """
 

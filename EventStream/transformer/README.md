@@ -10,6 +10,7 @@ Functionally, there are three areas of differences between a traditional sequenc
 output layers work.
 
 ### Input Layer
+
 The input layer to this model must not only embed the contents of each event, but also take into account the
 time-between events. Whereas a traditional transformer for sequences need only leverage ordinal position
 embeddings to capture sequence-position, these models must account for the fact that time between events can
@@ -20,6 +21,7 @@ time-since-start. This is likely a sub-optimal solution and other solutions like
 similar should be investigated.
 
 ### Attention Layer
+
 Unlike a sequence model, a single event in an event stream model can have many sub-aspects, which may relate
 to one another in a particular, causal, fashion. This can be reflected in an `EventStreamTransformer`, by
 specifying a sequential order of `data_types` to process in that causal manner. This allows the model to not
@@ -32,6 +34,7 @@ A pictoral representation:
 ![Dependency-aware Attention](https://user-images.githubusercontent.com/470751/217272929-0b972d7f-793a-46f8-ac01-74d428bd7fcb.png)
 
 ### Output Layer
+
 The output layer produces categorical distribution estimates for categorical variables (via logit scores per
 vocabulary element) and numerical pytorch distribution objects for continuous variables, including
 time-to-next-event. Currently, time-to-next-event can either be modeled via an exponential or a mixture of

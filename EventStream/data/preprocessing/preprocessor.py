@@ -1,9 +1,11 @@
 # This file contains the abstract base class for polars pre-processors. It is just used to define the
 # interface expected by the data preprocessing pipeline.
 
-import polars as pl
 from abc import ABC, abstractmethod
 from typing import Dict
+
+import polars as pl
+
 
 class Preprocessor(ABC):
     @classmethod

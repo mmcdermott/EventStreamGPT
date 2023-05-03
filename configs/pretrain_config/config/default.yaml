@@ -18,7 +18,7 @@ attention_dropout:
   max: 0.5
 
 structured_event_processing_mode:
-  values: ['conditionally_independent', 'nested_attention']
+  values: ["conditionally_independent", "nested_attention"]
 seq_attention_types:
   values: [["global"], ["global", "local"]]
 seq_window_size:
@@ -33,13 +33,13 @@ do_full_block_in_dep_graph_attention:
   values: [True, False]
 
 TTE_generation_layer_type:
-  values: ['exponential', 'log_normal_mixture']
+  values: ["exponential", "log_normal_mixture"]
 TTE_lognormal_generation_num_components:
   min: 1
   max: 16
 
 static_embedding_mode:
-  values: ['sum_all', 'drop']
+  values: ["sum_all", "drop"]
 do_normalize_by_measurement_index:
   values: [True, False]
 do_split_embeddings:

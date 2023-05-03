@@ -1,21 +1,24 @@
+from typing import Callable, Dict, Union
+
 import polars as pl
 
-from typing import Callable, Dict, Union
 from ...utils import PROPORTION
 from .preprocessor import Preprocessor
 
+
 # This is a default that has proven to work reasonably well in practice, and is stored as a top level function
 # so the module can be easily pickled.
-def _default_std_delta_thresh(N: int) -> float: return 10*(1/N**0.6)
+def _default_std_delta_thresh(N: int) -> float:
+    return 10 * (1 / N**0.6)
+
 
 class VarianceImpactOutlierDetector(Preprocessor):
-    """
-    This outlier detector removes extremal elements that have an outsized impact on the datasets standard
-    deviation.
-    """
+    """This outlier detector removes extremal elements that have an outsized impact on the datasets
+    standard deviation."""
+
     @classmethod
     def params_schema(cls) -> Dict[str, pl.DataType]:
-        return {'thresh_large_': pl.Float64, 'thresh_small_': pl.Float64}
+        return {"thresh_large_": pl.Float64, "thresh_small_": pl.Float64}
 
     def __init__(
         self,
@@ -26,8 +29,10 @@ class VarianceImpactOutlierDetector(Preprocessor):
         assert (0 < subsample_frac) and (subsample_frac < 1)
         assert (0 < max_prob_of_exclusion) and (max_prob_of_exclusion < 1)
 
-        if type(max_std_delta_thresh) is float: assert 0 < max_std_delta_thresh < 1
-        else: assert callable(max_std_delta_thresh)
+        if type(max_std_delta_thresh) is float:
+            assert 0 < max_std_delta_thresh < 1
+        else:
+            assert callable(max_std_delta_thresh)
 
         self.subsample_frac = subsample_frac
         self.max_prob_of_exclusion = max_prob_of_exclusion
@@ -35,14 +40,16 @@ class VarianceImpactOutlierDetector(Preprocessor):
 
     def _max_std_delta_thresh(self, N: int) -> float:
         """Returns either the passed threshold or evaluates the threshold on the dataset size."""
-        if type(self.max_std_delta_thresh) is float: return self.max_std_delta_thresh
-        else: return pl.max([pl.lit(0), pl.min([pl.lit(1), self.max_std_delta_thresh(N)])])
+        if type(self.max_std_delta_thresh) is float:
+            return self.max_std_delta_thresh
+        else:
+            return pl.max([pl.lit(0), pl.min([pl.lit(1), self.max_std_delta_thresh(N)])])
 
     def _max_L(self, N: Union[int, pl.Expr]) -> pl.Expr:
-        """
-        Returns the maximum size $L$ of a specific subset of elements from a dataset of total size $N$ such
-        that the chance that none of those $L$ elements would appear in a random, iid subsample of the dataset
-        of fractional size `self.subsample_frac` (denoted by r) would not exceed `self.max_prob_of_exclusion`.
+        """Returns the maximum size $L$ of a specific subset of elements from a dataset of total
+        size $N$ such that the chance that none of those $L$ elements would appear in a random, iid
+        subsample of the dataset of fractional size `self.subsample_frac` (denoted by r) would not
+        exceed `self.max_prob_of_exclusion`.
 
         Let p be the probability that a randomly chosen subset of size $S$ with replacement from a collection
         of $N$ options will not contain any elements from a set of size $L$ within $N$. We can see that for
@@ -66,7 +73,12 @@ class VarianceImpactOutlierDetector(Preprocessor):
         """
 
         return pl.min(
-            [N-1, (N - N*self.max_prob_of_exclusion**(1/(self.subsample_frac*N).floor())).floor()]
+            [
+                N - 1,
+                (
+                    N - N * self.max_prob_of_exclusion ** (1 / (self.subsample_frac * N).floor())
+                ).floor(),
+            ]
         )
 
     def _max_deviation_factor(
@@ -136,18 +148,18 @@ class VarianceImpactOutlierDetector(Preprocessor):
         mx = curr_mean + sqrt(((N+1)/(1 - delta))**2 * (1/N) - (N+1)) * curr_std
         """
 
-        return (((N+1)/(1 - delta))**2 * (1/N) - (N+1))**0.5
+        return (((N + 1) / (1 - delta)) ** 2 * (1 / N) - (N + 1)) ** 0.5
 
     @staticmethod
     def _sorted_deviations_and_cnts_expr(raw_column: pl.Expr) -> pl.Expr:
-        """
-        Returns a struct containing three fields:
+        """Returns a struct containing three fields:
+
         * `deviations`, containing the sorted absolute deviations from the mean.
         * `count_pos`, containing the number of times each deviation occurs in the positive direction.
         * `count_neg`, containing the number of times each deviation occurs in the negative direction.
         """
 
-        column = (raw_column - raw_column.mean()).alias('val')
+        column = (raw_column - raw_column.mean()).alias("val")
         # Now it has mean zero.
 
         val_counts = column.value_counts(sort=True)
@@ -155,10 +167,10 @@ class VarianceImpactOutlierDetector(Preprocessor):
         #   * `val`, containing the unique values within df[col].
         #   * `count` containing the number of times they occur.
 
-        val = val_counts.struct.field('val')
-        count = val_counts.struct.field('counts')
+        val = val_counts.struct.field("val")
+        count = val_counts.struct.field("counts")
 
-        is_gt_mean = (val > 0)
+        is_gt_mean = val > 0
         is_lt_mean = ~is_gt_mean
 
         dev = val.abs()
@@ -186,9 +198,9 @@ class VarianceImpactOutlierDetector(Preprocessor):
         count_pos = pl.concat([count_pos_both, count_only_gt_mean, 0 * count_only_lt_mean])
         count_neg = pl.concat([count_neg_both, 0 * count_only_gt_mean, count_only_lt_mean])
 
-        return pl.struct(
-            deviations=deviations, count_pos=count_pos, count_neg=count_neg
-        ).sort_by(deviations)
+        return pl.struct(deviations=deviations, count_pos=count_pos, count_neg=count_neg).sort_by(
+            deviations
+        )
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
         mean = column.mean()
@@ -199,27 +211,29 @@ class VarianceImpactOutlierDetector(Preprocessor):
         #   * `count_pos` containing the number of times this deviation occurs > the mean.
         #   * `count_neg` containing the number of times this deviation occurs <= the mean.
 
-        count = deviations.struct.field('count_pos') + deviations.struct.field('count_neg')
-        val_times_count = deviations.struct.field('deviations') * (
-            deviations.struct.field('count_pos').cast(pl.Int64) -
-            deviations.struct.field('count_neg').cast(pl.Int64)
+        count = deviations.struct.field("count_pos") + deviations.struct.field("count_neg")
+        val_times_count = deviations.struct.field("deviations") * (
+            deviations.struct.field("count_pos").cast(pl.Int64)
+            - deviations.struct.field("count_neg").cast(pl.Int64)
         )
-        val_squared_times_count = deviations.struct.field('deviations')**2 * count
+        val_squared_times_count = deviations.struct.field("deviations") ** 2 * count
 
         # *_LE_val means including all values less than or equal to the extremal level of `val`.
 
         count_LE_val = count.cumsum()
         sum_LE_val = val_times_count.cumsum()
-        mean_LE_val = (sum_LE_val / count_LE_val)
+        mean_LE_val = sum_LE_val / count_LE_val
 
         sum_squared_LE_val = val_squared_times_count.cumsum()
-        std_LE_val = ((sum_squared_LE_val/count_LE_val - mean_LE_val**2)**0.5)
+        std_LE_val = (sum_squared_LE_val / count_LE_val - mean_LE_val**2) ** 0.5
 
         delta_std_after_removing_GT_val = 1 - std_LE_val / std_LE_val.shift(-1)
         max_std_delta_thresh_if_inc_val = self._max_std_delta_thresh(count_LE_val)
 
         max_removable_as_of_val = self._max_L(count_LE_val)
-        valid_to_remove_GE_val = (count <= max_removable_as_of_val).cumprod(reverse=True).cast(pl.Boolean)
+        valid_to_remove_GE_val = (
+            (count <= max_removable_as_of_val).cumprod(reverse=True).cast(pl.Boolean)
+        )
 
         can_remove_GT_val = valid_to_remove_GE_val.shift(-1).fill_null(True) & (
             delta_std_after_removing_GT_val > max_std_delta_thresh_if_inc_val
@@ -235,20 +249,23 @@ class VarianceImpactOutlierDetector(Preprocessor):
         mean_at_thresh = mean_if_removed_GT_val.filter(can_remove_GT_val).first()
         std_at_thresh = std_if_removed_GT_val.filter(can_remove_GT_val).first()
 
-        return pl.struct([
-            (mean_at_thresh + mean - dev_thresh*std_at_thresh).alias('thresh_small_'),
-            (mean_at_thresh + mean + dev_thresh*std_at_thresh).alias('thresh_large_')
-        ])
+        return pl.struct(
+            [
+                (mean_at_thresh + mean - dev_thresh * std_at_thresh).alias("thresh_small_"),
+                (mean_at_thresh + mean + dev_thresh * std_at_thresh).alias("thresh_large_"),
+            ]
+        )
 
     @classmethod
     def predict_from_polars(cls, column: pl.Expr, model_column: pl.Expr) -> pl.Expr:
-        """
-        This provides a polars expression capable of producing the predictions of a fitted
-        VarianceImpactOutlierDetector instance. It can be used either on a raw column or within a groupby
-        expression, and will output a polars boolean column where True indicates an outlier.
+        """This provides a polars expression capable of producing the predictions of a fitted
+        VarianceImpactOutlierDetector instance.
+
+        It can be used either on a raw column or within a groupby expression, and will output a
+        polars boolean column where True indicates an outlier.
         """
 
         return (
-            (column > model_column.struct.field('thresh_large_')) |
-            (column < model_column.struct.field('thresh_small_'))
-        ).alias('is_outlier')
+            (column > model_column.struct.field("thresh_large_"))
+            | (column < model_column.struct.field("thresh_small_"))
+        ).alias("is_outlier")

@@ -1,12 +1,11 @@
 import sys
-sys.path.append('../..')
+
+sys.path.append("../..")
 
 import unittest
-from unittest.mock import MagicMock
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
-from ..mixins import ConfigComparisonsMixin
+from unittest.mock import MagicMock
 
 from EventStream.data.types import DataModality
 from EventStream.transformer.config import (
@@ -15,6 +14,8 @@ from EventStream.transformer.config import (
     StructuredTransformerConfig,
     TimeToEventGenerationHeadType,
 )
+
+from ..mixins import ConfigComparisonsMixin
 
 DEFAULT_OPT_CONFIG_DICT = dict(
     init_lr=1e-2,
@@ -29,14 +30,17 @@ DEFAULT_OPT_CONFIG_DICT = dict(
     weight_decay=0.01,
 )
 
+
 class TestOptimizationConfig(unittest.TestCase):
     def test_set_to_dataset(self):
-        cfg = OptimizationConfig(**{
-            **DEFAULT_OPT_CONFIG_DICT,
-            'max_epochs': 10,
-            'batch_size': 2,
-            'lr_frac_warmup_steps': 6/30,
-        })
+        cfg = OptimizationConfig(
+            **{
+                **DEFAULT_OPT_CONFIG_DICT,
+                "max_epochs": 10,
+                "batch_size": 2,
+                "lr_frac_warmup_steps": 6 / 30,
+            }
+        )
 
         pyd = MagicMock()
         pyd.__len__.return_value = 6
@@ -102,269 +106,307 @@ DEFAULT_LOGNORMAL_MIXTURE_DICT = dict(
     std_log_inter_event_time_min=1.0,
 )
 
+
 class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase):
     def test_construction(self):
-        """
-        Tests the construction and initialization logic of the `StructuredTransformerConfig`
-        object.
-        """
+        """Tests the construction and initialization logic of the `StructuredTransformerConfig`
+        object."""
 
         cases = [
             {
-                'msg': "Should construct with default args.",
-                'kwargs': {},
-            }, {
-                'msg': "Should construct with nested_attention args.",
-                'kwargs': {**DEFAULT_NESTED_ATTENTION_DICT},
-            }, {
-                'msg': "Should Error when head_dim and hidden_size are missing.",
-                'kwargs': {'head_dim': 32, 'hidden_size': 64, 'num_attention_heads': 4},
-                'should_raise': ValueError,
-            }, {
-                'msg': "Should Error when head_dim and hidden_size are inconsistent.",
-                'kwargs': {'head_dim': None, 'hidden_size': None},
-                'should_raise': ValueError,
-            }, {
-                'msg': "Should Error when num_hidden_layers is not an int.",
-                'kwargs': {'num_hidden_layers': 4.0},
-                'should_raise': TypeError,
-            }, {
-                'msg': "Should Error when num_hidden_layers is negative.",
-                'kwargs': {'num_hidden_layers': -4},
-                'should_raise': ValueError,
-            }, {
-                'msg': "Should Error when nested_attention args are missing or invalid.",
-                'kwargs': [
+                "msg": "Should construct with default args.",
+                "kwargs": {},
+            },
+            {
+                "msg": "Should construct with nested_attention args.",
+                "kwargs": {**DEFAULT_NESTED_ATTENTION_DICT},
+            },
+            {
+                "msg": "Should Error when head_dim and hidden_size are missing.",
+                "kwargs": {"head_dim": 32, "hidden_size": 64, "num_attention_heads": 4},
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should Error when head_dim and hidden_size are inconsistent.",
+                "kwargs": {"head_dim": None, "hidden_size": None},
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should Error when num_hidden_layers is not an int.",
+                "kwargs": {"num_hidden_layers": 4.0},
+                "should_raise": TypeError,
+            },
+            {
+                "msg": "Should Error when num_hidden_layers is negative.",
+                "kwargs": {"num_hidden_layers": -4},
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should Error when nested_attention args are missing or invalid.",
+                "kwargs": [
                     {
                         **DEFAULT_NESTED_ATTENTION_DICT,
-                        'do_full_block_in_dep_graph_attention': None,
-                    }, {
-                        **DEFAULT_NESTED_ATTENTION_DICT,
-                        'do_full_block_in_seq_attention': None,
-                    }, {
-                        **DEFAULT_NESTED_ATTENTION_DICT,
-                        'do_add_temporal_position_embeddings_to_data_embeddings': None,
-                    }
-                ],
-                'should_raise': ValueError,
-            }, {
-                'msg': "Should construct with conditionally_independent args.",
-                'kwargs': {**DEFAULT_CONDITIONALLY_INDEPENDENT_DICT},
-            }, {
-                'msg': "Should Error when given nested_attention args when in conditionally_independent mode.",
-                'kwargs': [
+                        "do_full_block_in_dep_graph_attention": None,
+                    },
                     {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        'dep_graph_attention_types': [['global'], 2],
-                    }, {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        'dep_graph_attention_types': [['global'], 2],
-                    }, {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        'dep_graph_window_size': 2,
-                    }, {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        'do_full_block_in_dep_graph_attention': False,
-                    }, {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        'do_full_block_in_seq_attention': False,
-                    }, {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        'do_add_temporal_position_embeddings_to_data_embeddings': False,
+                        **DEFAULT_NESTED_ATTENTION_DICT,
+                        "do_full_block_in_seq_attention": None,
+                    },
+                    {
+                        **DEFAULT_NESTED_ATTENTION_DICT,
+                        "do_add_temporal_position_embeddings_to_data_embeddings": None,
                     },
                 ],
-                'should_raise': ValueError,
-            }, {
-                'msg': "Should construct with Exponential TTE head args.",
-                'kwargs': {**DEFAULT_EXPONENTIAL_DICT},
-            }, {
-                'msg': "Should construct with Lognormal Mixture TTE head args.",
-                'kwargs': {**DEFAULT_LOGNORMAL_MIXTURE_DICT},
-            }, {
-                'msg': "Should error when required Lognormal Mixture args are missing or invalid.",
-                'kwargs': [
-                    {**DEFAULT_LOGNORMAL_MIXTURE_DICT, 'TTE_lognormal_generation_num_components': None},
-                    {**DEFAULT_LOGNORMAL_MIXTURE_DICT, 'TTE_lognormal_generation_num_components': -1},
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should construct with conditionally_independent args.",
+                "kwargs": {**DEFAULT_CONDITIONALLY_INDEPENDENT_DICT},
+            },
+            {
+                "msg": "Should Error when given nested_attention args when in conditionally_independent mode.",
+                "kwargs": [
+                    {
+                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                        "dep_graph_attention_types": [["global"], 2],
+                    },
+                    {
+                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                        "dep_graph_attention_types": [["global"], 2],
+                    },
+                    {
+                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                        "dep_graph_window_size": 2,
+                    },
+                    {
+                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                        "do_full_block_in_dep_graph_attention": False,
+                    },
+                    {
+                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                        "do_full_block_in_seq_attention": False,
+                    },
+                    {
+                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
+                        "do_add_temporal_position_embeddings_to_data_embeddings": False,
+                    },
                 ],
-                'should_raise': ValueError
-            }, {
-                'msg': "Should error when required Lognormal Mixture arg is the wrong type.",
-                'kwargs': {
-                    **DEFAULT_LOGNORMAL_MIXTURE_DICT, 'TTE_lognormal_generation_num_components': 1.0,
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should construct with Exponential TTE head args.",
+                "kwargs": {**DEFAULT_EXPONENTIAL_DICT},
+            },
+            {
+                "msg": "Should construct with Lognormal Mixture TTE head args.",
+                "kwargs": {**DEFAULT_LOGNORMAL_MIXTURE_DICT},
+            },
+            {
+                "msg": "Should error when required Lognormal Mixture args are missing or invalid.",
+                "kwargs": [
+                    {
+                        **DEFAULT_LOGNORMAL_MIXTURE_DICT,
+                        "TTE_lognormal_generation_num_components": None,
+                    },
+                    {
+                        **DEFAULT_LOGNORMAL_MIXTURE_DICT,
+                        "TTE_lognormal_generation_num_components": -1,
+                    },
+                ],
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should error when required Lognormal Mixture arg is the wrong type.",
+                "kwargs": {
+                    **DEFAULT_LOGNORMAL_MIXTURE_DICT,
+                    "TTE_lognormal_generation_num_components": 1.0,
                 },
-                'should_raise': TypeError
-            }, {
-                'msg': "Should error when is specified as encoder_decoder.",
-                'kwargs': {'is_encoder_decoder': True},
-                'should_raise': AssertionError
-            }
+                "should_raise": TypeError,
+            },
+            {
+                "msg": "Should error when is specified as encoder_decoder.",
+                "kwargs": {"is_encoder_decoder": True},
+                "should_raise": AssertionError,
+            },
         ]
 
         for C in cases:
-            with self.subTest(C['msg']):
-                kwargs = C['kwargs'] if type(C['kwargs']) is list else [C['kwargs']]
+            with self.subTest(C["msg"]):
+                kwargs = C["kwargs"] if type(C["kwargs"]) is list else [C["kwargs"]]
                 for args_dict in kwargs:
-                    if 'should_raise' in C:
-                        with self.assertRaises(C['should_raise']):
+                    if "should_raise" in C:
+                        with self.assertRaises(C["should_raise"]):
                             StructuredTransformerConfig(**args_dict)
                     else:
                         StructuredTransformerConfig(**args_dict)
 
     def test_set_to_dataset(self):
         default_measurements_per_generative_mode = {
-            DataModality.SINGLE_LABEL_CLASSIFICATION: ['event_type'],
-            DataModality.MULTI_LABEL_CLASSIFICATION: ['B_key', 'A_col'],
-            DataModality.MULTIVARIATE_REGRESSION: ['B_key'],
+            DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type"],
+            DataModality.MULTI_LABEL_CLASSIFICATION: ["B_key", "A_col"],
+            DataModality.MULTIVARIATE_REGRESSION: ["B_key"],
         }
-        default_measurements_idxmap = {'event_type': 1, 'B_key': 2, 'A_col': 3}
-        default_measurement_vocab_offsets = {'event_type': 1, 'B_key': 2, 'A_col': 5}
-        default_vocab_sizes_by_measurement = {'event_type': 2, 'B_key': 3, 'A_col': 4}
+        default_measurements_idxmap = {"event_type": 1, "B_key": 2, "A_col": 3}
+        default_measurement_vocab_offsets = {"event_type": 1, "B_key": 2, "A_col": 5}
+        default_vocab_sizes_by_measurement = {"event_type": 2, "B_key": 3, "A_col": 4}
 
         default_pyd_spec = {
-            'has_task': False,
-            'max_seq_len': 4,
-            'vocabulary_config': {
-                'measurements_idxmap': default_measurements_idxmap,
-                'vocab_offsets_by_measurement': default_measurement_vocab_offsets,
-                'vocab_sizes_by_measurement': default_vocab_sizes_by_measurement,
-                'measurements_per_generative_mode': default_measurements_per_generative_mode,
-                'total_vocab_size': 9,
+            "has_task": False,
+            "max_seq_len": 4,
+            "vocabulary_config": {
+                "measurements_idxmap": default_measurements_idxmap,
+                "vocab_offsets_by_measurement": default_measurement_vocab_offsets,
+                "vocab_sizes_by_measurement": default_vocab_sizes_by_measurement,
+                "measurements_per_generative_mode": default_measurements_per_generative_mode,
+                "total_vocab_size": 9,
             },
         }
 
         default_want = {
-            'max_seq_len': 4,
-            'vocab_size': 9,
-            'vocab_sizes_by_measurement': default_vocab_sizes_by_measurement,
-            'measurements_idxmap': default_measurements_idxmap,
-            'vocab_offsets_by_measurement': default_measurement_vocab_offsets,
-            'measurements_per_generative_mode': default_measurements_per_generative_mode,
-            'finetuning_task': None,
-            'problem_type': None,
+            "max_seq_len": 4,
+            "vocab_size": 9,
+            "vocab_sizes_by_measurement": default_vocab_sizes_by_measurement,
+            "measurements_idxmap": default_measurements_idxmap,
+            "vocab_offsets_by_measurement": default_measurement_vocab_offsets,
+            "measurements_per_generative_mode": default_measurements_per_generative_mode,
+            "finetuning_task": None,
+            "problem_type": None,
         }
 
         cases = [
             {
-                'msg': "Should set appropriate with no task_df.",
-                'pyd_spec': default_pyd_spec, 'want': default_want,
-            }, {
-                'msg': "Should set appropriate regression task_df.",
-                'pyd_spec': {
+                "msg": "Should set appropriate with no task_df.",
+                "pyd_spec": default_pyd_spec,
+                "want": default_want,
+            },
+            {
+                "msg": "Should set appropriate regression task_df.",
+                "pyd_spec": {
                     **default_pyd_spec,
-                    'has_task': True,
-                    'task_types': {'task': 'regression'},
-                    'tasks': ['task'],
+                    "has_task": True,
+                    "task_types": {"task": "regression"},
+                    "tasks": ["task"],
                 },
-                'want': {
+                "want": {
                     **default_want,
-                    'finetuning_task': 'task',
-                    'problem_type': 'regression',
-                    'num_labels': 1,
+                    "finetuning_task": "task",
+                    "problem_type": "regression",
+                    "num_labels": 1,
                 },
-            }, {
-                'msg': "Should set appropriate multi_class_classification task_df.",
-                'pyd_spec': {
+            },
+            {
+                "msg": "Should set appropriate multi_class_classification task_df.",
+                "pyd_spec": {
                     **default_pyd_spec,
-                    'has_task': True,
-                    'task_types': {'task': 'multi_class_classification'},
-                    'task_vocabs': {'task': ['A', 'B', 'C']},
-                    'tasks': ['task'],
+                    "has_task": True,
+                    "task_types": {"task": "multi_class_classification"},
+                    "task_vocabs": {"task": ["A", "B", "C"]},
+                    "tasks": ["task"],
                 },
-                'want': {
+                "want": {
                     **default_want,
-                    'finetuning_task': 'task',
-                    'problem_type': 'single_label_classification',
-                    'num_labels': 3,
-                    'id2label': {0: 'A', 1: 'B', 2: 'C'},
-                    'label2id': {'A': 0, 'B': 1, 'C': 2},
+                    "finetuning_task": "task",
+                    "problem_type": "single_label_classification",
+                    "num_labels": 3,
+                    "id2label": {0: "A", 1: "B", 2: "C"},
+                    "label2id": {"A": 0, "B": 1, "C": 2},
                 },
-            }, {
-                'msg': "Should set appropriate with binary task_df.",
-                'pyd_spec': {
+            },
+            {
+                "msg": "Should set appropriate with binary task_df.",
+                "pyd_spec": {
                     **default_pyd_spec,
-                    'has_task': True,
-                    'task_types': {'task': 'binary_classification'},
-                    'task_vocabs': {'task': [False, True]},
-                    'tasks': ['task'],
+                    "has_task": True,
+                    "task_types": {"task": "binary_classification"},
+                    "task_vocabs": {"task": [False, True]},
+                    "tasks": ["task"],
                 },
-                'want': {
+                "want": {
                     **default_want,
-                    'finetuning_task': 'task',
-                    'problem_type': 'single_label_classification',
-                    'num_labels': 2,
-                    'id2label': {0: False, 1: True},
-                    'label2id': {False: 0, True: 1},
+                    "finetuning_task": "task",
+                    "problem_type": "single_label_classification",
+                    "num_labels": 2,
+                    "id2label": {0: False, 1: True},
+                    "label2id": {False: 0, True: 1},
                 },
-            }, {
-                'msg': "Should set appropriate with multi_label binary task_df.",
-                'pyd_spec': {
+            },
+            {
+                "msg": "Should set appropriate with multi_label binary task_df.",
+                "pyd_spec": {
                     **default_pyd_spec,
-                    'has_task': True,
-                    'task_types': {
-                        'task1': 'binary_classification',
-                        'task2': 'binary_classification',
-                        'task3': 'binary_classification',
+                    "has_task": True,
+                    "task_types": {
+                        "task1": "binary_classification",
+                        "task2": "binary_classification",
+                        "task3": "binary_classification",
                     },
-                    'task_vocabs': {'task1': [False, True], 'task2': [False, True], 'task3': [False, True]},
-                    'tasks': ['task1', 'task2', 'task3'],
+                    "task_vocabs": {
+                        "task1": [False, True],
+                        "task2": [False, True],
+                        "task3": [False, True],
+                    },
+                    "tasks": ["task1", "task2", "task3"],
                 },
-                'want': {
+                "want": {
                     **default_want,
-                    'finetuning_task': None,
-                    'problem_type': 'multi_label_classification',
-                    'num_labels': 3,
+                    "finetuning_task": None,
+                    "problem_type": "multi_label_classification",
+                    "num_labels": 3,
                 },
-            }, {
-                'msg': "Should set appropriate with multivariate regression task_df.",
-                'pyd_spec': {
+            },
+            {
+                "msg": "Should set appropriate with multivariate regression task_df.",
+                "pyd_spec": {
                     **default_pyd_spec,
-                    'has_task': True,
-                    'task_types': {'task1': 'regression', 'task2': 'regression'},
-                    'tasks': ['task1', 'task2'],
+                    "has_task": True,
+                    "task_types": {"task1": "regression", "task2": "regression"},
+                    "tasks": ["task1", "task2"],
                 },
-                'want': {
+                "want": {
                     **default_want,
-                    'finetuning_task': None,
-                    'problem_type': 'regression',
-                    'num_labels': 2,
+                    "finetuning_task": None,
+                    "problem_type": "regression",
+                    "num_labels": 2,
                 },
-            }, {
-                'msg': "Should set appropriate with mixed task_df.",
-                'pyd_spec': {
+            },
+            {
+                "msg": "Should set appropriate with mixed task_df.",
+                "pyd_spec": {
                     **default_pyd_spec,
-                    'has_task': True,
-                    'task_types': {'task1': 'regression', 'task2': 'binary_classification'},
-                    'tasks': ['task1', 'task2'],
+                    "has_task": True,
+                    "task_types": {"task1": "regression", "task2": "binary_classification"},
+                    "tasks": ["task1", "task2"],
                 },
-                'want': {
+                "want": {
                     **default_want,
-                    'finetuning_task': None,
-                    'problem_type': None,
+                    "finetuning_task": None,
+                    "problem_type": None,
                 },
-            }
+            },
         ]
 
         for C in cases:
-            with self.subTest(C['msg']):
+            with self.subTest(C["msg"]):
                 pyd = MagicMock()
                 pyd.vocabulary_config = MagicMock()
-                for k, v in C['pyd_spec'].pop('vocabulary_config').items():
+                for k, v in C["pyd_spec"].pop("vocabulary_config").items():
                     setattr(pyd.vocabulary_config, k, v)
-                for k, v in C['pyd_spec'].items(): setattr(pyd, k, v)
+                for k, v in C["pyd_spec"].items():
+                    setattr(pyd, k, v)
 
                 cfg = StructuredTransformerConfig(
                     **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
                 )
                 cfg.set_to_dataset(pyd)
-                for k, v in C['want'].items():
+                for k, v in C["want"].items():
                     self.assertEqual(v, getattr(cfg, k))
 
     def test_save_load(self):
-        """
-        Tests the saving and loading of these configs. While this is largely huggingface functionality, here
-        we test it to ensure that even when set to various modes, with different validity requirements, saving
-        and re-loading is still possible (e.g., ensuring that post-processing doesn't invalidate validation
-        constraints).
+        """Tests the saving and loading of these configs.
+
+        While this is largely huggingface functionality, here we test it to ensure that even when
+        set to various modes, with different validity requirements, saving and re-loading is still
+        possible (e.g., ensuring that post-processing doesn't invalidate validation constraints).
         """
         for params in (
             {},
@@ -375,7 +417,7 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
             cfg = StructuredTransformerConfig(**params)
 
             with TemporaryDirectory() as d:
-                save_path = Path(d) / 'config.json'
+                save_path = Path(d) / "config.json"
                 cfg.to_json_file(save_path)
                 got_cfg = StructuredTransformerConfig.from_json_file(save_path)
 
@@ -386,7 +428,9 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                 self.assertEqual(cfg, got_cfg)
 
                 with self.assertRaises(FileNotFoundError):
-                    got_cfg = StructuredTransformerConfig.from_json_file(Path(d)/'not_found.json')
+                    got_cfg = StructuredTransformerConfig.from_json_file(
+                        Path(d) / "not_found.json"
+                    )
 
                 with self.assertRaises(FileNotFoundError):
-                    cfg.to_json_file(Path(d) / 'not_found' / 'config.json')
+                    cfg.to_json_file(Path(d) / "not_found" / "config.json")

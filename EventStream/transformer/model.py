@@ -1,8 +1,9 @@
-import torch
 from typing import Dict, Optional, Set, Tuple, Union
 
-from ..data.types import DataModality, PytorchBatch
+import torch
+
 from ..data.data_embedding_layer import MeasIndexGroupOptions
+from ..data.types import DataModality, PytorchBatch
 from .config import (
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
@@ -11,22 +12,21 @@ from .config import (
 from .generation_utils import StructuredGenerationMixin
 from .generative_layers import (
     ExponentialTTELayer,
-    LogNormalMixtureTTELayer,
     GaussianIndexedRegressionLayer,
     GaussianRegressionLayer,
+    LogNormalMixtureTTELayer,
 )
 from .model_output import (
-    GenerativeSequenceModelLosses,
-    GenerativeSequenceModelPredictions,
     GenerativeSequenceModelLabels,
+    GenerativeSequenceModelLosses,
     GenerativeSequenceModelOutput,
+    GenerativeSequenceModelPredictions,
     StreamClassificationModelOutput,
     get_event_type_mask_per_measurement,
 )
-from .transformer import (
-    StructuredTransformerPreTrainedModel, StructuredTransformer
-)
+from .transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
 from .utils import safe_masked_max, safe_weighted_avg, weighted_loss
+
 
 class GenerativeOutputLayer(torch.nn.Module):
     # TODO(mmd): Allow for use of NLL-beta throughout?
@@ -42,13 +42,13 @@ class GenerativeOutputLayer(torch.nn.Module):
         match self.config.TTE_generation_layer_type:
             case TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
                 self.TTE_layer = LogNormalMixtureTTELayer(
-                    in_dim = config.hidden_size,
-                    num_components = config.TTE_lognormal_generation_num_components,
-                    mean_log_inter_time = config.mean_log_inter_event_time_min,
-                    std_log_inter_time = config.std_log_inter_event_time_min,
+                    in_dim=config.hidden_size,
+                    num_components=config.TTE_lognormal_generation_num_components,
+                    mean_log_inter_time=config.mean_log_inter_event_time_min,
+                    std_log_inter_time=config.std_log_inter_event_time_min,
                 )
             case TimeToEventGenerationHeadType.EXPONENTIAL:
-                self.TTE_layer = ExponentialTTELayer(in_dim = config.hidden_size)
+                self.TTE_layer = ExponentialTTELayer(in_dim=config.hidden_size)
             case _:
                 raise ValueError(
                     f"Invalid option for `config.TTE_generation_layer_type`. Must be "
@@ -60,34 +60,40 @@ class GenerativeOutputLayer(torch.nn.Module):
 
         self.classification_criteria = {}
         for measurement in config.measurements_for(DataModality.SINGLE_LABEL_CLASSIFICATION):
-            self.classification_criteria[measurement] = torch.nn.CrossEntropyLoss(reduction='none')
+            self.classification_criteria[measurement] = torch.nn.CrossEntropyLoss(reduction="none")
         for measurement in config.measurements_for(DataModality.MULTI_LABEL_CLASSIFICATION):
-            self.classification_criteria[measurement] = torch.nn.BCEWithLogitsLoss(reduction='none')
+            self.classification_criteria[measurement] = torch.nn.BCEWithLogitsLoss(
+                reduction="none"
+            )
 
         self.regression_layers = torch.nn.ModuleDict({})
         for measurement in config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
             self.regression_layers[measurement] = GaussianIndexedRegressionLayer(
-                n_regression_targets = config.vocab_sizes_by_measurement[measurement],
-                in_dim = config.hidden_size,
+                n_regression_targets=config.vocab_sizes_by_measurement[measurement],
+                in_dim=config.hidden_size,
             )
         for measurement in config.measurements_for(DataModality.UNIVARIATE_REGRESSION):
-            if measurement in self.regression_layers: raise ValueError(f"{measurement} duplicated!")
-            self.regression_layers[measurement] = GaussianRegressionLayer(in_dim=config.hidden_size)
+            if measurement in self.regression_layers:
+                raise ValueError(f"{measurement} duplicated!")
+            self.regression_layers[measurement] = GaussianRegressionLayer(
+                in_dim=config.hidden_size
+            )
 
         self.classification_mode_per_measurement = {}
         for generative_mode, measurements in config.measurements_per_generative_mode.items():
             if generative_mode in (
-                DataModality.MULTIVARIATE_REGRESSION, DataModality.UNIVARIATE_REGRESSION
-            ): continue
+                DataModality.MULTIVARIATE_REGRESSION,
+                DataModality.UNIVARIATE_REGRESSION,
+            ):
+                continue
             for measurement in measurements:
                 assert measurement not in self.classification_mode_per_measurement
                 self.classification_mode_per_measurement[measurement] = generative_mode
 
-    def get_TTE_outputs(self, batch: PytorchBatch, encoded: torch.FloatTensor) -> Tuple[
-        torch.FloatTensor, torch.distributions.Distribution, torch.FloatTensor,
-    ]:
-        """
-        Produces time-to-event predictions and log likelihoods (_not NLLs!_) for the model.
+    def get_TTE_outputs(
+        self, batch: PytorchBatch, encoded: torch.FloatTensor
+    ) -> Tuple[torch.FloatTensor, torch.distributions.Distribution, torch.FloatTensor,]:
+        """Produces time-to-event predictions and log likelihoods (_not NLLs!_) for the model.
 
         Args:
             `batch` (`PytorchBatch`):
@@ -119,13 +125,15 @@ class GenerativeOutputLayer(torch.nn.Module):
         TTE_dist = self.TTE_layer(encoded)
 
         # TTE_dist is a distribution with random variables of shape (batch size, sequence length)
-        TTE_obs_mask = (batch['event_mask'][:, 1:] & batch['event_mask'][:, :-1])
-        TTE_delta = batch['time'].diff()
+        TTE_obs_mask = batch["event_mask"][:, 1:] & batch["event_mask"][:, :-1]
+        TTE_delta = batch["time"].diff()
         TTE_true = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
         # for generative purposes, we add a fake observation to the last element.
-        TTE_true_exp = torch.cat((TTE_true, torch.ones_like(TTE_true[:, -1]).unsqueeze(-1)), dim=-1)
+        TTE_true_exp = torch.cat(
+            (TTE_true, torch.ones_like(TTE_true[:, -1]).unsqueeze(-1)), dim=-1
+        )
         TTE_obs_mask_exp = torch.cat(
             (TTE_obs_mask, torch.zeros_like(TTE_obs_mask[:, -1]).unsqueeze(-1)), dim=-1
         )
@@ -143,21 +151,25 @@ class GenerativeOutputLayer(torch.nn.Module):
         elif (TTE_obs_mask_exp.float().sum(-1) == 0).any():
             raise ValueError(f"No observed time-to-event for >= 1 patient in batch: {batch}")
 
-        TTE_LL_per_patient = (TTE_LL * TTE_obs_mask_exp.float()).sum(-1) / TTE_obs_mask_exp.float().sum(-1)
+        TTE_LL_per_patient = (TTE_LL * TTE_obs_mask_exp.float()).sum(
+            -1
+        ) / TTE_obs_mask_exp.float().sum(-1)
         TTE_LL_overall = TTE_LL_per_patient.mean()
 
         return TTE_LL_overall, TTE_dist, TTE_true
 
     def get_classification_outputs(
-        self, batch: PytorchBatch, encoded: torch.FloatTensor, valid_measurements: Set[str],
+        self,
+        batch: PytorchBatch,
+        encoded: torch.FloatTensor,
+        valid_measurements: Set[str],
         event_type_mask_per_measurement: Optional[Dict[str, torch.BoolTensor]] = None,
     ) -> Tuple[
         Dict[str, torch.FloatTensor],
         Dict[str, torch.FloatTensor],
         Dict[str, Union[torch.LongTensor, torch.FloatTensor]],
     ]:
-        """
-        Produces classification predictions and losses for the model.
+        """Produces classification predictions and losses for the model.
 
         Args:
             `batch` (`PytorchBatch`):
@@ -208,7 +220,8 @@ class GenerativeOutputLayer(torch.nn.Module):
                     observed, otherwise contains zeros.
         """
 
-        if not valid_measurements: return {}, {}, {}
+        if not valid_measurements:
+            return {}, {}, {}
 
         # Classification of what elements are going to occur:
         classification_scores = self.ClassificationLayer(encoded)
@@ -218,17 +231,20 @@ class GenerativeOutputLayer(torch.nn.Module):
         classification_labels_by_measurement = {}
 
         for measurement, classification_mode in self.classification_mode_per_measurement.items():
-            if measurement not in valid_measurements: continue
+            if measurement not in valid_measurements:
+                continue
 
-            if event_type_mask_per_measurement is not None and measurement != 'event_type':
-                event_mask = event_type_mask_per_measurement[measurement] & batch['event_mask']
+            if event_type_mask_per_measurement is not None and measurement != "event_type":
+                event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
             else:
-                event_mask = batch['event_mask']
+                event_mask = batch["event_mask"]
 
             measurement_idx = self.config.measurements_idxmap[measurement]
             vocab_start = self.config.vocab_offsets_by_measurement[measurement]
             vocab_end = min(
-                o for o in list(self.config.vocab_offsets_by_measurement.values()) + [self.config.vocab_size]
+                o
+                for o in list(self.config.vocab_offsets_by_measurement.values())
+                + [self.config.vocab_size]
                 if o > vocab_start
             )
 
@@ -238,21 +254,22 @@ class GenerativeOutputLayer(torch.nn.Module):
             # We don't need to shift here, as given this is a structured model, we'll always rely on elements
             # of the dependency graph that don't include these inputs to predict them (e.g., predict the
             # contents of the event given the time at which the event occurred).
-            dynamic_indices = batch['dynamic_indices']
-            tensor_idx = (batch['dynamic_measurement_indices'] == measurement_idx)
+            dynamic_indices = batch["dynamic_indices"]
+            tensor_idx = batch["dynamic_measurement_indices"] == measurement_idx
 
             if classification_mode == DataModality.SINGLE_LABEL_CLASSIFICATION:
                 # As there is only one index of this type for this setting,
-                # we can direclty multiply by the mask and sum
+                # we can directly multiply by the mask and sum
                 events_with_label = tensor_idx.any(dim=-1)
                 labels = (
-                    (dynamic_indices.long() * tensor_idx.long()).sum(dim=-1) -
-                    vocab_start
+                    (dynamic_indices.long() * tensor_idx.long()).sum(dim=-1) - vocab_start
                 ) * events_with_label.long()
                 # labels is of shape [batch X seq]
 
                 try:
-                    loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
+                    loss_per_event = self.classification_criteria[measurement](
+                        scores.transpose(1, 2), labels
+                    )
                 except IndexError as e:
                     print(f"Failed to get loss for {measurement}: {e}!")
                     print(f"vocab_start: {vocab_start}, vocab_end: {vocab_end}")
@@ -271,14 +288,17 @@ class GenerativeOutputLayer(torch.nn.Module):
 
             elif classification_mode == DataModality.MULTI_LABEL_CLASSIFICATION:
                 data_labels_or_zero = torch.where(
-                    tensor_idx, dynamic_indices - vocab_start + 1,
+                    tensor_idx,
+                    dynamic_indices - vocab_start + 1,
                     torch.zeros_like(dynamic_indices),
                 ).long()
 
                 labels = torch.zeros(
-                    scores.shape[0], scores.shape[1], 1+scores.shape[2], device=scores.device
+                    scores.shape[0], scores.shape[1], 1 + scores.shape[2], device=scores.device
                 ).scatter(
-                    dim=2, index=data_labels_or_zero, value=1,
+                    dim=2,
+                    index=data_labels_or_zero,
+                    value=1,
                 )
 
                 labels = labels[:, :, 1:]  # Drop the omitted labels...
@@ -288,7 +308,8 @@ class GenerativeOutputLayer(torch.nn.Module):
 
                 dists = torch.distributions.Bernoulli(logits=scores)
 
-            else: raise ValueError(f"Classification mode {classification_mode} Invalid!")
+            else:
+                raise ValueError(f"Classification mode {classification_mode} Invalid!")
 
             loss_overall = weighted_loss(loss_per_event, event_mask)
 
@@ -296,12 +317,16 @@ class GenerativeOutputLayer(torch.nn.Module):
             classification_dists_by_measurement[measurement] = dists
             classification_labels_by_measurement[measurement] = labels
         return (
-            classification_losses_by_measurement, classification_dists_by_measurement,
-            classification_labels_by_measurement
+            classification_losses_by_measurement,
+            classification_dists_by_measurement,
+            classification_labels_by_measurement,
         )
 
     def get_regression_outputs(
-        self, batch: PytorchBatch, encoded: torch.FloatTensor, valid_measurements: Set[str],
+        self,
+        batch: PytorchBatch,
+        encoded: torch.FloatTensor,
+        valid_measurements: Set[str],
         is_generation: bool = False,
         event_type_mask_per_measurement: Optional[Dict[str, torch.BoolTensor]] = None,
     ) -> Tuple[
@@ -310,8 +335,7 @@ class GenerativeOutputLayer(torch.nn.Module):
         Dict[str, torch.FloatTensor],
         Dict[str, torch.LongTensor],
     ]:
-        """
-        Produces regression predictions and losses for the model.
+        """Produces regression predictions and losses for the model.
 
         Args:
             `batch` (`PytorchBatch`):
@@ -357,19 +381,21 @@ class GenerativeOutputLayer(torch.nn.Module):
                 unobserved. E.g., if we have 200 laboratory tests that we are regressing over, these indices
                 state to which laboratory test results the values in `regression_labels` correspond.
         """
-        if not valid_measurements: return {}, {}, {}, {}
+        if not valid_measurements:
+            return {}, {}, {}, {}
 
         regression_loss_values = {}
         regression_dists = {}
         regression_labels = {}
         regression_indices = {}
         for measurement in self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
-            if measurement not in valid_measurements: continue
+            if measurement not in valid_measurements:
+                continue
 
             if event_type_mask_per_measurement is not None:
-                event_mask = event_type_mask_per_measurement[measurement] & batch['event_mask']
+                event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
             else:
-                event_mask = batch['event_mask']
+                event_mask = batch["event_mask"]
 
             measurement_idx = self.config.measurements_idxmap[measurement]
             vocab_start = self.config.vocab_offsets_by_measurement[measurement]
@@ -377,14 +403,14 @@ class GenerativeOutputLayer(torch.nn.Module):
             # TODO(mmd): If we wanted, we could have `indices_measured_or_zero` reflect just the former part
             # of this `&`, and thus have predictions on all indices, even for those we don't observe values
             # for, but for now this functionality is not required, so we standardize them.
-            tensor_idx = (
-                (batch['dynamic_measurement_indices'] == measurement_idx) & batch['dynamic_values_mask']
-            )
+            tensor_idx = (batch["dynamic_measurement_indices"] == measurement_idx) & batch[
+                "dynamic_values_mask"
+            ]
 
             indices_measured_or_zero = torch.where(
                 tensor_idx,
-                batch['dynamic_indices'] - vocab_start,
-                torch.zeros_like(batch['dynamic_indices']),
+                batch["dynamic_indices"] - vocab_start,
+                torch.zeros_like(batch["dynamic_indices"]),
             ).long()
 
             regr_dist = self.regression_layers[measurement](
@@ -393,8 +419,8 @@ class GenerativeOutputLayer(torch.nn.Module):
 
             values_observed_or_zero = torch.where(
                 tensor_idx,
-                batch['dynamic_values'],
-                torch.zeros_like(batch['dynamic_values']),
+                batch["dynamic_values"],
+                torch.zeros_like(batch["dynamic_values"]),
             ).float()
 
             # We don't need to shift here, as given this is a structured model, we'll always rely on elements
@@ -417,34 +443,40 @@ class GenerativeOutputLayer(torch.nn.Module):
             regression_indices[measurement] = indices_measured_or_zero
 
         for measurement in self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION):
-            if measurement not in valid_measurements: continue
+            if measurement not in valid_measurements:
+                continue
 
             if event_type_mask_per_measurement is not None:
-                event_mask = event_type_mask_per_measurement[measurement] & batch['event_mask']
+                event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
             else:
-                event_mask = batch['event_mask']
+                event_mask = batch["event_mask"]
 
             measurement_idx = self.config.measurements_idxmap[measurement]
 
             # TODO(mmd): If we wanted, we could have `indices_measured_or_zero` reflect just the former part
             # of this `&`, and thus have predictions on all indices, even for those we don't observe values
             # for, but for now this functionality is not required, so we standardize them.
-            tensor_idx = (
-                (batch['dynamic_measurement_indices'] == measurement_idx) & batch['dynamic_values_mask']
-            )
+            tensor_idx = (batch["dynamic_measurement_indices"] == measurement_idx) & batch[
+                "dynamic_values_mask"
+            ]
 
             # As there is only one index of this type for this setting,
-            # we can direclty multiply by the mask and sum
+            # we can directly multiply by the mask and sum
             events_with_label = tensor_idx.any(dim=-1)
             event_mask = event_mask & events_with_label
 
             regr_dist = self.regression_layers[measurement](X=encoded)
 
-            values_observed_or_zero = torch.where(
-                tensor_idx,
-                batch['dynamic_values'],
-                torch.zeros_like(batch['dynamic_values']),
-            ).float().sum(dim=-1) * events_with_label.float()
+            values_observed_or_zero = (
+                torch.where(
+                    tensor_idx,
+                    batch["dynamic_values"],
+                    torch.zeros_like(batch["dynamic_values"]),
+                )
+                .float()
+                .sum(dim=-1)
+                * events_with_label.float()
+            )
             values_observed_or_zero = values_observed_or_zero.unsqueeze(-1)
 
             # We don't need to shift here, as given this is a structured model, we'll always rely on elements
@@ -480,7 +512,10 @@ class GenerativeOutputLayer(torch.nn.Module):
         )
 
     def forward(
-        self, batch: PytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False,
+        self,
+        batch: PytorchBatch,
+        encoded: torch.FloatTensor,
+        is_generation: bool = False,
     ) -> GenerativeSequenceModelOutput:
         # encoded is of one of two shapes:
         #   1. (batch size, sequence length, config.hidden_size), in the case that
@@ -501,13 +536,13 @@ class GenerativeOutputLayer(torch.nn.Module):
 
         classification_measurements = set(self.classification_mode_per_measurement.keys())
         regression_measurements = set(
-            self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION) +
-            self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
+            self.config.measurements_for(DataModality.MULTIVARIATE_REGRESSION)
+            + self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
         event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
 
-        if self.config.structured_event_processing_mode == 'conditionally_independent':
+        if self.config.structured_event_processing_mode == "conditionally_independent":
             bsz, seq_len, _ = encoded.shape
             whole_event_encoded = encoded
 
@@ -521,13 +556,19 @@ class GenerativeOutputLayer(torch.nn.Module):
             # of the next event after the end of the sequence, as it needs a timepoint embedding to process
             # that prediction task.
 
-            for_event_contents_prediction = torch.cat((
-                torch.zeros_like(whole_event_encoded[:, 0, :]).unsqueeze(1), whole_event_encoded[:, :-1, :]
-            ), dim=1)
+            for_event_contents_prediction = torch.cat(
+                (
+                    torch.zeros_like(whole_event_encoded[:, 0, :]).unsqueeze(1),
+                    whole_event_encoded[:, :-1, :],
+                ),
+                dim=1,
+            )
 
             classification_out = self.get_classification_outputs(
-                batch, for_event_contents_prediction, classification_measurements,
-                event_type_mask_per_measurement=event_type_mask_per_measurement
+                batch,
+                for_event_contents_prediction,
+                classification_measurements,
+                event_type_mask_per_measurement=event_type_mask_per_measurement,
             )
             classification_dists_by_measurement.update(classification_out[1])
             if not is_generation:
@@ -535,8 +576,11 @@ class GenerativeOutputLayer(torch.nn.Module):
                 classification_labels_by_measurement.update(classification_out[2])
 
             regression_out = self.get_regression_outputs(
-                batch, for_event_contents_prediction, regression_measurements, is_generation=is_generation,
-                event_type_mask_per_measurement=event_type_mask_per_measurement
+                batch,
+                for_event_contents_prediction,
+                regression_measurements,
+                is_generation=is_generation,
+                event_type_mask_per_measurement=event_type_mask_per_measurement,
             )
             regression_dists.update(regression_out[1])
             if not is_generation:
@@ -554,7 +598,7 @@ class GenerativeOutputLayer(torch.nn.Module):
                 # In this case, unlike above, this level of the dependency graph is presumed to be used to
                 # predict the data types listed in `self.config.measurements_per_dep_graph_level`, so we don't
                 # need to shift anything as we did in the conditionally_independent case.
-                dep_graph_level_encoded = encoded[:, :, i-1, :]
+                dep_graph_level_encoded = encoded[:, :, i - 1, :]
                 # dep_graph_level_encoded is of shape (batch size, sequence length, hidden size)
 
                 if self.config.measurements_per_dep_graph_level is None:
@@ -567,8 +611,10 @@ class GenerativeOutputLayer(torch.nn.Module):
                     categorical_measurements_in_level = set()
                     numerical_measurements_in_level = set()
                     for measurement in self.config.measurements_per_dep_graph_level[i]:
-                        if type(measurement) in (tuple, list): measurement, mode = measurement
-                        else: mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
+                        if type(measurement) in (tuple, list):
+                            measurement, mode = measurement
+                        else:
+                            mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
 
                         match mode:
                             case MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL:
@@ -581,16 +627,18 @@ class GenerativeOutputLayer(torch.nn.Module):
                             case _:
                                 raise ValueError(f"Unknown mode {mode}")
 
-                    classification_measurements_in_level = categorical_measurements_in_level.intersection(
-                        classification_measurements
+                    classification_measurements_in_level = (
+                        categorical_measurements_in_level.intersection(classification_measurements)
                     )
-                    regression_measurements_in_level = numerical_measurements_in_level.intersection(
-                        regression_measurements
+                    regression_measurements_in_level = (
+                        numerical_measurements_in_level.intersection(regression_measurements)
                     )
 
                 classification_out = self.get_classification_outputs(
-                    batch, dep_graph_level_encoded, classification_measurements_in_level,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement
+                    batch,
+                    dep_graph_level_encoded,
+                    classification_measurements_in_level,
+                    event_type_mask_per_measurement=event_type_mask_per_measurement,
                 )
                 classification_dists_by_measurement.update(classification_out[1])
                 if not is_generation:
@@ -598,7 +646,9 @@ class GenerativeOutputLayer(torch.nn.Module):
                     classification_labels_by_measurement.update(classification_out[2])
 
                 regression_out = self.get_regression_outputs(
-                    batch, dep_graph_level_encoded, regression_measurements_in_level,
+                    batch,
+                    dep_graph_level_encoded,
+                    regression_measurements_in_level,
                     is_generation=is_generation,
                     event_type_mask_per_measurement=event_type_mask_per_measurement,
                 )
@@ -611,32 +661,40 @@ class GenerativeOutputLayer(torch.nn.Module):
         # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
         TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(batch, whole_event_encoded)
 
-        return GenerativeSequenceModelOutput(**{
-            'loss': (
-                sum(classification_losses_by_measurement.values()) + sum(regression_loss_values.values()) -
-                TTE_LL_overall
-            ) if not is_generation else None,
-            'losses': GenerativeSequenceModelLosses(**{
-                'classification': classification_losses_by_measurement,
-                'regression': regression_loss_values,
-                'time_to_event': None if is_generation else -TTE_LL_overall,
-            }),
-            'preds': GenerativeSequenceModelPredictions(
-                classification = classification_dists_by_measurement,
-                regression = regression_dists,
-                regression_indices = regression_indices,
-                time_to_event = TTE_dist,
-            ),
-            'labels': GenerativeSequenceModelLabels(
-                classification = classification_labels_by_measurement,
-                regression = regression_labels,
-                regression_indices = regression_indices,
-                time_to_event = None if is_generation else TTE_true
-            ),
-            'event_type_mask_per_measurement': event_type_mask_per_measurement,
-            'event_mask': batch['event_mask'],
-            'dynamic_values_mask': batch['dynamic_values_mask'],
-        })
+        return GenerativeSequenceModelOutput(
+            **{
+                "loss": (
+                    sum(classification_losses_by_measurement.values())
+                    + sum(regression_loss_values.values())
+                    - TTE_LL_overall
+                )
+                if not is_generation
+                else None,
+                "losses": GenerativeSequenceModelLosses(
+                    **{
+                        "classification": classification_losses_by_measurement,
+                        "regression": regression_loss_values,
+                        "time_to_event": None if is_generation else -TTE_LL_overall,
+                    }
+                ),
+                "preds": GenerativeSequenceModelPredictions(
+                    classification=classification_dists_by_measurement,
+                    regression=regression_dists,
+                    regression_indices=regression_indices,
+                    time_to_event=TTE_dist,
+                ),
+                "labels": GenerativeSequenceModelLabels(
+                    classification=classification_labels_by_measurement,
+                    regression=regression_labels,
+                    regression_indices=regression_indices,
+                    time_to_event=None if is_generation else TTE_true,
+                ),
+                "event_type_mask_per_measurement": event_type_mask_per_measurement,
+                "event_mask": batch["event_mask"],
+                "dynamic_values_mask": batch["dynamic_values_mask"],
+            }
+        )
+
 
 class ESTForGenerativeSequenceModeling(
     StructuredGenerationMixin, StructuredTransformerPreTrainedModel
@@ -653,14 +711,10 @@ class ESTForGenerativeSequenceModeling(
         # Initialize weights and apply final processing
         self.post_init()
 
-    def forward(
-        self,
-        batch: PytorchBatch,
-        is_generation: bool = False,
-        **kwargs
-    ):
+    def forward(self, batch: PytorchBatch, is_generation: bool = False, **kwargs):
         encoded = self.encoder(batch, **kwargs).last_hidden_state
         return self.output_layer(batch, encoded, is_generation=is_generation)
+
 
 class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
     def __init__(
@@ -672,9 +726,9 @@ class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
         self.task = config.finetuning_task
         self.encoder = StructuredTransformer(config)
 
-        self.pooling_method = config.task_specific_params['pooling_method']
+        self.pooling_method = config.task_specific_params["pooling_method"]
 
-        is_binary = (config.id2label == {0: False, 1: True})
+        is_binary = config.id2label == {0: False, 1: True}
         if is_binary:
             assert config.num_labels == 2
             self.logit_layer = torch.nn.Linear(config.hidden_size, 1)
@@ -688,13 +742,12 @@ class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
 
     @property
     def uses_dep_graph(self):
-        return self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION
+        return (
+            self.config.structured_event_processing_mode
+            == StructuredEventProcessingMode.NESTED_ATTENTION
+        )
 
-    def forward(
-        self,
-        batch: PytorchBatch,
-        **kwargs
-    ):
+    def forward(self, batch: PytorchBatch, **kwargs):
         encoded = self.encoder(batch, **kwargs).last_hidden_state
         event_encoded = encoded[:, :, -1, :] if self.uses_dep_graph else encoded
 
@@ -703,16 +756,23 @@ class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
         event_encoded = event_encoded.transpose(1, 2)
 
         match self.pooling_method:
-            case 'cls': stream_encoded = event_encoded[:, :, 0]
-            case 'last': stream_encoded = event_encoded[:, :, -1]
-            case 'max': stream_encoded = safe_masked_max(event_encoded, batch['event_mask'])
-            case 'mean': stream_encoded, _ = safe_weighted_avg(event_encoded, batch['event_mask'])
-            case _: raise ValueError(f"{self.pooling_method} is not a supported pooling method.")
+            case "cls":
+                stream_encoded = event_encoded[:, :, 0]
+            case "last":
+                stream_encoded = event_encoded[:, :, -1]
+            case "max":
+                stream_encoded = safe_masked_max(event_encoded, batch["event_mask"])
+            case "mean":
+                stream_encoded, _ = safe_weighted_avg(event_encoded, batch["event_mask"])
+            case _:
+                raise ValueError(f"{self.pooling_method} is not a supported pooling method.")
 
         logits = self.logit_layer(stream_encoded).squeeze(-1)
-        labels = batch['stream_labels'][self.task]
+        labels = batch["stream_labels"][self.task]
         loss = self.criteria(logits, labels)
 
         return StreamClassificationModelOutput(
-            loss=loss, preds=logits, labels=labels,
+            loss=loss,
+            preds=logits,
+            labels=labels,
         )

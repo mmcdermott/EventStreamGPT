@@ -1,16 +1,20 @@
 # Polars friendly pre-processing models.
+
 A collection of pre-processing (outlier detection and normalization) models that can be fit via polars
 expressions, either directly on a dataframe or in a groupby context. All only work with univariate data at
 present.
 
 ## StandardScaler
+
 Computes the mean and standard deviation of the data. Upon predict, subtracts the mean and divides by the
 standard deviation.
 
 ## StddevCutoff
+
 Removes all values that occur more than a specified threshold of standard deviations away from the mean.
 
 ## Variance Impact Outlier Detector
+
 *_WARNING_*: This currently does not work due to a bug in `polars`: https://github.com/pola-rs/polars/issues/8070
 
 The goal of this module is to provide a system that can quickly identify datapoints that have an over-sized

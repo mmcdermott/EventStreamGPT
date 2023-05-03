@@ -1,18 +1,24 @@
-import dataclasses, enum, torch
+import dataclasses
+import enum
 from typing import Dict, Optional, Union
 
+import torch
+
 from ..utils import StrEnum
+
 
 class InputDFType(StrEnum):
     STATIC = enum.auto()
     EVENT = enum.auto()
     RANGE = enum.auto()
 
+
 class InputDataType(StrEnum):
     CATEGORICAL = enum.auto()
     FLOAT = enum.auto()
     TIMESTAMP = enum.auto()
     BOOLEAN = enum.auto()
+
 
 @dataclasses.dataclass
 class PytorchBatch:
@@ -30,37 +36,47 @@ class PytorchBatch:
     stream_labels: Optional[Dict[str, Union[torch.FloatTensor, torch.LongTensor]]] = None
 
     @property
-    def device(self): return self.event_mask.device
+    def device(self):
+        return self.event_mask.device
 
     @property
-    def batch_size(self) -> int: return self.event_mask.shape[0]
+    def batch_size(self) -> int:
+        return self.event_mask.shape[0]
 
     @property
-    def sequence_length(self) -> int: return self.event_mask.shape[1]
+    def sequence_length(self) -> int:
+        return self.event_mask.shape[1]
 
     @property
-    def n_data_elements(self) -> int: return self.dynamic_indices.shape[2]
+    def n_data_elements(self) -> int:
+        return self.dynamic_indices.shape[2]
 
     @property
-    def n_static_data_elements(self) -> int: return self.static_indices.shape[1]
+    def n_static_data_elements(self) -> int:
+        return self.static_indices.shape[1]
 
-    def __getitem__(self, item: str) -> torch.Tensor: return dataclasses.asdict(self)[item]
+    def __getitem__(self, item: str) -> torch.Tensor:
+        return dataclasses.asdict(self)[item]
 
     def __setitem__(self, item: str, val: torch.Tensor):
-        if not hasattr(self, item): raise KeyError(f"Key {item} not found")
+        if not hasattr(self, item):
+            raise KeyError(f"Key {item} not found")
         setattr(self, item, val)
 
-    def items(self): return dataclasses.asdict(self).items()
+    def items(self):
+        return dataclasses.asdict(self).items()
 
-    def keys(self): return dataclasses.asdict(self).items()
+    def keys(self):
+        return dataclasses.asdict(self).items()
 
-    def values(self): return dataclasses.asdict(self).items()
+    def values(self):
+        return dataclasses.asdict(self).items()
+
 
 class TemporalityType(StrEnum):
-    """
-    Describes the different ways in which a measure can vary w.r.t. time.
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings (e.g.,
-    `STATIC` is equivalent to `'static'`).
+    """Describes the different ways in which a measure can vary w.r.t. time. As a `StrEnum`, can be
+    used interchangeably with the lowercase versions of the member name strings (e.g., `STATIC` is
+    equivalent to `'static'`).
 
     Members:
         `STATIC` (`'static'`):
@@ -82,12 +98,11 @@ class TemporalityType(StrEnum):
     DYNAMIC = enum.auto()
     FUNCTIONAL_TIME_DEPENDENT = enum.auto()
 
+
 class DataModality(StrEnum):
-    """
-    The modality of a data element, which dictates pre-processing, embedding, and possible generation of said
-    element.
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings (e.g.,
-    `DROPPED` is equivalent to `'dropped'`).
+    """The modality of a data element, which dictates pre-processing, embedding, and possible
+    generation of said element. As a `StrEnum`, can be used interchangeably with the lowercase
+    versions of the member name strings (e.g., `DROPPED` is equivalent to `'dropped'`).
 
     TODO(mmd): Maybe missing:
         * PARTIALLY_OBSERVED_SINGLE_LABEL_CLASSIFICATION:
@@ -124,7 +139,8 @@ class DataModality(StrEnum):
     """
 
     @classmethod
-    def values(cls): return list(map(lambda c: c.value, cls))
+    def values(cls):
+        return list(map(lambda c: c.value, cls))
 
     DROPPED = enum.auto()
     SINGLE_LABEL_CLASSIFICATION = enum.auto()
@@ -132,13 +148,13 @@ class DataModality(StrEnum):
     MULTIVARIATE_REGRESSION = enum.auto()
     UNIVARIATE_REGRESSION = enum.auto()
 
+
 class NumericDataModalitySubtype(StrEnum):
-    """
-    Numeric value types. Is used to characterize both entire measures (e.g., 'age' takes on integer values) or
-    sub-measures (e.g., within the measure of "vitals signs", observations for the key "heart rate" take on
-    float values).
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings (e.g.,
-    `DROPPED` is equivalent to `'dropped'`).
+    """Numeric value types. Is used to characterize both entire measures (e.g., 'age' takes on
+    integer values) or sub-measures (e.g., within the measure of "vitals signs", observations for
+    the key "heart rate" take on float values). As a `StrEnum`, can be used interchangeably with
+    the lowercase versions of the member name strings (e.g., `DROPPED` is equivalent to
+    `'dropped'`).
 
     Members:
         `DROPPED` (`'dropped'`): The values of this measure (or sub-measure) were dropped.
@@ -151,6 +167,7 @@ class NumericDataModalitySubtype(StrEnum):
             This formerly floating point measure/sub-measure has been converted to take on categorical values.
             Options can be found in the global vocabulary, with the syntax f"{key_col}__EQ_{orig_val}".
     """
+
     DROPPED = enum.auto()
     INTEGER = enum.auto()
     FLOAT = enum.auto()

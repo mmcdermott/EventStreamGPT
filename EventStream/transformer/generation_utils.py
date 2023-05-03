@@ -17,36 +17,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging, warnings, pandas as pd
+import logging
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import pandas as pd
 import torch
 import torch.distributed as dist
+from transformers.utils import ModelOutput
 
+from ..data.dataset_base import DatasetBase
+from ..data.types import PytorchBatch
+from .generation_outputs_process import OutputsProcessorList
 from .generation_stopping_criteria import (
     MaxLengthCriteria,
     MaxTimeCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
 )
-from .generation_outputs_process import OutputsProcessorList
-
-from transformers.utils import ModelOutput
-
-from ..data.types import PytorchBatch
-from ..data.dataset_base import DatasetBase
 from .model_output import GenerativeSequenceModelPredictions
 
 logger = logging.getLogger(__name__)
 
+
 # TODO(mmd): All Output classes are wrong!
 @dataclass
 class GreedySearchDecoderOnlyOutput(ModelOutput):
-    """
-    Base class for outputs of decoder-only generation models using greedy search.
-
+    """Base class for outputs of decoder-only generation models using greedy search.
 
     Args:
         batch (`PytorchBatch`):
@@ -80,9 +79,7 @@ class GreedySearchDecoderOnlyOutput(ModelOutput):
 
 @dataclass
 class SampleDecoderOnlyOutput(ModelOutput):
-    """
-    Base class for outputs of decoder-only generation models using sampling.
-
+    """Base class for outputs of decoder-only generation models using sampling.
 
     Args:
         batch (`PytorchBatch`):
@@ -117,10 +114,10 @@ class SampleDecoderOnlyOutput(ModelOutput):
 GreedySearchOutput = GreedySearchDecoderOnlyOutput
 SampleOutput = SampleDecoderOnlyOutput
 
+
 class StructuredGenerationMixin:
-    """
-    A class containing all functions for auto-regressive structured event stream generation, to be used as a
-    mixin in [`PreTrainedModel`].
+    """A class containing all functions for auto-regressive structured event stream generation, to
+    be used as a mixin in [`PreTrainedModel`].
 
     The class exposes [`generate`], which can be used for:
         - *greedy decoding* by calling [`greedy_search`] if `do_sample=False`.
@@ -133,23 +130,24 @@ class StructuredGenerationMixin:
         expand_size: int = 1,
         **model_kwargs,
     ) -> Tuple[PytorchBatch, Dict[str, Any]]:
-        expanded_return_idx = torch.arange(
-            batch['time'].shape[0]
-        ).view(
-            -1, 1
-        ).repeat(
-            1, expand_size
-        ).view(
-            -1
-        ).to(
-            batch['time'].device
+        expanded_return_idx = (
+            torch.arange(batch["time"].shape[0])
+            .view(-1, 1)
+            .repeat(1, expand_size)
+            .view(-1)
+            .to(batch["time"].device)
         )
 
         for k, v in batch.items():
             match v:
-                case dict(): batch[k] = {kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()}
-                case torch.Tensor(): batch[k] = v.index_select(0, expanded_return_idx)
-                case _: raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
+                case dict():
+                    batch[k] = {
+                        kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()
+                    }
+                case torch.Tensor():
+                    batch[k] = v.index_select(0, expanded_return_idx)
+                case _:
+                    raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
 
         return batch, model_kwargs
 
@@ -180,9 +178,9 @@ class StructuredGenerationMixin:
     def _get_outputs_warper(
         self,
     ) -> OutputsProcessorList:
-        """
-        This class returns a [`OutputsProcessorList`] list object that contains all relevant [`OutputsWarper`] instances
-        used for multinomial sampling.
+        """This class returns a [`OutputsProcessorList`] list object that contains all relevant.
+
+        [`OutputsWarper`] instances used for multinomial sampling.
         """
 
         # TODO(mmd): Does nothing for now.
@@ -194,8 +192,8 @@ class StructuredGenerationMixin:
     def _get_model_outputs_processor(
         self,
     ) -> OutputsProcessorList:
-        """
-        This class returns a [`OutputsProcessorList`] list object that contains all relevant
+        """This class returns a [`OutputsProcessorList`] list object that contains all relevant.
+
         [`OutputsProcessor`] instances used to modify the scores of the language model head.
         """
         # This is a placeholder for now, as no outputs processors are currently supported!
@@ -228,7 +226,11 @@ class StructuredGenerationMixin:
         for default in default_list:
             for custom in custom_list:
                 if type(custom) is type(default):
-                    object_type = "stopping criteria" if isinstance(custom, StoppingCriteria) else "outputs processor"
+                    object_type = (
+                        "stopping criteria"
+                        if isinstance(custom, StoppingCriteria)
+                        else "outputs processor"
+                    )
                     raise ValueError(
                         f"A custom {object_type} of type {type(custom)} with values {custom} has been passed to"
                         f" `generate`, but it has already been created with the values {default}. {default} has been"
@@ -249,23 +251,19 @@ class StructuredGenerationMixin:
         max_time: Optional[float] = None,
         max_new_events: Optional[int] = None,
         use_cache: Optional[bool] = None,
-
         stopping_criteria: Optional[StoppingCriteriaList] = StoppingCriteriaList(),
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
-
         # TODO(mmd): Improve API so this isn't necessary!
         base_dataset: Optional[DatasetBase] = None,
         batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, SampleOutput, torch.LongTensor]:
-        r"""
-
-        Generates continuous-time sequences of events for models with an  Generation head. The
-        method supports the followign generation methods:
+        r"""Generates continuous-time sequences of events for models with an  Generation head. The
+        method supports the following generation methods:
 
             - *greedy decoding* by calling [`greedy_search`] if `do_sample=False`.
             - *multinomial sampling* by calling [`sample`] if `do_sample=True`.
@@ -372,16 +370,21 @@ class StructuredGenerationMixin:
                     - [`~generation_utils.BeamSearchEncoderDecoderOutput`],
                     - [`~generation_utils.BeamSampleEncoderDecoderOutput`]
         """
-        assert base_dataset is not None, "base_dataset must be provided for structured event generation."
-        assert batch_schema is not None,\
-            "batch_schema must be provided for structured event generation."
+        assert (
+            base_dataset is not None
+        ), "base_dataset must be provided for structured event generation."
+        assert (
+            batch_schema is not None
+        ), "batch_schema must be provided for structured event generation."
 
         static_data = base_dataset.subjects_df.loc[[subj for subj, _, _ in batch_schema]]
 
         # 1. Set generation parameters if not already defined
         do_sample = do_sample if do_sample is not None else self.config.do_sample
         num_return_sequences = (
-            num_return_sequences if num_return_sequences is not None else self.config.num_return_sequences
+            num_return_sequences
+            if num_return_sequences is not None
+            else self.config.num_return_sequences
         )
 
         output_scores = output_scores if output_scores is not None else self.config.output_scores
@@ -389,10 +392,13 @@ class StructuredGenerationMixin:
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         return_dict_in_generate = (
-            return_dict_in_generate if return_dict_in_generate is not None
+            return_dict_in_generate
+            if return_dict_in_generate is not None
             else self.config.return_dict_in_generate
         )
 
@@ -402,14 +408,14 @@ class StructuredGenerationMixin:
         model_kwargs["use_cache"] = use_cache
 
         # decoder-only models should use left-padding for generation
-        if torch.any(~batch['event_mask'][:, -1]):
+        if torch.any(~batch["event_mask"][:, -1]):
             logger.warning(
                 "A decoder-only architecture is being used, but right-padding was detected! For correct "
                 "generation results, please set `seq_padding_side='left'` when initializing the data."
             )
 
         # 4. Prepare `max_length` depending on other stopping criteria.
-        input_seq_length = batch['time'].shape[-1]
+        input_seq_length = batch["time"].shape[-1]
         if max_length is None and max_new_events is None:
             warnings.warn(
                 "Neither `max_length` nor `max_new_events` has been set, `max_length` will default to "
@@ -443,8 +449,8 @@ class StructuredGenerationMixin:
                 )
 
         # 5. determine generation mode
-        is_greedy_gen_mode = (do_sample is False)
-        is_sample_gen_mode = (do_sample is True)
+        is_greedy_gen_mode = do_sample is False
+        is_sample_gen_mode = do_sample is True
 
         # 6. prepare distribution pre_processing samplers
         # TODO(mmd): Right now, this does nothing, as we don't have any valid outputs processors, but
@@ -514,16 +520,15 @@ class StructuredGenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = False,
-        sample_fn: str = 'mode',
+        sample_fn: str = "mode",
         # TODO(mmd): Improve API -- this shouldn't be necessary.
         base_dataset: Optional[DatasetBase] = None,
         batch_schema: Optional[List[int]] = None,
         static_data: Optional[pd.DataFrame] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, SampleOutput, PytorchBatch]:
-        r"""
-        Generates sequences of token ids for models with a generative sequence modeling head using either
-        greedy or sample decoding.
+        r"""Generates sequences of token ids for models with a generative sequence modeling head
+        using either greedy or sample decoding.
 
         Parameters:
             batch (`PytorchBatch`):
@@ -550,23 +555,38 @@ class StructuredGenerationMixin:
                 Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
                 If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
         """
-        assert sample_fn in ('greedy', 'sample')
-        assert base_dataset is not None, "base_dataset must be provided for structured event generation."
-        assert batch_schema is not None, \
-            "batch_schema must be provided for structured event generation."
-        assert static_data is not None, "static_data must be provided for structured event generation."
+        assert sample_fn in ("greedy", "sample")
+        assert (
+            base_dataset is not None
+        ), "base_dataset must be provided for structured event generation."
+        assert (
+            batch_schema is not None
+        ), "batch_schema must be provided for structured event generation."
+        assert (
+            static_data is not None
+        ), "static_data must be provided for structured event generation."
 
         # init values
-        outputs_processor = outputs_processor if outputs_processor is not None else OutputsProcessorList()
-        stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
+        outputs_processor = (
+            outputs_processor if outputs_processor is not None else OutputsProcessorList()
+        )
+        stopping_criteria = (
+            stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
+        )
         outputs_warper = outputs_warper if outputs_warper is not None else OutputsProcessorList()
         output_scores = output_scores if output_scores is not None else self.config.output_scores
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (
+            output_attentions if output_attentions is not None else self.config.output_attentions
+        )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         return_dict_in_generate = (
-            return_dict_in_generate if return_dict_in_generate is not None else self.config.return_dict_in_generate
+            return_dict_in_generate
+            if return_dict_in_generate is not None
+            else self.config.return_dict_in_generate
         )
 
         # init attention / hidden states / scores tuples
@@ -575,14 +595,16 @@ class StructuredGenerationMixin:
         decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
 
         # keep track of which sequences are already finished
-        unfinished_sequences = batch['time'].new_ones(batch['time'].shape[0])
+        unfinished_sequences = batch["time"].new_ones(batch["time"].shape[0])
 
         this_peer_finished = False  # used by synced_gpus only
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
-                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(batch.device)
+                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(
+                    batch.device
+                )
                 # send 0.0 if we finished, 1.0 otherwise
                 dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
                 # did all peers finish? the reduced sum will be 0.0 then
@@ -592,15 +614,22 @@ class StructuredGenerationMixin:
             next_scores = ()
 
             match self.config.structured_event_processing_mode:
-                case 'conditionally_independent':
-                    measurements_to_fill_list = [{'time'}, set(self.config.measurements_idxmap.keys())]
-                case 'nested_attention':
+                case "conditionally_independent":
+                    measurements_to_fill_list = [
+                        {"time"},
+                        set(self.config.measurements_idxmap.keys()),
+                    ]
+                case "nested_attention":
                     if self.config.measurements_per_dep_graph_level:
                         measurements_to_fill_list = [
-                            {'time'}, *self.config.measurements_per_dep_graph_level[1:]
+                            {"time"},
+                            *self.config.measurements_per_dep_graph_level[1:],
                         ]
                     else:
-                        measurements_to_fill_list = [{'time'}, set(self.config.measurements_idxmap.keys())]
+                        measurements_to_fill_list = [
+                            {"time"},
+                            set(self.config.measurements_idxmap.keys()),
+                        ]
 
             for measurements_to_fill in measurements_to_fill_list:
                 # TODO(mmd): Here -- need to loop over dependency graph elements.
@@ -625,21 +654,25 @@ class StructuredGenerationMixin:
 
                 if return_dict_in_generate:
                     # We use the `scores` convention here as it is in the standard huggingface config.
-                    if output_scores: next_scores += (next_event_preds,)
+                    if output_scores:
+                        next_scores += (next_event_preds,)
 
                 # Prediction
                 # TODO(mmd): make this only output the appropriate data types
                 match sample_fn:
-                    case 'greedy': next_event = next_event_preds.mode(batch.event_mask)
-                    case 'sample': next_event = next_event_preds.sample(batch.event_mask)
+                    case "greedy":
+                        next_event = next_event_preds.mode(batch.event_mask)
+                    case "sample":
+                        next_event = next_event_preds.sample(batch.event_mask)
 
                 # update batch for next step
-                if measurements_to_fill == {'time'}:
+                if measurements_to_fill == {"time"}:
                     batch = next_event.append_to_batch(
-                        batch, self.config,
+                        batch,
+                        self.config,
                         base_dataset=base_dataset,
                         batch_schema=batch_schema,
-                        static_data=static_data
+                        static_data=static_data,
                     )
                 else:
                     batch = next_event.update_last_event_data(
@@ -648,9 +681,12 @@ class StructuredGenerationMixin:
 
             if return_dict_in_generate:
                 # We use the `scores` convention here as it is in the standard huggingface config.
-                if output_scores: scores += (next_scores,)
-                if output_attentions: decoder_attentions += (outputs.attentions,)
-                if output_hidden_states: decoder_hidden_states += (outputs.hidden_states,)
+                if output_scores:
+                    scores += (next_scores,)
+                if output_attentions:
+                    decoder_attentions += (outputs.attentions,)
+                if output_hidden_states:
+                    decoder_hidden_states += (outputs.hidden_states,)
 
             model_kwargs = self._update_model_kwargs_for_generation(
                 outputs, model_kwargs, is_encoder_decoder=False
@@ -668,7 +704,9 @@ class StructuredGenerationMixin:
                     this_peer_finished = True
 
         if return_dict_in_generate:
-            cls = GreedySearchDecoderOnlyOutput if sample_fn == 'greedy' else SampleDecoderOnlyOutput
+            cls = (
+                GreedySearchDecoderOnlyOutput if sample_fn == "greedy" else SampleDecoderOnlyOutput
+            )
             return cls(
                 scores=scores,
                 batch=batch,
@@ -679,7 +717,7 @@ class StructuredGenerationMixin:
             return batch
 
     def greedy_search(self, *args, **kwargs) -> Union[GreedySearchOutput, PytorchBatch]:
-        return self._search(*args, **kwargs, sample_fn = 'greedy')
+        return self._search(*args, **kwargs, sample_fn="greedy")
 
     def sample(self, *args, **kwargs) -> Union[SampleOutput, PytorchBatch]:
-        return self._search(*args, **kwargs, sample_fn = 'sample')
+        return self._search(*args, **kwargs, sample_fn="sample")

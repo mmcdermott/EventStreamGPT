@@ -1,15 +1,18 @@
-import dataclasses, enum, itertools, math
+import dataclasses
+import enum
+import itertools
+import math
+from typing import Dict, Hashable, List, Optional, Tuple, Union
 
 from transformers import PretrainedConfig
 
-from typing import Dict, Hashable, List, Optional, Tuple, Union
-
-from ..utils import StrEnum, JSONableMixin, hydra_dataclass
-from ..data.data_embedding_layer import StaticEmbeddingMode, MeasIndexGroupOptions
+from ..data.data_embedding_layer import MeasIndexGroupOptions, StaticEmbeddingMode
 from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality
+from ..utils import JSONableMixin, StrEnum, hydra_dataclass
 
 MEAS_INDEX_GROUP_T = Union[str, Tuple[str, MeasIndexGroupOptions]]
+
 
 @hydra_dataclass
 class MetricsConfig(JSONableMixin):
@@ -21,10 +24,11 @@ class MetricsConfig(JSONableMixin):
 
     do_skip_all_metrics_in_train: bool = True
 
+
 @hydra_dataclass
 class OptimizationConfig(JSONableMixin):
-    """
-    A configuration object for optimization variables for training a `StructuredTransformer` model.
+    """A configuration object for optimization variables for training a `StructuredTransformer`
+    model.
 
     Args:
         `init_lr` (`float`, default is 1e-2):
@@ -61,6 +65,7 @@ class OptimizationConfig(JSONableMixin):
         `gradient_accumulation` (`Optional[int]`, *optional*, default is None):
             The number of gradient accumulation steps to use. If None, gradient accumulation is not used.
     """
+
     init_lr: float = 1e-2
     end_lr: Optional[float] = None
     end_lr_frac_of_init_lr: Optional[float] = 1e-3
@@ -89,11 +94,13 @@ class OptimizationConfig(JSONableMixin):
                     )
             self.end_lr = self.end_lr_frac_of_init_lr * self.init_lr
         else:
-            if self.end_lr is None: raise ValueError("Must set either end_lr or end_lr_frac_of_init_lr!")
+            if self.end_lr is None:
+                raise ValueError("Must set either end_lr or end_lr_frac_of_init_lr!")
             self.end_lr_frac_of_init_lr = self.end_lr / self.init_lr
 
     def set_to_dataset(self, dataset: PytorchDataset):
-        """Sets missing parameters in the optimization config to appropriate values given `dataset`'s size."""
+        """Sets missing parameters in the optimization config to appropriate values given
+        `dataset`'s size."""
 
         steps_per_epoch = int(math.ceil(len(dataset) / self.batch_size))
 
@@ -102,13 +109,18 @@ class OptimizationConfig(JSONableMixin):
 
         if self.lr_num_warmup_steps is None:
             assert self.lr_frac_warmup_steps is not None
-            self.lr_num_warmup_steps = int(round(self.lr_frac_warmup_steps * self.max_training_steps))
+            self.lr_num_warmup_steps = int(
+                round(self.lr_frac_warmup_steps * self.max_training_steps)
+            )
         elif self.lr_frac_warmup_steps is None:
             self.lr_frac_warmup_steps = self.lr_num_warmup_steps / self.max_training_steps
 
         assert (
-            (math.floor(self.lr_frac_warmup_steps * self.max_training_steps) <= self.lr_num_warmup_steps) and
-            (math.ceil(self.lr_frac_warmup_steps * self.max_training_steps) >= self.lr_num_warmup_steps)
+            math.floor(self.lr_frac_warmup_steps * self.max_training_steps)
+            <= self.lr_num_warmup_steps
+        ) and (
+            math.ceil(self.lr_frac_warmup_steps * self.max_training_steps)
+            >= self.lr_num_warmup_steps
         ), (
             "`self.lr_frac_warmup_steps`, `self.max_training_steps`, and `self.lr_num_warmup_steps` should "
             "be consistent, but they aren't! Got\n"
@@ -117,11 +129,11 @@ class OptimizationConfig(JSONableMixin):
             f"\tself.lr_num_warmup_steps = {self.lr_num_warmup_steps}"
         )
 
+
 class StructuredEventProcessingMode(StrEnum):
-    """
-    Structured event sequence processing modes.
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings (e.g.,
-    `CONDITIONALLY_INDEPENDENT` is equivalent to `'conditionally_independent'`).
+    """Structured event sequence processing modes. As a `StrEnum`, can be used interchangeably with
+    the lowercase versions of the member name strings (e.g., `CONDITIONALLY_INDEPENDENT` is
+    equivalent to `'conditionally_independent'`).
 
     Members:
         `CONDITIONALLY_INDEPENDENT` (`'conditionally_independent'`):
@@ -135,16 +147,17 @@ class StructuredEventProcessingMode(StrEnum):
     """
 
     @classmethod
-    def values(cls): return list(map(lambda c: c.value, cls))
+    def values(cls):
+        return list(map(lambda c: c.value, cls))
 
     CONDITIONALLY_INDEPENDENT = enum.auto()
     NESTED_ATTENTION = enum.auto()
 
+
 class TimeToEventGenerationHeadType(StrEnum):
-    """
-    Options for model TTE generation heads.
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings (e.g.,
-    `EXPONENTIAL` is equivalent to `'exponential'`).
+    """Options for model TTE generation heads. As a `StrEnum`, can be used interchangeably with the
+    lowercase versions of the member name strings (e.g., `EXPONENTIAL` is equivalent to
+    `'exponential'`).
 
     Members:
         `EXPONENTIAL` (`'exponential'`):
@@ -158,14 +171,17 @@ class TimeToEventGenerationHeadType(StrEnum):
     """
 
     @classmethod
-    def values(cls): return list(map(lambda c: c.value, cls))
+    def values(cls):
+        return list(map(lambda c: c.value, cls))
 
     EXPONENTIAL = enum.auto()
     LOG_NORMAL_MIXTURE = enum.auto()
 
+
 class AttentionLayerType(StrEnum):
     GLOBAL = enum.auto()
     LOCAL = enum.auto()
+
 
 ATTENTION_TYPES_LIST_T = Union[
     # "global" -- all layers are global.
@@ -176,13 +192,14 @@ ATTENTION_TYPES_LIST_T = Union[
     # Do 2 alternating global and local layers, then 1 global layer.
     List[Tuple[List[AttentionLayerType], int]],
 ]
+
+
 class StructuredTransformerConfig(PretrainedConfig):
-    r"""
-    This is the configuration class to store the configuration of a [`StructuredTransformer`] model
-    and derived model. It is used to instantiate a Transformer model according to the specified arguments.
-    Depending on the use of the model, some parameters will be unused. For example,
-    `measurements_per_generative_mode` and parameters in the Model Output Config section are only used for
-    Multi-variate Marked Point Process (generative sequence model) applications.
+    r"""This is the configuration class to store the configuration of a [`StructuredTransformer`]
+    model and derived model. It is used to instantiate a Transformer model according to the
+    specified arguments. Depending on the use of the model, some parameters will be unused. For
+    example, `measurements_per_generative_mode` and parameters in the Model Output Config section
+    are only used for Multi-variate Marked Point Process (generative sequence model) applications.
 
     Configuration objects inherit from [`PretrainedConfig`] can be used to control the model outputs. Read the
     documentation from [`PretrainedConfig`] for more information. Of particular interest, note that all
@@ -252,7 +269,7 @@ class StructuredTransformerConfig(PretrainedConfig):
             1. `StructuredEventProcessingMode.NESTED_ATTENTION`:
                 In this case, the whole-event embeddings are processed via a sequential encoder first into
                 historical embeddings, then the inter-event dependency graph elements are processed via a
-                second sequential encoder alongside the relavent historical embedding.  Sequential processing
+                second sequential encoder alongside the relevant historical embedding.  Sequential processing
                 types are either full attention / MLP blocks or just self attention layers, as controlled by
                 `do_full_block_in_seq_attention` and `do_full_block_in_dep_graph_attention`.
             2. `StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT`
@@ -335,35 +352,35 @@ class StructuredTransformerConfig(PretrainedConfig):
     """
 
     MANDATORY_PRESENT_PARAMS = {
-        'by_mode': {
+        "by_mode": {
             StructuredEventProcessingMode.NESTED_ATTENTION: {
-                'do_full_block_in_seq_attention',
-                'do_full_block_in_dep_graph_attention',
-                'do_add_temporal_position_embeddings_to_data_embeddings',
+                "do_full_block_in_seq_attention",
+                "do_full_block_in_dep_graph_attention",
+                "do_add_temporal_position_embeddings_to_data_embeddings",
             },
         },
-        'by_tte_head': {
+        "by_tte_head": {
             TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE: {
-                'TTE_lognormal_generation_num_components',
+                "TTE_lognormal_generation_num_components",
             },
         },
     }
     MANDATORY_ABSENT_PARAMS = {
-        'by_mode': {
+        "by_mode": {
             StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT: {
-                'measurements_per_dep_graph_level',
-                'do_full_block_in_seq_attention',
-                'do_full_block_in_dep_graph_attention',
-                'dep_graph_attention_types',
-                'dep_graph_window_size',
-                'do_add_temporal_position_embeddings_to_data_embeddings',
+                "measurements_per_dep_graph_level",
+                "do_full_block_in_seq_attention",
+                "do_full_block_in_dep_graph_attention",
+                "dep_graph_attention_types",
+                "dep_graph_window_size",
+                "do_add_temporal_position_embeddings_to_data_embeddings",
             },
         },
-        'by_tte_head': {
+        "by_tte_head": {
             TimeToEventGenerationHeadType.EXPONENTIAL: {
-                'TTE_lognormal_generation_num_components',
-                'mean_log_inter_event_time_min',
-                'std_log_inter_event_time_min',
+                "TTE_lognormal_generation_num_components",
+                "mean_log_inter_event_time_min",
+                "std_log_inter_event_time_min",
             },
         },
     }
@@ -387,9 +404,8 @@ class StructuredTransformerConfig(PretrainedConfig):
         categorical_embedding_weight: float = 0.5,
         numerical_embedding_weight: float = 0.5,
         do_normalize_by_measurement_index: bool = False,
-
         # Model configuration
-        structured_event_processing_mode: StructuredEventProcessingMode = 'nested_attention',
+        structured_event_processing_mode: StructuredEventProcessingMode = "nested_attention",
         hidden_size: Optional[int] = 256,
         head_dim: Optional[int] = 64,
         num_hidden_layers: int = 2,
@@ -408,25 +424,28 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_full_block_in_dep_graph_attention: Optional[bool] = True,
         do_full_block_in_seq_attention: Optional[bool] = False,
         do_add_temporal_position_embeddings_to_data_embeddings: Optional[bool] = False,
-
         # Model output configuration
-        TTE_generation_layer_type: TimeToEventGenerationHeadType = 'exponential',
+        TTE_generation_layer_type: TimeToEventGenerationHeadType = "exponential",
         TTE_lognormal_generation_num_components: Optional[int] = None,
         mean_log_inter_event_time_min: Optional[float] = None,
         std_log_inter_event_time_min: Optional[float] = None,
-
         # For decoding
         use_cache: bool = True,
-
-        **kwargs
+        **kwargs,
     ):
-        # Reseting default values to appropriate types
-        if vocab_sizes_by_measurement is None: vocab_sizes_by_measurement = {}
-        if vocab_offsets_by_measurement is None: vocab_offsets_by_measurement = {}
-        if measurements_idxmap is None: measurements_idxmap = {}
-        if measurements_per_generative_mode is None: measurements_per_generative_mode = {}
-        if event_types_per_measurement is None: event_types_per_measurement = {}
-        if event_types_idxmap is None: event_types_idxmap = {}
+        # Resetting default values to appropriate types
+        if vocab_sizes_by_measurement is None:
+            vocab_sizes_by_measurement = {}
+        if vocab_offsets_by_measurement is None:
+            vocab_offsets_by_measurement = {}
+        if measurements_idxmap is None:
+            measurements_idxmap = {}
+        if measurements_per_generative_mode is None:
+            measurements_per_generative_mode = {}
+        if event_types_per_measurement is None:
+            event_types_per_measurement = {}
+        if event_types_idxmap is None:
+            event_types_idxmap = {}
 
         self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
@@ -453,20 +472,20 @@ class StructuredTransformerConfig(PretrainedConfig):
             )
 
         dep_graph_params = {
-            'measurements_per_dep_graph_level': measurements_per_dep_graph_level,
-            'do_full_block_in_seq_attention': do_full_block_in_seq_attention,
-            'do_full_block_in_dep_graph_attention': do_full_block_in_dep_graph_attention,
-            'dep_graph_attention_types': dep_graph_attention_types,
-            'dep_graph_window_size': dep_graph_window_size,
-            'do_add_temporal_position_embeddings_to_data_embeddings': (
+            "measurements_per_dep_graph_level": measurements_per_dep_graph_level,
+            "do_full_block_in_seq_attention": do_full_block_in_seq_attention,
+            "do_full_block_in_dep_graph_attention": do_full_block_in_dep_graph_attention,
+            "dep_graph_attention_types": dep_graph_attention_types,
+            "dep_graph_window_size": dep_graph_window_size,
+            "do_add_temporal_position_embeddings_to_data_embeddings": (
                 do_add_temporal_position_embeddings_to_data_embeddings
             ),
         }
 
-        dep_graph_mandatory_present_params = self.MANDATORY_PRESENT_PARAMS['by_mode'].get(
+        dep_graph_mandatory_present_params = self.MANDATORY_PRESENT_PARAMS["by_mode"].get(
             structured_event_processing_mode, []
         )
-        dep_graph_mandatory_absent_params = self.MANDATORY_ABSENT_PARAMS['by_mode'].get(
+        dep_graph_mandatory_absent_params = self.MANDATORY_ABSENT_PARAMS["by_mode"].get(
             structured_event_processing_mode, []
         )
         for name, val in dep_graph_params.items():
@@ -481,16 +500,16 @@ class StructuredTransformerConfig(PretrainedConfig):
                     f"dependency graph param {name} should be `None`; got {val}."
                 )
 
-        if (
-            (structured_event_processing_mode == 'nested_attention') and
-            (measurements_per_dep_graph_level is not None)
+        if (structured_event_processing_mode == "nested_attention") and (
+            measurements_per_dep_graph_level is not None
         ):
             proc_measurements_per_dep_graph_level = []
             for group in measurements_per_dep_graph_level:
                 proc_group = []
                 for meas_index in group:
                     match meas_index:
-                        case str(): proc_group.append(meas_index)
+                        case str():
+                            proc_group.append(meas_index)
                         case (meas_index, mode) | [meas_index, mode]:
                             assert type(meas_index) is str
                             assert mode in MeasIndexGroupOptions.values()
@@ -507,13 +526,16 @@ class StructuredTransformerConfig(PretrainedConfig):
         if (head_dim is None) and (hidden_size is None):
             raise ValueError("Must specify at least one of hidden size or head dim!")
 
-        if hidden_size is None: hidden_size = head_dim * num_attention_heads
-        elif head_dim is None: head_dim = hidden_size // num_attention_heads
+        if hidden_size is None:
+            hidden_size = head_dim * num_attention_heads
+        elif head_dim is None:
+            head_dim = hidden_size // num_attention_heads
 
-        if head_dim * num_attention_heads != hidden_size: raise ValueError(
-            f"hidden_size must be divisible by num_attention_heads (got `hidden_size`: {hidden_size} "
-            f"and `num_attention_heads`: {num_attention_heads})."
-        )
+        if head_dim * num_attention_heads != hidden_size:
+            raise ValueError(
+                f"hidden_size must be divisible by num_attention_heads (got `hidden_size`: {hidden_size} "
+                f"and `num_attention_heads`: {num_attention_heads})."
+            )
 
         if type(num_hidden_layers) is not int:
             raise TypeError(f"num_hidden_layers must be an int! Got {type(num_hidden_layers)}.")
@@ -521,7 +543,8 @@ class StructuredTransformerConfig(PretrainedConfig):
             raise ValueError(f"num_hidden_layers must be > 0! Got {num_hidden_layers}.")
         self.num_hidden_layers = num_hidden_layers
 
-        if seq_attention_types is None: seq_attention_types = ["local", "global"]
+        if seq_attention_types is None:
+            seq_attention_types = ["local", "global"]
 
         self.seq_attention_types = seq_attention_types
         self.seq_attention_layers = self.expand_attention_types_params(seq_attention_types)
@@ -536,10 +559,13 @@ class StructuredTransformerConfig(PretrainedConfig):
                 "Please verify the value of `config.seq_attention_types` argument."
             )
 
-        if structured_event_processing_mode != 'conditionally_independent':
-            if dep_graph_attention_types is None: dep_graph_attention_types = "global"
+        if structured_event_processing_mode != "conditionally_independent":
+            if dep_graph_attention_types is None:
+                dep_graph_attention_types = "global"
 
-            dep_graph_attention_layers = self.expand_attention_types_params(dep_graph_attention_types)
+            dep_graph_attention_layers = self.expand_attention_types_params(
+                dep_graph_attention_types
+            )
 
             if len(dep_graph_attention_layers) != num_hidden_layers:
                 raise ValueError(
@@ -567,16 +593,16 @@ class StructuredTransformerConfig(PretrainedConfig):
                 f"({TimeToEventGenerationHeadType.values()}). got {TTE_generation_layer_type}."
             )
 
-        tte_mandatory_present_params = self.MANDATORY_PRESENT_PARAMS['by_tte_head'].get(
+        tte_mandatory_present_params = self.MANDATORY_PRESENT_PARAMS["by_tte_head"].get(
             TTE_generation_layer_type, []
         )
-        tte_mandatory_absent_params = self.MANDATORY_ABSENT_PARAMS['by_tte_head'].get(
+        tte_mandatory_absent_params = self.MANDATORY_ABSENT_PARAMS["by_tte_head"].get(
             TTE_generation_layer_type, []
         )
         tte_params = {
-            'TTE_lognormal_generation_num_components': TTE_lognormal_generation_num_components,
-            'mean_log_inter_event_time_min': mean_log_inter_event_time_min,
-            'std_log_inter_event_time_min': std_log_inter_event_time_min,
+            "TTE_lognormal_generation_num_components": TTE_lognormal_generation_num_components,
+            "mean_log_inter_event_time_min": mean_log_inter_event_time_min,
+            "std_log_inter_event_time_min": std_log_inter_event_time_min,
         }
         for name, val in tte_params.items():
             if (name in tte_mandatory_present_params) and (val is None):
@@ -602,8 +628,10 @@ class StructuredTransformerConfig(PretrainedConfig):
                     "`TTE_lognormal_generation_num_components` should be >0 "
                     f"got {TTE_lognormal_generation_num_components}."
                 )
-            if mean_log_inter_event_time_min is None: mean_log_inter_event_time_min = 0.0
-            if std_log_inter_event_time_min is None: std_log_inter_event_time_min = 1.0
+            if mean_log_inter_event_time_min is None:
+                mean_log_inter_event_time_min = 0.0
+            if std_log_inter_event_time_min is None:
+                std_log_inter_event_time_min = 1.0
 
         self.TTE_generation_layer_type = TTE_generation_layer_type
         self.TTE_lognormal_generation_num_components = TTE_lognormal_generation_num_components
@@ -633,50 +661,62 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.activation_function = activation_function
         self.do_full_block_in_seq_attention = do_full_block_in_seq_attention
         self.do_full_block_in_dep_graph_attention = do_full_block_in_dep_graph_attention
-        self.do_add_temporal_position_embeddings_to_data_embeddings = \
+        self.do_add_temporal_position_embeddings_to_data_embeddings = (
             do_add_temporal_position_embeddings_to_data_embeddings
+        )
 
         self.use_cache = use_cache
 
-        assert not kwargs.get('is_encoder_decoder', False), "Can't be used in encoder/decoder mode!"
-        kwargs['is_encoder_decoder'] = False
+        assert not kwargs.get(
+            "is_encoder_decoder", False
+        ), "Can't be used in encoder/decoder mode!"
+        kwargs["is_encoder_decoder"] = False
 
         super().__init__(**kwargs)
 
     def measurements_for(self, modality: DataModality) -> List[str]:
         return self.measurements_per_generative_mode.get(modality, [])
 
-    def expand_attention_types_params(self, attention_types: ATTENTION_TYPES_LIST_T) -> List[AttentionLayerType]:
+    def expand_attention_types_params(
+        self, attention_types: ATTENTION_TYPES_LIST_T
+    ) -> List[AttentionLayerType]:
         """Expands the attention syntax from the easy-to-enter syntax to one for the model."""
         if isinstance(attention_types, str):
             return [attention_types] * self.num_hidden_layers
 
         if not isinstance(attention_types, list):
-            raise TypeError(f"Config Invalid {attention_types} ({type(attention_types)}) is wrong type!")
+            raise TypeError(
+                f"Config Invalid {attention_types} ({type(attention_types)}) is wrong type!"
+            )
 
         if isinstance(attention_types[0], str):
-            return (attention_types * self.num_hidden_layers)[:self.num_hidden_layers]
+            return (attention_types * self.num_hidden_layers)[: self.num_hidden_layers]
 
         if isinstance(attention_types[0], (list, tuple)):
             attentions = []
             for sub_list, n_layers in attention_types:
                 attentions.extend(list(sub_list) * n_layers)
-            return attentions[:self.num_hidden_layers]
+            return attentions[: self.num_hidden_layers]
 
-        raise TypeError(f"Config Invalid {attention_types} El 0 ({type(attention_types[0])}) is wrong type!")
+        raise TypeError(
+            f"Config Invalid {attention_types} El 0 ({type(attention_types[0])}) is wrong type!"
+        )
 
     def set_to_dataset(self, dataset: PytorchDataset):
         """Set various configuration parameters to match `dataset`."""
         self.measurements_idxmap = dataset.vocabulary_config.measurements_idxmap
-        self.measurements_per_generative_mode = dataset.vocabulary_config.measurements_per_generative_mode
+        self.measurements_per_generative_mode = (
+            dataset.vocabulary_config.measurements_per_generative_mode
+        )
         for k in DataModality.values():
-            if k not in self.measurements_per_generative_mode: self.measurements_per_generative_mode[k] = []
+            if k not in self.measurements_per_generative_mode:
+                self.measurements_per_generative_mode[k] = []
 
         if self.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION:
-            in_dep = set(
+            in_dep = {
                 x[0] if isinstance(x, (list, tuple)) and len(x) == 2 else x
                 for x in itertools.chain.from_iterable(self.measurements_per_dep_graph_level)
-            )
+            }
             in_generative_mode = set(
                 itertools.chain.from_iterable(self.measurements_per_generative_mode.values())
             )
@@ -692,7 +732,9 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.vocab_offsets_by_measurement = dataset.vocabulary_config.vocab_offsets_by_measurement
         self.vocab_sizes_by_measurement = dataset.vocabulary_config.vocab_sizes_by_measurement
-        for k in set(self.vocab_offsets_by_measurement.keys()) - set(self.vocab_sizes_by_measurement.keys()):
+        for k in set(self.vocab_offsets_by_measurement.keys()) - set(
+            self.vocab_sizes_by_measurement.keys()
+        ):
             self.vocab_sizes_by_measurement[k] = 1
 
         self.vocab_size = dataset.vocabulary_config.total_vocab_size
@@ -707,24 +749,26 @@ class StructuredTransformerConfig(PretrainedConfig):
                 # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
                 self.finetuning_task = dataset.tasks[0]
                 match dataset.task_types[self.finetuning_task]:
-                    case 'binary_classification' | 'multi_class_classification':
+                    case "binary_classification" | "multi_class_classification":
                         self.id2label = {
                             i: v for i, v in enumerate(dataset.task_vocabs[self.finetuning_task])
                         }
                         self.label2id = {v: i for i, v in self.id2label.items()}
                         self.num_labels = len(self.id2label)
-                        self.problem_type = 'single_label_classification'
-                    case 'regression':
+                        self.problem_type = "single_label_classification"
+                    case "regression":
                         self.num_labels = 1
-                        self.problem_type = 'regression'
-            elif all(t == 'binary_classification' for t in dataset.task_types.values()):
-                self.problem_type = 'multi_label_classification'
+                        self.problem_type = "regression"
+            elif all(t == "binary_classification" for t in dataset.task_types.values()):
+                self.problem_type = "multi_label_classification"
                 self.num_labels = len(dataset.tasks)
-            elif all(t == 'regression' for t in dataset.task_types.values()):
+            elif all(t == "regression" for t in dataset.task_types.values()):
                 self.num_labels = len(dataset.tasks)
-                self.problem_type = 'regression'
+                self.problem_type = "regression"
 
     def __eq__(self, other):
         """Checks equality in a type sensitive manner to avoid pytorch lightning issues."""
-        if not isinstance(other, PretrainedConfig): return False
-        else: return PretrainedConfig.__eq__(self, other)
+        if not isinstance(other, PretrainedConfig):
+            return False
+        else:
+            return PretrainedConfig.__eq__(self, other)

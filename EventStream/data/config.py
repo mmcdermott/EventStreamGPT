@@ -1,16 +1,24 @@
 from __future__ import annotations
 
-import dataclasses, omegaconf, pandas as pd
-
-from collections import defaultdict, OrderedDict
+import dataclasses
+from collections import OrderedDict, defaultdict
 from io import StringIO, TextIOBase
 from pathlib import Path
 from textwrap import shorten, wrap
-from typing import Any, Dict, Hashable, List, Optional, Set, Sequence, Tuple, Union
+from typing import Any, Dict, Hashable, List, Optional, Sequence, Set, Tuple, Union
 
-from ..utils import COUNT_OR_PROPORTION, PROPORTION, JSONableMixin, num_initial_spaces, hydra_dataclass
-from .time_dependent_functor import AgeFunctor, TimeOfDayFunctor, TimeDependentFunctor
-from .types import TemporalityType, DataModality, InputDFType, InputDataType
+import omegaconf
+import pandas as pd
+
+from ..utils import (
+    COUNT_OR_PROPORTION,
+    PROPORTION,
+    JSONableMixin,
+    hydra_dataclass,
+    num_initial_spaces,
+)
+from .time_dependent_functor import AgeFunctor, TimeDependentFunctor, TimeOfDayFunctor
+from .types import DataModality, InputDataType, InputDFType, TemporalityType
 from .vocabulary import Vocabulary
 
 DF_COL = Union[str, Sequence[str]]
@@ -30,10 +38,11 @@ DF_SCHEMA = Union[
     Tuple[Dict[DF_COL, str], INPUT_COL_T],
 ]
 
+
 @dataclasses.dataclass
 class DatasetSchema(JSONableMixin):
-    static: Optional[Union[Dict[str, Any], InputDFSchema]] = None
-    dynamic: List[Union[InputDFSchema, Dict[str, Any]]] = dataclasses.field(default_factory=list)
+    static: dict[str, Any] | InputDFSchema | None = None
+    dynamic: list[InputDFSchema | dict[str, Any]] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         if self.static is None:
@@ -41,7 +50,8 @@ class DatasetSchema(JSONableMixin):
 
         if type(self.static) is dict:
             self.static = InputDFSchema(**self.static)
-            if not self.static.is_static: raise TypeError("Must pass a static schema config for static.")
+            if not self.static.is_static:
+                raise TypeError("Must pass a static schema config for static.")
 
         if self.static.subject_id_col is None:
             raise ValueError("Must specify a subject_id_col source for the static dataframe!")
@@ -49,8 +59,10 @@ class DatasetSchema(JSONableMixin):
         if self.dynamic is not None:
             new_dynamic = []
             for v in self.dynamic:
-                if type(v) is dict: v = InputDFSchema(**v)
-                if v.subject_id_col is None: v.subject_id_col = self.static.subject_id_col
+                if type(v) is dict:
+                    v = InputDFSchema(**v)
+                if v.subject_id_col is None:
+                    v.subject_id_col = self.static.subject_id_col
 
                 if v.subject_id_col != self.static.subject_id_col:
                     print(
@@ -60,40 +72,46 @@ class DatasetSchema(JSONableMixin):
 
                 new_dynamic.append(v)
 
-                if v.is_static: raise TypeError("Must pass dynamic schemas in `self.dynamic`!")
+                if v.is_static:
+                    raise TypeError("Must pass dynamic schemas in `self.dynamic`!")
             self.dynamic = new_dynamic
 
         self.dynamic_by_df = defaultdict(list)
-        for v in self.dynamic: self.dynamic_by_df[v.input_df].append(v)
+        for v in self.dynamic:
+            self.dynamic_by_df[v.input_df].append(v)
         self.dynamic_by_df = {k: v for k, v in self.dynamic_by_df.items()}
+
 
 @dataclasses.dataclass
 class InputDFSchema(JSONableMixin):
-    input_df: Optional[Any] = None
+    input_df: Any | None = None
 
-    type: Optional[InputDFType] = None
-    event_type: Optional[Union[str, Tuple[str, str, str]]] = None
+    type: InputDFType | None = None
+    event_type: str | tuple[str, str, str] | None = None
 
-    subject_id_col: Optional[str] = None
-    ts_col: Optional[DF_COL] = None
-    start_ts_col: Optional[DF_COL] = None
-    end_ts_col: Optional[DF_COL] = None
-    ts_format: Optional[str] = "%Y-%m-%d %H:%M:%S"
-    start_ts_format: Optional[str] = None
-    end_ts_format: Optional[str] = None
+    subject_id_col: str | None = None
+    ts_col: DF_COL | None = None
+    start_ts_col: DF_COL | None = None
+    end_ts_col: DF_COL | None = None
+    ts_format: str | None = "%Y-%m-%d %H:%M:%S"
+    start_ts_format: str | None = None
+    end_ts_format: str | None = None
 
-    data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
-    start_data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
-    end_data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]] = None
+    data_schema: DF_SCHEMA | list[DF_SCHEMA] | None = None
+    start_data_schema: DF_SCHEMA | list[DF_SCHEMA] | None = None
+    end_data_schema: DF_SCHEMA | list[DF_SCHEMA] | None = None
 
-    must_have: List[Union[str, Tuple[str, List[Any]]]] = dataclasses.field(default_factory=list)
+    must_have: list[str | tuple[str, list[Any]]] = dataclasses.field(default_factory=list)
 
     @property
-    def is_static(self): return self.type == InputDFType.STATIC
+    def is_static(self):
+        return self.type == InputDFType.STATIC
 
     def __post_init__(self):
-        if self.input_df is None: raise ValueError("Missing mandatory parameter input_df!")
-        if self.type is None: raise ValueError("Missing mandatory parameter type!")
+        if self.input_df is None:
+            raise ValueError("Missing mandatory parameter input_df!")
+        if self.type is None:
+            raise ValueError("Missing mandatory parameter type!")
         if type(self.data_schema) is not list and self.data_schema is not None:
             self.data_schema = [self.data_schema]
         if type(self.start_data_schema) is not list and self.start_data_schema is not None:
@@ -104,9 +122,12 @@ class InputDFSchema(JSONableMixin):
         self.filter_on = {}
         for filter_col in self.must_have:
             match filter_col:
-                case str(): self.filter_on[filter_col] = True
-                case (str() as filter_col, list() as vals): self.filter_on[filter_col] = vals
-                case _: raise ValueError(f"Malformed filter: {filter_col}")
+                case str():
+                    self.filter_on[filter_col] = True
+                case (str() as filter_col, list() as vals):
+                    self.filter_on[filter_col] = vals
+                case _:
+                    raise ValueError(f"Malformed filter: {filter_col}")
 
         match self.type:
             case InputDFType.STATIC:
@@ -115,40 +136,58 @@ class InputDFSchema(JSONableMixin):
                 if self.event_type is not None:
                     raise ValueError("Event_type can't be set if type == 'static'!")
 
-                for param in ('ts_col', 'start_ts_col', 'end_ts_col'):
+                for param in ("ts_col", "start_ts_col", "end_ts_col"):
                     if getattr(self, param) is not None:
                         raise ValueError(f"Set invalid param {param} for static source!")
 
             case InputDFType.EVENT:
-                if self.ts_col is None: raise ValueError("Missing mandatory event parameter ts_col!")
+                if self.ts_col is None:
+                    raise ValueError("Missing mandatory event parameter ts_col!")
                 match self.event_type:
-                    case None: raise ValueError("Missing mandatory range parameter event_type!")
-                    case str(): pass
-                    case _: raise TypeError(f"event_type must be a string for events. Got {self.event_type}")
+                    case None:
+                        raise ValueError("Missing mandatory range parameter event_type!")
+                    case str():
+                        pass
+                    case _:
+                        raise TypeError(
+                            f"event_type must be a string for events. Got {self.event_type}"
+                        )
                 if self.subject_id_col is not None:
                     raise ValueError("subject_id_col should be None for non-static types!")
                 for param in (
-                    'start_ts_col', 'end_ts_col', 'start_ts_format', 'end_ts_format', 'start_data_schema',
-                    'end_data_schema',
+                    "start_ts_col",
+                    "end_ts_col",
+                    "start_ts_format",
+                    "end_ts_format",
+                    "start_data_schema",
+                    "end_data_schema",
                 ):
                     val = getattr(self, param)
                     if val is not None:
-                        raise ValueError(f"{param} should be None for {self.type} schema: Got {val}")
+                        raise ValueError(
+                            f"{param} should be None for {self.type} schema: Got {val}"
+                        )
 
             case InputDFType.RANGE:
                 match self.event_type:
-                    case None: raise ValueError("Missing mandatory range parameter event_type!")
-                    case (str(), str(), str()): pass
-                    case str(): self.event_type = (
-                        self.event_type, f"{self.event_type}_START", f"{self.event_type}_END"
-                    )
-                    case _: raise TypeError(
-                        "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) for "
-                        f"ranges. Got {self.event_type}."
-                    )
+                    case None:
+                        raise ValueError("Missing mandatory range parameter event_type!")
+                    case (str(), str(), str()):
+                        pass
+                    case str():
+                        self.event_type = (
+                            self.event_type,
+                            f"{self.event_type}_START",
+                            f"{self.event_type}_END",
+                        )
+                    case _:
+                        raise TypeError(
+                            "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) for "
+                            f"ranges. Got {self.event_type}."
+                        )
 
                 if self.data_schema is not None:
-                    for param in ('start_data_schema', 'end_data_schema'):
+                    for param in ("start_data_schema", "end_data_schema"):
                         val = getattr(self, param)
                         if val is not None:
                             raise ValueError(
@@ -163,7 +202,9 @@ class InputDFSchema(JSONableMixin):
                 if self.end_ts_col is None:
                     raise ValueError("Missing mandatory range parameter end_ts_col!")
                 if self.ts_col is not None:
-                    raise ValueError(f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}.")
+                    raise ValueError(
+                        f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}."
+                    )
                 if self.subject_id_col is not None:
                     raise ValueError("subject_id_col should be None for non-static types!")
                 if self.start_ts_format is not None:
@@ -189,48 +230,57 @@ class InputDFSchema(JSONableMixin):
                     self.ts_format = None
 
     @property
-    def columns_to_load(self) -> List[Tuple[str, InputDataType]]:
+    def columns_to_load(self) -> list[tuple[str, InputDataType]]:
         columns_to_load = []
 
         for in_col, (out_col, dt) in self.unified_schema.items():
             columns_to_load.append((in_col, dt))
 
         for param, fmt_param in [
-            ('start_ts_col', 'start_ts_format'),
-            ('end_ts_col', 'end_ts_format'),
-            ('ts_col', 'ts_format')
+            ("start_ts_col", "start_ts_format"),
+            ("end_ts_col", "end_ts_format"),
+            ("ts_col", "ts_format"),
         ]:
             val = getattr(self, param)
             fmt = (InputDataType.TIMESTAMP, getattr(self, fmt_param))
             match val:
-                case list(): columns_to_load.extend([(c, fmt) for c in val])
-                case str(): columns_to_load.append((val, fmt))
-                case None: pass
-                case _: raise ValueError(f"Can't parse timestamp {param}, {fmt_param}, {val}")
+                case list():
+                    columns_to_load.extend([(c, fmt) for c in val])
+                case str():
+                    columns_to_load.append((val, fmt))
+                case None:
+                    pass
+                case _:
+                    raise ValueError(f"Can't parse timestamp {param}, {fmt_param}, {val}")
 
         return columns_to_load
 
     @property
-    def unified_schema(self) -> Dict[str, Tuple[str, InputDataType]]:
+    def unified_schema(self) -> dict[str, tuple[str, InputDataType]]:
         return self._unify_schema(self.data_schema)
 
     @property
-    def unified_start_schema(self) -> Dict[str, Tuple[str, InputDataType]]:
-        if self.type != InputDFType.RANGE: raise ValueError(f"Start schema is invalid for {self.type}")
+    def unified_start_schema(self) -> dict[str, tuple[str, InputDataType]]:
+        if self.type != InputDFType.RANGE:
+            raise ValueError(f"Start schema is invalid for {self.type}")
 
-        if self.start_data_schema is None: return self._unify_schema(self.data_schema)
+        if self.start_data_schema is None:
+            return self._unify_schema(self.data_schema)
         return self._unify_schema(self.start_data_schema)
 
     @property
-    def unified_end_schema(self) -> Dict[str, Tuple[str, InputDataType]]:
-        if self.type != InputDFType.RANGE: raise ValueError(f"End schema is invalid for {self.type}")
+    def unified_end_schema(self) -> dict[str, tuple[str, InputDataType]]:
+        if self.type != InputDFType.RANGE:
+            raise ValueError(f"End schema is invalid for {self.type}")
 
-        if self.end_data_schema is None: return self._unify_schema(self.data_schema)
+        if self.end_data_schema is None:
+            return self._unify_schema(self.data_schema)
         return self._unify_schema(self.end_data_schema)
 
     @property
-    def unified_eq_schema(self) -> Dict[str, Tuple[str, InputDataType]]:
-        if self.type != InputDFType.RANGE: raise ValueError(f"Start=End schema is invalid for {self.type}")
+    def unified_eq_schema(self) -> dict[str, tuple[str, InputDataType]]:
+        if self.type != InputDFType.RANGE:
+            raise ValueError(f"Start=End schema is invalid for {self.type}")
 
         if self.start_data_schema is None and self.end_data_schema is None:
             return self._unify_schema(self.data_schema)
@@ -252,10 +302,14 @@ class InputDFSchema(JSONableMixin):
 
     @classmethod
     def __add_to_schema(
-        cls, container: Dict[str, Tuple[str, InputDataType]],
-        in_col: str, dt: INPUT_COL_T, out_col: Optional[str] = None
+        cls,
+        container: dict[str, tuple[str, InputDataType]],
+        in_col: str,
+        dt: INPUT_COL_T,
+        out_col: str | None = None,
     ):
-        if out_col is None: out_col = in_col
+        if out_col is None:
+            out_col = in_col
 
         if type(in_col) is not str or type(out_col) is not str:
             raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
@@ -269,9 +323,10 @@ class InputDFSchema(JSONableMixin):
 
     @classmethod
     def _unify_schema(
-        cls, data_schema: Optional[Union[DF_SCHEMA, List[DF_SCHEMA]]]
-    ) -> Dict[str, Tuple[str, InputDataType]]:
-        if data_schema is None: return {}
+        cls, data_schema: DF_SCHEMA | list[DF_SCHEMA] | None
+    ) -> dict[str, tuple[str, InputDataType]]:
+        if data_schema is None:
+            return {}
 
         unified_schema = {}
         for schema in data_schema:
@@ -279,15 +334,19 @@ class InputDFSchema(JSONableMixin):
                 case (str() as col, (InputDataType() | (InputDataType(), str())) as dt):
                     cls.__add_to_schema(unified_schema, in_col=col, dt=dt)
                 case (list() as cols, (InputDataType() | (InputDataType(), str())) as dt):
-                    for c in cols: cls.__add_to_schema(unified_schema, in_col=c, dt=dt)
+                    for c in cols:
+                        cls.__add_to_schema(unified_schema, in_col=c, dt=dt)
                 case dict():
                     for in_col, schema_info in schema.items():
                         match schema_info:
                             case (out_col, (InputDataType() | (InputDataType(), str())) as dt):
-                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
+                                cls.__add_to_schema(
+                                    unified_schema, in_col=in_col, dt=dt, out_col=out_col
+                                )
                             case (InputDataType() | (InputDataType(), str())) as dt:
                                 cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
-                            case _: raise ValueError(f"Schema Unprocessable!\n{schema_info}")
+                            case _:
+                                raise ValueError(f"Schema Unprocessable!\n{schema_info}")
                 case (dict() as col_names_map, (InputDataType() | (InputDataType(), str())) as dt):
                     for in_col, out_col in col_names_map.items():
                         cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
@@ -296,27 +355,28 @@ class InputDFSchema(JSONableMixin):
 
         return unified_schema
 
+
 @dataclasses.dataclass
 class VocabularyConfig(JSONableMixin):
-    vocab_sizes_by_measurement: Optional[Dict[str, int]] = None
-    vocab_offsets_by_measurement: Optional[Dict[str, int]] = None
-    measurements_idxmap: Optional[Dict[str, Dict[Hashable, int]]] = None
-    measurements_per_generative_mode: Optional[Dict[DataModality, List[str]]] = None
-    event_types_per_measurement: Optional[Dict[str, List[str]]] = None
-    event_types_idxmap: Optional[Dict[str, int]] = None
+    vocab_sizes_by_measurement: dict[str, int] | None = None
+    vocab_offsets_by_measurement: dict[str, int] | None = None
+    measurements_idxmap: dict[str, dict[Hashable, int]] | None = None
+    measurements_per_generative_mode: dict[DataModality, list[str]] | None = None
+    event_types_per_measurement: dict[str, list[str]] | None = None
+    event_types_idxmap: dict[str, int] | None = None
 
     @property
     def total_vocab_size(self) -> int:
         return (
-            sum(self.vocab_sizes_by_measurement.values()) +
-            min(self.vocab_offsets_by_measurement.values()) +
-            (len(self.vocab_offsets_by_measurement) - len(self.vocab_sizes_by_measurement))
+            sum(self.vocab_sizes_by_measurement.values())
+            + min(self.vocab_offsets_by_measurement.values())
+            + (len(self.vocab_offsets_by_measurement) - len(self.vocab_sizes_by_measurement))
         )
+
 
 @hydra_dataclass
 class PytorchDatasetConfig(JSONableMixin):
-    """
-    Configuration options for building a PyTorch dataset from an `Dataset`.
+    """Configuration options for building a PyTorch dataset from an `Dataset`.
 
     Args:
         `max_seq_len` (`int`):
@@ -330,14 +390,15 @@ class PytorchDatasetConfig(JSONableMixin):
         `do_produce_static_data` (`bool`):
             Whether or not to produce static data when processing the dataset.
     """
+
     save_dir: Path = omegaconf.MISSING
 
     max_seq_len: int = 256
     min_seq_len: int = 2
-    seq_padding_side: str = 'right'
+    seq_padding_side: str = "right"
 
     def __post_init__(self):
-        assert self.seq_padding_side in ('left', 'right')
+        assert self.seq_padding_side in ("left", "right")
         assert self.min_seq_len >= 0
         assert self.max_seq_len >= 1
         assert self.max_seq_len >= self.min_seq_len
@@ -346,29 +407,32 @@ class PytorchDatasetConfig(JSONableMixin):
             self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
-        """Represents this configuation object as a plain dictionary."""
+        """Represents this configuration object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
-        as_dict['save_dir'] = str(as_dict['save_dir'])
+        as_dict["save_dir"] = str(as_dict["save_dir"])
         return as_dict
 
     @classmethod
-    def from_dict(cls, as_dict: dict) -> 'PytorchDatasetConfig':
+    def from_dict(cls, as_dict: dict) -> PytorchDatasetConfig:
         """Creates a new instance of this class from a plain dictionary."""
-        as_dict['save_dir'] = Path(as_dict['save_dir'])
+        as_dict["save_dir"] = Path(as_dict["save_dir"])
         return cls(**as_dict)
+
 
 @dataclasses.dataclass
 class MeasurementConfig(JSONableMixin):
     FUNCTORS = {
-        'AgeFunctor': AgeFunctor,
-        'TimeOfDayFunctor': TimeOfDayFunctor,
+        "AgeFunctor": AgeFunctor,
+        "TimeOfDayFunctor": TimeOfDayFunctor,
     }
 
-    PREPROCESSING_METADATA_COLUMNS = OrderedDict({
-        'value_type': str,
-        'outlier_model': object,
-        'normalizer': object,
-    })
+    PREPROCESSING_METADATA_COLUMNS = OrderedDict(
+        {
+            "value_type": str,
+            "outlier_model": object,
+            "normalizer": object,
+        }
+    )
 
     """
     Base configuration class for a measurement in the Dataset.
@@ -451,23 +515,23 @@ class MeasurementConfig(JSONableMixin):
     """
 
     # Present in all measures
-    name: Optional[str] = None
-    temporality: Optional[TemporalityType] = None
-    modality: Optional[DataModality] = None
-    observation_frequency: Optional[float] = None
+    name: str | None = None
+    temporality: TemporalityType | None = None
+    modality: DataModality | None = None
+    observation_frequency: float | None = None
 
     # Specific to dynamic measures
-    present_in_event_types: Optional[Set[str]] = None
+    present_in_event_types: set[str] | None = None
 
     # Specific to time-dependent measures
-    functor: Optional[TimeDependentFunctor] = None
+    functor: TimeDependentFunctor | None = None
 
     # Specific to categorical or partially observed multivariate regression measures.
-    vocabulary: Optional[Vocabulary] = None
+    vocabulary: Vocabulary | None = None
 
     # Specific to numeric measures
-    values_column: Optional[str] = None
-    measurement_metadata: Optional[Union[pd.DataFrame, pd.Series]] = None
+    values_column: str | None = None
+    measurement_metadata: pd.DataFrame | pd.Series | None = None
 
     def __post_init__(self):
         self._validate()
@@ -490,10 +554,13 @@ class MeasurementConfig(JSONableMixin):
                 assert self.functor is not None
                 assert self.present_in_event_types is None
 
-                if self.modality is None: self.modality = self.functor.OUTPUT_MODALITY
-                else: assert self.modality in (DataModality.DROPPED, self.functor.OUTPUT_MODALITY)
+                if self.modality is None:
+                    self.modality = self.functor.OUTPUT_MODALITY
+                else:
+                    assert self.modality in (DataModality.DROPPED, self.functor.OUTPUT_MODALITY)
 
-            case _: raise ValueError(f"`self.temporality = {self.temporality}` Invalid!")
+            case _:
+                raise ValueError(f"`self.temporality = {self.temporality}` Invalid!")
 
         match self.modality:
             case DataModality.MULTIVARIATE_REGRESSION:
@@ -510,7 +577,8 @@ class MeasurementConfig(JSONableMixin):
             case DataModality.DROPPED:
                 assert self.measurement_metadata is None
                 assert self.vocabulary is None
-            case _: raise ValueError(f"`self.modality = {self.modality}` Invalid!")
+            case _:
+                raise ValueError(f"`self.modality = {self.modality}` Invalid!")
 
     def drop(self):
         """Sets the modality to DROPPED and does associated post-processing to ensure validity."""
@@ -519,12 +587,14 @@ class MeasurementConfig(JSONableMixin):
         self.vocabulary = None
 
     @property
-    def is_dropped(self) -> bool: return self.modality == DataModality.DROPPED
+    def is_dropped(self) -> bool:
+        return self.modality == DataModality.DROPPED
 
     @property
     def is_numeric(self) -> bool:
         return self.modality in (
-            DataModality.MULTIVARIATE_REGRESSION, DataModality.UNIVARIATE_REGRESSION
+            DataModality.MULTIVARIATE_REGRESSION,
+            DataModality.UNIVARIATE_REGRESSION,
         )
 
     def add_empty_metadata(self):
@@ -540,15 +610,20 @@ class MeasurementConfig(JSONableMixin):
                 )
             case DataModality.MULTIVARIATE_REGRESSION:
                 self.measurement_metadata = pd.DataFrame(
-                    {c: pd.Series([], dtype=t) for c, t in self.PREPROCESSING_METADATA_COLUMNS.items()},
+                    {
+                        c: pd.Series([], dtype=t)
+                        for c, t in self.PREPROCESSING_METADATA_COLUMNS.items()
+                    },
                     index=pd.Index([], name=self.name),
                 )
-            case _: raise ValueError(f"Can't add metadata to a {self.modality} measure!")
+            case _:
+                raise ValueError(f"Can't add metadata to a {self.modality} measure!")
 
     def add_missing_mandatory_metadata_cols(self):
         assert self.is_numeric
         match self.measurement_metadata:
-            case None: self.add_empty_metadata()
+            case None:
+                self.add_empty_metadata()
 
             case pd.DataFrame():
                 for col, dtype in self.PREPROCESSING_METADATA_COLUMNS.items():
@@ -564,49 +639,57 @@ class MeasurementConfig(JSONableMixin):
                         self.measurement_metadata[col] = None
 
     def to_dict(self) -> dict:
-        """Represents this configuation object as a plain dictionary."""
+        """Represents this configuration object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
         match self.measurement_metadata:
             case pd.DataFrame():
-                as_dict['measurement_metadata'] = self.measurement_metadata.to_dict(orient='tight')
+                as_dict["measurement_metadata"] = self.measurement_metadata.to_dict(orient="tight")
             case pd.Series():
-                as_dict['measurement_metadata'] = self.measurement_metadata.to_dict(into=OrderedDict)
+                as_dict["measurement_metadata"] = self.measurement_metadata.to_dict(
+                    into=OrderedDict
+                )
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
-            as_dict['functor'] = self.functor.to_dict()
+            as_dict["functor"] = self.functor.to_dict()
         if self.present_in_event_types is not None:
-            as_dict['present_in_event_types'] = list(self.present_in_event_types)
+            as_dict["present_in_event_types"] = list(self.present_in_event_types)
         return as_dict
 
     @classmethod
-    def from_dict(cls, as_dict: dict) -> 'MeasurementConfig':
+    def from_dict(cls, as_dict: dict) -> MeasurementConfig:
         """Build a configuration object from a plain dictionary representation."""
-        if as_dict['vocabulary'] is not None:
-            as_dict['vocabulary'] = Vocabulary(**as_dict['vocabulary'])
+        if as_dict["vocabulary"] is not None:
+            as_dict["vocabulary"] = Vocabulary(**as_dict["vocabulary"])
 
-        if as_dict['measurement_metadata'] is not None:
-            match as_dict['modality']:
+        if as_dict["measurement_metadata"] is not None:
+            match as_dict["modality"]:
                 case DataModality.MULTIVARIATE_REGRESSION:
-                    as_dict['measurement_metadata'] = pd.DataFrame.from_dict(
-                        as_dict['measurement_metadata'], orient='tight'
+                    as_dict["measurement_metadata"] = pd.DataFrame.from_dict(
+                        as_dict["measurement_metadata"], orient="tight"
                     )
                 case DataModality.UNIVARIATE_REGRESSION:
-                    as_dict['measurement_metadata'] = pd.Series(as_dict['measurement_metadata'])
+                    as_dict["measurement_metadata"] = pd.Series(as_dict["measurement_metadata"])
                 case _:
-                    raise ValueError("Config is non-numeric but has a measurement_metadata value observed.")
+                    raise ValueError(
+                        "Config is non-numeric but has a measurement_metadata value observed."
+                    )
 
-        if as_dict['functor'] is not None:
-            assert as_dict['temporality'] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
-            as_dict['functor'] = cls.FUNCTORS[as_dict['functor']['class']].from_dict(as_dict['functor'])
+        if as_dict["functor"] is not None:
+            assert as_dict["temporality"] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
+            as_dict["functor"] = cls.FUNCTORS[as_dict["functor"]["class"]].from_dict(
+                as_dict["functor"]
+            )
 
-        if as_dict['present_in_event_types'] is not None:
-            as_dict['present_in_event_types'] = set(as_dict['present_in_event_types'])
+        if as_dict["present_in_event_types"] is not None:
+            as_dict["present_in_event_types"] = set(as_dict["present_in_event_types"])
 
         return cls(**as_dict)
 
     def __eq__(self, other: MeasurementConfig) -> bool:
         return self.to_dict() == other.to_dict()
 
-    def describe(self, line_width: int = 60, wrap_lines: bool = False, stream: Optional[TextIOBase] = None) -> Optional[int]:
+    def describe(
+        self, line_width: int = 60, wrap_lines: bool = False, stream: TextIOBase | None = None
+    ) -> int | None:
         lines = []
         lines.append(
             f"{self.name}: {self.temporality}, {self.modality} observed {100*self.observation_frequency:.1f}%"
@@ -619,40 +702,41 @@ class MeasurementConfig(JSONableMixin):
                 lines.append("Value Types:")
                 for t, cnt in self.measurement_metadata.value_type.value_counts().items():
                     lines.append(f"  {cnt} {t}")
-            case DataModality.MULTI_LABEL_CLASSIFICATION: pass
-            case DataModality.SINGLE_LABEL_CLASSIFICATION: pass
-            case _: raise ValueError(f"Can't describe {self.modality} measure {self.name}!")
+            case DataModality.MULTI_LABEL_CLASSIFICATION:
+                pass
+            case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                pass
+            case _:
+                raise ValueError(f"Can't describe {self.modality} measure {self.name}!")
 
         if self.vocabulary is not None:
             SIO = StringIO()
-            self.vocabulary.describe(
-                line_width=line_width-2, stream=SIO, wrap_lines=wrap_lines
-            )
+            self.vocabulary.describe(line_width=line_width - 2, stream=SIO, wrap_lines=wrap_lines)
             lines.append("Vocabulary:")
-            lines.extend(f"  {line}" for line in SIO.getvalue().split('\n'))
+            lines.extend(f"  {line}" for line in SIO.getvalue().split("\n"))
 
         line_indents = [num_initial_spaces(line) for line in lines]
         if wrap_lines:
             lines = [
-                wrap(line, width=line_width, initial_indent='', subsequent_indent=(' '*ind))
+                wrap(line, width=line_width, initial_indent="", subsequent_indent=(" " * ind))
                 for line, ind in zip(lines, line_indents)
             ]
         else:
             lines = [
-                shorten(line, width=line_width, initial_indent=(' '*ind))
+                shorten(line, width=line_width, initial_indent=(" " * ind))
                 for line, ind in zip(lines, line_indents)
             ]
 
-        desc = '\n'.join(lines)
+        desc = "\n".join(lines)
         if stream is None:
             print(desc)
             return
         return stream.write(desc)
 
+
 @dataclasses.dataclass
 class DatasetConfig(JSONableMixin):
-    """
-    Configuration options for parsing an `Dataset`.
+    """Configuration options for parsing an `Dataset`.
 
     Args:
         `measurement_configs` (`Dict[str, MeasurementConfig]`, defaults to `{}`):
@@ -688,14 +772,14 @@ class DatasetConfig(JSONableMixin):
             If `None`, no constraint is applied.
 
         `outlier_detector_config` (`Optional[Dict[str, Any]]`, defaults to `None`):
-            Configuation options for outlier detection. If not `None`, must contain the key `'cls'`, which
+            Configuration options for outlier detection. If not `None`, must contain the key `'cls'`, which
             points to the class used outlier detection. All other keys and values are keyword arguments to be
             passed to the specified class. The API of these objects is expected to mirror scikit-learn outlier
             detection model APIs.
             If `None`, numerical outlier values are not removed.
 
         `normalizer_config` (`Optional[Dict[str, Any]]`, defaults to `None`):
-            Configuation options for normalization. If not `None`, must contain the key `'cls'`, which points
+            Configuration options for normalization. If not `None`, must contain the key `'cls'`, which points
             to the class used normalization. All other keys and values are keyword arguments to be passed to
             the specified class. The API of these objects is expected to mirror scikit-learn normalization
             system APIs.
@@ -708,68 +792,75 @@ class DatasetConfig(JSONableMixin):
             https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
     """
 
-    measurement_configs: Dict[str, MeasurementConfig] = dataclasses.field(default_factory = lambda: {})
+    measurement_configs: dict[str, MeasurementConfig] = dataclasses.field(
+        default_factory=lambda: {}
+    )
 
-    min_events_per_subject: Optional[int] = None
+    min_events_per_subject: int | None = None
 
-    agg_by_time_scale: Optional[str] = '1h'
+    agg_by_time_scale: str | None = "1h"
 
-    min_valid_column_observations: Optional[COUNT_OR_PROPORTION] = None
-    min_valid_vocab_element_observations: Optional[COUNT_OR_PROPORTION] = None
-    min_true_float_frequency: Optional[PROPORTION] = None
-    min_unique_numerical_observations: Optional[COUNT_OR_PROPORTION] = None
+    min_valid_column_observations: COUNT_OR_PROPORTION | None = None
+    min_valid_vocab_element_observations: COUNT_OR_PROPORTION | None = None
+    min_true_float_frequency: PROPORTION | None = None
+    min_unique_numerical_observations: COUNT_OR_PROPORTION | None = None
 
-    outlier_detector_config: Optional[Dict[str, Any]] = None
-    normalizer_config: Optional[Dict[str, Any]] = None
+    outlier_detector_config: dict[str, Any] | None = None
+    normalizer_config: dict[str, Any] | None = None
 
-    save_dir: Optional[Path] = None
+    save_dir: Path | None = None
 
     def __post_init__(self):
         """Validates that parameters take on valid values."""
         for name, cfg in self.measurement_configs.items():
-            if cfg.name is None: cfg.name = name
-            else: assert cfg.name == name
+            if cfg.name is None:
+                cfg.name = name
+            else:
+                assert cfg.name == name
 
         for var in (
-            'min_valid_column_observations',
-            'min_valid_vocab_element_observations',
-            'min_unique_numerical_observations',
+            "min_valid_column_observations",
+            "min_valid_vocab_element_observations",
+            "min_unique_numerical_observations",
         ):
             val = getattr(self, var)
             if val is not None:
-                assert (
-                    ((type(val) is float) and (0 < val) and (val < 1)) or
-                    ((type(val) is int) and (val > 1))
+                assert ((type(val) is float) and (0 < val) and (val < 1)) or (
+                    (type(val) is int) and (val > 1)
                 )
 
-        for var in ('min_true_float_frequency',):
+        for var in ("min_true_float_frequency",):
             val = getattr(self, var)
-            if val is not None: assert type(val) is float and (0 < val) and (val < 1)
+            if val is not None:
+                assert type(val) is float and (0 < val) and (val < 1)
 
-        for var in ('outlier_detector_config', 'normalizer_config'):
+        for var in ("outlier_detector_config", "normalizer_config"):
             val = getattr(self, var)
-            if val is not None: assert type(val) is dict and 'cls' in val
+            if val is not None:
+                assert type(val) is dict and "cls" in val
 
         for k, v in self.measurement_configs.items():
-            try: v._validate()
+            try:
+                v._validate()
             except Exception as e:
                 raise ValueError(f"Measurement config {k} invalid!") from e
 
-        if type(self.save_dir) is str: self.save_dir = Path(self.save_dir)
+        if type(self.save_dir) is str:
+            self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
-        """Represents this configuation object as a plain dictionary."""
+        """Represents this configuration object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
-        as_dict['measurement_configs'] = {
+        as_dict["measurement_configs"] = {
             k: v.to_dict() for k, v in self.measurement_configs.items()
         }
         return as_dict
 
     @classmethod
-    def from_dict(cls, as_dict: dict) -> 'DatasetConfig':
+    def from_dict(cls, as_dict: dict) -> DatasetConfig:
         """Build a configuration object from a plain dictionary representation."""
-        as_dict['measurement_configs'] = {
-            k: MeasurementConfig.from_dict(v) for k, v in as_dict['measurement_configs'].items()
+        as_dict["measurement_configs"] = {
+            k: MeasurementConfig.from_dict(v) for k, v in as_dict["measurement_configs"].items()
         }
 
         return cls(**as_dict)
@@ -777,13 +868,13 @@ class DatasetConfig(JSONableMixin):
     @classmethod
     def from_simple_args(
         cls,
-        dynamic_measurement_columns: Optional[Sequence[Union[str, Tuple[str, str]]]] = None,
-        static_measurement_columns: Optional[Sequence[str]] = None,
-        time_dependent_measurement_columns: Optional[Sequence[Tuple[str, TimeDependentFunctor]]] = None,
-        **kwargs
-    ) -> 'DatasetConfig':
-        """
-        Builds an appropriate configuration object given a simple list of columns:
+        dynamic_measurement_columns: Sequence[str | tuple[str, str]] | None = None,
+        static_measurement_columns: Sequence[str] | None = None,
+        time_dependent_measurement_columns: None
+        | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
+        **kwargs,
+    ) -> DatasetConfig:
+        """Builds an appropriate configuration object given a simple list of columns:
 
         Args:
             `dynamic_measurement_columns`
@@ -815,14 +906,14 @@ class DatasetConfig(JSONableMixin):
                 if type(measurement) is tuple:
                     measurement, val_col = measurement
                     col_cfg = MeasurementConfig(
-                        modality = DataModality.MULTIVARIATE_REGRESSION,
-                        temporality = TemporalityType.DYNAMIC,
-                        values_column = val_col
+                        modality=DataModality.MULTIVARIATE_REGRESSION,
+                        temporality=TemporalityType.DYNAMIC,
+                        values_column=val_col,
                     )
                 else:
                     col_cfg = MeasurementConfig(
-                        modality = DataModality.MULTI_LABEL_CLASSIFICATION,
-                        temporality = TemporalityType.DYNAMIC,
+                        modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+                        temporality=TemporalityType.DYNAMIC,
                     )
 
                 measurement_configs[measurement] = col_cfg
@@ -830,15 +921,14 @@ class DatasetConfig(JSONableMixin):
         if static_measurement_columns is not None:
             for measurement in static_measurement_columns:
                 measurement_configs[measurement] = MeasurementConfig(
-                    modality = DataModality.SINGLE_LABEL_CLASSIFICATION,
-                    temporality = TemporalityType.STATIC,
+                    modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+                    temporality=TemporalityType.STATIC,
                 )
 
         if time_dependent_measurement_columns is not None:
             for measurement, functor in time_dependent_measurement_columns:
                 measurement_configs[measurement] = MeasurementConfig(
-                    temporality = TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-                    functor = functor
+                    temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=functor
                 )
 
         return cls(measurement_configs=measurement_configs, **kwargs)

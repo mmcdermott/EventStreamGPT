@@ -2,14 +2,17 @@
 # https://raw.githubusercontent.com/huggingface/transformers/
 # e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
 # "
-""" PyTorch StructuredTransformer model."""
+"""PyTorch StructuredTransformer model."""
 
-import math, torch, torch.utils.checkpoint
+import math
+from typing import Dict, Optional, Tuple, Union
+
+import torch
+import torch.utils.checkpoint
 from torch import nn
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
-from typing import Dict, Optional, Tuple, Union
 
 from ..data.data_embedding_layer import DataEmbeddingLayer
 from ..data.types import PytorchBatch
@@ -21,11 +24,11 @@ logger = logging.get_logger(__name__)
 
 # TODO(mmd): Can use `transformers.apply_chunking_to_forward` to save memory.
 
+
 def expand_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
-    """
-    Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
-    """
-    if mask is None: return None
+    """Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`."""
+    if mask is None:
+        return None
 
     # We create a 3D attention mask from a 2D tensor mask.
     # Sizes are [batch_size, 1, 1, to_seq_length]
@@ -44,9 +47,13 @@ def expand_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
 
     return attention_mask
 
+
 class InnerSelfAttention(nn.Module):
     def __init__(
-        self, config: StructuredTransformerConfig, attention_type: str, window_size: int,
+        self,
+        config: StructuredTransformerConfig,
+        attention_type: str,
+        window_size: int,
     ):
         super().__init__()
 
@@ -83,17 +90,13 @@ class InnerSelfAttention(nn.Module):
         self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=True)
 
     def _split_heads(self, tensor, num_heads, attn_head_size):
-        """
-        Splits hidden_size dim into attn_head_size and num_heads
-        """
+        """Splits hidden_size dim into attn_head_size and num_heads."""
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
         tensor = tensor.view(new_shape)
         return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
 
     def _merge_heads(self, tensor, num_heads, attn_head_size):
-        """
-        Merges attn_head_size dim and num_attn_heads dim into hidden_size
-        """
+        """Merges attn_head_size dim and num_attn_heads dim into hidden_size."""
         tensor = tensor.permute(0, 2, 1, 3).contiguous()
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
@@ -106,7 +109,9 @@ class InnerSelfAttention(nn.Module):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length:key_length, :key_length].to(torch.bool)
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(
+            torch.bool
+        )
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error:
         # `RuntimeError: expected scalar type float but found double`.
@@ -177,9 +182,9 @@ class InnerSelfAttention(nn.Module):
         attn_output = self.out_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 
-        outputs = {'present_key_value': present}
+        outputs = {"present_key_value": present}
         if output_attentions:
-            outputs['attn_weights'] = attn_weights
+            outputs["attn_weights"] = attn_weights
 
         return attn_output, outputs  # a, {present, (attentions)}
 
@@ -191,17 +196,18 @@ class InnerAttention(nn.Module):
         super().__init__()
         self.layer_id = layer_id
         self.is_seq = is_seq
-        self.attention_layers = config.seq_attention_layers if is_seq else config.dep_graph_attention_layers
+        self.attention_layers = (
+            config.seq_attention_layers if is_seq else config.dep_graph_attention_layers
+        )
         self.attention_type = self.attention_layers[layer_id]
-        if self.attention_type == 'local':
+        if self.attention_type == "local":
             self.window_size = config.seq_window_size if is_seq else config.dep_graph_window_size
-        else: self.window_size = None
+        else:
+            self.window_size = None
 
         if self.attention_type in ["global", "local"]:
             self.attention = InnerSelfAttention(
-                config,
-                attention_type=self.attention_type,
-                window_size=self.window_size
+                config, attention_type=self.attention_type, window_size=self.window_size
             )
         else:
             raise NotImplementedError(
@@ -238,7 +244,9 @@ class InnerMLP(nn.Module):
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__()
         embed_dim = config.hidden_size
-        inner_dim = config.intermediate_size if config.intermediate_size is not None else 4 * embed_dim
+        inner_dim = (
+            config.intermediate_size if config.intermediate_size is not None else 4 * embed_dim
+        )
 
         self.c_fc = nn.Linear(embed_dim, inner_dim)
         self.c_proj = nn.Linear(inner_dim, embed_dim)
@@ -259,7 +267,7 @@ class InnerBlock(nn.Module):
         self.attn = InnerAttention(config, layer_id, is_seq)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_epsilon)
         self.mlp = InnerMLP(config)
-        self.static_kv_first = (not is_seq)
+        self.static_kv_first = not is_seq
 
     def forward(
         self,
@@ -270,10 +278,8 @@ class InnerBlock(nn.Module):
         use_cache=False,
         output_attentions=False,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """
-        Note that attention_mask here is still not expanded; we do that internally here to account for the
-        different mask shapes used in the structured transformer.
-        """
+        """Note that attention_mask here is still not expanded; we do that internally here to
+        account for the different mask shapes used in the structured transformer."""
         # If we have a static kv entry first, we don't want to process it in the rest of the block, so we drop
         # it from the residual.
         residual = hidden_states if not self.static_kv_first else hidden_states[:, 1:, :]
@@ -297,7 +303,8 @@ class InnerBlock(nn.Module):
         # residual connection
         hidden_states = residual + feed_forward_hidden_states
 
-        if not use_cache: outputs.pop('present_key_value')
+        if not use_cache:
+            outputs.pop("present_key_value")
         return hidden_states, outputs
 
 
@@ -316,7 +323,8 @@ class StructuredTransformerBlock(nn.Module):
             dep_graph_block = InnerAttention(config, layer_id, is_seq=False)
 
         self.block = StructuredAttention(
-            seq_module=seq_block, dep_graph_module=dep_graph_block,
+            seq_module=seq_block,
+            dep_graph_module=dep_graph_block,
         )
 
     def forward(
@@ -326,9 +334,7 @@ class StructuredTransformerBlock(nn.Module):
 
 
 class StructuredTransformerPreTrainedModel(PreTrainedModel):
-    """
-    The pre-trained model class for Transformer models.
-    """
+    """The pre-trained model class for Transformer models."""
 
     config_class = StructuredTransformerConfig
     base_model_prefix = "transformer"
@@ -358,20 +364,23 @@ class StructuredTransformerPreTrainedModel(PreTrainedModel):
         if isinstance(module, StructuredTransformer):
             module.gradient_checkpointing = value
 
+
 # Copied from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class TemporalPositionEncoding(torch.nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        device: str = ('cuda' if torch.cuda.is_available() else 'cpu'),
+        device: str = ("cuda" if torch.cuda.is_available() else "cpu"),
         max_timepoint: float = 10000.0,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
         div_term = torch.nn.Parameter(
             torch.exp(
-                torch.arange(0, embedding_dim, 2, device=device) * (-math.log(max_timepoint) / embedding_dim)
-            ), requires_grad=False
+                torch.arange(0, embedding_dim, 2, device=device)
+                * (-math.log(max_timepoint) / embedding_dim)
+            ),
+            requires_grad=False,
         )
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
@@ -385,9 +394,7 @@ class TemporalPositionEncoding(torch.nn.Module):
             self.cos_div_term = div_term[:-1]
 
     def forward(self, t: torch.Tensor) -> torch.Tensor:
-        """
-        t is the tensor of input timepoints, with shape (batch size, sequence length)
-        """
+        """t is the tensor of input timepoints, with shape (batch size, sequence length)"""
 
         bsz, seq_len = t.shape
 
@@ -399,15 +406,19 @@ class TemporalPositionEncoding(torch.nn.Module):
         # timepoints.
         temporal_embeddings = torch.zeros(bsz, seq_len, self.embedding_dim, device=t.device)
 
-        temporal_embeddings[:, :, 0::2] = torch.sin(t * self.sin_div_term.unsqueeze(0).unsqueeze(0))
-        temporal_embeddings[:, :, 1::2] = torch.cos(t * self.cos_div_term.unsqueeze(0).unsqueeze(0))
+        temporal_embeddings[:, :, 0::2] = torch.sin(
+            t * self.sin_div_term.unsqueeze(0).unsqueeze(0)
+        )
+        temporal_embeddings[:, :, 1::2] = torch.cos(
+            t * self.cos_div_term.unsqueeze(0).unsqueeze(0)
+        )
 
         return temporal_embeddings
 
+
 class StructuredInputLayer(torch.nn.Module):
-    """
-    Takes as input a batch from an event-stream pytorch dataset and produces contextualized embeddings from it.
-    """
+    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized
+    embeddings from it."""
 
     def __init__(
         self,
@@ -417,7 +428,7 @@ class StructuredInputLayer(torch.nn.Module):
 
         self.config = config
 
-        if config.static_embedding_mode in ('prepend', 'concat_all'):
+        if config.static_embedding_mode in ("prepend", "concat_all"):
             raise NotImplementedError(f"{config.static_embedding_mode} mode is not yet supported.")
 
         if config.measurements_per_dep_graph_level is not None:
@@ -429,32 +440,33 @@ class StructuredInputLayer(torch.nn.Module):
                     if type(measurement) is str:
                         out_list.append(config.measurements_idxmap[measurement])
                     elif (type(measurement) in (tuple, list)) and (len(measurement) == 2):
-                        out_list.append((
-                            config.measurements_idxmap[measurement[0]], measurement[1]
-                        ))
+                        out_list.append(
+                            (config.measurements_idxmap[measurement[0]], measurement[1])
+                        )
                     else:
                         raise ValueError(
                             f"Unexpected type {type(measurement)}: {measurement}\n"
                             f"{config.measurements_per_dep_graph_level}"
                         )
                 split_by_measurement_indices.append(out_list)
-        else: split_by_measurement_indices = None
+        else:
+            split_by_measurement_indices = None
 
         self.data_embedding_layer = DataEmbeddingLayer(
-            n_total_embeddings = config.vocab_size,
-            out_dim = config.hidden_size,
-            categorical_embedding_dim = config.categorical_embedding_dim,
-            numerical_embedding_dim = config.numerical_embedding_dim,
-            static_embedding_mode = config.static_embedding_mode,
-            split_by_measurement_indices = split_by_measurement_indices,
-            do_normalize_by_measurement_index = config.do_normalize_by_measurement_index,
-            static_weight = config.static_embedding_weight,
-            dynamic_weight = config.dynamic_embedding_weight,
-            categorical_weight = config.categorical_embedding_weight,
-            numerical_weight = config.numerical_embedding_weight,
+            n_total_embeddings=config.vocab_size,
+            out_dim=config.hidden_size,
+            categorical_embedding_dim=config.categorical_embedding_dim,
+            numerical_embedding_dim=config.numerical_embedding_dim,
+            static_embedding_mode=config.static_embedding_mode,
+            split_by_measurement_indices=split_by_measurement_indices,
+            do_normalize_by_measurement_index=config.do_normalize_by_measurement_index,
+            static_weight=config.static_embedding_weight,
+            dynamic_weight=config.dynamic_embedding_weight,
+            categorical_weight=config.categorical_embedding_weight,
+            numerical_weight=config.numerical_embedding_weight,
         )
 
-        self.time_embedding_layer = TemporalPositionEncoding(embedding_dim = config.hidden_size)
+        self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
 
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
@@ -463,7 +475,7 @@ class StructuredInputLayer(torch.nn.Module):
         # data_embed is either of shape (batch_size, sequence_length, config.hidden_size) or of shape
         # (batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
 
-        time_embed = self.time_embedding_layer(batch['time'])
+        time_embed = self.time_embedding_layer(batch["time"])
         # time_embed is of shape (batch_size, sequence_length, config.hidden_size)
 
         if self.config.measurements_per_dep_graph_level is not None:
@@ -479,7 +491,7 @@ class StructuredInputLayer(torch.nn.Module):
             # In this case, if we are in a conditionally independent setting, we ultimately want to sum the
             # time and data embedding, and if not, the None split by indicates that we should have an implicit
             # dep graph of [time, contents]
-            if self.config.structured_event_processing_mode == 'conditionally_independent':
+            if self.config.structured_event_processing_mode == "conditionally_independent":
                 # In a conditionally independent model, we collapse the dependency graph structure and just
                 # represent each event with a single embedding.
                 data_embed += time_embed
@@ -487,6 +499,7 @@ class StructuredInputLayer(torch.nn.Module):
                 data_embed = torch.cat((time_embed.unsqueeze(2), data_embed.unsqueeze(2)), dim=2)
 
         return self.embedding_dropout(data_embed)
+
 
 class StructuredTransformer(StructuredTransformerPreTrainedModel):
     def __init__(self, config: StructuredTransformerConfig):
@@ -497,20 +510,25 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
         self.structured_event_processing_mode = config.structured_event_processing_mode
 
         # TODO(mmd): Replace this with InnerBlock for a non-structured version.
-        if config.structured_event_processing_mode == 'nested_attention':
-            self.h = nn.ModuleList([
-                StructuredTransformerBlock(config, layer_id=i)
-                for i in range(config.num_hidden_layers)
-            ])
-        elif config.structured_event_processing_mode == 'conditionally_independent':
-            self.h = nn.ModuleList([
-                InnerBlock(config, layer_id=i, is_seq=True)
-                for i in range(config.num_hidden_layers)
-            ])
-        else: raise ValueError(
-            "Invalid `config.structured_event_processing_mode`! Got "
-            f"{config.structured_event_processing_mode}."
-        )
+        if config.structured_event_processing_mode == "nested_attention":
+            self.h = nn.ModuleList(
+                [
+                    StructuredTransformerBlock(config, layer_id=i)
+                    for i in range(config.num_hidden_layers)
+                ]
+            )
+        elif config.structured_event_processing_mode == "conditionally_independent":
+            self.h = nn.ModuleList(
+                [
+                    InnerBlock(config, layer_id=i, is_seq=True)
+                    for i in range(config.num_hidden_layers)
+                ]
+            )
+        else:
+            raise ValueError(
+                "Invalid `config.structured_event_processing_mode`! Got "
+                f"{config.structured_event_processing_mode}."
+            )
 
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
@@ -535,20 +553,24 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if past is None: past = tuple([None] * len(self.h))
+        if past is None:
+            past = tuple([None] * len(self.h))
 
         if input_embeds is None:
             assert batch is not None
             assert seq_mask is None
 
             input_embeds = self.input_layer(batch)
-            seq_mask = batch['event_mask']
-        else: assert batch is None, "Can't specify both input_embeds and batch."
+            seq_mask = batch["event_mask"]
+        else:
+            assert batch is None, "Can't specify both input_embeds and batch."
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -580,7 +602,7 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
 
                 # We do this twice because the checkpointed process can't take keyword args, which is safer
                 # and cleaner, in my opinion.
-                if self.structured_event_processing_mode == 'nested_attention':
+                if self.structured_event_processing_mode == "nested_attention":
                     args = (
                         hidden_states,
                         dep_graph_mask,
@@ -593,7 +615,7 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                         ),
                         {},
                     )
-                elif self.structured_event_processing_mode == 'conditionally_independent':
+                elif self.structured_event_processing_mode == "conditionally_independent":
                     args = (
                         hidden_states,
                         seq_mask,
@@ -602,27 +624,28 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                         use_cache,
                         output_attentions,
                     )
-                else: raise ValueError(
-                    "Invalid `self.structured_event_processing_mode`! Got "
-                    f"{self.structured_event_processing_mode}."
-                )
+                else:
+                    raise ValueError(
+                        "Invalid `self.structured_event_processing_mode`! Got "
+                        f"{self.structured_event_processing_mode}."
+                    )
 
                 outputs = torch.utils.checkpoint.checkpoint(create_custom_forward(block), *args)
             else:
-                if self.structured_event_processing_mode == 'nested_attention':
+                if self.structured_event_processing_mode == "nested_attention":
                     kwargs = dict(
                         hidden_states=hidden_states,
                         dep_graph_mask=dep_graph_mask,
                         seq_mask=seq_mask,
-                        seq_module_kwargs = dict(
+                        seq_module_kwargs=dict(
                             layer_past=layer_past,
                             head_mask=head_mask[i],
                             use_cache=use_cache,
                             output_attentions=output_attentions,
                         ),
-                        dep_graph_module_kwargs = {}
+                        dep_graph_module_kwargs={},
                     )
-                elif self.structured_event_processing_mode == 'conditionally_independent':
+                elif self.structured_event_processing_mode == "conditionally_independent":
                     kwargs = dict(
                         hidden_states=hidden_states,
                         attention_mask=seq_mask,
@@ -631,21 +654,22 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                         use_cache=use_cache,
                         output_attentions=output_attentions,
                     )
-                else: raise ValueError(
-                    "Invalid `self.structured_event_processing_mode`! Got "
-                    f"{self.structured_event_processing_mode}."
-                )
+                else:
+                    raise ValueError(
+                        "Invalid `self.structured_event_processing_mode`! Got "
+                        f"{self.structured_event_processing_mode}."
+                    )
                 outputs = block(**kwargs)
 
             hidden_states, extra_return_info = outputs
-            if self.structured_event_processing_mode == 'nested_attention':
-                extra_return_info = extra_return_info['seq_module']
+            if self.structured_event_processing_mode == "nested_attention":
+                extra_return_info = extra_return_info["seq_module"]
 
             if use_cache is True:
-                presents = presents + (extra_return_info['present_key_value'],)
+                presents = presents + (extra_return_info["present_key_value"],)
 
             if output_attentions:
-                all_self_attentions = all_self_attentions + (extra_return_info['attn_weights'],)
+                all_self_attentions = all_self_attentions + (extra_return_info["attn_weights"],)
 
         hidden_states = self.ln_f(hidden_states)
 
@@ -655,7 +679,11 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         if not return_dict:
-            return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
+            return tuple(
+                v
+                for v in [hidden_states, presents, all_hidden_states, all_self_attentions]
+                if v is not None
+            )
 
         return TransformerOutputWithPast(
             last_hidden_state=hidden_states,

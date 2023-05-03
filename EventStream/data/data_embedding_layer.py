@@ -1,54 +1,62 @@
-import enum, torch
-
+import enum
 from typing import List, Optional, Tuple, Union
+
+import torch
 
 from ..utils import StrEnum
 from .types import PytorchBatch
 
+
 class MeasIndexGroupOptions(StrEnum):
-    """
-    The different ways that the `split_by_measurement_indices` argument can be interpreted.
-    """
+    """The different ways that the `split_by_measurement_indices` argument can be interpreted."""
+
     CATEGORICAL_ONLY = enum.auto()
     CATEGORICAL_AND_NUMERICAL = enum.auto()
     NUMERICAL_ONLY = enum.auto()
 
     @classmethod
-    def values(cls): return list(map(lambda c: c.value, cls))
+    def values(cls):
+        return list(map(lambda c: c.value, cls))
 
 
 MEAS_INDEX_GROUP_T = Union[int, Tuple[int, MeasIndexGroupOptions]]
 
+
 class StaticEmbeddingMode(StrEnum):
-    """
-    The different ways that static embeddings can be combined with the dynamic embeddings.
+    """The different ways that static embeddings can be combined with the dynamic embeddings.
 
     `DROP` means that the static embeddings are dropped, and only the dynamic embeddings are used.
-    `CONCAT_ALL` means that the static embeddings are concatenated with the dynamic embeddings per event.
-    `SUM_ALL` means that the static embeddings are summed with the dynamic embeddings per event.
-    `PREPEND` means that the static embeddings are prepended to the sequence of dynamic embeddings.
+    `CONCAT_ALL` means that the static embeddings are concatenated with the dynamic embeddings per
+    event. `SUM_ALL` means that the static embeddings are summed with the dynamic embeddings per
+    event. `PREPEND` means that the static embeddings are prepended to the sequence of dynamic
+    embeddings.
     """
+
     DROP = enum.auto()
     CONCAT_ALL = enum.auto()
     SUM_ALL = enum.auto()
     PREPEND = enum.auto()
 
     @classmethod
-    def values(cls): return list(map(lambda c: c.value, cls))
+    def values(cls):
+        return list(map(lambda c: c.value, cls))
+
 
 class EmbeddingMode(StrEnum):
-    """
-    The different ways that the data can be embedded.
-    """
+    """The different ways that the data can be embedded."""
+
     JOINT = enum.auto()
     SPLIT_CATEGORICAL_NUMERICAL = enum.auto()
 
+
 class DataEmbeddingLayer(torch.nn.Module):
+    """This class efficiently embeds an PytorchDataset batch's metadata into a fixed-size embedding
+    layer, taking into account `dynamic_indices` (including an implicit padding index of 0),
+    `dynamic_values`, and `dynamic_values_mask`.
+
+    It _does not_ take into account `data_types`, `time`, or `event_mask`.
     """
-    This class efficiently embeds an PytorchDataset batch's metadata into a fixed-size embedding
-    layer, taking into account `dynamic_indices` (including an implicit padding index of 0), `dynamic_values`, and
-    `dynamic_values_mask`. It _does not_ take into account `data_types`, `time`, or `event_mask`.
-    """
+
     def __init__(
         self,
         n_total_embeddings: int,
@@ -58,13 +66,12 @@ class DataEmbeddingLayer(torch.nn.Module):
         numerical_embedding_dim: Optional[int] = None,
         split_by_measurement_indices: Optional[List[List[MEAS_INDEX_GROUP_T]]] = None,
         do_normalize_by_measurement_index: bool = False,
-        static_weight: float = 1/2,
-        dynamic_weight: float = 1/2,
-        categorical_weight: float = 1/2,
-        numerical_weight: float = 1/2,
+        static_weight: float = 1 / 2,
+        dynamic_weight: float = 1 / 2,
+        categorical_weight: float = 1 / 2,
+        numerical_weight: float = 1 / 2,
     ):
-        """
-        Initializes the DataEmbeddingLayer. Uses a padding index of 0, as that is how the
+        """Initializes the DataEmbeddingLayer. Uses a padding index of 0, as that is how the
         `PytorchDataset` object is structured.
 
         Args:
@@ -109,19 +116,21 @@ class DataEmbeddingLayer(torch.nn.Module):
         """
         super().__init__()
 
-        if type(out_dim) is not int: raise TypeError("`out_dim` must be an `int`.")
-        if out_dim <= 0: raise ValueError("`out_dim` must be positive.")
-        if type(n_total_embeddings) is not int: raise TypeError("`n_total_embeddings` must be an `int`.")
-        if n_total_embeddings <= 0: raise ValueError("`n_total_embeddings` must be positive.")
+        if type(out_dim) is not int:
+            raise TypeError("`out_dim` must be an `int`.")
+        if out_dim <= 0:
+            raise ValueError("`out_dim` must be positive.")
+        if type(n_total_embeddings) is not int:
+            raise TypeError("`n_total_embeddings` must be an `int`.")
+        if n_total_embeddings <= 0:
+            raise ValueError("`n_total_embeddings` must be positive.")
 
         if static_embedding_mode not in StaticEmbeddingMode.values():
             raise TypeError(
                 "`static_embedding_mode` must be a `StaticEmbeddingMode` enum member: "
                 f"{StaticEmbeddingMode.values()}."
             )
-        if (
-            (categorical_embedding_dim is not None) or (numerical_embedding_dim is not None)
-        ):
+        if (categorical_embedding_dim is not None) or (numerical_embedding_dim is not None):
             if (categorical_embedding_dim is None) or (numerical_embedding_dim is None):
                 raise ValueError(
                     "If either `categorical_embedding_dim` or `numerical_embedding_dim` is not `None`, "
@@ -177,34 +186,35 @@ class DataEmbeddingLayer(torch.nn.Module):
         if categorical_embedding_dim is None and numerical_embedding_dim is None:
             self.embedding_mode = EmbeddingMode.JOINT
             self.embed_layer = torch.nn.EmbeddingBag(
-                num_embeddings = n_total_embeddings,
-                embedding_dim = out_dim,
-                mode = 'sum',
-                padding_idx = 0,
+                num_embeddings=n_total_embeddings,
+                embedding_dim=out_dim,
+                mode="sum",
+                padding_idx=0,
             )
         else:
             self.embedding_mode = EmbeddingMode.SPLIT_CATEGORICAL_NUMERICAL
-            assert (categorical_embedding_dim is not None) and (numerical_embedding_dim is not None)
+            assert (categorical_embedding_dim is not None) and (
+                numerical_embedding_dim is not None
+            )
             self.categorical_embed_layer = torch.nn.EmbeddingBag(
-                num_embeddings = n_total_embeddings,
-                embedding_dim = categorical_embedding_dim,
-                mode = 'sum',
-                padding_idx = 0,
+                num_embeddings=n_total_embeddings,
+                embedding_dim=categorical_embedding_dim,
+                mode="sum",
+                padding_idx=0,
             )
             self.cat_proj = torch.nn.Linear(categorical_embedding_dim, out_dim)
             self.numerical_embed_layer = torch.nn.EmbeddingBag(
-                num_embeddings = n_total_embeddings,
-                embedding_dim = numerical_embedding_dim,
-                mode = 'sum',
-                padding_idx = 0,
+                num_embeddings=n_total_embeddings,
+                embedding_dim=numerical_embedding_dim,
+                mode="sum",
+                padding_idx=0,
             )
             self.num_proj = torch.nn.Linear(numerical_embedding_dim, out_dim)
 
     @staticmethod
     def get_measurement_index_normalziation(measurement_indices: torch.Tensor) -> torch.Tensor:
-        """
-        Returns a tensor of shape `(batch_size, num_measurements)` that can be used to normalize the
-        embeddings of each measurement by the number of measurements in the batch.
+        """Returns a tensor of shape `(batch_size, num_measurements)` that can be used to normalize
+        the embeddings of each measurement by the number of measurements in the batch.
 
         Args:
             `measurement_indices` (`torch.Tensor`):
@@ -228,7 +238,9 @@ class DataEmbeddingLayer(torch.nn.Module):
         normalization_vals = torch.where(measurement_indices == 0, 0, normalization_vals)
 
         normalization_vals_sum = normalization_vals.sum(dim=-1, keepdim=True)
-        normalization_vals_sum = torch.where(normalization_vals_sum == 0, 1, normalization_vals_sum)
+        normalization_vals_sum = torch.where(
+            normalization_vals_sum == 0, 1, normalization_vals_sum
+        )
         return normalization_vals / normalization_vals_sum
 
     def joint_embed(
@@ -238,8 +250,10 @@ class DataEmbeddingLayer(torch.nn.Module):
         values: Optional[torch.Tensor] = None,
         values_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if values is None: values = torch.ones_like(indices, dtype=torch.float32)
-        else: values = torch.where(values_mask, values, 1)
+        if values is None:
+            values = torch.ones_like(indices, dtype=torch.float32)
+        else:
+            values = torch.where(values_mask, values, 1)
 
         if self.do_normalize_by_measurement_index:
             values *= self.get_measurement_index_normalziation(measurement_indices)
@@ -254,21 +268,27 @@ class DataEmbeddingLayer(torch.nn.Module):
         values_mask: Optional[torch.Tensor] = None,
         cat_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         cat_values = torch.ones_like(indices, dtype=torch.float32)
-        if cat_mask is not None: cat_values = torch.where(cat_mask, cat_values, 0)
+        if cat_mask is not None:
+            cat_values = torch.where(cat_mask, cat_values, 0)
         if self.do_normalize_by_measurement_index:
             meas_norm = self.get_measurement_index_normalziation(measurement_indices)
             cat_values *= meas_norm
 
-        cat_embeds = self.cat_proj(self.categorical_embed_layer(indices, per_sample_weights=cat_values))
+        cat_embeds = self.cat_proj(
+            self.categorical_embed_layer(indices, per_sample_weights=cat_values)
+        )
 
-        if values is None: return cat_embeds
+        if values is None:
+            return cat_embeds
 
         num_values = torch.where(values_mask, values, 0)
-        if self.do_normalize_by_measurement_index: num_values *= meas_norm
+        if self.do_normalize_by_measurement_index:
+            num_values *= meas_norm
 
-        num_embeds = self.num_proj(self.numerical_embed_layer(indices, per_sample_weights=num_values))
+        num_embeds = self.num_proj(
+            self.numerical_embed_layer(indices, per_sample_weights=num_values)
+        )
 
         return self.categorical_weight * cat_embeds + self.numerical_weight * num_embeds
 
@@ -282,24 +302,26 @@ class DataEmbeddingLayer(torch.nn.Module):
     ) -> torch.Tensor:
         torch._assert(
             indices.max() < self.n_total_embeddings,
-            f"Invalid embedding! {indices.max()} >= {self.n_total_embeddings}"
+            f"Invalid embedding! {indices.max()} >= {self.n_total_embeddings}",
         )
         match self.embedding_mode:
             case EmbeddingMode.JOINT:
                 return self.joint_embed(indices, measurement_indices, values, values_mask)
             case EmbeddingMode.SPLIT_CATEGORICAL_NUMERICAL:
-                return self.split_embed(indices, measurement_indices, values, values_mask, cat_mask)
-            case _: raise ValueError(f"Invalid embedding mode: {self.embedding_mode}")
+                return self.split_embed(
+                    indices, measurement_indices, values, values_mask, cat_mask
+                )
+            case _:
+                raise ValueError(f"Invalid embedding mode: {self.embedding_mode}")
 
     def static_embedding(self, batch: PytorchBatch) -> torch.Tensor:
-        return self.embed(batch['static_indices'], batch['static_measurement_indices'])
+        return self.embed(batch["static_indices"], batch["static_measurement_indices"])
 
     def split_batch_into_measurement_index_buckets(
         self, batch: PytorchBatch
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Splits the batch into groups of measurement indices, and returns the indices, values, and measurement
-        indices for each bucket.
+        """Splits the batch into groups of measurement indices, and returns the indices, values,
+        and measurement indices for each bucket.
 
         Args:
             `batch` (`PytorchBatch`): A batch of data.
@@ -308,7 +330,7 @@ class DataEmbeddingLayer(torch.nn.Module):
             `Tuple[torch.Tensor, torch.Tensor]`:
                 A tuple of tensors that contain the categorical mask and values mask for each group.
         """
-        batch_size, sequence_length, num_data_elements = batch['dynamic_measurement_indices'].shape
+        batch_size, sequence_length, num_data_elements = batch["dynamic_measurement_indices"].shape
 
         categorical_masks = []
         numerical_masks = []
@@ -316,15 +338,19 @@ class DataEmbeddingLayer(torch.nn.Module):
             assert len(meas_index_group) > 0, f"Empty measurement index group: {meas_index_group}"
 
             # Create a mask that is True if each data element in the batch is in the measurement group.
-            group_categorical_mask = torch.zeros_like(batch['dynamic_measurement_indices'], dtype=torch.bool)
-            group_values_mask = torch.zeros_like(batch['dynamic_measurement_indices'], dtype=torch.bool)
+            group_categorical_mask = torch.zeros_like(
+                batch["dynamic_measurement_indices"], dtype=torch.bool
+            )
+            group_values_mask = torch.zeros_like(
+                batch["dynamic_measurement_indices"], dtype=torch.bool
+            )
             for meas_index in meas_index_group:
                 if type(meas_index) is tuple:
                     meas_index, group_mode = meas_index
                 else:
                     group_mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
 
-                new_index_mask = (batch['dynamic_measurement_indices'] == meas_index)
+                new_index_mask = batch["dynamic_measurement_indices"] == meas_index
                 match group_mode:
                     case MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL:
                         group_categorical_mask |= new_index_mask
@@ -333,7 +359,8 @@ class DataEmbeddingLayer(torch.nn.Module):
                         group_categorical_mask |= new_index_mask
                     case MeasIndexGroupOptions.NUMERICAL_ONLY:
                         group_values_mask |= new_index_mask
-                    case _: raise ValueError(f"Invalid group mode: {group_mode}")
+                    case _:
+                        raise ValueError(f"Invalid group mode: {group_mode}")
 
             categorical_masks.append(group_categorical_mask)
             numerical_masks.append(group_values_mask)
@@ -341,25 +368,34 @@ class DataEmbeddingLayer(torch.nn.Module):
         return torch.stack(categorical_masks, dim=-2), torch.stack(numerical_masks, dim=-2)
 
     def dynamic_embedding(self, batch: PytorchBatch) -> torch.Tensor:
-        batch_size, sequence_length, num_data_elements = batch['dynamic_values_mask'].shape
+        batch_size, sequence_length, num_data_elements = batch["dynamic_values_mask"].shape
         out_shape = (batch_size, sequence_length, self.out_dim)
 
         if self.split_by_measurement_indices:
-            categorical_mask, numerical_mask = self.split_batch_into_measurement_index_buckets(batch)
+            categorical_mask, numerical_mask = self.split_batch_into_measurement_index_buckets(
+                batch
+            )
             _, _, num_measurement_buckets, _ = categorical_mask.shape
             out_shape = (batch_size, sequence_length, num_measurement_buckets, self.out_dim)
 
-            expand_shape = (batch_size, sequence_length, num_measurement_buckets, num_data_elements)
-            indices = batch['dynamic_indices'].unsqueeze(-2).expand(*expand_shape)
-            values = batch['dynamic_values'].unsqueeze(-2).expand(*expand_shape)
-            measurement_indices = batch['dynamic_measurement_indices'].unsqueeze(-2).expand(*expand_shape)
-            values_mask = batch['dynamic_values_mask'].unsqueeze(-2).expand(*expand_shape)
+            expand_shape = (
+                batch_size,
+                sequence_length,
+                num_measurement_buckets,
+                num_data_elements,
+            )
+            indices = batch["dynamic_indices"].unsqueeze(-2).expand(*expand_shape)
+            values = batch["dynamic_values"].unsqueeze(-2).expand(*expand_shape)
+            measurement_indices = (
+                batch["dynamic_measurement_indices"].unsqueeze(-2).expand(*expand_shape)
+            )
+            values_mask = batch["dynamic_values_mask"].unsqueeze(-2).expand(*expand_shape)
             values_mask = values_mask & numerical_mask
         else:
-            indices = batch['dynamic_indices']
-            values = batch['dynamic_values']
-            measurement_indices = batch['dynamic_measurement_indices']
-            values_mask = batch['dynamic_values_mask']
+            indices = batch["dynamic_indices"]
+            values = batch["dynamic_values"]
+            measurement_indices = batch["dynamic_measurement_indices"]
+            values_mask = batch["dynamic_values_mask"]
             categorical_mask = None
 
         indices_2D = indices.reshape(-1, num_data_elements)
@@ -371,32 +407,42 @@ class DataEmbeddingLayer(torch.nn.Module):
         else:
             categorical_mask_2D = None
 
-        embedded = self.embed(indices_2D, meas_indices_2D, values_2D, values_mask_2D, categorical_mask_2D)
+        embedded = self.embed(
+            indices_2D, meas_indices_2D, values_2D, values_mask_2D, categorical_mask_2D
+        )
 
         # Reshape back out into the original shape. Testing ensures these reshapes reflect original structure
         return embedded.view(*out_shape)
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
-        if batch.batch_size == 0: return torch.empty(0, batch.sequence_length, self.out_dim)
-        elif batch.sequence_length == 0: return torch.empty(batch.batch_size, 0, self.out_dim)
+        if batch.batch_size == 0:
+            return torch.empty(0, batch.sequence_length, self.out_dim)
+        elif batch.sequence_length == 0:
+            return torch.empty(batch.batch_size, 0, self.out_dim)
 
         if batch.n_data_elements == 0:
             embedded = torch.zeros(
-                batch.batch_size, batch.sequence_length, self.out_dim,
-                device=batch['dynamic_indices'].device,
+                batch.batch_size,
+                batch.sequence_length,
+                self.out_dim,
+                device=batch["dynamic_indices"].device,
             )
         else:
             embedded = self.dynamic_embedding(batch)
         # embedded is of shape (batch_size, sequence_length, out_dim) or of shape
         # (batch_size, sequence_length, num_measurement_buckets, out_dim)
 
-        if self.static_embedding_mode == StaticEmbeddingMode.DROP: return embedded
+        if self.static_embedding_mode == StaticEmbeddingMode.DROP:
+            return embedded
 
         if batch.n_static_data_elements == 0:
             static_embedded = torch.zeros(
-                batch.batch_size, self.out_dim, device=batch['static_indices'].device,
+                batch.batch_size,
+                self.out_dim,
+                device=batch["static_indices"].device,
             )
-        else: static_embedded = self.static_embedding(batch)
+        else:
+            static_embedded = self.static_embedding(batch)
         # static_embedded is of shape (batch_size, out_dim)
 
         static_embedded = static_embedded.unsqueeze(1)
@@ -414,4 +460,5 @@ class DataEmbeddingLayer(torch.nn.Module):
                 return self.dynamic_weight * embedded + self.static_weight * static_embedded
             case StaticEmbeddingMode.PREPEND:
                 return torch.cat([static_embedded, embedded], dim=1)
-            case _: raise ValueError(f"Invalid static embedding mode: {self.static_embedding_mode}")
+            case _:
+                raise ValueError(f"Invalid static embedding mode: {self.static_embedding_mode}")

@@ -34,8 +34,10 @@ class StoppingCriteria(ABC):
 
 
 class MaxLengthCriteria(StoppingCriteria):
-    """
-    This class can be used to stop generation whenever the full generated number of events exceeds `max_length`. Keep
+    """This class can be used to stop generation whenever the full generated number of events
+    exceeds `max_length`.
+
+    Keep
     in mind for decoder-only type of transformers, this will include the initial prompted events.
     Args:
         max_length (`int`):
@@ -51,9 +53,12 @@ class MaxLengthCriteria(StoppingCriteria):
     ) -> bool:
         return batch.time.shape[-1] >= self.max_length
 
+
 class MaxTimeCriteria(StoppingCriteria):
-    """
-    This class can be used to stop generation whenever the full generation exceeds some amount of time. By default, the
+    """This class can be used to stop generation whenever the full generation exceeds some amount
+    of time.
+
+    By default, the
     time will start being counted when you initialize this function. You can override this by passing an
     `initial_time`.
     Args:
@@ -76,7 +81,9 @@ class MaxTimeCriteria(StoppingCriteria):
 
 class StoppingCriteriaList(list):
     @add_start_docstrings(STOPPING_CRITERIA_INPUTS_DOCSTRING)
-    def __call__(self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs) -> bool:
+    def __call__(
+        self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs
+    ) -> bool:
         return any(criteria(batch, outputs) for criteria in self)
 
     @property
@@ -86,11 +93,17 @@ class StoppingCriteriaList(list):
                 return stopping_criterium.max_length
         return None
 
-def validate_stopping_criteria(stopping_criteria: StoppingCriteriaList, max_length: int) -> StoppingCriteriaList:
+
+def validate_stopping_criteria(
+    stopping_criteria: StoppingCriteriaList, max_length: int
+) -> StoppingCriteriaList:
     stopping_max_length = stopping_criteria.max_length
     new_stopping_criteria = deepcopy(stopping_criteria)
     if stopping_max_length is not None and stopping_max_length != max_length:
-        warnings.warn("You set different `max_length` for stopping criteria and `max_length` parameter", UserWarning)
+        warnings.warn(
+            "You set different `max_length` for stopping criteria and `max_length` parameter",
+            UserWarning,
+        )
     elif stopping_max_length is None:
         new_stopping_criteria.append(MaxLengthCriteria(max_length=max_length))
     return new_stopping_criteria

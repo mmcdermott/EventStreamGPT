@@ -1,55 +1,94 @@
 import sys
-sys.path.append('../..')
 
-import math, torch, unittest
+sys.path.append("../..")
 
-from ..mixins import MLTypeEqualityCheckableMixin
+import math
+import unittest
+
+import torch
+
 from EventStream.transformer.generative_layers import (
-    LogNormalMixtureTTELayer,
     ExponentialTTELayer,
     GaussianIndexedRegressionLayer,
+    LogNormalMixtureTTELayer,
 )
+
+from ..mixins import MLTypeEqualityCheckableMixin
+
 
 class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
     def test_forward(self):
         L = LogNormalMixtureTTELayer(
-            in_dim=6, num_components=2,
+            in_dim=6,
+            num_components=2,
         )
-        L.proj.weight = torch.nn.Parameter(torch.Tensor([
-            [1, 0, 0, 0, 0, 0],  # Loc for Component 1
-            [0, 1, 0, 0, 0, 0],  # Log scale for Component 1
-            [0, 0, 1, 0, 0, 0],  # Log weight for Component 1
+        L.proj.weight = torch.nn.Parameter(
+            torch.Tensor(
+                [
+                    [1, 0, 0, 0, 0, 0],  # Loc for Component 1
+                    [0, 1, 0, 0, 0, 0],  # Log scale for Component 1
+                    [0, 0, 1, 0, 0, 0],  # Log weight for Component 1
+                    [0, 0, 0, 1, 0, 0],  # Loc for Component 2
+                    [0, 0, 0, 0, 1, 0],  # Log scale for Component 2
+                    [0, 0, 0, 0, 0, 1],  # Log weight for Component 2
+                ]
+            )
+        )
+        L.proj.bias = torch.nn.Parameter(
+            torch.Tensor(
+                [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ]
+            )
+        )
 
-            [0, 0, 0, 1, 0, 0],  # Loc for Component 2
-            [0, 0, 0, 0, 1, 0],  # Log scale for Component 2
-            [0, 0, 0, 0, 0, 1],  # Log weight for Component 2
-        ]))
-        L.proj.bias = torch.nn.Parameter(torch.Tensor([
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]))
-
-        X = torch.Tensor([
-            [0, 0, 0, 0, 0, torch.finfo(torch.float32).min],  # A standard lognormal in the 1st component.
-            [0, 0, torch.finfo(torch.float32).min, 2, 1, 0],  # A nonstandard lognormal in the 2nd component.
-            [0, 0, 1, 2, 1, 1],  # An equal combo of the first two.
-            [0, 0, math.log(2/3), 2, 1, math.log(1/3)],  # An unequal combo of the first two.
-        ])
+        X = torch.Tensor(
+            [
+                [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    torch.finfo(torch.float32).min,
+                ],  # A standard lognormal in the 1st component.
+                [
+                    0,
+                    0,
+                    torch.finfo(torch.float32).min,
+                    2,
+                    1,
+                    0,
+                ],  # A nonstandard lognormal in the 2nd component.
+                [0, 0, 1, 2, 1, 1],  # An equal combo of the first two.
+                [
+                    0,
+                    0,
+                    math.log(2 / 3),
+                    2,
+                    1,
+                    math.log(1 / 3),
+                ],  # An unequal combo of the first two.
+            ]
+        )
         X.requires_grad = True
 
         # The means of this distribution should be as follows:
-        mean_0 = math.exp(0 + math.exp(0)**2/2)
-        mean_1 = math.exp(2 + math.exp(1)**2/2)
-        want_mean = torch.Tensor([
-            mean_0,
-            mean_1,
-            0.5*mean_0 + 0.5*mean_1,
-            2/3*mean_0 + 1/3*mean_1,
-        ])
+        mean_0 = math.exp(0 + math.exp(0) ** 2 / 2)
+        mean_1 = math.exp(2 + math.exp(1) ** 2 / 2)
+        want_mean = torch.Tensor(
+            [
+                mean_0,
+                mean_1,
+                0.5 * mean_0 + 0.5 * mean_1,
+                2 / 3 * mean_0 + 1 / 3 * mean_1,
+            ]
+        )
 
         # Current implementation of the lognormal mixture doesn't permit measurement of variance.
         # var_0 = (math.exp(math.exp(0)**2) - 1)*math.exp(2*0 + math.exp(0)**2)
@@ -71,14 +110,16 @@ class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
         # mean/std/weights per component in a cartesian product.
         # We'll select something that should increase the mean for the first,
 
-        obs = torch.Tensor([
-            3,   # Guaranteed to be larger than the mode of the first lognormal.
-            0.1,  # Guaranteed to be smaller than the mode of the second lognormal.
-            # The mode of the first component.
-            math.exp(0-math.exp(0)**2),
-            # The mode of the second component.
-            math.exp(2-math.exp(1)**2),
-        ])
+        obs = torch.Tensor(
+            [
+                3,  # Guaranteed to be larger than the mode of the first lognormal.
+                0.1,  # Guaranteed to be smaller than the mode of the second lognormal.
+                # The mode of the first component.
+                math.exp(0 - math.exp(0) ** 2),
+                # The mode of the second component.
+                math.exp(2 - math.exp(1) ** 2),
+            ]
+        )
 
         NLL = -out.log_prob(obs)
         NLL.sum().backward()
@@ -108,13 +149,16 @@ class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):
         obs_3_grad_signs = [1, 0, -1, 1, -1, 1]
         obs_4_grad_signs = [1, -1, 1, 1, -1, -1]
 
-        want_X_grad_sign = torch.Tensor([
-            obs_1_grad_signs,
-            obs_2_grad_signs,
-            obs_3_grad_signs,
-            obs_4_grad_signs,
-        ])
+        want_X_grad_sign = torch.Tensor(
+            [
+                obs_1_grad_signs,
+                obs_2_grad_signs,
+                obs_3_grad_signs,
+                obs_4_grad_signs,
+            ]
+        )
         self.assertEqual(X.grad.sign(), want_X_grad_sign)
+
 
 class TestExponential(MLTypeEqualityCheckableMixin, unittest.TestCase):
     def test_forward(self):
@@ -122,24 +166,18 @@ class TestExponential(MLTypeEqualityCheckableMixin, unittest.TestCase):
         E.proj.weight = torch.nn.Parameter(torch.Tensor([[1, 0, 0]]))
         E.proj.bias = torch.nn.Parameter(torch.Tensor([0]))
 
-        X = torch.Tensor([
-            [1.0, 3.0, 5.0],
-            [3.0, 1.0, 5.0],
-            [torch.finfo(torch.float32).min, 4.0, 0.0],
-        ])
+        X = torch.Tensor(
+            [
+                [1.0, 3.0, 5.0],
+                [3.0, 1.0, 5.0],
+                [torch.finfo(torch.float32).min, 4.0, 0.0],
+            ]
+        )
         X.requires_grad = True
 
         # The rate should be approximately 1 + X, as it is an ELU(X) + 1 + epsilon. The mean should be 1/rate.
-        want_rate = torch.Tensor([
-            2.0,
-            4.0,
-            torch.finfo(torch.float32).tiny
-        ])
-        want_mean = torch.Tensor([
-            1/2.0,
-            1/4.0,
-            1/torch.finfo(torch.float32).tiny
-        ])
+        want_rate = torch.Tensor([2.0, 4.0, torch.finfo(torch.float32).tiny])
+        want_mean = torch.Tensor([1 / 2.0, 1 / 4.0, 1 / torch.finfo(torch.float32).tiny])
 
         out = E(X)
         self.assertEqual(out.rate, want_rate)
@@ -154,11 +192,13 @@ class TestExponential(MLTypeEqualityCheckableMixin, unittest.TestCase):
         # Conversely, for samples that are less than the mean, the gradient should be negative.
         # Finally, for samples that are equal to the mean, the gradient should be zero.
 
-        obs = torch.Tensor([
-            0.75,
-            0.1,
-            1 / torch.finfo(torch.float32).tiny,
-        ])
+        obs = torch.Tensor(
+            [
+                0.75,
+                0.1,
+                1 / torch.finfo(torch.float32).tiny,
+            ]
+        )
 
         NLL = -out.log_prob(obs)
         NLL.sum().backward()
@@ -179,53 +219,62 @@ class TestExponential(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         # Finally, X itself should have gradients with signs corresponding to rate's signs, only relevant in
         # the first position.
-        want_X_grad_sign = torch.Tensor([
-            [1, 0, 0],
-            [-1, 0, 0],
-            [0, 0, 0]
-        ])
+        want_X_grad_sign = torch.Tensor([[1, 0, 0], [-1, 0, 0], [0, 0, 0]])
         self.assertEqual(X.grad.sign(), want_X_grad_sign)
+
 
 class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
     def test_forward(self):
         L = GaussianIndexedRegressionLayer(in_dim=4, n_regression_targets=2)
 
-        L.proj.weight = torch.nn.Parameter(torch.Tensor([
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1],
-        ]))
+        L.proj.weight = torch.nn.Parameter(
+            torch.Tensor(
+                [
+                    [1, 0, 0, 0],
+                    [0, 1, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1],
+                ]
+            )
+        )
         L.proj.bias = torch.nn.Parameter(torch.Tensor([0, 0, 0, 0]))
 
-        X = torch.Tensor([
-            [0.0, 1.0, 2.0, 3.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [1.0, 0, 0.0, 0.0],
-            [1.0, torch.finfo(torch.float32).min, 0.0, 0.0],
-        ])
+        X = torch.Tensor(
+            [
+                [0.0, 1.0, 2.0, 3.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [1.0, 0, 0.0, 0.0],
+                [1.0, torch.finfo(torch.float32).min, 0.0, 0.0],
+            ]
+        )
         X.requires_grad = True
 
-        idx = torch.LongTensor([
-            [0, 1],
-            [0, 1],
-            [1, 0],
-            [1, 0],
-        ])
+        idx = torch.LongTensor(
+            [
+                [0, 1],
+                [0, 1],
+                [1, 0],
+                [1, 0],
+            ]
+        )
 
-        want_mean = torch.Tensor([
-            [0, 2],
-            [0, 1],
-            [0, 1],
-            [0, 1],
-        ])
+        want_mean = torch.Tensor(
+            [
+                [0, 2],
+                [0, 1],
+                [0, 1],
+                [0, 1],
+            ]
+        )
         # The std should be approximately 1 + X, as it is an ELU(X) + 1 + epsilon.
-        want_std = torch.Tensor([
-            [2.0, 4.0],
-            [1.0, 1.0],
-            [1.0, 1],
-            [1.0, torch.finfo(torch.float32).tiny],
-        ])
+        want_std = torch.Tensor(
+            [
+                [2.0, 4.0],
+                [1.0, 1.0],
+                [1.0, 1],
+                [1.0, torch.finfo(torch.float32).tiny],
+            ]
+        )
 
         got = L(X, idx)
 
@@ -238,12 +287,14 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
         # sign. One special case with the gradient is in the case where the standard deviation has saturated
         # the gradient -- when it is equal to our buffer of epsilon. Given saturation, we'd then expect a
         # gradient value of 0, regardless of the observed value.
-        obs = torch.Tensor([
-            [-5, 2],  # Mean is far to the right, then right on top.
-            [5, 1.05],  # Mean is far to the left, then close to the left.
-            [-0.05, 5],  # Mean is close to the right, then far to the left.
-            [-0.05, 5],  # Mean is close to the right, then far to the left.
-        ])
+        obs = torch.Tensor(
+            [
+                [-5, 2],  # Mean is far to the right, then right on top.
+                [5, 1.05],  # Mean is far to the left, then close to the left.
+                [-0.05, 5],  # Mean is close to the right, then far to the left.
+                [-0.05, 5],  # Mean is close to the right, then far to the left.
+            ]
+        )
 
         NLL = -got.log_prob(obs)
         NLL.sum().backward()
@@ -272,17 +323,25 @@ class TestGaussianIndexedRegressionLayer(MLTypeEqualityCheckableMixin, unittest.
         # test with finfo(float).min yields NaN gradients. TODO(mmd): Validate whether or not this is a real
         # problem.
 
-        want_X_grad_sign = torch.Tensor([
-            [1, -1, 0, 1],
-            [-1, -1, -1, 1],
-            [-1, -1, 1, 1],
-            # [0, 0, 1, 1],  # In reality, this is what the gradient in this case should be.
-            [0, 0, 0, 0],  # but in practice it is all NaNs as autograd can't recognize some stuff.
-        ])
+        want_X_grad_sign = torch.Tensor(
+            [
+                [1, -1, 0, 1],
+                [-1, -1, -1, 1],
+                [-1, -1, 1, 1],
+                # [0, 0, 1, 1],  # In reality, this is what the gradient in this case should be.
+                [
+                    0,
+                    0,
+                    0,
+                    0,
+                ],  # but in practice it is all NaNs as autograd can't recognize some stuff.
+            ]
+        )
 
         self.assertEqual(
             want_X_grad_sign, X.grad.sign(), msg=f"{want_X_grad_sign} vs.  {X.grad.sign()}"
         )
 
 
-if __name__ == '__main__': unittest.main()
+if __name__ == "__main__":
+    unittest.main()
