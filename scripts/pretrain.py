@@ -1,7 +1,15 @@
-import sys
-sys.path.append('..')
+try:
+    #import pretty_traceback
+    #pretty_traceback.install()
+
+    import stackprinter
+    stackprinter.set_excepthook(style='darkbg2')
+except ImportError:
+    pass    # no need to fail because of missing dev dependency
 
 import hydra
+import torch
+torch.set_float32_matmul_precision('high')
 
 from EventStream.transformer.generative_sequence_modelling_lightning import PretrainConfig, train
 

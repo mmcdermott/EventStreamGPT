@@ -108,8 +108,6 @@ class InputDFSchema(JSONableMixin):
                 case (str() as filter_col, list() as vals): self.filter_on[filter_col] = vals
                 case _: raise ValueError(f"Malformed filter: {filter_col}")
 
-        self.columns_to_load = []
-
         match self.type:
             case InputDFType.STATIC:
                 if self.subject_id_col is None:
@@ -136,11 +134,6 @@ class InputDFSchema(JSONableMixin):
                     val = getattr(self, param)
                     if val is not None:
                         raise ValueError(f"{param} should be None for {self.type} schema: Got {val}")
-
-                if type(self.ts_col) is list:
-                    for c in self.ts_col:
-                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.ts_format)))
-                else: self.columns_to_load.append((self.ts_col, (InputDataType.TIMESTAMP, self.ts_format)))
 
             case InputDFType.RANGE:
                 match self.event_type:
@@ -195,25 +188,27 @@ class InputDFSchema(JSONableMixin):
                     self.end_ts_format = self.ts_format
                     self.ts_format = None
 
-                if self.start_ts_col is list:
-                    for c in self.start_ts_col:
-                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.start_ts_format)))
-                else:
-                    self.columns_to_load.append((
-                        self.start_ts_col, (InputDataType.TIMESTAMP, self.start_ts_format)
-                    ))
-                if self.end_ts_col is list:
-                    for c in self.end_ts_col:
-                        self.columns_to_load.append((c, (InputDataType.TIMESTAMP, self.end_ts_format)))
-                else:
-                    self.columns_to_load.append((
-                        self.end_ts_col, (InputDataType.TIMESTAMP, self.end_ts_format)
-                    ))
-
     @property
     def columns_to_load(self) -> List[Tuple[str, InputDataType]]:
+        columns_to_load = []
+
         for in_col, (out_col, dt) in self.unified_schema.items():
-            self.columns_to_load.append((in_col, dt))
+            columns_to_load.append((in_col, dt))
+
+        for param, fmt_param in [
+            ('start_ts_col', 'start_ts_format'),
+            ('end_ts_col', 'end_ts_format'),
+            ('ts_col', 'ts_format')
+        ]:
+            val = getattr(self, param)
+            fmt = (InputDataType.TIMESTAMP, getattr(self, fmt_param))
+            match val:
+                case list(): columns_to_load.extend([(c, fmt) for c in val])
+                case str(): columns_to_load.append((val, fmt))
+                case None: pass
+                case _: raise ValueError(f"Can't parse timestamp {param}, {fmt_param}, {val}")
+
+        return columns_to_load
 
     @property
     def unified_schema(self) -> Dict[str, Tuple[str, InputDataType]]:

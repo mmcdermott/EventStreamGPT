@@ -1,6 +1,3 @@
-import sys
-sys.path.append('..')
-
 import hydra
 
 from EventStream.transformer.get_embeddings_lightning import GetEmbeddingsConfig, get_embeddings

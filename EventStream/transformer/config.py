@@ -480,17 +480,22 @@ class StructuredTransformerConfig(PretrainedConfig):
             (structured_event_processing_mode == 'nested_attention') and
             (measurements_per_dep_graph_level is not None)
         ):
+            proc_measurements_per_dep_graph_level = []
             for group in measurements_per_dep_graph_level:
+                proc_group = []
                 for meas_index in group:
                     match meas_index:
-                        case str(): pass
-                        case (meas_index, mode):
+                        case str(): proc_group.append(meas_index)
+                        case (meas_index, mode) | [meas_index, mode]:
                             assert type(meas_index) is str
                             assert mode in MeasIndexGroupOptions.values()
+                            proc_group.append((meas_index, mode))
                         case _:
                             raise ValueError(
                                 f"Invalid `measurements_per_dep_graph_level` entry {meas_index}."
                             )
+                proc_measurements_per_dep_graph_level.append(proc_group)
+            measurements_per_dep_graph_level = proc_measurements_per_dep_graph_level
 
         self.structured_event_processing_mode = structured_event_processing_mode
 
@@ -509,13 +514,10 @@ class StructuredTransformerConfig(PretrainedConfig):
             raise TypeError(f"num_hidden_layers must be an int! Got {type(num_hidden_layers)}.")
         elif num_hidden_layers <= 0:
             raise ValueError(f"num_hidden_layers must be > 0! Got {num_hidden_layers}.")
+        self.num_hidden_layers = num_hidden_layers
 
-        if seq_attention_types is None:
-            assert num_hidden_layers % 2 == 0, (
-                "If seq_attention_types is unspecified, num_hidden_layers must be even! Got "
-                f"{num_hidden_layers}."
-            )
-            seq_attention_types = [[["local", "global"], num_hidden_layers // 2]]
+        if seq_attention_types is None: seq_attention_types = ["local", "global"]
+
         self.seq_attention_types = seq_attention_types
         self.seq_attention_layers = self.expand_attention_types_params(seq_attention_types)
 
@@ -530,8 +532,7 @@ class StructuredTransformerConfig(PretrainedConfig):
             )
 
         if structured_event_processing_mode != 'conditionally_independent':
-            if dep_graph_attention_types is None:
-                dep_graph_attention_types = [[["global"], num_hidden_layers]]
+            if dep_graph_attention_types is None: dep_graph_attention_types = "global"
 
             dep_graph_attention_layers = self.expand_attention_types_params(dep_graph_attention_types)
 
@@ -640,8 +641,7 @@ class StructuredTransformerConfig(PretrainedConfig):
     def measurements_for(self, modality: DataModality) -> List[str]:
         return self.measurements_per_generative_mode.get(modality, [])
 
-    @staticmethod
-    def expand_attention_types_params(attention_types: ATTENTION_TYPES_LIST_T) -> List[AttentionLayerType]:
+    def expand_attention_types_params(self, attention_types: ATTENTION_TYPES_LIST_T) -> List[AttentionLayerType]:
         """Expands the attention syntax from the easy-to-enter syntax to one for the model."""
         if isinstance(attention_types, str):
             return [attention_types] * self.num_hidden_layers
@@ -669,7 +669,7 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         if self.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION:
             in_dep = set(
-                x[0] if type(x) is tuple else x
+                x[0] if isinstance(x, (list, tuple)) and len(x) == 2 else x
                 for x in itertools.chain.from_iterable(self.measurements_per_dep_graph_level)
             )
             in_generative_mode = set(

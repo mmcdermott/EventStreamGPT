@@ -1,6 +1,3 @@
-import sys
-sys.path.append('..')
-
 import hydra
 
 from EventStream.transformer.stream_classification_lightning import FinetuneConfig, train
