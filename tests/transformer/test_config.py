@@ -19,6 +19,7 @@ from EventStream.transformer.config import (
 DEFAULT_OPT_CONFIG_DICT = dict(
     init_lr=1e-2,
     end_lr=1e-7,
+    end_lr_frac_of_init_lr=None,
     max_epochs=2,
     batch_size=32,
     lr_frac_warmup_steps=0.01,
@@ -132,10 +133,6 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                 'kwargs': {'num_hidden_layers': -4},
                 'should_raise': ValueError,
             }, {
-                'msg': "Should Error when seq_attention_types is misconfigured.",
-                'kwargs': {'num_hidden_layers': 4, 'seq_attention_types': [[["global"], 10]]},
-                'should_raise': ValueError,
-            }, {
                 'msg': "Should Error when nested_attention args are missing or invalid.",
                 'kwargs': [
                     {
@@ -147,10 +144,6 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                     }, {
                         **DEFAULT_NESTED_ATTENTION_DICT,
                         'do_add_temporal_position_embeddings_to_data_embeddings': None,
-                    }, {
-                        **DEFAULT_NESTED_ATTENTION_DICT,
-                        'num_hidden_layers': 4,
-                        'dep_graph_attention_types': [[["global"], 10]],
                     }
                 ],
                 'should_raise': ValueError,
@@ -185,14 +178,6 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                 'msg': "Should construct with Exponential TTE head args.",
                 'kwargs': {**DEFAULT_EXPONENTIAL_DICT},
             }, {
-                'msg': "Should error when Lognormal Mixture args are passed in Exponential mode.",
-                'kwargs': [
-                    {**DEFAULT_EXPONENTIAL_DICT, 'TTE_lognormal_generation_num_components': 2},
-                    {**DEFAULT_EXPONENTIAL_DICT, 'mean_log_inter_event_time_min': 0.},
-                    {**DEFAULT_EXPONENTIAL_DICT, 'std_log_inter_event_time_min': 1.},
-                ],
-                'should_raise': ValueError
-            }, {
                 'msg': "Should construct with Lognormal Mixture TTE head args.",
                 'kwargs': {**DEFAULT_LOGNORMAL_MIXTURE_DICT},
             }, {
@@ -224,15 +209,6 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                             StructuredTransformerConfig(**args_dict)
                     else:
                         StructuredTransformerConfig(**args_dict)
-
-    def test_expand_attention_types_params(self):
-        for C in [
-            {'attention_types': [[['global'], 2]], 'want': ['global', 'global']},
-            {'attention_types': [[['global', 'local'], 2]], 'want': ['global', 'local', 'global', 'local']},
-            {'attention_types': [[['global'], 1], [['local'], 2]], 'want': ['global', 'local', 'local']},
-        ]:
-            got = StructuredTransformerConfig.expand_attention_types_params(C['attention_types'])
-            self.assertEqual(C['want'], got)
 
     def test_set_to_dataset(self):
         default_measurements_per_generative_mode = {

@@ -80,8 +80,13 @@ class OptimizationConfig(JSONableMixin):
         if self.end_lr_frac_of_init_lr is not None:
             if self.end_lr_frac_of_init_lr <= 0.0 or self.end_lr_frac_of_init_lr >= 1.0:
                 raise ValueError("`end_lr_frac_of_init_lr` must be between 0.0 and 1.0!")
-            if self.end_lr is not None and self.end_lr != self.end_lr_frac_of_init_lr * self.init_lr:
-                raise ValueError("If both set, `end_lr` must be equal to `end_lr_frac_of_init_lr * init_lr`!")
+            if self.end_lr is not None:
+                prod = self.end_lr_frac_of_init_lr * self.init_lr
+                if not math.isclose(self.end_lr, prod):
+                    raise ValueError(
+                        "If both set, `end_lr` must be equal to `end_lr_frac_of_init_lr * init_lr`! Got "
+                        f"end_lr={self.end_lr}, end_lr_frac_of_init_lr * init_lr = {prod}!"
+                    )
             self.end_lr = self.end_lr_frac_of_init_lr * self.init_lr
         else:
             if self.end_lr is None: raise ValueError("Must set either end_lr or end_lr_frac_of_init_lr!")

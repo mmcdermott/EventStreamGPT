@@ -96,7 +96,7 @@ class TestStructuredTransformer(ConfigComparisonsMixin, unittest.TestCase):
     def test_forward_sensitive_to_event_mask_with_batch(self):
         config = StructuredTransformerConfig(**BASE_CONFIG_KWARGS)
 
-        M = StructuredTransformer(config)
+        M = StructuredTransformer(config).cpu()
         M.eval()  # So layernorm and dropout don't affect anything.
 
         batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))

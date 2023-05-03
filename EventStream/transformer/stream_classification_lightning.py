@@ -308,15 +308,16 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     metrics_config = cfg.metrics_config
 
     config.set_to_dataset(train_pyd)
+    optimization_config.set_to_dataset(train_pyd)
 
     # We don't have 'do_overwrite' support in this class.
-    config_fp = save_dir / 'config.json'
+    config_fp = cfg.save_dir / 'config.json'
     if config_fp.exists() and not cfg.do_overwrite: raise FileExistsError(f"{config_fp} already exists!")
-    else: config.to_json_file(save_dir / "config.json")
+    else: config.to_json_file(cfg.save_dir / "config.json")
  
-    data_config.to_json_file(save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
-    optimization_config.to_json_file(save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite)
-    metrics_config.to_json_file(save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite)
+    data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
+    optimization_config.to_json_file(cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite)
+    metrics_config.to_json_file(cfg.save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite)
 
     # Model
     LM = ESTForStreamClassificationLM(
