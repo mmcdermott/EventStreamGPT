@@ -2,7 +2,8 @@ import dataclasses
 import enum
 import itertools
 import math
-from typing import Any, Dict, Hashable, List, Optional, Tuple, Union
+from collections.abc import Hashable
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from transformers import PretrainedConfig
 
@@ -11,7 +12,7 @@ from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality
 from ..utils import JSONableMixin, StrEnum, hydra_dataclass
 
-MEAS_INDEX_GROUP_T = Union[str, Tuple[str, MeasIndexGroupOptions]]
+MEAS_INDEX_GROUP_T = Union[str, tuple[str, MeasIndexGroupOptions]]
 
 
 class Split(StrEnum):
@@ -48,11 +49,11 @@ class Averaging(StrEnum):
 
 @hydra_dataclass
 class MetricsConfig(JSONableMixin):
-    n_auc_thresholds: Optional[int] = 50
+    n_auc_thresholds: int | None = 50
     do_skip_all_metrics: bool = False
     do_validate_args: bool = False
 
-    include_metrics: Dict[
+    include_metrics: dict[
         # Split, Dict[MetricCategories, Union[bool, Dict[Metrics, Union[bool, List[Averaging]]]]]
         str,
         Any,
@@ -85,9 +86,7 @@ class MetricsConfig(JSONableMixin):
             return True
         return False
 
-    def do_log(
-        self, split: Split, cat: MetricCategories, metric_name: Optional[str] = None
-    ) -> bool:
+    def do_log(self, split: Split, cat: MetricCategories, metric_name: str | None = None) -> bool:
         if self.do_log_only_loss(split):
             return False
         if self.include_metrics[split].get(cat, False):
@@ -112,7 +111,7 @@ class MetricsConfig(JSONableMixin):
         else:
             return False
 
-    def do_log_any(self, cat: MetricCategories, metric_name: Optional[str] = None) -> bool:
+    def do_log_any(self, cat: MetricCategories, metric_name: str | None = None) -> bool:
         for split in Split.values():
             if self.do_log(split, cat, metric_name):
                 return True
@@ -161,17 +160,17 @@ class OptimizationConfig(JSONableMixin):
     """
 
     init_lr: float = 1e-2
-    end_lr: Optional[float] = None
-    end_lr_frac_of_init_lr: Optional[float] = 1e-3
+    end_lr: float | None = None
+    end_lr_frac_of_init_lr: float | None = 1e-3
     max_epochs: int = 100
     batch_size: int = 32
-    lr_frac_warmup_steps: Optional[float] = 0.01
-    lr_num_warmup_steps: Optional[int] = None
-    max_training_steps: Optional[int] = None
+    lr_frac_warmup_steps: float | None = 0.01
+    lr_num_warmup_steps: int | None = None
+    max_training_steps: int | None = None
     lr_decay_power: float = 1.0
     weight_decay: float = 0.01
-    patience: Optional[int] = None
-    gradient_accumulation: Optional[int] = None
+    patience: int | None = None
+    gradient_accumulation: int | None = None
 
     num_dataloader_workers: int = 0
 
@@ -281,10 +280,10 @@ ATTENTION_TYPES_LIST_T = Union[
     # "global" -- all layers are global.
     AttentionLayerType,
     # ["global", "local"] -- alternate global and local layers until you run out of layers.
-    List[AttentionLayerType],
+    list[AttentionLayerType],
     # [(["global", "local"], 2), (["global"], 1)]
     # Do 2 alternating global and local layers, then 1 global layer.
-    List[Tuple[List[AttentionLayerType], int]],
+    list[tuple[list[AttentionLayerType], int]],
 ]
 
 
@@ -482,16 +481,16 @@ class StructuredTransformerConfig(PretrainedConfig):
     def __init__(
         self,
         # Data configuration
-        vocab_sizes_by_measurement: Optional[Dict[str, int]] = None,
-        vocab_offsets_by_measurement: Optional[Dict[str, int]] = None,
-        measurements_idxmap: Optional[Dict[str, Dict[Hashable, int]]] = None,
-        measurements_per_generative_mode: Optional[Dict[DataModality, List[str]]] = None,
-        event_types_per_measurement: Optional[Dict[str, List[str]]] = None,
-        event_types_idxmap: Optional[Dict[str, int]] = None,
-        measurements_per_dep_graph_level: Optional[List[List[MEAS_INDEX_GROUP_T]]] = None,
+        vocab_sizes_by_measurement: dict[str, int] | None = None,
+        vocab_offsets_by_measurement: dict[str, int] | None = None,
+        measurements_idxmap: dict[str, dict[Hashable, int]] | None = None,
+        measurements_per_generative_mode: dict[DataModality, list[str]] | None = None,
+        event_types_per_measurement: dict[str, list[str]] | None = None,
+        event_types_idxmap: dict[str, int] | None = None,
+        measurements_per_dep_graph_level: list[list[MEAS_INDEX_GROUP_T]] | None = None,
         max_seq_len: int = 256,
-        categorical_embedding_dim: Optional[int] = None,
-        numerical_embedding_dim: Optional[int] = None,
+        categorical_embedding_dim: int | None = None,
+        numerical_embedding_dim: int | None = None,
         static_embedding_mode: StaticEmbeddingMode = StaticEmbeddingMode.SUM_ALL,
         static_embedding_weight: float = 0.5,
         dynamic_embedding_weight: float = 0.5,
@@ -500,14 +499,14 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_normalize_by_measurement_index: bool = False,
         # Model configuration
         structured_event_processing_mode: StructuredEventProcessingMode = "nested_attention",
-        hidden_size: Optional[int] = 256,
-        head_dim: Optional[int] = 64,
+        hidden_size: int | None = 256,
+        head_dim: int | None = 64,
         num_hidden_layers: int = 2,
         num_attention_heads: int = 4,
-        seq_attention_types: Optional[ATTENTION_TYPES_LIST_T] = None,
+        seq_attention_types: ATTENTION_TYPES_LIST_T | None = None,
         seq_window_size: int = 32,
-        dep_graph_attention_types: Optional[ATTENTION_TYPES_LIST_T] = None,
-        dep_graph_window_size: Optional[int] = 2,
+        dep_graph_attention_types: ATTENTION_TYPES_LIST_T | None = None,
+        dep_graph_window_size: int | None = 2,
         intermediate_size: int = 32,
         activation_function: str = "gelu",
         attention_dropout: float = 0.1,
@@ -515,14 +514,14 @@ class StructuredTransformerConfig(PretrainedConfig):
         resid_dropout: float = 0.1,
         init_std: float = 0.02,
         layer_norm_epsilon: float = 1e-5,
-        do_full_block_in_dep_graph_attention: Optional[bool] = True,
-        do_full_block_in_seq_attention: Optional[bool] = False,
-        do_add_temporal_position_embeddings_to_data_embeddings: Optional[bool] = False,
+        do_full_block_in_dep_graph_attention: bool | None = True,
+        do_full_block_in_seq_attention: bool | None = False,
+        do_add_temporal_position_embeddings_to_data_embeddings: bool | None = False,
         # Model output configuration
         TTE_generation_layer_type: TimeToEventGenerationHeadType = "exponential",
-        TTE_lognormal_generation_num_components: Optional[int] = None,
-        mean_log_inter_event_time_min: Optional[float] = None,
-        std_log_inter_event_time_min: Optional[float] = None,
+        TTE_lognormal_generation_num_components: int | None = None,
+        mean_log_inter_event_time_min: float | None = None,
+        std_log_inter_event_time_min: float | None = None,
         # For decoding
         use_cache: bool = True,
         **kwargs,
@@ -768,12 +767,12 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         super().__init__(**kwargs)
 
-    def measurements_for(self, modality: DataModality) -> List[str]:
+    def measurements_for(self, modality: DataModality) -> list[str]:
         return self.measurements_per_generative_mode.get(modality, [])
 
     def expand_attention_types_params(
         self, attention_types: ATTENTION_TYPES_LIST_T
-    ) -> List[AttentionLayerType]:
+    ) -> list[AttentionLayerType]:
         """Expands the attention syntax from the easy-to-enter syntax to one for the model."""
         if isinstance(attention_types, str):
             return [attention_types] * self.num_hidden_layers

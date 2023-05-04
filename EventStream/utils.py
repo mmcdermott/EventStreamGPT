@@ -5,9 +5,10 @@ import enum
 import functools
 import json
 import re
+from collections.abc import Callable, Sequence
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Sequence, Type, TypeVar, Union
+from typing import Any, Dict, Optional, Type, TypeVar, Union
 
 import hydra
 import numpy as np

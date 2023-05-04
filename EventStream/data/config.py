@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 from collections import OrderedDict, defaultdict
+from collections.abc import Hashable, Sequence
 from io import StringIO, TextIOBase
 from pathlib import Path
 from textwrap import shorten, wrap
-from typing import Any, Dict, Hashable, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import omegaconf
 import pandas as pd
@@ -23,19 +24,19 @@ from .vocabulary import Vocabulary
 
 DF_COL = Union[str, Sequence[str]]
 
-INPUT_COL_T = Union[InputDataType, Tuple[InputDataType, str]]
+INPUT_COL_T = Union[InputDataType, tuple[InputDataType, str]]
 
 DF_SCHEMA = Union[
     # For cases where you specify a list of columns of a constant type.
-    Tuple[List[DF_COL], INPUT_COL_T],
+    tuple[list[DF_COL], INPUT_COL_T],
     # For specifying a single column and type.
-    Tuple[DF_COL, INPUT_COL_T],
+    tuple[DF_COL, INPUT_COL_T],
     # For specifying a dictionary of columns to types.
-    Dict[DF_COL, INPUT_COL_T],
+    dict[DF_COL, INPUT_COL_T],
     # For specifying a dictionary of column in names to column out names and types.
-    Dict[DF_COL, Tuple[str, INPUT_COL_T]],
+    dict[DF_COL, tuple[str, INPUT_COL_T]],
     # For specifying a dictionary of column in names to out names, all of a constant type.
-    Tuple[Dict[DF_COL, str], INPUT_COL_T],
+    tuple[dict[DF_COL, str], INPUT_COL_T],
 ]
 
 

@@ -47,11 +47,11 @@ class StructuredAttention(torch.nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        dep_graph_mask: Optional[torch.Tensor] = None,
-        seq_mask: Optional[torch.Tensor] = None,
-        seq_module_kwargs: Optional[Dict[str, Any]] = None,
-        dep_graph_module_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, Dict[str, Optional[Dict[str, Optional[torch.Tensor]]]]]:
+        dep_graph_mask: torch.Tensor | None = None,
+        seq_mask: torch.Tensor | None = None,
+        seq_module_kwargs: dict[str, Any] | None = None,
+        dep_graph_module_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, dict[str, dict[str, torch.Tensor | None] | None]]:
         """
         Performs a structured attention forward pass, consistent with the internal sub-modules. E.g., given
         the notation defined in the hidden_state arg documentation, this module performs the following steps:

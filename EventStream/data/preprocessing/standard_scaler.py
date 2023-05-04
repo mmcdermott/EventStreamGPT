@@ -10,7 +10,7 @@ class StandardScaler(Preprocessor):
     have zero mean and unit variance on the output."""
 
     @classmethod
-    def params_schema(cls) -> Dict[str, pl.DataType]:
+    def params_schema(cls) -> dict[str, pl.DataType]:
         return {"mean_": pl.Float64, "std_": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:

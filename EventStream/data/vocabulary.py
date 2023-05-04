@@ -4,10 +4,11 @@ import copy
 import dataclasses
 import math
 from collections import Counter
+from collections.abc import Sequence
 from functools import cached_property
 from io import TextIOBase
 from textwrap import shorten, wrap
-from typing import Dict, Generic, List, Optional, Sequence, Set, TypeVar, Union
+from typing import Dict, Generic, List, Optional, Set, TypeVar, Union
 
 import numpy as np
 import pandas as pd

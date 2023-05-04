@@ -1,5 +1,6 @@
 import inspect
-from typing import Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import Tuple, Union
 
 import torch
 
@@ -17,7 +18,7 @@ def expand_indexed_regression(X: torch.Tensor, idx: torch.Tensor, vocab_size: in
     return expanded.scatter(-1, idx, X)
 
 
-def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Returns the max of the last dimension of `X` considering only positions where `mask` is
     `True`, except in the case where `mask` is uniformly `False`, in which case the output returned
     is zero.
@@ -38,7 +39,7 @@ def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> Tuple[torch.Tens
     return torch.nan_to_num(maxes, nan=None, posinf=None, neginf=0)
 
 
-def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Produces a weighted average of the last dimension of `X`, weighted by the weights in
     `weights` (which must be the same shape as `X`), except in the case where the sum of the
     weights is 0, in which case the output returned is zero.

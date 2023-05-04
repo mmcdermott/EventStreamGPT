@@ -10,7 +10,7 @@ import polars as pl
 class Preprocessor(ABC):
     @classmethod
     @abstractmethod
-    def params_schema(cls) -> Dict[str, pl.DataType]:
+    def params_schema(cls) -> dict[str, pl.DataType]:
         raise NotImplementedError("Subclass must implement abstract method")
 
     @abstractmethod

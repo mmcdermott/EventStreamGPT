@@ -5,8 +5,9 @@ sys.path.append("../..")
 import copy
 import unittest
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -31,7 +32,7 @@ class ESDMock(DatasetBase[dict, dict]):
 
     def _validate_initial_dfs(
         self, subjects_df: dict, events_df: dict, dynamic_measurements_df: dict
-    ) -> Tuple[dict, dict, dict]:
+    ) -> tuple[dict, dict, dict]:
         self.functions_called["_validate_initial_dfs"].append(
             (subjects_df, events_df, dynamic_measurements_df)
         )
@@ -90,7 +91,7 @@ class ESDMock(DatasetBase[dict, dict]):
             copy.deepcopy((measure, config, source_df))
         )
 
-    def _filter_col_inclusion(self, df: dict, col: Dict[str, Sequence[Any]]) -> dict:
+    def _filter_col_inclusion(self, df: dict, col: dict[str, Sequence[Any]]) -> dict:
         self.functions_called["_filter_col_inclusion"].append((df, col))
         return df
 
@@ -103,7 +104,7 @@ class ESDMock(DatasetBase[dict, dict]):
 
     def _total_possible_and_observed(
         self, measure: str, config: MeasurementConfig, source_df: dict
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         self.functions_called["_total_possible_and_observed"].append(
             copy.deepcopy((measure, config, source_df))
         )
@@ -112,7 +113,7 @@ class ESDMock(DatasetBase[dict, dict]):
     def build_DL_cached_representation(self):
         self.functions_called["build_DL_cached_representation"].append(())
 
-    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+    def _get_valid_event_types(self) -> dict[str, list[str]]:
         self.functions_called["_get_valid_event_types"].append(())
         return {}
 
@@ -124,9 +125,9 @@ class ESDMock(DatasetBase[dict, dict]):
     def _load_input_df(
         cls,
         df: dict,
-        columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
+        columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
         subject_id_col: str,
-        subject_ids_map: Dict[Any, int],
+        subject_ids_map: dict[Any, int],
         subject_id_dtype: Any,
     ) -> dict:
         cls.FUNCTIONS_CALLED["_load_input_df"].append(
@@ -139,9 +140,9 @@ class ESDMock(DatasetBase[dict, dict]):
         cls,
         df: dict,
         event_type: str,
-        columns_schema: Dict[str, Tuple[str, InputDataType]],
-        ts_col: Union[str, List[str]],
-    ) -> Tuple[dict, Optional[dict]]:
+        columns_schema: dict[str, tuple[str, InputDataType]],
+        ts_col: str | list[str],
+    ) -> tuple[dict, dict | None]:
         cls.FUNCTIONS_CALLED["process_events_and_measurements_df"].append(
             (df, event_type, columns_schema, ts_col)
         )
@@ -149,8 +150,8 @@ class ESDMock(DatasetBase[dict, dict]):
 
     @classmethod
     def split_range_events_df(
-        cls, df: dict, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
-    ) -> Tuple[dict, dict, dict]:
+        cls, df: dict, start_ts_col: str | list[str], end_ts_col: str | list[str]
+    ) -> tuple[dict, dict, dict]:
         cls.FUNCTIONS_CALLED["split_range_events_df"].append((df, start_ts_col, end_ts_col))
         return {}, {}, {}
 
@@ -160,13 +161,13 @@ class ESDMock(DatasetBase[dict, dict]):
         return {}
 
     @classmethod
-    def _concat_dfs(cls, dfs: List[dict]) -> dict:
+    def _concat_dfs(cls, dfs: list[dict]) -> dict:
         cls.FUNCTIONS_CALLED["_concat_dfs"].append((dfs,))
         return {}
 
     @classmethod
     def resolve_ts_col(
-        cls, df: dict, ts_col: Union[str, List[str]], out_name: str = "timestamp"
+        cls, df: dict, ts_col: str | list[str], out_name: str = "timestamp"
     ) -> dict:
         cls.FUNCTIONS_CALLED["resolve_ts_col"].append((df, ts_col, out_name))
         return {}

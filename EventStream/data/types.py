@@ -22,18 +22,18 @@ class InputDataType(StrEnum):
 
 @dataclasses.dataclass
 class PytorchBatch:
-    event_mask: Optional[torch.BoolTensor] = None
-    time: Optional[torch.FloatTensor] = None
+    event_mask: torch.BoolTensor | None = None
+    time: torch.FloatTensor | None = None
 
-    static_indices: Optional[torch.LongTensor] = None
-    static_measurement_indices: Optional[torch.LongTensor] = None
+    static_indices: torch.LongTensor | None = None
+    static_measurement_indices: torch.LongTensor | None = None
 
-    dynamic_indices: Optional[torch.LongTensor] = None
-    dynamic_measurement_indices: Optional[torch.LongTensor] = None
-    dynamic_values: Optional[torch.FloatTensor] = None
-    dynamic_values_mask: Optional[torch.BoolTensor] = None
+    dynamic_indices: torch.LongTensor | None = None
+    dynamic_measurement_indices: torch.LongTensor | None = None
+    dynamic_values: torch.FloatTensor | None = None
+    dynamic_values_mask: torch.BoolTensor | None = None
 
-    stream_labels: Optional[Dict[str, Union[torch.FloatTensor, torch.LongTensor]]] = None
+    stream_labels: dict[str, torch.FloatTensor | torch.LongTensor] | None = None
 
     @property
     def device(self):

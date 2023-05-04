@@ -22,7 +22,7 @@ def get_event_type_mask_per_measurement(
     dynamic_measurement_indices: torch.LongTensor,
     dynamic_indices: torch.LongTensor,
     config: StructuredTransformerConfig,
-) -> Dict[str, Optional[torch.BoolTensor]]:
+) -> dict[str, torch.BoolTensor | None]:
     if config.event_types_per_measurement is None:
         return None
 
@@ -67,18 +67,18 @@ class TransformerOutputWithPast(ModelOutput):
     """Transformer Model Outputs, with optional past key values and hidden states."""
 
     last_hidden_state: torch.FloatTensor = None
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
-    attentions: Optional[Tuple[torch.FloatTensor]] = None
+    past_key_values: tuple[tuple[torch.FloatTensor]] | None = None
+    hidden_states: tuple[torch.FloatTensor] | None = None
+    attentions: tuple[torch.FloatTensor] | None = None
 
 
 @dataclass
 class GenerativeSequenceModelLosses(ModelOutput):
     """Losses for the GenerativeSequenceModel head, split by task type."""
 
-    classification: Optional[Dict[str, torch.FloatTensor]] = None
-    regression: Optional[Dict[str, torch.FloatTensor]] = None
-    time_to_event: Optional[torch.FloatTensor] = None
+    classification: dict[str, torch.FloatTensor] | None = None
+    regression: dict[str, torch.FloatTensor] | None = None
+    time_to_event: torch.FloatTensor | None = None
 
 
 @dataclass
@@ -116,11 +116,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
             `None`, self.regression predictions correspond to the entire vocabulary in vocabulary order.
     """
 
-    event_mask: Optional[torch.BoolTensor] = None
-    time_to_event: Optional[torch.FloatTensor] = None
-    classification: Optional[Dict[str, torch.LongTensor]] = None
-    regression: Optional[Dict[str, torch.FloatTensor]] = None
-    regression_indices: Optional[Dict[str, torch.LongTensor]] = None
+    event_mask: torch.BoolTensor | None = None
+    time_to_event: torch.FloatTensor | None = None
+    classification: dict[str, torch.LongTensor] | None = None
+    regression: dict[str, torch.FloatTensor] | None = None
+    regression_indices: dict[str, torch.LongTensor] | None = None
 
     def set_event_mask(self, event_mask: torch.BoolTensor):
         self.event_mask = event_mask
@@ -145,10 +145,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
-        base_dataset: Optional[DatasetBase] = None,
-        batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
-        static_data: Optional[pd.DataFrame] = None,
-    ) -> Tuple[
+        base_dataset: DatasetBase | None = None,
+        batch_schema: list[tuple[int, datetime, datetime]] | None = None,
+        static_data: pd.DataFrame | None = None,
+    ) -> tuple[
         torch.FloatTensor,
         torch.BoolTensor,
         torch.LongTensor,
@@ -252,8 +252,8 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
-        measurements_to_build: Optional[Set[MEAS_INDEX_GROUP_T]] = None,
-    ) -> Tuple[torch.LongTensor, torch.LongTensor, torch.FloatTensor, torch.BoolTensor]:
+        measurements_to_build: set[MEAS_INDEX_GROUP_T] | None = None,
+    ) -> tuple[torch.LongTensor, torch.LongTensor, torch.FloatTensor, torch.BoolTensor]:
         """This function is used for generation, and builds a new batch element from the prediction
         sample in this object."""
 
@@ -263,9 +263,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         dynamic_values = []
         dynamic_values_mask = []
 
-        def add_classification_measurement(
-            measurement: str, mask: Optional[torch.BoolTensor] = None
-        ):
+        def add_classification_measurement(measurement: str, mask: torch.BoolTensor | None = None):
             # Add the data index.
             if measurement not in self.classification:
                 return
@@ -329,7 +327,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             dynamic_measurement_indices.append(measurement_indices)
 
         def add_regression_measurement(
-            measurement: str, indices: torch.LongTensor, mask: Optional[torch.BoolTensor] = None
+            measurement: str, indices: torch.LongTensor, mask: torch.BoolTensor | None = None
         ):
             regression_mode = DataModality.MULTIVARIATE_REGRESSION
             if (measurement not in config.measurements_per_generative_mode[regression_mode]) or (
@@ -517,9 +515,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
-        base_dataset: Optional[DatasetBase] = None,
-        batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
-        static_data: Optional[pd.DataFrame] = None,
+        base_dataset: DatasetBase | None = None,
+        batch_schema: list[tuple[int, datetime, datetime]] | None = None,
+        static_data: pd.DataFrame | None = None,
     ) -> PytorchBatch:
         """This function builds a new batch element from self, then appends it to the end of the
         input batch.
@@ -596,7 +594,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
-        measurements_to_fill: Set[MEAS_INDEX_GROUP_T],
+        measurements_to_fill: set[MEAS_INDEX_GROUP_T],
     ) -> PytorchBatch:
         """This function updates the last batch element from self."""
         if "time" in measurements_to_fill:
@@ -693,10 +691,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
 class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, SeedableMixin):
     """Predictions for the GenerativeSequenceModel head, split by task type."""
 
-    classification: Optional[Dict[str, CATEGORICAL_DIST_T]] = None
-    regression: Optional[Dict[str, torch.distributions.Distribution]] = None
-    regression_indices: Optional[Dict[str, torch.LongTensor]] = None
-    time_to_event: Optional[torch.distributions.Distribution] = None
+    classification: dict[str, CATEGORICAL_DIST_T] | None = None
+    regression: dict[str, torch.distributions.Distribution] | None = None
+    regression_indices: dict[str, torch.LongTensor] | None = None
+    time_to_event: torch.distributions.Distribution | None = None
 
     def mode(self, event_mask: torch.BoolTensor) -> GenerativeSequenceModelSamples:
         """Returns a mode (not guaranteed to be unique or maximal) of each of the contained
@@ -730,10 +728,10 @@ class GenerativeSequenceModelLabels(ModelOutput):
     # Single-label classification task labels will have shape batch X seq and have raw integer labels in
     # it, whereas multi-label classification task labels will have shape batch X seq X vocab size and have
     # binary indicators for each label.
-    classification: Optional[Dict[str, torch.LongTensor]] = None
-    regression: Optional[Dict[str, torch.FloatTensor]] = None
-    regression_indices: Optional[Dict[str, torch.LongTensor]] = None
-    time_to_event: Optional[torch.FloatTensor] = None
+    classification: dict[str, torch.LongTensor] | None = None
+    regression: dict[str, torch.FloatTensor] | None = None
+    regression_indices: dict[str, torch.LongTensor] | None = None
+    time_to_event: torch.FloatTensor | None = None
 
 
 @dataclass
@@ -741,12 +739,12 @@ class GenerativeSequenceModelOutput(ModelOutput):
     """All GenerativeSequenceModel outputs, including losses, predictions, labels, and masks."""
 
     loss: torch.FloatTensor
-    losses: Optional[GenerativeSequenceModelLosses] = None
-    preds: Optional[GenerativeSequenceModelPredictions] = None
-    labels: Optional[GenerativeSequenceModelLabels] = None
-    event_type_mask_per_measurement: Optional[Dict[str, torch.BoolTensor]] = None
-    event_mask: Optional[torch.BoolTensor] = None
-    dynamic_values_mask: Optional[torch.BoolTensor] = None
+    losses: GenerativeSequenceModelLosses | None = None
+    preds: GenerativeSequenceModelPredictions | None = None
+    labels: GenerativeSequenceModelLabels | None = None
+    event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None
+    event_mask: torch.BoolTensor | None = None
+    dynamic_values_mask: torch.BoolTensor | None = None
 
 
 @dataclass
@@ -755,4 +753,4 @@ class StreamClassificationModelOutput(ModelOutput):
 
     loss: torch.FloatTensor
     preds: torch.FloatTensor = None
-    labels: Union[torch.LongTensor, torch.FloatTensor] = None
+    labels: torch.LongTensor | torch.FloatTensor = None

@@ -123,7 +123,7 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
         self.proj = torch.nn.Linear(in_dim, n_regression_targets * 2)
 
     def forward(
-        self, X: torch.Tensor, idx: Optional[torch.LongTensor] = None
+        self, X: torch.Tensor, idx: torch.LongTensor | None = None
     ) -> torch.distributions.normal.Normal:
         """Returns the `Normal` distribution according to the indexed regression task on `X` for
         indices `idx`.

@@ -3,7 +3,8 @@ import sys
 sys.path.append("..")
 
 import math
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union
+from collections.abc import Callable, Sequence
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -38,14 +39,14 @@ class MLTypeEqualityCheckableMixin:
     }
 
     def _typedAssertEqualFntr(
-        self, assert_fn: Union[ASSERT_FN, Tuple[ASSERT_FN, Dict[str, Any]]]
+        self, assert_fn: ASSERT_FN | tuple[ASSERT_FN, dict[str, Any]]
     ) -> ASSERT_FN:
         if type(assert_fn) is tuple:
             assert_fn, assert_kwargs = assert_fn
         else:
             assert_kwargs = {}
 
-        def f(want: Any, got: Any, msg: Optional[str] = None):
+        def f(want: Any, got: Any, msg: str | None = None):
             try:
                 assert_fn(want, got, **assert_kwargs)
             except Exception as e:
@@ -57,7 +58,7 @@ class MLTypeEqualityCheckableMixin:
         return f
 
     def assertNestedEqual(
-        self, want: Any, got: Any, msg: Optional[str] = None, check_like: bool = False
+        self, want: Any, got: Any, msg: str | None = None, check_like: bool = False
     ):
         m = msg
         if m is None:
@@ -109,7 +110,7 @@ class MLTypeEqualityCheckableMixin:
             self.assertEqual(want, got, msg=m)
 
     def assertNestedDictEqual(
-        self, want: dict, got: dict, msg: Optional[str] = None, check_like: bool = False
+        self, want: dict, got: dict, msg: str | None = None, check_like: bool = False
     ):
         """This assers that two dictionaries are equal using nested assert checks for the internal
         values.
@@ -136,7 +137,7 @@ class MLTypeEqualityCheckableMixin:
         self,
         want: torch.distributions.Distribution,
         got: torch.distributions.Distribution,
-        msg: Optional[str] = None,
+        msg: str | None = None,
     ):
         m_type = f"Type of distributions does not match! want {type(want)}, got {type(got)}"
         if msg is not None:
@@ -160,19 +161,17 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
     """This mixin provides capability to `unittest.TestCase` submodules to compare configuration
     objects for equality."""
 
-    def assert_type_and_vars_equal(self, want: object, got: object, msg: Optional[str] = None):
+    def assert_type_and_vars_equal(self, want: object, got: object, msg: str | None = None):
         self.assertEqual(type(want), type(got), msg)
         self.assertNestedDictEqual(vars(want), vars(got), msg, check_like=True)
 
-    def assert_vocabulary_equal(
-        self, want: Vocabulary, got: Vocabulary, msg: Optional[str] = None
-    ):
+    def assert_vocabulary_equal(self, want: Vocabulary, got: Vocabulary, msg: str | None = None):
         self.assertEqual(type(want), type(got), msg)
         self.assertEqual(want.vocabulary, got.vocabulary, msg)
         self.assertEqual(want.obs_frequencies, got.obs_frequencies, msg)
 
     def assert_measurement_config_equal(
-        self, want: MeasurementConfig, got: MeasurementConfig, msg: Optional[str] = None
+        self, want: MeasurementConfig, got: MeasurementConfig, msg: str | None = None
     ):
         if msg is None:
             msg = "MeasurementConfigs are not equal"

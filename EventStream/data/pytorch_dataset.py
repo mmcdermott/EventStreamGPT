@@ -12,7 +12,7 @@ from mixins import SaveableMixin, SeedableMixin, TimeableMixin
 from .config import PytorchDatasetConfig, VocabularyConfig
 from .types import PytorchBatch
 
-DATA_ITEM_T = Dict[str, List[float]]
+DATA_ITEM_T = dict[str, list[float]]
 
 
 class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
@@ -71,7 +71,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
     }
 
     @classmethod
-    def normalize_task(cls, val: pd.Series) -> Tuple[str, pd.Series]:
+    def normalize_task(cls, val: pd.Series) -> tuple[str, pd.Series]:
         for task_type, checkers in cls.TYPE_CHECKERS.items():
             for check_fn, normalize_fn in checkers:
                 if check_fn(val.dtype):
@@ -82,10 +82,10 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
     def __init__(
         self,
         config: PytorchDatasetConfig,
-        split: Optional[str] = None,
-        vocabulary_config: Optional[Union[VocabularyConfig, Path]] = None,
-        data: Optional[Union[pl.DataFrame, Path]] = None,
-        task_df: Optional[pd.DataFrame] = None,
+        split: str | None = None,
+        vocabulary_config: VocabularyConfig | Path | None = None,
+        data: pl.DataFrame | Path | None = None,
+        task_df: pd.DataFrame | None = None,
     ):
         """
         Constructs the PytorchDataset).
@@ -259,12 +259,12 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         return out
 
-    def __getitem__(self, idx: int) -> Dict[str, list]:
+    def __getitem__(self, idx: int) -> dict[str, list]:
         return self._seeded_getitem(idx)
 
     @SeedableMixin.WithSeed
     @TimeableMixin.TimeAs
-    def _seeded_getitem(self, idx: int) -> Dict[str, list]:
+    def _seeded_getitem(self, idx: int) -> dict[str, list]:
         """
         Returns a dictionary corresponding to a batch element for a single patient. This will not be
         tensorized as that work will need to be re-done in the collate function regardless. The output will
@@ -312,7 +312,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         return full_subj_data
 
-    def __static_and_dynamic_collate(self, batch: List[DATA_ITEM_T]) -> PytorchBatch:
+    def __static_and_dynamic_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         out_batch = self.__dynamic_only_collate(batch)
 
         # Get the maximum number of static elements in the batch.
@@ -352,7 +352,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         return out_batch
 
-    def __dynamic_only_collate(self, batch: List[DATA_ITEM_T]) -> PytorchBatch:
+    def __dynamic_only_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         # Get the local max sequence length and n_data elements for padding.
         max_seq_len = max(len(e["time"]) for e in batch)
 
@@ -463,7 +463,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         return out_batch
 
     @TimeableMixin.TimeAs
-    def collate(self, batch: List[DATA_ITEM_T]) -> PytorchBatch:
+    def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         """Combines the ragged dictionaries produced by __getitem__ into a tensorized batch."""
         if self.do_produce_static_data:
             return self.__static_and_dynamic_collate(batch)

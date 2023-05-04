@@ -19,7 +19,7 @@ class MeasIndexGroupOptions(StrEnum):
         return list(map(lambda c: c.value, cls))
 
 
-MEAS_INDEX_GROUP_T = Union[int, Tuple[int, MeasIndexGroupOptions]]
+MEAS_INDEX_GROUP_T = Union[int, tuple[int, MeasIndexGroupOptions]]
 
 
 class StaticEmbeddingMode(StrEnum):
@@ -62,9 +62,9 @@ class DataEmbeddingLayer(torch.nn.Module):
         n_total_embeddings: int,
         out_dim: int,
         static_embedding_mode: StaticEmbeddingMode,
-        categorical_embedding_dim: Optional[int] = None,
-        numerical_embedding_dim: Optional[int] = None,
-        split_by_measurement_indices: Optional[List[List[MEAS_INDEX_GROUP_T]]] = None,
+        categorical_embedding_dim: int | None = None,
+        numerical_embedding_dim: int | None = None,
+        split_by_measurement_indices: list[list[MEAS_INDEX_GROUP_T]] | None = None,
         do_normalize_by_measurement_index: bool = False,
         static_weight: float = 1 / 2,
         dynamic_weight: float = 1 / 2,
@@ -247,8 +247,8 @@ class DataEmbeddingLayer(torch.nn.Module):
         self,
         indices: torch.Tensor,
         measurement_indices: torch.Tensor,
-        values: Optional[torch.Tensor] = None,
-        values_mask: Optional[torch.Tensor] = None,
+        values: torch.Tensor | None = None,
+        values_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if values is None:
             values = torch.ones_like(indices, dtype=torch.float32)
@@ -264,9 +264,9 @@ class DataEmbeddingLayer(torch.nn.Module):
         self,
         indices: torch.Tensor,
         measurement_indices: torch.Tensor,
-        values: Optional[torch.Tensor] = None,
-        values_mask: Optional[torch.Tensor] = None,
-        cat_mask: Optional[torch.Tensor] = None,
+        values: torch.Tensor | None = None,
+        values_mask: torch.Tensor | None = None,
+        cat_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         cat_values = torch.ones_like(indices, dtype=torch.float32)
         if cat_mask is not None:
@@ -296,9 +296,9 @@ class DataEmbeddingLayer(torch.nn.Module):
         self,
         indices: torch.Tensor,
         measurement_indices: torch.Tensor,
-        values: Optional[torch.Tensor] = None,
-        values_mask: Optional[torch.Tensor] = None,
-        cat_mask: Optional[torch.Tensor] = None,
+        values: torch.Tensor | None = None,
+        values_mask: torch.Tensor | None = None,
+        cat_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         torch._assert(
             indices.max() < self.n_total_embeddings,
@@ -319,7 +319,7 @@ class DataEmbeddingLayer(torch.nn.Module):
 
     def split_batch_into_measurement_index_buckets(
         self, batch: PytorchBatch
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Splits the batch into groups of measurement indices, and returns the indices, values,
         and measurement indices for each bucket.
 

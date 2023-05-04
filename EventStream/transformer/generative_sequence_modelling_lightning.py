@@ -1,8 +1,9 @@
 import dataclasses
 import enum
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Dict, Optional, Union
 
 import lightning as L
 import omegaconf
@@ -52,10 +53,10 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
 
     def __init__(
         self,
-        config: Union[StructuredTransformerConfig, Dict[str, Any]],
-        optimization_config: Union[OptimizationConfig, Dict[str, Any]],
-        metrics_config: Union[MetricsConfig, Dict[str, Any]],
-        pretrained_weights_fp: Optional[Path] = None,
+        config: StructuredTransformerConfig | dict[str, Any],
+        optimization_config: OptimizationConfig | dict[str, Any],
+        metrics_config: MetricsConfig | dict[str, Any],
+        pretrained_weights_fp: Path | None = None,
     ):
         """Initializes the Lightning Module.
 
@@ -225,7 +226,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         self,
         preds: torch.Tensor,
         labels: torch.Tensor,
-        metrics: Dict[str, torchmetrics.Metric],
+        metrics: dict[str, torchmetrics.Metric],
         split: Split,
         measurement: str,
         cat: MetricCategories,
@@ -494,7 +495,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
 class PretrainConfig:
     do_overwrite: bool = False
 
-    config: Dict[str, Any] = dataclasses.field(
+    config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
         }
@@ -506,9 +507,9 @@ class PretrainConfig:
     experiment_dir: str = omegaconf.MISSING
     save_dir: str = "${experiment_dir}/pretrain/${now:%Y-%m-%d_%H-%M-%S}"
 
-    wandb_name: Optional[str] = "generative_event_stream_transformer"
-    wandb_project: Optional[str] = None
-    wandb_team: Optional[str] = None
+    wandb_name: str | None = "generative_event_stream_transformer"
+    wandb_project: str | None = None
+    wandb_team: str | None = None
     log_every_n_steps: int = 50
 
     num_dataloader_workers: int = 1

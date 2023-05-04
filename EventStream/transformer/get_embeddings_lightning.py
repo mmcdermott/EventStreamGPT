@@ -1,6 +1,7 @@
 import dataclasses
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Union
 
 import lightning as L
 import omegaconf
@@ -31,7 +32,7 @@ class ESTForEmbedding(L.LightningModule):
 
     def __init__(
         self,
-        config: Union[StructuredTransformerConfig, Dict[str, Any]],
+        config: StructuredTransformerConfig | dict[str, Any],
         pretrained_weights_fp: Path,
     ):
         """Initializes the Lightning Module.
@@ -95,23 +96,23 @@ class ESTForEmbedding(L.LightningModule):
 
 @hydra_dataclass
 class GetEmbeddingsConfig:
-    save_dir: Optional[Union[str, Path]] = None
-    load_model_dir: Union[str, Path] = omegaconf.MISSING
+    save_dir: str | Path | None = None
+    load_model_dir: str | Path = omegaconf.MISSING
     do_overwrite: bool = False
 
     batch_size: int = 32
     pooling_method: str = "last"
-    splits: List[str] = dataclasses.field(defaultfactory=lambda: ["train", "tuning", "held_out"])
+    splits: list[str] = dataclasses.field(defaultfactory=lambda: ["train", "tuning", "held_out"])
 
-    data_config: Optional[PytorchDatasetConfig] = None
+    data_config: PytorchDatasetConfig | None = None
 
     task_df_name: str = omegaconf.MISSING
-    task_df_fp: Optional[Union[str, Path]] = None
+    task_df_fp: str | Path | None = None
 
-    wandb_name: Optional[str] = "generative_event_stream_transformer"
-    wandb_project: Optional[str] = None
-    wandb_team: Optional[str] = None
-    extra_wandb_log_params: Optional[Dict[str, Any]] = None
+    wandb_name: str | None = "generative_event_stream_transformer"
+    wandb_project: str | None = None
+    wandb_team: str | None = None
+    extra_wandb_log_params: dict[str, Any] | None = None
     log_every_n_steps: int = 50
 
     num_dataloader_workers: int = 1

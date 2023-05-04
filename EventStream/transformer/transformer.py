@@ -277,7 +277,7 @@ class InnerBlock(nn.Module):
         head_mask=None,
         use_cache=False,
         output_attentions=False,
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Note that attention_mask here is still not expanded; we do that internally here to
         account for the different mask shapes used in the structured transformer."""
         # If we have a static kv entry first, we don't want to process it in the rest of the block, so we drop
@@ -329,7 +329,7 @@ class StructuredTransformerBlock(nn.Module):
 
     def forward(
         self, *args, **kwargs
-    ) -> Tuple[torch.Tensor, Dict[str, Optional[Dict[str, Optional[torch.Tensor]]]]]:
+    ) -> tuple[torch.Tensor, dict[str, dict[str, torch.Tensor | None] | None]]:
         return self.block(*args, **kwargs)
 
 
@@ -538,17 +538,17 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
 
     def forward(
         self,
-        batch: Optional[PytorchBatch] = None,
-        input_embeds: Optional[torch.Tensor] = None,
-        past: Optional[Tuple[torch.FloatTensor]] = None,
-        seq_mask: Optional[torch.Tensor] = None,
-        dep_graph_mask: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple[torch.Tensor], TransformerOutputWithPast]:
+        batch: PytorchBatch | None = None,
+        input_embeds: torch.Tensor | None = None,
+        past: tuple[torch.FloatTensor] | None = None,
+        seq_mask: torch.Tensor | None = None,
+        dep_graph_mask: torch.Tensor | None = None,
+        head_mask: torch.Tensor | None = None,
+        use_cache: bool | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        return_dict: bool | None = None,
+    ) -> tuple[torch.Tensor] | TransformerOutputWithPast:
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
         )

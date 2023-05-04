@@ -13,7 +13,7 @@ class StddevCutoffOutlierDetector(Preprocessor):
         self.stddev_cutoff = stddev_cutoff
 
     @classmethod
-    def params_schema(cls) -> Dict[str, pl.DataType]:
+    def params_schema(cls) -> dict[str, pl.DataType]:
         return {"thresh_large_": pl.Float64, "thresh_small_": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:

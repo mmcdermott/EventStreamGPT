@@ -92,7 +92,7 @@ class GenerativeOutputLayer(torch.nn.Module):
 
     def get_TTE_outputs(
         self, batch: PytorchBatch, encoded: torch.FloatTensor
-    ) -> Tuple[torch.FloatTensor, torch.distributions.Distribution, torch.FloatTensor,]:
+    ) -> tuple[torch.FloatTensor, torch.distributions.Distribution, torch.FloatTensor,]:
         """Produces time-to-event predictions and log likelihoods (_not NLLs!_) for the model.
 
         Args:
@@ -162,12 +162,12 @@ class GenerativeOutputLayer(torch.nn.Module):
         self,
         batch: PytorchBatch,
         encoded: torch.FloatTensor,
-        valid_measurements: Set[str],
-        event_type_mask_per_measurement: Optional[Dict[str, torch.BoolTensor]] = None,
-    ) -> Tuple[
-        Dict[str, torch.FloatTensor],
-        Dict[str, torch.FloatTensor],
-        Dict[str, Union[torch.LongTensor, torch.FloatTensor]],
+        valid_measurements: set[str],
+        event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None,
+    ) -> tuple[
+        dict[str, torch.FloatTensor],
+        dict[str, torch.FloatTensor],
+        dict[str, torch.LongTensor | torch.FloatTensor],
     ]:
         """Produces classification predictions and losses for the model.
 
@@ -326,14 +326,14 @@ class GenerativeOutputLayer(torch.nn.Module):
         self,
         batch: PytorchBatch,
         encoded: torch.FloatTensor,
-        valid_measurements: Set[str],
+        valid_measurements: set[str],
         is_generation: bool = False,
-        event_type_mask_per_measurement: Optional[Dict[str, torch.BoolTensor]] = None,
-    ) -> Tuple[
-        Dict[str, torch.FloatTensor],
-        Dict[str, torch.distributions.Distribution],
-        Dict[str, torch.FloatTensor],
-        Dict[str, torch.LongTensor],
+        event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None,
+    ) -> tuple[
+        dict[str, torch.FloatTensor],
+        dict[str, torch.distributions.Distribution],
+        dict[str, torch.FloatTensor],
+        dict[str, torch.LongTensor],
     ]:
         """Produces regression predictions and losses for the model.
 
@@ -506,7 +506,7 @@ class GenerativeOutputLayer(torch.nn.Module):
 
     def get_event_type_mask_per_measurement(
         self, batch: PytorchBatch
-    ) -> Dict[str, Optional[torch.BoolTensor]]:
+    ) -> dict[str, torch.BoolTensor | None]:
         return get_event_type_mask_per_measurement(
             batch.dynamic_measurement_indices, batch.dynamic_indices, self.config
         )

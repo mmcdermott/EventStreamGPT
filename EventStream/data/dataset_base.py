@@ -2,19 +2,9 @@ import abc
 import copy
 import itertools
 from collections import defaultdict
+from collections.abc import Hashable, Sequence
 from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    Generic,
-    Hashable,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -75,11 +65,11 @@ class DatasetBase(
     def _load_input_df(
         cls,
         df: INPUT_DF_T,
-        columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
-        subject_id_col: Optional[str] = None,
-        subject_ids_map: Optional[Dict[Any, int]] = None,
-        subject_id_dtype: Optional[Any] = None,
-        filter_on: Optional[Dict[str, Union[bool, List[Any]]]] = None,
+        columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
+        subject_id_col: str | None = None,
+        subject_ids_map: dict[Any, int] | None = None,
+        subject_id_dtype: Any | None = None,
+        filter_on: dict[str, bool | list[Any]] | None = None,
     ) -> DF_T:
         """Loads an input dataframe into the format expected by the processing library."""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -90,9 +80,9 @@ class DatasetBase(
         cls,
         df: DF_T,
         event_type: str,
-        columns_schema: Dict[str, Tuple[str, InputDataType]],
-        ts_col: Union[str, List[str]],
-    ) -> Tuple[DF_T, Optional[DF_T]]:
+        columns_schema: dict[str, tuple[str, InputDataType]],
+        ts_col: str | list[str],
+    ) -> tuple[DF_T, DF_T | None]:
         """Performs the following pre-processing steps on an input events and measurements
         dataframe:
 
@@ -109,8 +99,8 @@ class DatasetBase(
     @classmethod
     @abc.abstractmethod
     def split_range_events_df(
-        cls, df: DF_T, start_ts_col: Union[str, List[str]], end_ts_col: Union[str, List[str]]
-    ) -> Tuple[DF_T, DF_T, DF_T]:
+        cls, df: DF_T, start_ts_col: str | list[str], end_ts_col: str | list[str]
+    ) -> tuple[DF_T, DF_T, DF_T]:
         """Performs the following steps:
 
         1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
@@ -133,21 +123,21 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _concat_dfs(cls, dfs: List[DF_T]) -> DF_T:
+    def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
         """Concatenates a list of dataframes into a single dataframe."""
         raise NotImplementedError("Must be implemented by subclass.")
 
     @classmethod
     @abc.abstractmethod
     def resolve_ts_col(
-        cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = "timestamp"
+        cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp"
     ) -> DF_T:
         """Produces an output column of type datetime that contains the minimum of the passed
         columns in `ts_col`"""
         raise NotImplementedError("Must be implemented by subclass.")
 
     @classmethod
-    def build_subjects_dfs(cls, schema: InputDFSchema) -> Tuple[DF_T, Dict[Hashable, int]]:
+    def build_subjects_dfs(cls, schema: InputDFSchema) -> tuple[DF_T, dict[Hashable, int]]:
         df = cls._load_input_df(
             schema.input_df,
             [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
@@ -159,11 +149,11 @@ class DatasetBase(
     @classmethod
     def build_event_and_measurement_dfs(
         cls,
-        subject_ids_map: Dict[Any, int],
+        subject_ids_map: dict[Any, int],
         subject_id_col: str,
         subject_id_dtype: Any,
-        schemas_by_df: Dict[INPUT_DF_T, List[InputDFSchema]],
-    ) -> Tuple[DF_T, DF_T]:
+        schemas_by_df: dict[INPUT_DF_T, list[InputDFSchema]],
+    ) -> tuple[DF_T, DF_T]:
         all_events_and_measurements = []
         event_types = []
 
@@ -224,9 +214,9 @@ class DatasetBase(
     @classmethod
     def _get_metadata_model(
         cls,
-        model_config: Dict[str, Any],
+        model_config: dict[str, Any],
         for_fit: bool = False,
-    ) -> Union[Any, Tuple[Dict[str, Any], Any]]:
+    ) -> Any | tuple[dict[str, Any], Any]:
         """Fits a model as specified in `model_config` on the values in `vals`."""
         model_config = copy.deepcopy(model_config)
         if "cls" not in model_config:
@@ -352,10 +342,10 @@ class DatasetBase(
     def __init__(
         self,
         config: DatasetConfig,
-        subjects_df: Optional[DF_T] = None,
-        events_df: Optional[DF_T] = None,
-        dynamic_measurements_df: Optional[DF_T] = None,
-        input_schema: Optional[DatasetSchema] = None,
+        subjects_df: DF_T | None = None,
+        events_df: DF_T | None = None,
+        dynamic_measurements_df: DF_T | None = None,
+        input_schema: DatasetSchema | None = None,
         **kwargs,
     ):
         """Builds the `Dataset` object.
@@ -442,7 +432,7 @@ class DatasetBase(
     @abc.abstractmethod
     def _validate_initial_dfs(
         self, subjects_df: DF_T, events_df: DF_T, dynamic_measurements_df: DF_T
-    ) -> Tuple[DF_T, DF_T, DF_T]:
+    ) -> tuple[DF_T, DF_T, DF_T]:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @abc.abstractmethod
@@ -497,7 +487,7 @@ class DatasetBase(
     def split(
         self,
         split_fracs: Sequence[float],
-        split_names: Optional[Sequence[str]] = None,
+        split_names: Sequence[str] | None = None,
     ):
         """Splits the underlying dataset into random sets by `subject_id`.
 
@@ -548,7 +538,7 @@ class DatasetBase(
     @classmethod
     @abc.abstractmethod
     def _filter_col_inclusion(
-        cls, df: DF_T, col_inclusion_targets: Dict[str, Union[bool, Sequence[Any]]]
+        cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]
     ) -> DF_T:
         """Filters the given dataframe to only the rows such that the column `col` is in
         incl_target."""
@@ -594,12 +584,12 @@ class DatasetBase(
     @TimeableMixin.TimeAs
     def _filter_measurements_df(
         self,
-        event_types: Optional[Sequence[str]] = None,
-        event_type: Optional[str] = None,
-        splits: Optional[Sequence[str]] = None,
-        split: Optional[str] = None,
-        subject_ids: Optional[Sequence[Hashable]] = None,
-        subject_id: Optional[Hashable] = None,
+        event_types: Sequence[str] | None = None,
+        event_type: str | None = None,
+        splits: Sequence[str] | None = None,
+        split: str | None = None,
+        subject_ids: Sequence[Hashable] | None = None,
+        subject_id: Hashable | None = None,
     ) -> DF_T:
         """Returns a subframe of `self.dynamic_measurements_df` corresponding to events following
         input constraints. The index returned is in the same order as
@@ -678,7 +668,7 @@ class DatasetBase(
     @TimeableMixin.TimeAs
     def _get_source_df(
         self, config: MeasurementConfig, do_only_train: bool = True
-    ) -> Tuple[str, DF_T]:
+    ) -> tuple[str, DF_T]:
         match config.temporality:
             case TemporalityType.DYNAMIC:
                 source_attr = "dynamic_measurements_df"
@@ -708,7 +698,7 @@ class DatasetBase(
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+    def _get_valid_event_types(self) -> dict[str, list[str]]:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
@@ -791,7 +781,7 @@ class DatasetBase(
     @abc.abstractmethod
     def _total_possible_and_observed(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @abc.abstractmethod
@@ -836,7 +826,7 @@ class DatasetBase(
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: List[str]):
+    def update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: list[str]):
         """Updates the attribute `attr` with the dataframe `df`."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -930,7 +920,7 @@ class DatasetBase(
         return vocabs
 
     @TimeableMixin.TimeAs
-    def cache_deep_learning_representation(self, subjects_per_output_file: Optional[int] = None):
+    def cache_deep_learning_representation(self, subjects_per_output_file: int | None = None):
         """Produces a cached, batched representation of the dataset suitable for deep learning
         applications and writes it to cache_fp in the specified format."""
 
@@ -988,15 +978,15 @@ class DatasetBase(
         )
 
     @property
-    def unified_measurements_vocab(self) -> List[str]:
+    def unified_measurements_vocab(self) -> list[str]:
         return ["event_type"] + list(sorted(self.measurement_configs.keys()))
 
     @property
-    def unified_measurements_idxmap(self) -> Dict[str, int]:
+    def unified_measurements_idxmap(self) -> dict[str, int]:
         return {m: i + 1 for i, m in enumerate(self.unified_measurements_vocab)}
 
     @property
-    def unified_vocabulary_offsets(self) -> Dict[str, int]:
+    def unified_vocabulary_offsets(self) -> dict[str, int]:
         offsets, curr_offset = {}, 1
         for m in self.unified_measurements_vocab:
             offsets[m] = curr_offset
@@ -1007,7 +997,7 @@ class DatasetBase(
         return offsets
 
     @property
-    def unified_vocabulary_idxmap(self) -> Dict[str, Dict[str, int]]:
+    def unified_vocabulary_idxmap(self) -> dict[str, dict[str, int]]:
         idxmaps = {}
         for m, offset in self.unified_vocabulary_offsets.items():
             if m in self.measurement_idxmaps:
@@ -1018,7 +1008,7 @@ class DatasetBase(
 
     @abc.abstractmethod
     def build_DL_cached_representation(
-        self, subject_ids: Optional[List[int]] = None, do_sort_outputs: bool = False
+        self, subject_ids: list[int] | None = None, do_sort_outputs: bool = False
     ) -> DF_T:
         """
         Produces a format with the below syntax:
@@ -1052,8 +1042,8 @@ class DatasetBase(
     def describe(
         self,
         do_print_measurement_summaries: bool = True,
-        viz_config: Optional[Visualizer] = None,
-    ) -> Optional[List[Figure]]:
+        viz_config: Visualizer | None = None,
+    ) -> list[Figure] | None:
         if do_print_measurement_summaries:
             print(f"Dataset has {len(self.measurement_configs)} measurements:")
             for meas, cfg in self.measurement_configs.items():
@@ -1068,7 +1058,7 @@ class DatasetBase(
     def visualize(
         self,
         viz_config: Visualizer,
-    ) -> List[Figure]:
+    ) -> list[Figure]:
         """Visualizes the dataset, along the following axes:
 
         1. By time

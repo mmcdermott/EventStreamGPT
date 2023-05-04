@@ -31,7 +31,7 @@ class TestNormalizer(Preprocessor):
         pass
 
     @classmethod
-    def params_schema(self) -> Dict[str, pl.DataType]:
+    def params_schema(self) -> dict[str, pl.DataType]:
         return {"min": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
@@ -47,7 +47,7 @@ class TestOutlierDetector(Preprocessor):
         pass
 
     @classmethod
-    def params_schema(self) -> Dict[str, pl.DataType]:
+    def params_schema(self) -> dict[str, pl.DataType]:
         return {"mean": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:

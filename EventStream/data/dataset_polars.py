@@ -1,7 +1,8 @@
 import dataclasses
 import multiprocessing
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -26,9 +27,9 @@ pl.toggle_string_cache(True)
 @dataclasses.dataclass
 class Query:
     connection_uri: str
-    query: Union[str, Path, List[Union[str, Path]]]
-    partition_on: Optional[str] = None
-    partition_num: Optional[int] = None
+    query: str | Path | list[str | Path]
+    partition_on: str | None = None
+    partition_num: int | None = None
     protocol: str = "binary"
 
 
@@ -39,7 +40,7 @@ INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame, Query]
 class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     # Dictates what models can be fit on numerical metadata columns, for both outlier detection and
     # normalization.
-    PREPROCESSORS: Dict[str, Preprocessor] = {
+    PREPROCESSORS: dict[str, Preprocessor] = {
         # Outlier Detectors
         "stddev_cutoff": StddevCutoffOutlierDetector,
         # Normalizers
@@ -59,7 +60,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     }
 
     @staticmethod
-    def get_smallest_valid_int_type(num: Union[int, float, pl.Expr]) -> pl.DataType:
+    def get_smallest_valid_int_type(num: int | float | pl.Expr) -> pl.DataType:
         if num >= (2**64) - 1:
             raise ValueError("Value is too large to be expressed as an int!")
         if num >= (2**32) - 1:
@@ -75,11 +76,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _load_input_df(
         cls,
         df: INPUT_DF_T,
-        columns: List[Tuple[str, Union[InputDataType, Tuple[InputDataType, str]]]],
-        subject_id_col: Optional[str] = None,
-        subject_ids_map: Optional[Dict[Any, int]] = None,
-        subject_id_dtype: Optional[Any] = None,
-        filter_on: Optional[Dict[str, Union[bool, List[Any]]]] = None,
+        columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
+        subject_id_col: str | None = None,
+        subject_ids_map: dict[Any, int] | None = None,
+        subject_id_dtype: Any | None = None,
+        filter_on: dict[str, bool | list[Any]] | None = None,
     ) -> DF_T:
         """Loads an input dataframe into the format expected by the processing library."""
         if subject_id_col is None:
@@ -174,7 +175,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @classmethod
     def resolve_ts_col(
-        cls, df: DF_T, ts_col: Union[str, List[str]], out_name: str = "timestamp"
+        cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp"
     ) -> DF_T:
         match ts_col:
             case list():
@@ -191,8 +192,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         cls,
         df: DF_T,
         event_type: str,
-        columns_schema: Dict[str, Tuple[str, InputDataType]],
-    ) -> Tuple[DF_T, Optional[DF_T]]:
+        columns_schema: dict[str, tuple[str, InputDataType]],
+    ) -> tuple[DF_T, DF_T | None]:
         """Performs the following pre-processing steps on an input events and measurements
         dataframe:
 
@@ -228,7 +229,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return events_df, dynamic_measurements_df
 
     @classmethod
-    def split_range_events_df(cls, df: DF_T) -> Tuple[DF_T, DF_T, DF_T]:
+    def split_range_events_df(cls, df: DF_T) -> tuple[DF_T, DF_T, DF_T]:
         """Performs the following steps:
 
         1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
@@ -263,7 +264,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return df.with_columns(pl.col(col) + inc_by).collect()
 
     @classmethod
-    def _concat_dfs(cls, dfs: List[DF_T]) -> DF_T:
+    def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
         """Concatenates a list of dataframes into a single dataframe."""
         return pl.concat(dfs, how="diagonal")
 
@@ -275,7 +276,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _write_df(cls, df: DF_T, fp: Path, **kwargs):
         df.write_parquet(fp)
 
-    def get_metadata_schema(self, config: MeasurementConfig) -> Dict[str, pl.DataType]:
+    def get_metadata_schema(self, config: MeasurementConfig) -> dict[str, pl.DataType]:
         schema = {
             "value_type": self.METADATA_SCHEMA["value_type"],
         }
@@ -307,12 +308,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     @staticmethod
     def drop_or_censor(
         col: pl.Expr,
-        drop_lower_bound: Optional[pl.Expr] = None,
-        drop_lower_bound_inclusive: Optional[pl.Expr] = None,
-        drop_upper_bound: Optional[pl.Expr] = None,
-        drop_upper_bound_inclusive: Optional[pl.Expr] = None,
-        censor_lower_bound: Optional[pl.Expr] = None,
-        censor_upper_bound: Optional[pl.Expr] = None,
+        drop_lower_bound: pl.Expr | None = None,
+        drop_lower_bound_inclusive: pl.Expr | None = None,
+        drop_upper_bound: pl.Expr | None = None,
+        drop_upper_bound_inclusive: pl.Expr | None = None,
+        censor_lower_bound: pl.Expr | None = None,
+        censor_upper_bound: pl.Expr | None = None,
         **ignored_kwargs,
     ) -> pl.Expr:
         """Appropriately either drops (returns np.NaN) or censors (returns the censor value) the
@@ -381,7 +382,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return expr.otherwise(col)
 
     @staticmethod
-    def _validate_id_col(id_col: pl.Series) -> Tuple[pl.Series, pl.datatypes.DataTypeClass]:
+    def _validate_id_col(id_col: pl.Series) -> tuple[pl.Series, pl.datatypes.DataTypeClass]:
         """Validate the given ID column.
 
         Args:
@@ -421,11 +422,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     def _validate_initial_df(
         self,
-        source_df: Optional[DF_T],
+        source_df: DF_T | None,
         id_col_name: str,
         valid_temporality_type: TemporalityType,
-        linked_id_cols: Optional[Dict[str, pl.datatypes.DataTypeClass]] = None,
-    ) -> Tuple[Optional[DF_T], pl.datatypes.DataTypeClass]:
+        linked_id_cols: dict[str, pl.datatypes.DataTypeClass] | None = None,
+    ) -> tuple[DF_T | None, pl.datatypes.DataTypeClass]:
         if source_df is None:
             return None, None
 
@@ -472,10 +473,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     def _validate_initial_dfs(
         self,
-        subjects_df: Optional[DF_T],
-        events_df: Optional[DF_T],
-        dynamic_measurements_df: Optional[DF_T],
-    ) -> Tuple[Optional[DF_T], Optional[DF_T], Optional[DF_T]]:
+        subjects_df: DF_T | None,
+        events_df: DF_T | None,
+        dynamic_measurements_df: DF_T | None,
+    ) -> tuple[DF_T | None, DF_T | None, DF_T | None]:
         """Validate and preprocess the given subjects, events, and dynamic_measurements dataframes.
 
         For each dataframe, this method checks for the presence of specific columns and unique IDs.
@@ -639,7 +640,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @classmethod
     def _filter_col_inclusion(
-        cls, df: DF_T, col_inclusion_targets: Dict[str, Union[bool, Sequence[Any]]]
+        cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]
     ) -> DF_T:
         filter_exprs = []
         for col, incl_targets in col_inclusion_targets.items():
@@ -654,7 +655,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return df.filter(pl.all(filter_exprs))
 
     @TimeableMixin.TimeAs
-    def _get_valid_event_types(self) -> Dict[str, List[str]]:
+    def _get_valid_event_types(self) -> dict[str, list[str]]:
         measures = []
         for measure, config in self.config.measurement_configs.items():
             if (
@@ -708,7 +709,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     @TimeableMixin.TimeAs
     def _prep_numerical_source(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> Tuple[DF_T, str, str, str, pl.DataFrame]:
+    ) -> tuple[DF_T, str, str, str, pl.DataFrame]:
         metadata = config.measurement_metadata
 
         metadata_schema = self.get_metadata_schema(config)
@@ -755,7 +756,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     def _total_possible_and_observed(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         agg_by_col = pl.col("event_id") if config.temporality == TemporalityType.DYNAMIC else None
 
         if agg_by_col is None:
@@ -1289,7 +1290,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return source_df.with_columns(transform_expr)
 
     @TimeableMixin.TimeAs
-    def update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: List[str]):
+    def update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: list[str]):
         """Updates the attribute `attr` with the dataframe `df`."""
         old_df = getattr(self, attr)
 
@@ -1298,7 +1299,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         setattr(self, attr, old_df.update(new_df, on=id_col))
 
-    def melt_df(self, source_df: DF_T, id_cols: Sequence[str], measures: List[str]) -> pl.Expr:
+    def melt_df(self, source_df: DF_T, id_cols: Sequence[str], measures: list[str]) -> pl.Expr:
         struct_exprs = []
         total_vocab_size = self.vocabulary_config.total_vocab_size
         idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
@@ -1363,7 +1364,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         )
 
     def build_DL_cached_representation(
-        self, subject_ids: Optional[List[int]] = None, do_sort_outputs: bool = False
+        self, subject_ids: list[int] | None = None, do_sort_outputs: bool = False
     ) -> DF_T:
         """
         Produces a format with the below syntax:

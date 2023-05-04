@@ -1,4 +1,5 @@
-from typing import Callable, Dict, Union
+from collections.abc import Callable
+from typing import Dict, Union
 
 import polars as pl
 
@@ -17,14 +18,14 @@ class VarianceImpactOutlierDetector(Preprocessor):
     standard deviation."""
 
     @classmethod
-    def params_schema(cls) -> Dict[str, pl.DataType]:
+    def params_schema(cls) -> dict[str, pl.DataType]:
         return {"thresh_large_": pl.Float64, "thresh_small_": pl.Float64}
 
     def __init__(
         self,
         subsample_frac: PROPORTION = 0.1,
         max_prob_of_exclusion: PROPORTION = 0.05,
-        max_std_delta_thresh: Union[Callable[int, float], float] = _default_std_delta_thresh,
+        max_std_delta_thresh: Callable[[int], float] | float = _default_std_delta_thresh,
     ):
         assert (0 < subsample_frac) and (subsample_frac < 1)
         assert (0 < max_prob_of_exclusion) and (max_prob_of_exclusion < 1)
@@ -45,7 +46,7 @@ class VarianceImpactOutlierDetector(Preprocessor):
         else:
             return pl.max([pl.lit(0), pl.min([pl.lit(1), self.max_std_delta_thresh(N)])])
 
-    def _max_L(self, N: Union[int, pl.Expr]) -> pl.Expr:
+    def _max_L(self, N: int | pl.Expr) -> pl.Expr:
         """Returns the maximum size $L$ of a specific subset of elements from a dataset of total
         size $N$ such that the chance that none of those $L$ elements would appear in a random, iid
         subsample of the dataset of fractional size `self.subsample_frac` (denoted by r) would not
@@ -81,9 +82,7 @@ class VarianceImpactOutlierDetector(Preprocessor):
             ]
         )
 
-    def _max_deviation_factor(
-        self, N: Union[int, pl.Expr], delta: Union[float, pl.Expr]
-    ) -> Union[pl.Expr, float]:
+    def _max_deviation_factor(self, N: int | pl.Expr, delta: float | pl.Expr) -> pl.Expr | float:
         """
         curr_sum_X, curr_sum_X2
         delta = self._max_std_delta_thresh(N+1)

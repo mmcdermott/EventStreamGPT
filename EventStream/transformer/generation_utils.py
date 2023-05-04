@@ -71,10 +71,10 @@ class GreedySearchDecoderOnlyOutput(ModelOutput):
             hidden_size)`.
     """
 
-    batch: Optional[PytorchBatch] = None
-    scores: Optional[Tuple[GenerativeSequenceModelPredictions]] = None
-    attentions: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    hidden_states: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
+    batch: PytorchBatch | None = None
+    scores: tuple[GenerativeSequenceModelPredictions] | None = None
+    attentions: tuple[tuple[torch.FloatTensor]] | None = None
+    hidden_states: tuple[tuple[torch.FloatTensor]] | None = None
 
 
 @dataclass
@@ -105,10 +105,10 @@ class SampleDecoderOnlyOutput(ModelOutput):
             hidden_size)`.
     """
 
-    scores: Optional[Tuple[GenerativeSequenceModelPredictions]] = None
-    batch: Optional[PytorchBatch] = None
-    attentions: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    hidden_states: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
+    scores: tuple[GenerativeSequenceModelPredictions] | None = None
+    batch: PytorchBatch | None = None
+    attentions: tuple[tuple[torch.FloatTensor]] | None = None
+    hidden_states: tuple[tuple[torch.FloatTensor]] | None = None
 
 
 GreedySearchOutput = GreedySearchDecoderOnlyOutput
@@ -129,7 +129,7 @@ class StructuredGenerationMixin:
         batch: PytorchBatch,
         expand_size: int = 1,
         **model_kwargs,
-    ) -> Tuple[PytorchBatch, Dict[str, Any]]:
+    ) -> tuple[PytorchBatch, dict[str, Any]]:
         expanded_return_idx = (
             torch.arange(batch["time"].shape[0])
             .view(-1, 1)
@@ -153,8 +153,8 @@ class StructuredGenerationMixin:
 
     @staticmethod
     def _update_model_kwargs_for_generation(
-        outputs: ModelOutput, model_kwargs: Dict[str, Any], is_encoder_decoder: bool = False
-    ) -> Dict[str, Any]:
+        outputs: ModelOutput, model_kwargs: dict[str, Any], is_encoder_decoder: bool = False
+    ) -> dict[str, Any]:
         # update past
         if "past_key_values" in outputs:
             model_kwargs["past"] = outputs.past_key_values
@@ -204,9 +204,9 @@ class StructuredGenerationMixin:
 
     def _get_stopping_criteria(
         self,
-        max_length: Optional[int],
-        max_time: Optional[float],
-        stopping_criteria: Optional[StoppingCriteriaList],
+        max_length: int | None,
+        max_time: float | None,
+        stopping_criteria: StoppingCriteriaList | None,
     ) -> StoppingCriteriaList:
         criteria = StoppingCriteriaList()
         if max_length is not None:
@@ -218,9 +218,9 @@ class StructuredGenerationMixin:
 
     def _merge_criteria_processor_list(
         self,
-        default_list: Union[OutputsProcessorList, StoppingCriteriaList],
-        custom_list: Union[OutputsProcessorList, StoppingCriteriaList],
-    ) -> Union[OutputsProcessorList, StoppingCriteriaList]:
+        default_list: OutputsProcessorList | StoppingCriteriaList,
+        custom_list: OutputsProcessorList | StoppingCriteriaList,
+    ) -> OutputsProcessorList | StoppingCriteriaList:
         if len(custom_list) == 0:
             return default_list
         for default in default_list:
@@ -245,23 +245,23 @@ class StructuredGenerationMixin:
     def generate(
         self,
         batch: PytorchBatch,
-        max_length: Optional[int] = None,
-        do_sample: Optional[bool] = None,
-        num_return_sequences: Optional[int] = None,
-        max_time: Optional[float] = None,
-        max_new_events: Optional[int] = None,
-        use_cache: Optional[bool] = None,
-        stopping_criteria: Optional[StoppingCriteriaList] = StoppingCriteriaList(),
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        output_scores: Optional[bool] = None,
-        return_dict_in_generate: Optional[bool] = None,
-        synced_gpus: Optional[bool] = False,
+        max_length: int | None = None,
+        do_sample: bool | None = None,
+        num_return_sequences: int | None = None,
+        max_time: float | None = None,
+        max_new_events: int | None = None,
+        use_cache: bool | None = None,
+        stopping_criteria: StoppingCriteriaList | None = StoppingCriteriaList(),
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        output_scores: bool | None = None,
+        return_dict_in_generate: bool | None = None,
+        synced_gpus: bool | None = False,
         # TODO(mmd): Improve API so this isn't necessary!
-        base_dataset: Optional[DatasetBase] = None,
-        batch_schema: Optional[List[Tuple[int, datetime, datetime]]] = None,
+        base_dataset: DatasetBase | None = None,
+        batch_schema: list[tuple[int, datetime, datetime]] | None = None,
         **model_kwargs,
-    ) -> Union[GreedySearchOutput, SampleOutput, torch.LongTensor]:
+    ) -> GreedySearchOutput | SampleOutput | torch.LongTensor:
         r"""Generates continuous-time sequences of events for models with an  Generation head. The
         method supports the following generation methods:
 
@@ -512,21 +512,21 @@ class StructuredGenerationMixin:
     def _search(
         self,
         batch: PytorchBatch,
-        outputs_processor: Optional[OutputsProcessorList] = None,
-        outputs_warper: Optional[OutputsProcessorList] = None,
-        stopping_criteria: Optional[StoppingCriteriaList] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        output_scores: Optional[bool] = None,
-        return_dict_in_generate: Optional[bool] = None,
-        synced_gpus: Optional[bool] = False,
+        outputs_processor: OutputsProcessorList | None = None,
+        outputs_warper: OutputsProcessorList | None = None,
+        stopping_criteria: StoppingCriteriaList | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        output_scores: bool | None = None,
+        return_dict_in_generate: bool | None = None,
+        synced_gpus: bool | None = False,
         sample_fn: str = "mode",
         # TODO(mmd): Improve API -- this shouldn't be necessary.
-        base_dataset: Optional[DatasetBase] = None,
-        batch_schema: Optional[List[int]] = None,
-        static_data: Optional[pd.DataFrame] = None,
+        base_dataset: DatasetBase | None = None,
+        batch_schema: list[int] | None = None,
+        static_data: pd.DataFrame | None = None,
         **model_kwargs,
-    ) -> Union[GreedySearchOutput, SampleOutput, PytorchBatch]:
+    ) -> GreedySearchOutput | SampleOutput | PytorchBatch:
         r"""Generates sequences of token ids for models with a generative sequence modeling head
         using either greedy or sample decoding.
 
@@ -716,8 +716,8 @@ class StructuredGenerationMixin:
         else:
             return batch
 
-    def greedy_search(self, *args, **kwargs) -> Union[GreedySearchOutput, PytorchBatch]:
+    def greedy_search(self, *args, **kwargs) -> GreedySearchOutput | PytorchBatch:
         return self._search(*args, **kwargs, sample_fn="greedy")
 
-    def sample(self, *args, **kwargs) -> Union[SampleOutput, PytorchBatch]:
+    def sample(self, *args, **kwargs) -> SampleOutput | PytorchBatch:
         return self._search(*args, **kwargs, sample_fn="sample")
