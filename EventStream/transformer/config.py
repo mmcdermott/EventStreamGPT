@@ -97,8 +97,10 @@ class MetricsConfig(JSONableMixin):
             elif not inc_dict:
                 return False
 
-            if "_" in metric_name:
-                averaging, metric = metric_name.split("_")
+            if "_" in metric_name.replace("explained_variance", ""):
+                parts = metric_name.split("_")
+                averaging = parts[0]
+                metric = "_".join(parts[1:])
             else:
                 return True
 
