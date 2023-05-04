@@ -2,7 +2,7 @@ import dataclasses
 import enum
 import itertools
 import math
-from typing import Dict, Hashable, List, Optional, Tuple, Union
+from typing import Any, Dict, Hashable, List, Optional, Tuple, Union
 
 from transformers import PretrainedConfig
 
@@ -53,7 +53,9 @@ class MetricsConfig(JSONableMixin):
     do_validate_args: bool = False
 
     include_metrics: Dict[
-        Split, Dict[MetricCategories, Union[bool, Dict[Metrics, Union[bool, List[Averaging]]]]]
+        # Split, Dict[MetricCategories, Union[bool, Dict[Metrics, Union[bool, List[Averaging]]]]]
+        str,
+        Any,
     ] = dataclasses.field(
         default_factory=lambda: (
             {
@@ -95,10 +97,13 @@ class MetricsConfig(JSONableMixin):
             elif not inc_dict:
                 return False
 
-            averaging, metric = metric_name.split("_")
+            if "_" in metric_name:
+                averaging, metric = metric_name.split("_")
+            else:
+                return True
 
             permissible_averagings = inc_dict.get(metric, [])
-            if (permissible_averagings in (True, [True])) or (averaging in permissible_averagings):
+            if (permissible_averagings is True) or (averaging in permissible_averagings):
                 return True
             else:
                 return False
