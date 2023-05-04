@@ -7,6 +7,10 @@ VALID_INDEX_T = Union[int, slice, type(Ellipsis)]
 INDEX_SELECT_T = Union[VALID_INDEX_T, Sequence[VALID_INDEX_T]]
 
 
+def str_summary(T: torch.Tensor):
+    return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
+
+
 def expand_indexed_regression(X: torch.Tensor, idx: torch.Tensor, vocab_size: int):
     """Expands values `X` with indices `idx` into a dense representation."""
     expanded = torch.zeros(*idx.shape[:-1], vocab_size, device=X.device, dtype=X.dtype)

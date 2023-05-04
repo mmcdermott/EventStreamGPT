@@ -1,9 +1,21 @@
+#!/usr/bin/env python
+
+try:
+    import stackprinter
+
+    stackprinter.set_excepthook(style="darkbg2")
+except ImportError:
+    pass  # no need to fail because of missing dev dependency
+
 import hydra
+import torch
 
 from EventStream.transformer.stream_classification_lightning import (
     FinetuneConfig,
     train,
 )
+
+torch.set_float32_matmul_precision("high")
 
 
 @hydra.main(version_base=None, config_name="finetune_config")

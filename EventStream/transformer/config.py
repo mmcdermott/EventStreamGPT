@@ -14,15 +14,102 @@ from ..utils import JSONableMixin, StrEnum, hydra_dataclass
 MEAS_INDEX_GROUP_T = Union[str, Tuple[str, MeasIndexGroupOptions]]
 
 
+class Split(StrEnum):
+    TRAIN = enum.auto()
+    TUNING = enum.auto()
+    HELD_OUT = enum.auto()
+
+    @classmethod
+    def values(cls):
+        return list(map(lambda c: c.value, cls))
+
+
+class MetricCategories(StrEnum):
+    LOSS_PARTS = enum.auto()
+    TTE = enum.auto()
+    CLASSIFICATION = enum.auto()
+    REGRESSION = enum.auto()
+
+
+class Metrics(StrEnum):
+    AUROC = "AUROC"
+    AUPRC = "AUPRC"
+    ACCURACY = enum.auto()
+    EXPLAINED_VARIANCE = enum.auto()
+    MSE = "MSE"
+    MSLE = "MSLE"
+
+
+class Averaging(StrEnum):
+    MACRO = enum.auto()
+    MICRO = enum.auto()
+    WEIGHTED = enum.auto()
+
+
 @hydra_dataclass
 class MetricsConfig(JSONableMixin):
     n_auc_thresholds: Optional[int] = 50
-    include_explained_variance: bool = False
-    include_auprc: bool = False
-    include_auroc: bool = True
-    include_accuracy: bool = True
+    do_skip_all_metrics: bool = False
+    do_validate_args: bool = False
 
-    do_skip_all_metrics_in_train: bool = True
+    include_metrics: Dict[
+        Split, Dict[MetricCategories, Union[bool, Dict[Metrics, Union[bool, List[Averaging]]]]]
+    ] = dataclasses.field(
+        default_factory=lambda: (
+            {
+                Split.TUNING: {
+                    MetricCategories.LOSS_PARTS: True,
+                    MetricCategories.TTE: {Metrics.MSE: True, Metrics.MSLE: True},
+                    MetricCategories.CLASSIFICATION: {
+                        Metrics.AUROC: [Averaging.MACRO, Averaging.WEIGHTED],
+                        Metrics.ACCURACY: True,
+                    },
+                    MetricCategories.REGRESSION: {Metrics.MSE: True},
+                }
+            }
+        )
+    )
+
+    def __post_init__(self):
+        if self.do_skip_all_metrics:
+            self.include_metrics = {}
+
+    def do_log_only_loss(self, split: Split) -> bool:
+        if self.do_skip_all_metrics:
+            return True
+        if split not in self.include_metrics:
+            return True
+        if not self.include_metrics[split]:
+            return True
+        return False
+
+    def do_log(
+        self, split: Split, cat: MetricCategories, metric_name: Optional[str] = None
+    ) -> bool:
+        if self.do_log_only_loss(split):
+            return False
+        if self.include_metrics[split].get(cat, False):
+            inc_dict = self.include_metrics[split].get(cat, False)
+            if (metric_name is None) or (inc_dict is True):
+                return True
+            elif not inc_dict:
+                return False
+
+            averaging, metric = metric_name.split("_")
+
+            permissible_averagings = inc_dict.get(metric, [])
+            if (permissible_averagings in (True, [True])) or (averaging in permissible_averagings):
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    def do_log_any(self, cat: MetricCategories, metric_name: Optional[str] = None) -> bool:
+        for split in Split.values():
+            if self.do_log(split, cat, metric_name):
+                return True
+        return False
 
 
 @hydra_dataclass

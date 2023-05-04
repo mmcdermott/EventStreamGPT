@@ -1,7 +1,6 @@
-try:
-    # import pretty_traceback
-    # pretty_traceback.install()
+#!/usr/bin/env python
 
+try:
     import stackprinter
 
     stackprinter.set_excepthook(style="darkbg2")
@@ -11,12 +10,12 @@ except ImportError:
 import hydra
 import torch
 
-torch.set_float32_matmul_precision("high")
-
 from EventStream.transformer.generative_sequence_modelling_lightning import (
     PretrainConfig,
     train,
 )
+
+torch.set_float32_matmul_precision("high")
 
 
 @hydra.main(version_base=None, config_name="pretrain_config")

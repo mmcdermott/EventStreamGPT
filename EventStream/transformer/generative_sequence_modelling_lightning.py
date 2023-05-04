@@ -1,10 +1,13 @@
 import dataclasses
+import enum
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Union
 
 import lightning as L
 import omegaconf
 import torch
+import torch.multiprocessing
 import torchmetrics
 import wandb
 from lightning.pytorch.callbacks import LearningRateMonitor
@@ -24,20 +27,28 @@ from ..data.config import PytorchDatasetConfig
 from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality, PytorchBatch
 from ..utils import hydra_dataclass, task_wrapper
-from .config import MetricsConfig, OptimizationConfig, StructuredTransformerConfig
+from .config import (
+    Averaging,
+    MetricCategories,
+    Metrics,
+    MetricsConfig,
+    OptimizationConfig,
+    Split,
+    StructuredTransformerConfig,
+)
 from .model import ESTForGenerativeSequenceModeling
 from .model_output import GenerativeSequenceModelOutput
-from .utils import expand_indexed_regression
-
-
-def str_summary(T: torch.Tensor):
-    return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
+from .utils import expand_indexed_regression, str_summary
 
 
 class ESTForGenerativeSequenceModelingLM(L.LightningModule):
     """A PyTorch Lightning Module for a `ESTForGenerativeSequenceModeling`."""
 
     TRAIN_SKIP_METRICS = ("AUROC", "AUPRC", "per_class")
+    CLASSIFICATION = {
+        DataModality.SINGLE_LABEL_CLASSIFICATION,
+        DataModality.MULTI_LABEL_CLASSIFICATION,
+    }
 
     def __init__(
         self,
@@ -45,7 +56,6 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         optimization_config: Union[OptimizationConfig, Dict[str, Any]],
         metrics_config: Union[MetricsConfig, Dict[str, Any]],
         pretrained_weights_fp: Optional[Path] = None,
-        do_debug_mode: bool = True,
     ):
         """Initializes the Lightning Module.
 
@@ -75,7 +85,6 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         self.config = config
         self.optimization_config = optimization_config
         self.metrics_config = metrics_config
-        self.do_debug_mode = do_debug_mode
 
         self.save_hyperparameters(
             {
@@ -108,14 +117,9 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
             {
                 "MSE": torchmetrics.MeanSquaredError(),
                 "MSLE": torchmetrics.MeanSquaredLogError(),
+                "explained_variance": torchmetrics.ExplainedVariance(),
             }
         )
-        if self.metrics_config.include_explained_variance:
-            self.tte_metrics = torch.nn.ModuleDict(
-                {
-                    "explained_var": torchmetrics.ExplainedVariance(),
-                }
-            )
 
         self.metrics = torch.nn.ModuleDict()
         for task_type, measurements in self.config.measurements_per_generative_mode.items():
@@ -127,139 +131,104 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                 if task_type not in self.metrics[measurement]:
                     self.metrics[measurement][task_type] = torch.nn.ModuleDict()
 
-                if task_type == DataModality.SINGLE_LABEL_CLASSIFICATION:
-                    metric_kwargs = {"num_classes": vocab_size, "ignore_index": 0}
-                    if not self.do_debug_mode:
-                        metric_kwargs["validate_args"] = False
-
-                    auc_kwargs = {
-                        **metric_kwargs,
-                        "thresholds": self.metrics_config.n_auc_thresholds,
-                    }
-
-                    # For judging classification, we'll use macro & weighted accuracy, AUROC, and AUPRC
-                    self.metrics[measurement][task_type].update(
-                        {
-                            "macro_accuracy": MulticlassAccuracy(**metric_kwargs, average="macro"),
-                            "weighted_accuracy": MulticlassAccuracy(
-                                **metric_kwargs, average="weighted"
+                match task_type:
+                    case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                        cat = MetricCategories.CLASSIFICATION
+                        metrics = {
+                            Metrics.ACCURACY: (
+                                MulticlassAccuracy,
+                                [Averaging.MACRO, Averaging.WEIGHTED, Averaging.MICRO],
                             ),
-                            "micro_accuracy": MulticlassAccuracy(**metric_kwargs, average="micro"),
-                        }
-                    )
-
-                    if self.metrics_config.include_auroc:
-                        self.metrics[measurement][task_type].update(
-                            {
-                                "macro_AUROC": MulticlassAUROC(**metric_kwargs, average="macro"),
-                                "weighted_AUROC": MulticlassAUROC(
-                                    **metric_kwargs, average="weighted"
-                                ),
-                            }
-                        )
-                    if self.metrics_config.include_auprc:
-                        self.metrics[measurement][task_type].update(
-                            {
-                                "macro_AUPRC": MulticlassAveragePrecision(
-                                    **metric_kwargs, average="macro"
-                                ),
-                                "weighted_AUPRC": MulticlassAveragePrecision(
-                                    **metric_kwargs, average="weighted"
-                                ),
-                            }
-                        )
-
-                elif task_type == DataModality.MULTI_LABEL_CLASSIFICATION:
-                    metric_kwargs = {"num_labels": vocab_size}
-                    if not self.do_debug_mode:
-                        metric_kwargs["validate_args"] = False
-
-                    auc_kwargs = {
-                        **metric_kwargs,
-                        "thresholds": self.metrics_config.n_auc_thresholds,
-                    }
-
-                    # For judging classification, we'll use macro & weighted accuracy, AUROC, and AUPRC
-                    self.metrics[measurement][task_type].update(
-                        {
-                            "macro_accuracy": MultilabelAccuracy(**metric_kwargs, average="macro"),
-                            "weighted_accuracy": MultilabelAccuracy(
-                                **metric_kwargs, average="weighted"
+                            Metrics.AUROC: (
+                                MulticlassAUROC,
+                                [Averaging.MACRO, Averaging.WEIGHTED],
                             ),
-                            "micro_accuracy": MultilabelAccuracy(**metric_kwargs, average="micro"),
+                            Metrics.AUPRC: (
+                                MulticlassAveragePrecision,
+                                [Averaging.MACRO, Averaging.WEIGHTED],
+                            ),
                         }
-                    )
-
-                    if self.metrics_config.include_auroc:
-                        self.metrics[measurement][task_type].update(
-                            {
-                                "macro_AUROC": MultilabelAUROC(**auc_kwargs, average="macro"),
-                                "weighted_AUROC": MultilabelAUROC(
-                                    **auc_kwargs, average="weighted"
-                                ),
-                                "micro_AUROC": MultilabelAUROC(**auc_kwargs, average="micro"),
-                            }
-                        )
-                    if self.metrics_config.include_auprc:
-                        self.metrics[measurement][task_type].update(
-                            {
-                                "macro_AUPRC": MultilabelAveragePrecision(
-                                    **auc_kwargs, average="macro"
-                                ),
-                                "weighted_AUPRC": MultilabelAveragePrecision(
-                                    **auc_kwargs, average="weighted"
-                                ),
-                                "micro_AUPRC": MultilabelAveragePrecision(
-                                    **auc_kwargs, average="micro"
-                                ),
-                            }
-                        )
-
-                elif task_type == DataModality.MULTIVARIATE_REGRESSION:
-                    # As we have multiple regression tasks here (unlike TTE), we have to use both macro and
-                    # weighted explained variance. We also use MSE.
-                    self.metrics[measurement][task_type].update(
-                        {
-                            "MSE": torchmetrics.MeanSquaredError(),
+                        metric_kwargs = {"num_classes": vocab_size, "ignore_index": 0}
+                    case DataModality.MULTI_LABEL_CLASSIFICATION:
+                        cat = MetricCategories.CLASSIFICATION
+                        metrics = {
+                            Metrics.ACCURACY: (
+                                MultilabelAccuracy,
+                                [Averaging.MACRO, Averaging.WEIGHTED, Averaging.MICRO],
+                            ),
+                            Metrics.AUROC: (
+                                MultilabelAUROC,
+                                [Averaging.MACRO, Averaging.WEIGHTED, Averaging.MICRO],
+                            ),
+                            Metrics.AUPRC: (
+                                MultilabelAveragePrecision,
+                                [Averaging.MACRO, Averaging.WEIGHTED, Averaging.MICRO],
+                            ),
                         }
-                    )
-
-                    if self.metrics_config.include_explained_variance:
-                        self.metrics[measurement][task_type].update(
-                            {
-                                "macro_explained_var": torchmetrics.ExplainedVariance(
-                                    multioutput="uniform_average"
-                                ),
-                                "weighted_explained_var": torchmetrics.ExplainedVariance(
-                                    multioutput="variance_weighted"
-                                ),
-                            }
-                        )
-
-                elif task_type == DataModality.UNIVARIATE_REGRESSION:
-                    # As we have multiple regression tasks here (unlike TTE), we have to use both macro and
-                    # weighted explained variance. We also use MSE.
-                    self.metrics[measurement][task_type].update(
-                        {
-                            "MSE": torchmetrics.MeanSquaredError(),
+                        metric_kwargs = {"num_labels": vocab_size}
+                    case DataModality.UNIVARIATE_REGRESSION:
+                        cat = MetricCategories.REGRESSION
+                        metrics = {
+                            Metrics.MSE: (torchmetrics.MeanSquaredError, [None]),
+                            Metrics.EXPLAINED_VARIANCE: (torchmetrics.ExplainedVariance, [None]),
                         }
-                    )
-                    if self.metrics_config.include_explained_variance:
-                        self.metrics[measurement][task_type].update(
-                            {
-                                "explained_var": torchmetrics.ExplainedVariance(),
-                            }
-                        )
+                        metric_kwargs = {}
+                    case DataModality.MULTIVARIATE_REGRESSION:
+                        cat = MetricCategories.REGRESSION
+                        metrics = {
+                            Metrics.MSE: (torchmetrics.MeanSquaredError, [None]),
+                            Metrics.EXPLAINED_VARIANCE: (
+                                torchmetrics.ExplainedVariance,
+                                [Averaging.MACRO, Averaging.WEIGHTED],
+                            ),
+                        }
+                        metric_kwargs = {}
+                    case _:
+                        raise ValueError(f"Unrecognized modality {task_type}!")
+
+                if not self.metrics_config.do_validate_args:
+                    metric_kwargs["validate_args"] = False
+
+                auc_kwargs = {**metric_kwargs, "thresholds": self.metrics_config.n_auc_thresholds}
+                for metric, (metric_cls, averagings) in metrics.items():
+                    if metric in (Metrics.AUROC, Metrics.AUPRC):
+                        metric_cls_kwargs = {**auc_kwargs}
+                    else:
+                        metric_cls_kwargs = {**metric_kwargs}
+
+                    for averaging in averagings:
+                        if averaging is None:
+                            metric_name = str(metric)
+                            averaging_kwargs = {}
+                        else:
+                            metric_name = f"{averaging}_{metric}"
+                            if metric == Metrics.EXPLAINED_VARIANCE:
+                                if averaging == Averaging.MACRO:
+                                    avg_str = "uniform_average"
+                                elif averaging == Averaging.WEIGHTED:
+                                    avg_str = "variance_weighted"
+                                else:
+                                    raise ValueError(
+                                        f"{averaging} not supported for explained variance."
+                                    )
+
+                                averaging_kwargs = {"multioutput": avg_str}
+                            else:
+                                averaging_kwargs = {"average": averaging}
+
+                        if self.metrics_config.do_log_any(cat, metric_name):
+                            self.metrics[measurement][task_type][metric_name] = metric_cls(
+                                **metric_cls_kwargs, **averaging_kwargs
+                            )
 
     def _log_metric_dict(
         self,
         preds: torch.Tensor,
         labels: torch.Tensor,
         metrics: Dict[str, torchmetrics.Metric],
-        skip_metrics: Sequence[str],
-        prefix: str,
+        split: Split,
         measurement: str,
-        on_epoch_only: bool,
+        cat: MetricCategories,
     ):
         """This helper function logs the set of named metrics for the predictions `preds` and
         labels `labels`.
@@ -273,19 +242,17 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                 any metric whose name contains an element of `skip_metrics` will be skipped.
                 For example, if `skip_metrics = ['AUROC', 'AUPRC']`, then a metric with name `'macro_AUROC'`
                 or `'micro_AUPRC'` would be skipped, whereas a metric named `'weighted_accuracy'` would not.
-            `prefix` (`str`):
-                The prefix that should be used when logging metric results. Will likely be 'train', 'tuning',
-                or 'held_out', for example.
+            `split` (`str`): TODO
             `measurement` (`str`): The measurement of this metric calculation. Affects the log name.
         """
         for metric_name, metric in metrics.items():
             # We'll want to skip a metric if any element of our skip_metrics list is a substring of the metric
             # name:
-            if any(to_skip in metric_name for to_skip in skip_metrics):
+            if not self.metrics_config.do_log(split, cat, metric_name):
                 continue
 
             try:
-                if on_epoch_only:
+                if split != Split.TRAIN:
                     # This is slightly more efficient if we only care about epoch-level outputs.
                     # Source: https://torchmetrics.readthedocs.io/en/stable/pages/lightning.html
                     metric.update(preds, labels)
@@ -293,9 +260,10 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                     metric(preds, labels)
 
                 self.log(
-                    f"{prefix}_{measurement}_{metric_name}",
+                    f"{split}_{measurement}_{metric_name}",
                     metric,
                     batch_size=self.optimization_config.batch_size,
+                    sync_dist=True,
                 )
             except (ValueError, IndexError) as e:
                 print(
@@ -303,57 +271,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                     f"with preds ({str_summary(preds)}) and labels ({str_summary(labels)}): {e}."
                 )
 
-    def log_metrics(
-        self,
-        results: GenerativeSequenceModelOutput,
-        skip_metrics: Sequence[str],
-        prefix: str,
-        on_epoch_only: bool = False,
-    ):
-        """Logs metric results for a given output result.
-
-        Args:
-            `results` (`transformerForGenerativeSequenceModelOutput`):
-                The results to assess across the suite of metrics.
-            `skip_metrics` (`Sequence[str]`):
-                A list of metrics to skip. Entries are not full metric names, but rather are partial names and
-                any metric whose name contains an element of `skip_metrics` will be skipped.
-                For example, if `skip_metrics = ['AUROC', 'AUPRC']`, then a metric with name `'macro_AUROC'`
-                or `'micro_AUPRC'` would be skipped, whereas a metric named `'weighted_accuracy'` would not.
-            `prefix` (`str`):
-                The prefix that should be used when logging metric results. Will likely be 'train', 'tuning',
-                or 'held_out', for example.
-        """
-        # We start by logging the losses.
-        self.log_dict(
-            {f"{prefix}_{k}_cls_NLL": v for k, v in results["losses"]["classification"].items()},
-            batch_size=self.optimization_config.batch_size,
-        )
-        self.log_dict(
-            {f"{prefix}_{k}_reg_NLL": v for k, v in results["losses"]["regression"].items()},
-            batch_size=self.optimization_config.batch_size,
-        )
-        self.log(
-            f"{prefix}_TTE_reg_NLL",
-            results["losses"]["time_to_event"],
-            batch_size=self.optimization_config.batch_size,
-        )
-
-        self.log(
-            f"{prefix}_loss",
-            results["loss"],
-            batch_size=self.optimization_config.batch_size,
-        )
-
-        # We'll commonly log metrics via the `self._log_metric_dict` helper, with some shared keyword
-        # arguments.
-        log_metric_kwargs = {
-            "skip_metrics": skip_metrics,
-            "prefix": prefix,
-            "on_epoch_only": on_epoch_only,
-        }
-
-        # Time-to-event
+    def log_tte_metrics(self, results: GenerativeSequenceModelOutput, split: Split):
         # The output of the model for time-to-event (and for regression targets as well) are pytorch
         # distribution objects, not scalars. So, for some evaluation metrics, we need to sample values from
         # those distributions to assess the metric.
@@ -377,8 +295,44 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
             labels=tte_labels,
             metrics=self.tte_metrics,
             measurement="TTE",
-            **log_metric_kwargs,
+            split=split,
+            cat=MetricCategories.TTE,
         )
+
+    def log_metrics(self, results: GenerativeSequenceModelOutput, split: Split):
+        """Logs metric results for a given output result.
+
+        Args:
+            `results` (`transformerForGenerativeSequenceModelOutput`):
+                The results to assess across the suite of metrics.
+            `split` (`str`): The split that should be used when logging metric results.
+        """
+
+        # We always want to log the raw loss.
+        log_kwargs = {"batch_size": self.optimization_config.batch_size, "sync_dist": True}
+        self.log(f"{split}_loss", results["loss"], **log_kwargs)
+
+        if self.metrics_config.do_log_only_loss(split):
+            return
+
+        # We start by logging the losses.
+        if self.metrics_config.do_log(split, MetricCategories.LOSS_PARTS):
+            self.log_dict(
+                {
+                    f"{split}_{k}_cls_NLL": v
+                    for k, v in results["losses"]["classification"].items()
+                },
+                **log_kwargs,
+            )
+            self.log_dict(
+                {f"{split}_{k}_reg_NLL": v for k, v in results["losses"]["regression"].items()},
+                **log_kwargs,
+            )
+            self.log(f"{split}_TTE_reg_NLL", results["losses"]["time_to_event"], **log_kwargs)
+
+        # Time-to-event
+        if self.metrics_config.do_log(split, MetricCategories.TTE):
+            self.log_tte_metrics(results, split)
 
         # Per data type
         for measurement, metrics_dict in self.metrics.items():
@@ -395,10 +349,9 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                 continue
 
             for task_type, metrics in metrics_dict.items():
-                if task_type in {
-                    DataModality.SINGLE_LABEL_CLASSIFICATION,
-                    DataModality.MULTI_LABEL_CLASSIFICATION,
-                }:
+                if task_type in self.CLASSIFICATION and self.metrics_config.do_log(
+                    split, MetricCategories.CLASSIFICATION
+                ):
                     preds = results["preds"]["classification"][measurement].logits
                     labels = results["labels"]["classification"][measurement]
 
@@ -415,10 +368,14 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         labels=labels,
                         metrics=metrics,
                         measurement=measurement,
-                        **log_metric_kwargs,
+                        split=split,
+                        cat=MetricCategories.CLASSIFICATION,
                     )
 
-                elif task_type == DataModality.MULTIVARIATE_REGRESSION:
+                elif (
+                    task_type == DataModality.MULTIVARIATE_REGRESSION
+                    and self.metrics_config.do_log(split, MetricCategories.REGRESSION)
+                ):
                     vocab_size = self.config.vocab_sizes_by_measurement[measurement]
 
                     # Here, like for TTE, we need to sample from the returned distribution before we can use
@@ -453,9 +410,13 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         labels=labels_expanded,
                         metrics=metrics,
                         measurement=measurement,
-                        **log_metric_kwargs,
+                        split=split,
+                        cat=MetricCategories.REGRESSION,
                     )
-                if task_type == DataModality.UNIVARIATE_REGRESSION:
+                elif (
+                    task_type == DataModality.UNIVARIATE_REGRESSION
+                    and self.metrics_config.do_log(split, MetricCategories.REGRESSION)
+                ):
                     # Here, like for TTE, we need to sample from the returned distribution before we can use
                     # it directly. Here we also need to limit to just those events that are actually observed.
                     # Like above, the assumption here is that preds and labels correspond to predictions for
@@ -470,7 +431,8 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         labels=labels,
                         metrics=metrics,
                         measurement=measurement,
-                        **log_metric_kwargs,
+                        split=split,
+                        cat=MetricCategories.REGRESSION,
                     )
 
     def training_step(self, batch: PytorchBatch, batch_idx: int) -> torch.Tensor:
@@ -479,9 +441,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         Skips logging all AUROC, AUPRC, and per_class metric to save compute.
         """
         out = self.model(batch)
-        self.log_metrics(
-            out, skip_metrics=self.TRAIN_SKIP_METRICS, prefix="train", on_epoch_only=True
-        )
+        self.log_metrics(out, split=Split.TRAIN)
 
         return out["loss"]
 
@@ -491,7 +451,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         Differs from training only in that it does not skip metrics.
         """
         out = self.model(batch)
-        self.log_metrics(out, skip_metrics=[], prefix="tuning", on_epoch_only=True)
+        self.log_metrics(out, split=Split.TUNING)
 
     def test_step(self, batch: PytorchBatch, batch_idx: int):
         """Validation step.
@@ -499,7 +459,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         Differs from training only in that it does not skip metrics.
         """
         out = self.model(batch)
-        self.log_metrics(out, skip_metrics=[], prefix="held_out", on_epoch_only=True)
+        self.log_metrics(out, split=Split.HELD_OUT)
 
     def configure_optimizers(self):
         """Configures optimizer and learning rate scheduler.
@@ -567,7 +527,6 @@ def train(cfg: PretrainConfig, return_early: bool = False):
 
     Args: TODO
     """
-    print("HELLO!!")
     cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
@@ -582,21 +541,24 @@ def train(cfg: PretrainConfig, return_early: bool = False):
     config.set_to_dataset(train_pyd)
     optimization_config.set_to_dataset(train_pyd)
 
-    # We don't have 'do_overwrite' support in this class.
-    config_fp = cfg.save_dir / "config.json"
-    if config_fp.exists() and not cfg.do_overwrite:
-        raise FileExistsError(f"{config_fp} already exists!")
-    else:
-        print(f"Writing to {config_fp}")
-        config.to_json_file(config_fp)
+    if os.environ.get("LOCAL_RANK", "0") == "0":
+        print("Saving config files...")
+        config_fp = cfg.save_dir / "config.json"
+        if config_fp.exists() and not cfg.do_overwrite:
+            raise FileExistsError(f"{config_fp} already exists!")
+        else:
+            print(f"Writing to {config_fp}")
+            config.to_json_file(config_fp)
 
-    data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
-    optimization_config.to_json_file(
-        cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
-    )
-    metrics_config.to_json_file(
-        cfg.save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite
-    )
+        data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
+        optimization_config.to_json_file(
+            cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
+        )
+        metrics_config.to_json_file(
+            cfg.save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite
+        )
+
+    torch.multiprocessing.set_sharing_strategy("file_system")
 
     # Model
     LM = ESTForGenerativeSequenceModelingLM(
@@ -680,51 +642,12 @@ def train(cfg: PretrainConfig, return_early: bool = False):
         )
 
     # Fitting model
-    n_attempts = 0
-    while n_attempts < 5:
-        n_attempts += 1
-        try:
-            trainer = L.Trainer(**trainer_kwargs)
-            trainer.fit(
-                model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader
-            )
-            LM.save_pretrained(cfg.save_dir)
-
-            break
-        except RuntimeError as e:
-            if n_attempts >= 5:
-                raise
-
-            print(
-                f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
-                "accumulation..."
-            )
-            trainer_kwargs["accumulate_grad_batches"] = (
-                trainer_kwargs.get("accumulate_grad_batches", 1) * 2
-            )
-            optimization_config.gradient_accumulation = trainer_kwargs["accumulate_grad_batches"]
-            optimization_config.batch_size = optimization_config.batch_size // 2
-            optimization_config.to_json_file(
-                cfg.save_dir / "optimization_config.json", do_overwrite=True
-            )
-
-            train_dataloader = torch.utils.data.DataLoader(
-                train_pyd,
-                batch_size=optimization_config.batch_size,
-                num_workers=cfg.num_dataloader_workers,
-                collate_fn=train_pyd.collate,
-                shuffle=True,
-            )
-            tuning_dataloader = torch.utils.data.DataLoader(
-                tuning_pyd,
-                batch_size=optimization_config.batch_size // 2,
-                num_workers=cfg.num_dataloader_workers,
-                collate_fn=tuning_pyd.collate,
-                shuffle=False,
-            )
+    trainer = L.Trainer(**trainer_kwargs)
+    trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
+    LM.save_pretrained(cfg.save_dir)
 
     if cfg.do_final_validation_on_metrics:
-        trainer.validate(model=LM, dataloaders=tuning_dataloader)
-        trainer.test(model=LM, dataloaders=held_out_dataloader)
+        tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader, devices=1)
+        test_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader, devices=1)
 
-    return config, LM
+    return tuning_metrics["tuning_loss"], tuning_metrics, test_metrics

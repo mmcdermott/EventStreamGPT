@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+
+try:
+    import stackprinter
+
+    stackprinter.set_excepthook(style="darkbg2")
+except ImportError:
+    pass  # no need to fail because of missing dev dependency
+
 import hydra
 import wandb
 from omegaconf import DictConfig
