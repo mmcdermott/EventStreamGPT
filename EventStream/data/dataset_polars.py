@@ -24,7 +24,7 @@ from .vocabulary import Vocabulary
 pl.toggle_string_cache(True)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class Query:
     connection_uri: str
     query: str | Path | list[str | Path]
@@ -32,6 +32,7 @@ class Query:
     partition_num: int | None = None
     protocol: str = "binary"
 
+    def __str__(self): return f"Query(\"{self.query}\")"
 
 DF_T = Union[pl.LazyFrame, pl.DataFrame, pl.Expr, pl.Series]
 INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame, Query]
@@ -81,7 +82,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         subject_ids_map: dict[Any, int] | None = None,
         subject_id_dtype: Any | None = None,
         filter_on: dict[str, bool | list[Any]] | None = None,
-    ) -> DF_T:
+        subject_id_source_col: str | None = None,
+    ) -> DF_T | tuple[DF_T, str]:
         """Loads an input dataframe into the format expected by the processing library."""
         if subject_id_col is None:
             if subject_ids_map is not None:
@@ -110,8 +112,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pass
             case Query() as q:
                 query = q.query
-                if type(query) is not list:
-                    query = [query]
+                if not isinstance(query, (list, tuple)): query = [query]
+
                 out_query = []
                 for qq in query:
                     if type(qq) is Path:
@@ -121,17 +123,26 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                         raise ValueError(f"{type(qq)} is an invalid query.")
                     out_query.append(qq)
 
-                partition_on = subject_id_col if q.partition_on is None else q.partition_on
-                partition_num = (
-                    multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
-                )
+                if len(out_query) == 1:
+                    partition_kwargs = {
+                        'partition_on': subject_id_col if q.partition_on is None else q.partition_on,
+                        'partition_num': (
+                            multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
+                        ),
+                    }
+                elif q.partition_on is not None or q.partition_num is not None:
+                    raise ValueError(
+                        "Partitioning ({q.partition_on}, {q.partition_num}) not supported when "
+                        "passing multiple queries ({out_query})"
+                    )
+                else:
+                    partition_kwargs = {}
 
                 df = pl.read_database(
-                    query=q.query,
+                    query=out_query,
                     connection_uri=q.connection_uri,
-                    partition_on=partition_on,
-                    partition_num=partition_num,
                     protocol=q.protocol,
+                    **partition_kwargs
                 ).lazy()
             case _:
                 raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
@@ -141,10 +152,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if filter_on:
             df = cls._filter_col_inclusion(df, filter_on)
 
-        if subject_id_col is None:
-            df = df.with_row_count("subject_id")
-            col_exprs.append("subject_id")
+        if subject_id_source_col is not None:
+            internal_subj_key = "subject_id"
+            while internal_subj_key in df.columns:
+                internal_subj_key = f"_{internal_subj_key}"
+            df = df.with_row_count(internal_subj_key)
+            col_exprs.append(internal_subj_key)
         else:
+            assert subject_id_col is not None
             df = df.with_columns(pl.col(subject_id_col).cast(pl.Utf8).cast(pl.Categorical))
             df = cls._filter_col_inclusion(df, {subject_id_col: list(subject_ids_map.keys())})
             col_exprs.append(
@@ -163,7 +178,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case InputDataType.BOOLEAN:
                     col_exprs.append(pl.col(in_col).cast(pl.Boolean, strict=False))
                 case InputDataType.TIMESTAMP:
-                    col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=False))
+                    col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=True))
                 case (InputDataType.TIMESTAMP, str() as ts_format):
                     col_exprs.append(
                         pl.col(in_col).str.strptime(pl.Datetime, ts_format, strict=False)
@@ -171,7 +186,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case _:
                     raise ValueError(f"Invalid out data type {out_dt}!")
 
-        return df.select(col_exprs)
+        if subject_id_source_col is not None:
+            df = df.select(col_exprs).collect()
+
+            ID_map = {o: n for o, n in zip(df[subject_id_source_col], df[internal_subj_key])}
+            df = df.with_columns(pl.col(internal_subj_key).alias('subject_id'))
+            return df, ID_map
+        else:
+            return df.select(col_exprs)
 
     @classmethod
     def resolve_ts_col(

@@ -94,7 +94,7 @@ class InputDFSchema(JSONableMixin):
     ts_col: DF_COL | None = None
     start_ts_col: DF_COL | None = None
     end_ts_col: DF_COL | None = None
-    ts_format: str | None = "%Y-%m-%d %H:%M:%S"
+    ts_format: str | None = None
     start_ts_format: str | None = None
     end_ts_format: str | None = None
 
@@ -183,8 +183,8 @@ class InputDFSchema(JSONableMixin):
                         )
                     case _:
                         raise TypeError(
-                            "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) for "
-                            f"ranges. Got {self.event_type}."
+                            "event_type must be a string or a 3-element tuple (eq_type, st_type, end_type) "
+                            f"for ranges. Got {self.event_type}."
                         )
 
                 if self.data_schema is not None:
@@ -222,20 +222,36 @@ class InputDFSchema(JSONableMixin):
                         raise ValueError(
                             "If end_ts_format is specified, start_ts_format must also be specified!"
                         )
-                    if self.ts_format is None:
-                        raise ValueError(
-                            "If start_ts_format is not specified, ts_format must be specified!"
-                        )
+
                     self.start_ts_format = self.ts_format
                     self.end_ts_format = self.ts_format
                     self.ts_format = None
 
+        # This checks validity.
+        self.columns_to_load
+
     @property
     def columns_to_load(self) -> list[tuple[str, InputDataType]]:
-        columns_to_load = []
+        columns_to_load = {}
 
         for in_col, (out_col, dt) in self.unified_schema.items():
-            columns_to_load.append((in_col, dt))
+            if in_col in columns_to_load: raise ValueError(f"Duplicate column {in_col}!")
+            columns_to_load[in_col] = dt
+
+        if self.type == InputDFType.RANGE:
+            for in_col, (out_col, dt) in self.unified_start_schema.items():
+                if in_col in columns_to_load:
+                    if dt != columns_to_load[in_col]:
+                        raise ValueError(f"Duplicate column {in_col} with differing dts!")
+                else: columns_to_load[in_col] = dt
+            for in_col, (out_col, dt) in self.unified_end_schema.items():
+                if in_col in columns_to_load:
+                    if dt != columns_to_load[in_col]:
+                        raise ValueError(f"Duplicate column {in_col} with differing dts!")
+                else: columns_to_load[in_col] = dt
+
+
+        columns_to_load = list(columns_to_load.items())
 
         for param, fmt_param in [
             ("start_ts_col", "start_ts_format"),
@@ -243,7 +259,12 @@ class InputDFSchema(JSONableMixin):
             ("ts_col", "ts_format"),
         ]:
             val = getattr(self, param)
-            fmt = (InputDataType.TIMESTAMP, getattr(self, fmt_param))
+            fmt_param = getattr(self, fmt_param)
+            if fmt_param is None:
+                fmt = InputDataType.TIMESTAMP
+            else:
+                fmt = (InputDataType.TIMESTAMP, fmt_param)
+
             match val:
                 case list():
                     columns_to_load.extend([(c, fmt) for c in val])
@@ -871,8 +892,7 @@ class DatasetConfig(JSONableMixin):
         cls,
         dynamic_measurement_columns: Sequence[str | tuple[str, str]] | None = None,
         static_measurement_columns: Sequence[str] | None = None,
-        time_dependent_measurement_columns: None
-        | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
+        time_dependent_measurement_columns: None | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
         **kwargs,
     ) -> DatasetConfig:
         """Builds an appropriate configuration object given a simple list of columns:
@@ -904,20 +924,19 @@ class DatasetConfig(JSONableMixin):
 
         if dynamic_measurement_columns is not None:
             for measurement in dynamic_measurement_columns:
-                if type(measurement) is tuple:
-                    measurement, val_col = measurement
-                    col_cfg = MeasurementConfig(
-                        modality=DataModality.MULTIVARIATE_REGRESSION,
-                        temporality=TemporalityType.DYNAMIC,
-                        values_column=val_col,
-                    )
-                else:
-                    col_cfg = MeasurementConfig(
-                        modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-                        temporality=TemporalityType.DYNAMIC,
-                    )
+                col_kwargs = {'temporality': TemporalityType.DYNAMIC}
+                col_name = None
+                match measurement:
+                    case (None, str() as col_name): 
+                        col_kwargs['modality'] = DataModality.UNIVARIATE_REGRESSION
+                    case (str() as col_name, str() as val_col):
+                        col_kwargs['modality'] = DataModality.MULTIVARIATE_REGRESSION
+                        col_kwargs['values_column'] = val_col
+                    case str() as col_name:
+                        col_kwargs['modality'] = DataModality.MULTI_LABEL_CLASSIFICATION
+                    case _: raise TypeError(f"{measurement} is of incorrect type!")
 
-                measurement_configs[measurement] = col_cfg
+                measurement_configs[col_name] = MeasurementConfig(**col_kwargs)
 
         if static_measurement_columns is not None:
             for measurement in static_measurement_columns:

@@ -138,17 +138,15 @@ class DatasetBase(
 
     @classmethod
     def build_subjects_dfs(cls, schema: InputDFSchema) -> tuple[DF_T, dict[Hashable, int]]:
-        df = cls._load_input_df(
+        return cls._load_input_df(
             schema.input_df,
             [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
             filter_on=schema.filter_on,
-        ).collect()
+            subject_id_source_col=schema.subject_id_col,
+        )
 
-        return df, {o: n for o, n in zip(df[schema.subject_id_col], df["subject_id"])}
-
-    @classmethod
     def build_event_and_measurement_dfs(
-        cls,
+        self,
         subject_ids_map: dict[Any, int],
         subject_id_col: str,
         subject_id_dtype: Any,
@@ -157,23 +155,27 @@ class DatasetBase(
         all_events_and_measurements = []
         event_types = []
 
-        for df, schemas in schemas_by_df.items():
+        for df, schemas in self._tqdm(list(schemas_by_df.items()), desc="Input DataFrames"):
             all_columns = []
 
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
-            df = cls._load_input_df(
-                df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype
-            )
+            try:
+                df = self._load_input_df(
+                    df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype
+                )
+            except:
+                print(f"Errored out reading\n{df}")
+                raise
 
             for schema in schemas:
                 if schema.filter_on:
-                    df = cls._filter_col_inclusion(schema.filter_on)
+                    df = self._filter_col_inclusion(schema.filter_on)
                 match schema.type:
                     case InputDFType.EVENT:
-                        df = cls.resolve_ts_col(df, schema.ts_col, "timestamp")
+                        df = self.resolve_ts_col(df, schema.ts_col, "timestamp")
                         all_events_and_measurements.append(
-                            cls.process_events_and_measurements_df(
+                            self.process_events_and_measurements_df(
                                 df=df,
                                 event_type=schema.event_type,
                                 columns_schema=schema.unified_schema,
@@ -181,11 +183,11 @@ class DatasetBase(
                         )
                         event_types.append(schema.event_type)
                     case InputDFType.RANGE:
-                        df = cls.resolve_ts_col(df, schema.start_ts_col, "start_time")
-                        df = cls.resolve_ts_col(df, schema.end_ts_col, "end_time")
-                        for et, sp_df in zip(schema.event_type, cls.split_range_events_df(df=df)):
+                        df = self.resolve_ts_col(df, schema.start_ts_col, "start_time")
+                        df = self.resolve_ts_col(df, schema.end_ts_col, "end_time")
+                        for et, sp_df in zip(schema.event_type, self.split_range_events_df(df=df)):
                             all_events_and_measurements.append(
-                                cls.process_events_and_measurements_df(
+                                self.process_events_and_measurements_df(
                                     sp_df, columns_schema=schema.unified_schema, event_type=et
                                 )
                             )
@@ -196,7 +198,12 @@ class DatasetBase(
         all_events, all_measurements = [], []
         running_event_id_max = 0
         for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
-            new_events = cls._inc_df_col(events, "event_id", running_event_id_max)
+            try:
+                new_events = self._inc_df_col(events, "event_id", running_event_id_max)
+            except:
+                print(f"Failed to increment event_id on {event_type}")
+                raise
+
             if len(new_events) == 0:
                 print(f"Empty new events dataframe of type {event_type}!")
                 continue
@@ -204,12 +211,12 @@ class DatasetBase(
             all_events.append(new_events)
             if measurements is not None:
                 all_measurements.append(
-                    cls._inc_df_col(measurements, "event_id", running_event_id_max)
+                    self._inc_df_col(measurements, "event_id", running_event_id_max)
                 )
 
             running_event_id_max = all_events[-1]["event_id"].max() + 1
 
-        return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
+        return self._concat_dfs(all_events), self._concat_dfs(all_measurements)
 
     @classmethod
     def _get_metadata_model(
