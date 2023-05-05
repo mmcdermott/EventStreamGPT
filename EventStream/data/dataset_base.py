@@ -1,5 +1,6 @@
 import abc
 import copy
+import humanize
 import itertools
 from collections import defaultdict
 from collections.abc import Hashable, Sequence
@@ -1051,6 +1052,11 @@ class DatasetBase(
         do_print_measurement_summaries: bool = True,
         viz_config: Visualizer | None = None,
     ) -> list[Figure] | None:
+        print(
+            f"Dataset has {humanize.intword(len(self.subjects_df))} subjects, "
+            f"with {humanize.intword(len(self.events_df))} events and "
+            f"{humanize.intword(len(self.dynamic_measurements_df))} measurements."
+        )
         if do_print_measurement_summaries:
             print(f"Dataset has {len(self.measurement_configs)} measurements:")
             for meas, cfg in self.measurement_configs.items():
