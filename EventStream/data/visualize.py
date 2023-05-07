@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
@@ -15,9 +15,9 @@ from ..utils import JSONableMixin
 class Visualizer(JSONableMixin):
     """This class helps visualize `Dataset` objects. It is both a configuration object and performs
     the actual data manipulations for final visualization, interfacing only with the `Dataset`
-    object to obtain appropriately sampled and processed cuts of the data to visualize. It
-    currently produces the following plots. All plots are broken down by `static_covariates`, which
-    are covariates that are constant for each subject.
+    object to obtain appropriately sampled and processed cuts of the data to visualize. It currently
+    produces the following plots. All plots are broken down by `static_covariates`, which are
+    covariates that are constant for each subject.
 
     ## Analyzing the data over time (only produced if `plot_by_time` is True)
     Given an $x$-axis of time $t$, the following plots are produced:

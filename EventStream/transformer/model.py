@@ -1,6 +1,3 @@
-import pickle
-from typing import Dict, Optional, Set, Tuple, Union
-
 import torch
 
 from ..data.data_embedding_layer import MeasIndexGroupOptions
@@ -103,9 +100,9 @@ class GenerativeOutputLayer(torch.nn.Module):
                 The final encodings _to be used to predict the time from the event at that position to the
                 subsequent event_. For example, the vector `encoded[i][j]` (which is of size `hidden_dim` and
                 corresponds to event `j` for batch element `i`) is
-                _not_ used to predict the time from event `j-1` to event `j`, but rather is used to predict the
-                time from event `j` to event `j+1` (all for batch index `i`, of course). _Note that this is
-                shifted from how `encoded` is used in other functions in this class._
+                _not_ used to predict the time from event `j-1` to event `j`, but rather is used to predict
+                the time from event `j` to event `j+1` (all for batch index `i`, of course). _Note that this
+                is shifted from how `encoded` is used in other functions in this class._
 
         Returns:
             `TTE_LL` (`torch.FloatTensor`):
@@ -131,8 +128,6 @@ class GenerativeOutputLayer(torch.nn.Module):
         TTE_true = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
 
         if TTE_true.min() <= 0:
-            with open("/home/mu363/tmp.pkl", mode="wb") as f:
-                pickle.dump((self, TTE_true, batch), f)
             raise ValueError("TTE_true should be > 0!")
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
@@ -191,7 +186,8 @@ class GenerativeOutputLayer(torch.nn.Module):
                 used to form classification predictions corresponding to batch element `i` at sequence
                 position `j`.
             `valid_measurements` (`Set[str]`):
-                The classification measurements in the batch that should be predicted from this input `encoded`.
+                The classification measurements in the batch that should be predicted from this input
+                `encoded`.
             `event_type_mask_per_measurement` (`Optional[Dict[str, torch.BoolTensor]]`, defaults to None):
                 A dictionary from measurement to a tensor of shape `[batch_size, sequence_length]` such that
                 `event_type_mask_per_measurement[measurement][i][j]` is `True` if the event at batch index `i`
@@ -218,8 +214,8 @@ class GenerativeOutputLayer(torch.nn.Module):
             `classification_dists_by_measurement` (`Dict[str, torch.FloatTensor]`):
                 A dictionary from `measurement` to classification distributions of shape
                 `[batch_size X sequence_length X vocabulary_size]` or `[batch_size X sequence_length]`
-                reflecting the probabilities for each event for that measurement. Returns scores for all events,
-                even those that are masked, including the final event.
+                reflecting the probabilities for each event for that measurement. Returns scores for all
+                events, even those that are masked, including the final event.
             `classification_labels_by_measurement` (`Dict[str, Union[torch.LongTensor, torch.FloatTensor]]`):
                 A dictionary from `measurement` to tensors of one of two types:
                   * For multi-label measurements, returns FloatTensors of shape
@@ -375,8 +371,9 @@ class GenerativeOutputLayer(torch.nn.Module):
                   2. Per-event NLLs are averaged over unmasked events with labels per batch element.
                   3. NLL is macro-averaged over the batch.
             `regression_dists` (`Dict[str, torch.distributions.Distribution]`):
-                A dictionary from `measurement` to torch distributions modelling the regression targets for each
-                data element in each event. In particular, samples from these distributions will have shape
+                A dictionary from `measurement` to torch distributions modelling the regression targets for
+                each data element in each event. In particular, samples from these distributions will have
+                shape
                 `[batch_size, sequence_length, num_data_elements_per_event]`, such that `sample[i][j][k]` will
                 correspond to a prediction for the regression target indexed by
                 `batch['dynamic_indices'][i][j][k]`.

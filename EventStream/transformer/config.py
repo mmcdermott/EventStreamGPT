@@ -3,7 +3,7 @@ import enum
 import itertools
 import math
 from collections.abc import Hashable
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Union
 
 from transformers import PretrainedConfig
 
@@ -403,7 +403,8 @@ class StructuredTransformerConfig(PretrainedConfig):
             `[[["global", "local"], 12]]` Choose the value of `attention_type` from `["global", "local"]`
         seq_window_size (`int`, *optional*, defaults to `32`):
             The window size used in local attention for sequence self attention layers.
-        dep_graph_attention_types (`Optional[List]`, *optional*, defaults to `[[["global"], num_hidden_layers]]`):
+        dep_graph_attention_types
+            (`Optional[List]`, *optional*, defaults to `[[["global"], num_hidden_layers]]`):
             The type of attention for each dependency graph self attention layer in a `List` of the following
             format `[[["attention_type"], num_layerss]]` e.g. for a 24 layer model `[[["global"], 24]]` or
             `[[["global", "local"], 12]]` Choose the value of `attention_type` from `["global", "local"]`.
@@ -417,7 +418,8 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_full_block_in_dep_graph_attention (`Optional[bool]`, *optional*, defaults to True):
             If true, use a full attention block (including layer normalization and MLP layers) for the
             dependency graph processing module. If false, just use a self attention layer.
-        do_add_temporal_position_embeddings_to_data_embeddings (`Optional[bool]`, *optional*, defaults to False):
+        do_add_temporal_position_embeddings_to_data_embeddings
+            (`Optional[bool]`, *optional*, defaults to False):
             If true, the input layer will add the temporal embeddings to all elements of the data embeddings.
             This functionally adds temporal position embeddings into the inputs for the first sequence layer.
 
@@ -719,7 +721,10 @@ class StructuredTransformerConfig(PretrainedConfig):
         missing_param_err_tmpl = (
             f"For a {TTE_generation_layer_type} model, {{}} should not be None"
         )
-        extra_param_err_tmpl = f"WARNING: For a {TTE_generation_layer_type} model, {{}} is not used; got {{}}. Setting to None."
+        extra_param_err_tmpl = (
+            f"WARNING: For a {TTE_generation_layer_type} model, {{}} is not used; got {{}}. "
+            "Setting to None."
+        )
         match TTE_generation_layer_type:
             case TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
                 if TTE_lognormal_generation_num_components is None:

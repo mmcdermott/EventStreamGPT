@@ -1,5 +1,5 @@
 import enum
-from typing import List, Optional, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -320,8 +320,8 @@ class DataEmbeddingLayer(torch.nn.Module):
     def split_batch_into_measurement_index_buckets(
         self, batch: PytorchBatch
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Splits the batch into groups of measurement indices, and returns the indices, values,
-        and measurement indices for each bucket.
+        """Splits the batch into groups of measurement indices, and returns the indices, values, and
+        measurement indices for each bucket.
 
         Args:
             `batch` (`PytorchBatch`): A batch of data.

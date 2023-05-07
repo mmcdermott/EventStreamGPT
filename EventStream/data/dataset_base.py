@@ -1,12 +1,12 @@
 import abc
 import copy
-import humanize
 import itertools
 from collections import defaultdict
 from collections.abc import Hashable, Sequence
 from pathlib import Path
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Generic, TypeVar
 
+import humanize
 import numpy as np
 import pandas as pd
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
@@ -104,8 +104,8 @@ class DatasetBase(
     ) -> tuple[DF_T, DF_T, DF_T]:
         """Performs the following steps:
 
-        1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
-           timestamps, respectively.
+        1. Produces unified start and end timestamp columns representing the minimum of the passed start and
+           end timestamps, respectively.
         2. Filters out records where the end timestamp is earlier than the start timestamp.
         3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
            `'timestamp'`:
@@ -165,9 +165,8 @@ class DatasetBase(
                 df = self._load_input_df(
                     df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype
                 )
-            except:
-                print(f"Errored out reading\n{df}")
-                raise
+            except Exception as e:
+                raise ValueError(f"Errored while loading {df}") from e
 
             for schema in schemas:
                 if schema.filter_on:
@@ -201,9 +200,8 @@ class DatasetBase(
         for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
             try:
                 new_events = self._inc_df_col(events, "event_id", running_event_id_max)
-            except:
-                print(f"Failed to increment event_id on {event_type}")
-                raise
+            except Exception as e:
+                raise ValueError(f"Failed to increment event_id on {event_type}") from e
 
             if len(new_events) == 0:
                 print(f"Empty new events dataframe of type {event_type}!")
@@ -600,8 +598,8 @@ class DatasetBase(
         subject_id: Hashable | None = None,
     ) -> DF_T:
         """Returns a subframe of `self.dynamic_measurements_df` corresponding to events following
-        input constraints. The index returned is in the same order as
-        `self.dynamic_measurements_df` as of the time of the function call.
+        input constraints. The index returned is in the same order as `self.dynamic_measurements_df`
+        as of the time of the function call.
 
         Args:
             * `event_types` (`Optional[Sequence[str]]`), *optional*, defaults to `None`:

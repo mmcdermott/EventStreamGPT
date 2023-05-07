@@ -1,7 +1,6 @@
 import dataclasses
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import lightning as L
 import omegaconf
@@ -10,7 +9,6 @@ import torch
 from tqdm.auto import tqdm
 
 from ..data.config import PytorchDatasetConfig
-from ..data.dataset_polars import Dataset
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass
 from .config import StructuredEventProcessingMode, StructuredTransformerConfig
@@ -145,7 +143,7 @@ def get_embeddings(cfg: GetEmbeddingsConfig, return_early: bool = False):
     cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
     embeddings_fps = [cfg.save_dir / f"{split}.pt" for split in cfg.splits]
-    all_present = all([fp.is_file() for fp in embeddings_fps])
+    all([fp.is_file() for fp in embeddings_fps])
 
     if cfg.do_load_only:
         for fp in embeddings_fps:

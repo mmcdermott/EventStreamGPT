@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
@@ -105,11 +105,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
             the event is not present, all predictions will be zero.
         `regression` (`Dict[str, torch.FloatTensor]`, default: None):
             Shape: {measurement: [batch_size, n_regression_targets]}
-            If a prediction for measurement is present, then at that key, the tensor contains the floating-point
-            predictions for that measurement. If an event is not present, predictions will be zero. Predictions
-            are ordered in accordance with the index-labels (starting at zero) for the data-type vocabulary
-            contained in regression_indices. If regression_indices is `None`, predictions span the entire
-            vocabulary in vocabulary order.
+            If a prediction for measurement is present, then at that key, the tensor contains the
+            floating-point predictions for that measurement. If an event is not present, predictions will be
+            zero. Predictions are ordered in accordance with the index-labels (starting at zero) for the
+            data-type vocabulary contained in regression_indices. If regression_indices is `None`, predictions
+            span the entire vocabulary in vocabulary order.
         `regression_indices` (`Dict[str, torch.LongTensor]`, default: None):
             Shape: {measurement: [batch_size, n_regression_targets]}
             Contains the indices for which `self.regression` contains predictions for each data type. If

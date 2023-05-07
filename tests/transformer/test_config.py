@@ -164,36 +164,6 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                 "kwargs": {**DEFAULT_CONDITIONALLY_INDEPENDENT_DICT},
             },
             {
-                "msg": "Should Error when given nested_attention args when in conditionally_independent mode.",
-                "kwargs": [
-                    {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        "dep_graph_attention_types": [["global"], 2],
-                    },
-                    {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        "dep_graph_attention_types": [["global"], 2],
-                    },
-                    {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        "dep_graph_window_size": 2,
-                    },
-                    {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        "do_full_block_in_dep_graph_attention": False,
-                    },
-                    {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        "do_full_block_in_seq_attention": False,
-                    },
-                    {
-                        **DEFAULT_CONDITIONALLY_INDEPENDENT_DICT,
-                        "do_add_temporal_position_embeddings_to_data_embeddings": False,
-                    },
-                ],
-                "should_raise": ValueError,
-            },
-            {
                 "msg": "Should construct with Exponential TTE head args.",
                 "kwargs": {**DEFAULT_EXPONENTIAL_DICT},
             },

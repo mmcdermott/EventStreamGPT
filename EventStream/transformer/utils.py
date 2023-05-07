@@ -1,6 +1,6 @@
 import inspect
 from collections.abc import Sequence
-from typing import Tuple, Union
+from typing import Union
 
 import torch
 
@@ -41,8 +41,8 @@ def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> tuple[torch.Tens
 
 def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Produces a weighted average of the last dimension of `X`, weighted by the weights in
-    `weights` (which must be the same shape as `X`), except in the case where the sum of the
-    weights is 0, in which case the output returned is zero.
+    `weights` (which must be the same shape as `X`), except in the case where the sum of the weights
+    is 0, in which case the output returned is zero.
 
     Also returns the sum of the weights. `weights` must be >= 0.
     """
@@ -96,7 +96,8 @@ def idx_distribution(
 
     Args:
         `D` (`torch.distributions.Distribution`): The distribution to slice.
-        `index` (`Union[INDEX_SELECT_T, Sequence[INDEX_SELECT_T]]`): The index or slice to apply to the parameters.
+        `index` (`Union[INDEX_SELECT_T, Sequence[INDEX_SELECT_T]]`):
+            The index or slice to apply to the parameters.
     """
     if not isinstance(index, tuple):
         index = (index,)

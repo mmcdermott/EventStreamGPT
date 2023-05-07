@@ -1,8 +1,10 @@
-# Sourced from https://raw.githubusercontent.com/huggingface/transformers/v4.23.1/src/transformers/generation_utils.py
+# Sourced from
+# https://raw.githubusercontent.com/huggingface/transformers/v4.23.1/src/transformers/generation_utils.py
 # Then modified.
 
 # coding=utf-8
-# Copyright 2020 The Google AI Language Team Authors, Facebook AI Research authors and The HuggingFace Inc. team.
+# Copyright 2020 The Google AI Language Team Authors, Facebook AI Research authors and The HuggingFace Inc.
+# team.
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +23,7 @@ import logging
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import pandas as pd
 import torch
@@ -232,11 +234,12 @@ class StructuredGenerationMixin:
                         else "outputs processor"
                     )
                     raise ValueError(
-                        f"A custom {object_type} of type {type(custom)} with values {custom} has been passed to"
-                        f" `generate`, but it has already been created with the values {default}. {default} has been"
-                        " created by passing the corresponding arguments to generate or by the model's config default"
-                        f" values. If you just want to change the default values of {object_type} consider passing"
-                        f" them as arguments to `generate` instead of using a custom {object_type}."
+                        f"A custom {object_type} of type {type(custom)} with values {custom} was passed to"
+                        f" `generate`, but it was created with the values {default}. {default} has been"
+                        " created by passing the corresponding arguments to generate or by the model's config"
+                        f" default values. If you just want to change the default values of {object_type}"
+                        " consider passing them as arguments to `generate` instead of using a custom"
+                        f" {object_type}."
                     )
         default_list.extend(custom_list)
         return default_list
@@ -304,8 +307,8 @@ class StructuredGenerationMixin:
             ):
                 The number of independently computed returned sequences for each element in the batch.
             max_time(`float`, *optional*):
-                The maximum amount of time you allow the computation to run for in seconds. generation will still
-                finish the current pass after allocated time has been passed.
+                The maximum amount of time you allow the computation to run for in seconds. generation will
+                still finish the current pass after allocated time has been passed.
             attention_mask (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
                 Mask to avoid performing attention on padding token indices. Mask values are in `[0, 1]`, 1
                 for tokens that are not masked, and 0 for masked tokens. If not provided, will default to a
@@ -419,18 +422,18 @@ class StructuredGenerationMixin:
         if max_length is None and max_new_events is None:
             warnings.warn(
                 "Neither `max_length` nor `max_new_events` has been set, `max_length` will default to "
-                f"{self.config.max_length} (`self.config.max_length`). Controlling `max_length` via the config is "
-                "deprecated and `max_length` will be removed from the config in v5 of Transformers -- we recommend "
-                "using `max_new_events` to control the maximum length of the generation.",
+                f"{self.config.max_length} (`self.config.max_length`). Controlling `max_length` via the "
+                "config is deprecated and `max_length` will be removed from the config in v5 of Transformers "
+                "-- we recommend using `max_new_events` to control the maximum length of the generation.",
                 UserWarning,
             )
         elif max_length is None and max_new_events is not None:
             max_length = max_new_events + input_seq_length
         elif max_length is not None and max_new_events is not None:
             raise ValueError(
-                "Both `max_new_events` and `max_length` have been set but they serve the same purpose -- setting a"
-                " limit to the generated output length. Remove one of those arguments. Please refer to the"
-                " documentation for more information. "
+                "Both `max_new_events` and `max_length` have been set but they serve the same purpose -- "
+                "setting a limit to the generated output length. Remove one of those arguments. Please "
+                "refer to the documentation for more information. "
                 "(https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)"
             )
         # default to config if still None
@@ -534,26 +537,28 @@ class StructuredGenerationMixin:
             batch (`PytorchBatch`):
                 The sequence used as a prompt for the generation.
             outputs_processor (`OutputsProcessorList`, *optional*):
-                An instance of [`OutputsProcessorList`]. List of instances of class derived from [`OutputsProcessor`]
-                used to modify the prediction scores of the language modeling head applied at each generation step.
+                An instance of [`OutputsProcessorList`]. List of instances of class derived from
+                [`OutputsProcessor`] used to modify the prediction scores of the language modeling head
+                applied at each generation step.
             stopping_criteria (`StoppingCriteriaList`, *optional*):
-                An instance of [`StoppingCriteriaList`]. List of instances of class derived from [`StoppingCriteria`]
-                used to tell if the generation loop should stop.
+                An instance of [`StoppingCriteriaList`]. List of instances of class derived from
+                [`StoppingCriteria`] used to tell if the generation loop should stop.
             output_attentions (`bool`, *optional*, defaults to `False`):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more details.
+                Whether or not to return the attentions tensors of all attention layers. See `attentions`
+                under returned tensors for more details.
             output_hidden_states (`bool`, *optional*, defaults to `False`):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
-                for more details.
+                Whether or not to return the hidden states of all layers. See `hidden_states` under returned
+                tensors for more details.
             output_scores (`bool`, *optional*, defaults to `False`):
-                Whether or not to return the prediction scores. See `scores` under returned tensors for more details.
+                Whether or not to return the prediction scores. See `scores` under returned tensors for more
+                details.
             return_dict_in_generate (`bool`, *optional*, defaults to `False`):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
             synced_gpus (`bool`, *optional*, defaults to `False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
             model_kwargs:
-                Additional model specific keyword arguments will be forwarded to the `forward` function of the model.
-                If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
+                Additional model specific keyword arguments will be forwarded to the `forward` function of the
+                model. If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
         """
         assert sample_fn in ("greedy", "sample")
         assert (

@@ -19,8 +19,8 @@ from ..mixins import MLTypeEqualityCheckableMixin
 
 class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
     def test_expand_indexed_regression(self):
-        """`expand_indexed_regression` should convert a sparse tensor of values & indices to a
-        dense one."""
+        """`expand_indexed_regression` should convert a sparse tensor of values & indices to a dense
+        one."""
         X = torch.Tensor(
             [
                 [1, 3.4],

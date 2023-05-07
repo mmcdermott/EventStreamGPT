@@ -7,7 +7,7 @@ import unittest
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import pandas as pd
 

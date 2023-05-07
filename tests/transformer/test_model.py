@@ -61,7 +61,7 @@ BASE_CONFIG_KWARGS = dict(
 
 BASE_BATCH = {
     "event_mask": torch.BoolTensor([[True, True, True]]),
-    "time": torch.FloatTensor([[0, 2, 5]]),
+    "time_delta": torch.FloatTensor([[2, 3, 1]]),
     "dynamic_values_mask": torch.BoolTensor(
         [
             [
@@ -582,8 +582,8 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                     ),
                 },
                 "want_labels": {
-                    # Labels ignore event_mask, and only respect data mask and dynamic_measurement_indices, so these are
-                    # unchanged from the prior test.
+                    # Labels ignore event_mask, and only respect data mask and dynamic_measurement_indices, so
+                    # these are unchanged from the prior test.
                     "event_type": torch.LongTensor(
                         [
                             [0, 1, 1],
@@ -824,9 +824,9 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                     }
                 )
 
-                # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab size, but
-                # the model assumes there is one extra universally unused vocab element up front, so we need to adjust
-                # that.
+                # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab
+                # size, but the model assumes there is one extra universally unused vocab element up front, so
+                # we need to adjust that.
                 config.vocab_size = 10
 
                 layer = GenerativeOutputLayer(config)
@@ -870,11 +870,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
             {
                 "message": "Model should yield the correct outputs given inputs for an Exponential TTE.",
                 "TTE_generation_layer_type": "exponential",
-                "batch": {
-                    **BASE_BATCH,
-                    # 'time' copied here just for clarity; it is the same as in the `BASE_BATCH`
-                    "time": torch.FloatTensor([[0, 2, 5]]),
-                },
+                "batch": {**BASE_BATCH},
                 "encoded": torch.Tensor(
                     [
                         [
@@ -903,11 +899,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
             {
                 "message": "Model should yield the correct outputs given inputs for an LogNormalMixture.",
                 "TTE_generation_layer_type": "log_normal_mixture",
-                "batch": {
-                    **BASE_BATCH,
-                    # 'time' copied here just for clarity; it is the same as in the `BASE_BATCH`
-                    "time": torch.FloatTensor([[0, 2, 5]]),
-                },
+                "batch": {**BASE_BATCH},
                 "encoded": torch.Tensor(
                     [
                         [
@@ -965,15 +957,20 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 # LL = 1/2 * (
                 #   math.log(
                 #     math.exp(2)/(math.exp(2) + math.exp(5)) * (
-                #       1/(2*math.exp(1)*math.sqrt(2*math.pi))*math.exp(-((math.log(2) - 0)**2)/(2*math.exp(1)**2))
+                #       1/(2*math.exp(1)*math.sqrt(2*math.pi))*math.exp(
+                #           -((math.log(2) - 0)**2)/(2*math.exp(1)**2)
+                #          )
                 #     ) + math.exp(5) / (math.exp(2) + math.exp(5)) * (
-                #       1/(2*math.exp(4)*math.sqrt(2*math.pi))*math.exp(-((math.log(2) - 3)**2)/(2*math.exp(4)**2))
+                #       1/(2*math.exp(4)*math.sqrt(2*math.pi))*math.exp(
+                #            -((math.log(2) - 3)**2)/(2*math.exp(4)**2))
                 #     )
                 #   ) + math.log(
                 #     math.exp(5)/(math.exp(11) + math.exp(5)) * (
-                #       1/(3*math.exp(3)*math.sqrt(2*math.pi))*math.exp(-((math.log(3) - 1)**2)/(2*math.exp(3)**2))
+                #       1/(3*math.exp(3)*math.sqrt(2*math.pi))*math.exp(
+                #            -((math.log(3) - 1)**2)/(2*math.exp(3)**2))
                 #     ) + math.exp(11) / (math.exp(11) + math.exp(5)) * (
-                #       1/(3*math.exp(9)*math.sqrt(2*math.pi))*math.exp(-((math.log(3) - 7)**2)/(2*math.exp(9)**2))
+                #       1/(3*math.exp(9)*math.sqrt(2*math.pi))*math.exp(
+                #            -((math.log(3) - 7)**2)/(2*math.exp(9)**2))
                 #     )
                 #  )
                 # ) = -7.6554941334115565
@@ -984,8 +981,6 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 "TTE_generation_layer_type": "exponential",
                 "batch": {
                     **BASE_BATCH,
-                    # 'time' copied here just for clarity; it is the same as in the `BASE_BATCH`
-                    "time": torch.FloatTensor([[0, 2, 5]]),
                     # TODO(mmd): Were there only one valid event, the model would return a NaN Loss here, as
                     # opposed to just zeroing out that component for that patient. Is that desired?
                     "event_mask": torch.BoolTensor([[True, True, False]]),

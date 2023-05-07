@@ -4,15 +4,13 @@ import os
 import random
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import lightning as L
 import omegaconf
-import pandas as pd
 import torch
 import torch.multiprocessing
 import torchmetrics
-import wandb
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
@@ -30,7 +28,6 @@ from torchmetrics.classification import (
 from transformers import get_polynomial_decay_schedule_with_warmup
 
 from ..data.config import PytorchDatasetConfig
-from ..data.dataset_polars import Dataset
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass, task_wrapper
 from .config import OptimizationConfig, StructuredTransformerConfig
@@ -166,8 +163,8 @@ class ESTForStreamClassificationLM(L.LightningModule):
         skip_metrics: Sequence[str],
         prefix: str,
     ):
-        """This helper function logs the set of named metrics for the predictions `preds` and
-        labels `labels`.
+        """This helper function logs the set of named metrics for the predictions `preds` and labels
+        `labels`.
 
         Args:
             `preds` (`torch.Tensor`): The predictions for this metric calculation.
