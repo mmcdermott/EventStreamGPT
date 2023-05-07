@@ -417,7 +417,6 @@ class PytorchDatasetConfig(JSONableMixin):
     """
 
     save_dir: Path = omegaconf.MISSING
-    task_df_name: str | None = None
 
     max_seq_len: int = 256
     min_seq_len: int = 2
@@ -425,6 +424,8 @@ class PytorchDatasetConfig(JSONableMixin):
 
     train_subset_size: int | str = "FULL"
     train_subset_seed: int | None = None
+
+    task_df_name: str | None = None
 
     def __post_init__(self):
         assert self.seq_padding_side in ("left", "right")

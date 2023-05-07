@@ -1,4 +1,7 @@
 import dataclasses
+import json
+import os
+import random
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -7,6 +10,7 @@ import lightning as L
 import omegaconf
 import pandas as pd
 import torch
+import torch.multiprocessing
 import torchmetrics
 import wandb
 from lightning.pytorch.callbacks import LearningRateMonitor
@@ -29,13 +33,10 @@ from ..data.config import PytorchDatasetConfig
 from ..data.dataset_polars import Dataset
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass, task_wrapper
-from .config import MetricsConfig, OptimizationConfig, StructuredTransformerConfig
+from .config import OptimizationConfig, StructuredTransformerConfig
 from .model import ESTForStreamClassification
 from .model_output import StreamClassificationModelOutput
-
-
-def str_summary(T: torch.Tensor):
-    return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
+from .utils import str_summary
 
 
 class ESTForStreamClassificationLM(L.LightningModule):
@@ -156,15 +157,6 @@ class ESTForStreamClassificationLM(L.LightningModule):
             )
         else:
             raise ValueError(f"{self.config.problem_type} not valid")
-        self.metrics_defined = False
-
-    def define_metrics(self):
-        if self.metrics_defined:
-            return
-        for metric_name, _ in self.metrics.items():
-            for prefix in ("train", "tuning", "held_out"):
-                wandb.define_metric(f"{prefix}_{metric_name}", summary="max")
-        self.metrics_defined = True
 
     def _log_metric_dict(
         self,
@@ -190,7 +182,6 @@ class ESTForStreamClassificationLM(L.LightningModule):
                 The prefix that should be used when logging metric results. Will likely be 'train', 'tuning',
                 or 'held_out', for example.
         """
-        self.define_metrics()
         for metric_name, metric in metrics.items():
             # We'll want to skip a metric if any element of our skip_metrics list is a substring of the metric
             # name:
@@ -291,43 +282,91 @@ class ESTForStreamClassificationLM(L.LightningModule):
 
 @hydra_dataclass
 class FinetuneConfig:
-    save_dir: str = omegaconf.MISSING
-    load_from_model_dir: str | Path | None = omegaconf.MISSING
+    load_from_model_dir: str | Path = omegaconf.MISSING
+
     pretrained_weights_fp: Path | None = None
+    save_dir: str | None = None
 
     do_overwrite: bool = False
 
-    config: dict[str, Any] = dataclasses.field(
+    optimization_config: OptimizationConfig = OptimizationConfig()
+
+    task_df_name: str | None = omegaconf.MISSING
+    train_subset_size: int | str | None = "FULL"
+    train_subset_seed: int | None = 1
+
+    trainer_config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
-            "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
+            "accelerator": "auto",
+            "devices": "auto",
+            "detect_anomaly": False,
+            "default_root_dir": None,
         }
     )
-    optimization_config: OptimizationConfig = OptimizationConfig()
-    data_config: PytorchDatasetConfig = PytorchDatasetConfig()
-    metrics_config: MetricsConfig = MetricsConfig()
 
-    task_df_name: str = omegaconf.MISSING
-    task_df_fp: None | (str | Path) = "${data_config.save_dir}/task_dfs/${task_df_name}.parquet"
+    task_specific_params: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "pooling_method": "last",
+        }
+    )
 
-    wandb_name: str | None = "generative_event_stream_transformer"
+    config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
+
+    wandb_name: str | None = "${task_df_name}_finetuning"
     wandb_project: str | None = None
     wandb_team: str | None = None
     extra_wandb_log_params: dict[str, Any] | None = None
-    log_every_n_steps: int = 50
 
     num_dataloader_workers: int = 1
 
-    do_detect_anomaly: bool = False
-    do_final_validation_on_metrics: bool = True
-
     def __post_init__(self):
-        if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
-            self.save_dir = Path(self.save_dir)
-        if type(self.task_df_fp) is str and self.task_df_fp != omegaconf.MISSING:
-            self.task_df_fp = Path(self.task_df_fp)
+        if self.load_from_model_dir != omegaconf.MISSING:
+            if type(self.load_from_model_dir) is str:
+                self.load_from_model_dir = Path(self.load_from_model_dir)
 
-        if self.task_df_name is None and self.task_df_fp is not None:
-            self.task_df_name = self.task_df_fp.stem
+            if self.pretrained_weights_fp is None:
+                self.pretrained_weights_fp = self.load_from_model_dir / "pretrained_weights"
+            if self.save_dir is None:
+                if self.train_subset_size in (None, "FULL"):
+                    self.save_dir = self.load_from_model_dir / "finetuning" / self.task_df_name
+                else:
+                    if self.train_subset_seed is None:
+                        self.train_subset_seed = int(random.randint(1, int(1e6)))
+                        print(
+                            f"WARNING: train_subset_size={self.train_subset_size} but seed is unset. Setting "
+                            f"to {self.train_subset_seed}"
+                        )
+                    self.save_dir = (
+                        self.load_from_model_dir
+                        / "finetuning"
+                        / f"subset_size_{self.train_subset_size}"
+                        / f"subset_seed_{self.train_subset_seed}"
+                        / self.task_df_name
+                    )
+            if self.trainer_config.get("default_root_dir", None) is None:
+                self.trainer_config["default_root_dir"] = self.save_dir / "model_checkpoints"
+
+            data_config_fp = self.load_from_model_dir / "data_config.json"
+            print(f"Loading data_config from {data_config_fp}")
+            self.data_config = PytorchDatasetConfig.from_json_file(data_config_fp)
+            self.data_config.task_df_name = self.task_df_name
+
+            if self.train_subset_size is not None:
+                self.data_config.train_subset_size = self.train_subset_size
+                self.data_config.train_subset_seed = self.train_subset_seed
+
+            config_fp = self.load_from_model_dir / "config.json"
+            print(f"Loading config from {config_fp}")
+            self.config = StructuredTransformerConfig.from_json_file(config_fp)
+
+            if self.task_specific_params is not None:
+                if self.config.task_specific_params is None:
+                    self.config.task_specific_params = {}
+                self.config.task_specific_params.update(self.task_specific_params)
+
+            for param, val in self.config_overrides:
+                print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
+                setattr(self.config, param, val)
 
 
 @task_wrapper
@@ -336,44 +375,47 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
 
     Args: TODO
     """
+
+    torch.multiprocessing.set_sharing_strategy("file_system")
+
     cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
-    task_df = pd.read_parquet(cfg.task_df_fp)
-
-    # Creating or loading training/tuning datasets
-    train_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split="train")
-    tuning_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split="tuning")
-    held_out_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split="held_out")
+    print("Loading datasets...")
+    train_pyd = PytorchDataset(cfg.data_config, split="train")
+    tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
     config = cfg.config
+    data_config = cfg.data_config
     optimization_config = cfg.optimization_config
-    metrics_config = cfg.metrics_config
 
     config.set_to_dataset(train_pyd)
     optimization_config.set_to_dataset(train_pyd)
 
-    # We don't have 'do_overwrite' support in this class.
-    config_fp = cfg.save_dir / "config.json"
-    if config_fp.exists() and not cfg.do_overwrite:
-        raise FileExistsError(f"{config_fp} already exists!")
-    else:
-        config.to_json_file(cfg.save_dir / "config.json")
+    if os.environ.get("LOCAL_RANK", "0") == "0":
+        print("Saving config files...")
+        config_fp = cfg.save_dir / "config.json"
+        if config_fp.exists() and not cfg.do_overwrite:
+            raise FileExistsError(f"{config_fp} already exists!")
+        else:
+            print(f"Writing to {config_fp}")
+            config.to_json_file(config_fp)
 
-    cfg.data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
-    optimization_config.to_json_file(
-        cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
-    )
-    metrics_config.to_json_file(
-        cfg.save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite
-    )
+        data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
+        optimization_config.to_json_file(
+            cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
+        )
 
     # Model
     LM = ESTForStreamClassificationLM(
         config=config,
         optimization_config=optimization_config,
-        metrics_config=metrics_config,
         pretrained_weights_fp=cfg.pretrained_weights_fp,
     )
+
+    # TODO(mmd): Get this working!
+    # if cfg.compile:
+    #     print("Compiling model!")
+    #     LM = torch.compile(LM)
 
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
@@ -390,13 +432,6 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
         collate_fn=tuning_pyd.collate,
         shuffle=False,
     )
-    held_out_dataloader = torch.utils.data.DataLoader(
-        held_out_pyd,
-        batch_size=optimization_config.batch_size // 2,
-        num_workers=optimization_config.num_dataloader_workers,
-        collate_fn=held_out_pyd.collate,
-        shuffle=False,
-    )
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
@@ -410,11 +445,9 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     checkpoints_dir.mkdir(parents=False, exist_ok=True)
 
     trainer_kwargs = dict(
+        **cfg.trainer_config,
         max_epochs=optimization_config.max_epochs,
-        detect_anomaly=cfg.do_detect_anomaly,
-        log_every_n_steps=cfg.log_every_n_steps,
         callbacks=callbacks,
-        default_root_dir=checkpoints_dir,
     )
 
     do_use_wandb = cfg.wandb_name is not None
@@ -440,9 +473,6 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     ):
         trainer_kwargs["accumulate_grad_batches"] = optimization_config.gradient_accumulation
 
-    if torch.cuda.is_available():
-        trainer_kwargs.update({"accelerator": "gpu", "devices": -1})
-
     if return_early:
         return (
             (train_pyd, tuning_pyd),
@@ -452,50 +482,26 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
             LM,
         )
 
-    # Fitting model
-    n_attempts = 0
-    while n_attempts < 5:
-        n_attempts += 1
-        try:
-            trainer = L.Trainer(**trainer_kwargs)
-            trainer.fit(
-                model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader
-            )
-            break
-        except RuntimeError as e:
-            if n_attempts >= 5:
-                raise
+    trainer = L.Trainer(**trainer_kwargs)
+    trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
 
-            print(
-                f"Caught error {e} during training on attempt {n_attempts}. Retrying with gradient "
-                "accumulation..."
-            )
-            trainer_kwargs["accumulate_grad_batches"] = (
-                trainer_kwargs.get("accumulate_grad_batches", 1) * 2
-            )
-            optimization_config.gradient_accumulation = trainer_kwargs["accumulate_grad_batches"]
-            optimization_config.batch_size = optimization_config.batch_size // 2
-            optimization_config.to_json_file(
-                cfg.save_dir / "optimization_config.json", do_overwrite=True
-            )
+    held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
+    held_out_dataloader = torch.utils.data.DataLoader(
+        held_out_pyd,
+        batch_size=optimization_config.batch_size // 2,
+        num_workers=optimization_config.num_dataloader_workers,
+        collate_fn=held_out_pyd.collate,
+        shuffle=False,
+    )
+    tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader)
+    held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader)
 
-            train_dataloader = torch.utils.data.DataLoader(
-                train_pyd,
-                batch_size=optimization_config.batch_size,
-                num_workers=cfg.num_dataloader_workers,
-                collate_fn=train_pyd.collate,
-                shuffle=True,
-            )
-            tuning_dataloader = torch.utils.data.DataLoader(
-                tuning_pyd,
-                batch_size=optimization_config.batch_size // 2,
-                num_workers=cfg.num_dataloader_workers,
-                collate_fn=tuning_pyd.collate,
-                shuffle=False,
-            )
+    if os.environ.get("LOCAL_RANK", "0") == "0":
+        print("Saving final metrics...")
 
-    if cfg.do_final_validation_on_metrics:
-        trainer.validate(model=LM, dataloaders=tuning_dataloader)
-        trainer.test(model=LM, dataloaders=held_out_dataloader)
+        with open(cfg.save_dir / "tuning_metrics.json", mode="w") as f:
+            json.dump(tuning_metrics, f)
+        with open(cfg.save_dir / "held_out_metrics.json", mode="w") as f:
+            json.dump(held_out_metrics, f)
 
-    return config, LM
+    return tuning_metrics[0]["tuning_loss"], tuning_metrics, held_out_metrics

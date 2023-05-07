@@ -883,6 +883,7 @@ class StructuredTransformerConfig(PretrainedConfig):
             self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
 
         if dataset.has_task:
+            print("Attempting to infer task properties...")
             if len(dataset.tasks) == 1:
                 # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
                 self.finetuning_task = dataset.tasks[0]
@@ -903,6 +904,8 @@ class StructuredTransformerConfig(PretrainedConfig):
             elif all(t == "regression" for t in dataset.task_types.values()):
                 self.num_labels = len(dataset.tasks)
                 self.problem_type = "regression"
+            else:
+                print(f"Can't infer task parameters. dataset.tasks = {dataset.tasks}")
 
     def __eq__(self, other):
         """Checks equality in a type sensitive manner to avoid pytorch lightning issues."""
