@@ -257,9 +257,24 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             )
 
             if stats["min"].item() <= 0:
-                raise ValueError(
-                    f"Observed a minimum inter-event time <= 0: {stats['min'].item()}!"
+                bad_inter_event_times = self.cached_data.filter(
+                    pl.col("time_delta").arr.min() <= 0
                 )
+                bad_subject_ids = [str(x) for x in list(bad_inter_event_times["subject_id"])]
+                warning_strs = [
+                    f"WARNING: Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
+                    f"ESD Subject IDs: {', '.join(bad_subject_ids)}",
+                    f"Global min: {stats['min'].item()}",
+                ]
+                if self.config.save_dir is not None:
+                    fp = self.config.save_dir / "malformed_data_{self.split}.parquet"
+                    bad_inter_event_times.write_parquet(fp)
+                    warning_strs.append(f"Wrote malformed data records to {fp}")
+                warning_strs.append("Removing malformed subjects")
+
+                print("\n".join(warning_strs))
+
+                self.cached_data = self.cached_data.filter(pl.col("time_delta").arr.min() > 0)
 
             self.mean_log_inter_event_time_min = stats["mean_log"].item()
             self.std_log_inter_event_time_min = stats["std_log"].item()

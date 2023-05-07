@@ -1,5 +1,6 @@
 import dataclasses
 import enum
+import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -510,7 +511,8 @@ class PretrainConfig:
     )
     optimization_config: OptimizationConfig = OptimizationConfig()
     data_config: PytorchDatasetConfig = PytorchDatasetConfig()
-    metrics_config: MetricsConfig = MetricsConfig()
+    pretraining_metrics_config: MetricsConfig = MetricsConfig(do_skip_all_metrics=True)
+    final_validation_metrics_config: MetricsConfig = MetricsConfig(do_skip_all_metrics=False)
 
     experiment_dir: str = omegaconf.MISSING
     save_dir: str = "${experiment_dir}/pretrain/${now:%Y-%m-%d_%H-%M-%S}"
@@ -525,13 +527,15 @@ class PretrainConfig:
     do_detect_anomaly: bool = False
     do_final_validation_on_metrics: bool = True
 
+    # compile: bool = True
+
     def __post_init__(self):
         if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
             self.save_dir = Path(self.save_dir)
 
 
 @task_wrapper
-def train(cfg: PretrainConfig, return_early: bool = False):
+def train(cfg: PretrainConfig):
     """Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
 
     Args: TODO
@@ -540,11 +544,9 @@ def train(cfg: PretrainConfig, return_early: bool = False):
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
-    held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
 
     config = cfg.config
     optimization_config = cfg.optimization_config
-    metrics_config = cfg.metrics_config
     data_config = cfg.data_config
 
     config.set_to_dataset(train_pyd)
@@ -563,8 +565,11 @@ def train(cfg: PretrainConfig, return_early: bool = False):
         optimization_config.to_json_file(
             cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
         )
-        metrics_config.to_json_file(
-            cfg.save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite
+        cfg.pretraining_metrics_config.to_json_file(
+            cfg.save_dir / "pretraining_metrics_config.json", do_overwrite=cfg.do_overwrite
+        )
+        cfg.final_validation_metrics_config.to_json_file(
+            cfg.save_dir / "final_validation_metrics_config.json", do_overwrite=cfg.do_overwrite
         )
 
     torch.multiprocessing.set_sharing_strategy("file_system")
@@ -573,8 +578,13 @@ def train(cfg: PretrainConfig, return_early: bool = False):
     LM = ESTForGenerativeSequenceModelingLM(
         config=config,
         optimization_config=optimization_config,
-        metrics_config=metrics_config,
+        metrics_config=cfg.pretraining_metrics_config,
     )
+
+    # TODO(mmd): Get this working!
+    # if cfg.compile:
+    #     print("Compiling model!")
+    #     LM = torch.compile(LM)
 
     # Setting up torch dataloader
     train_dataloader = torch.utils.data.DataLoader(
@@ -589,13 +599,6 @@ def train(cfg: PretrainConfig, return_early: bool = False):
         batch_size=optimization_config.batch_size // 2,
         num_workers=optimization_config.num_dataloader_workers,
         collate_fn=tuning_pyd.collate,
-        shuffle=False,
-    )
-    held_out_dataloader = torch.utils.data.DataLoader(
-        held_out_pyd,
-        batch_size=optimization_config.batch_size // 2,
-        num_workers=optimization_config.num_dataloader_workers,
-        collate_fn=held_out_pyd.collate,
         shuffle=False,
     )
 
@@ -617,6 +620,9 @@ def train(cfg: PretrainConfig, return_early: bool = False):
         callbacks=callbacks,
         default_root_dir=checkpoints_dir,
     )
+    eval_trainer_kwargs = dict(
+        default_root_dir=checkpoints_dir,
+    )
 
     do_use_wandb = cfg.wandb_name is not None
     if do_use_wandb:
@@ -632,6 +638,7 @@ def train(cfg: PretrainConfig, return_early: bool = False):
         wandb_logger.watch(LM, log="all", log_graph=True)
 
         trainer_kwargs["logger"] = wandb_logger
+        eval_trainer_kwargs["logger"] = wandb_logger
 
     if (optimization_config.gradient_accumulation is not None) and (
         optimization_config.gradient_accumulation > 1
@@ -640,23 +647,40 @@ def train(cfg: PretrainConfig, return_early: bool = False):
 
     if torch.cuda.is_available():
         trainer_kwargs.update({"accelerator": "gpu", "devices": -1})
-
-    if return_early:
-        return (
-            (train_pyd, tuning_pyd),
-            (config, optimization_config, data_config),
-            (train_dataloader, tuning_dataloader),
-            (trainer_kwargs, L.Trainer(**trainer_kwargs)),
-            LM,
-        )
+        eval_trainer_kwargs.update({"accelerator": "gpu", "devices": 1})
 
     # Fitting model
     trainer = L.Trainer(**trainer_kwargs)
     trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
+
     LM.save_pretrained(cfg.save_dir)
 
     if cfg.do_final_validation_on_metrics:
-        tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader, devices=1)
-        test_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader, devices=1)
+        held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
+        held_out_dataloader = torch.utils.data.DataLoader(
+            held_out_pyd,
+            batch_size=optimization_config.batch_size // 2,
+            num_workers=optimization_config.num_dataloader_workers,
+            collate_fn=held_out_pyd.collate,
+            shuffle=False,
+        )
 
-    return tuning_metrics["tuning_loss"], tuning_metrics, test_metrics
+        LM.metrics_config = cfg.final_validation_metrics_config
+        LM.build_metrics()
+
+        eval_trainer = L.Trainer(**eval_trainer_kwargs)
+
+        tuning_metrics = eval_trainer.validate(model=LM, dataloaders=tuning_dataloader)
+        held_out_metrics = eval_trainer.test(model=LM, dataloaders=held_out_dataloader)
+
+        if os.environ.get("LOCAL_RANK", "0") == "0":
+            print("Saving final metrics...")
+
+            with open(cfg.save_dir / "tuning_metrics.json", mode="w") as f:
+                json.dump(tuning_metrics, f)
+            with open(cfg.save_dir / "held_out_metrics.json", mode="w") as f:
+                json.dump(held_out_metrics, f)
+
+        return tuning_metrics["tuning_loss"], tuning_metrics, held_out_metrics
+
+    return None

@@ -445,13 +445,13 @@ class PytorchDatasetConfig(JSONableMixin):
                 raise ValueError(f"If integral, train_subset_size must be positive! Got {n}")
             case float() as frac if frac <= 0 or frac >= 1:
                 raise ValueError(f"If float, train_subset_size must be in (0, 1)! Got {frac}")
-            case int() | float() if self.train_subset_seed is None:
+            case int() | float() if (self.train_subset_seed is None):
                 seed = int(random.randint(1, int(1e6)))
                 print(
                     f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}"
                 )
                 self.train_subset_seed = seed
-            case None | "FULL":
+            case None | "FULL" | int() | float():
                 pass
             case _:
                 raise TypeError(
