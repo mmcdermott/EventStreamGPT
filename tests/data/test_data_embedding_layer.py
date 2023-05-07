@@ -696,7 +696,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     [1, 2],
                 ]
             ),
-            time=torch.Tensor(
+            time_delta=torch.Tensor(
                 [
                     [0, 2],
                     [0, 0],

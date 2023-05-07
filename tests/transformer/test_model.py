@@ -61,7 +61,7 @@ BASE_CONFIG_KWARGS = dict(
 
 BASE_BATCH = {
     "event_mask": torch.BoolTensor([[True, True, True]]),
-    "time": torch.FloatTensor([[0, 2, 5]]),
+    "time_delta": torch.FloatTensor([[2, 3, 1]]),
     "dynamic_values_mask": torch.BoolTensor(
         [
             [
@@ -870,11 +870,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
             {
                 "message": "Model should yield the correct outputs given inputs for an Exponential TTE.",
                 "TTE_generation_layer_type": "exponential",
-                "batch": {
-                    **BASE_BATCH,
-                    # 'time' copied here just for clarity; it is the same as in the `BASE_BATCH`
-                    "time": torch.FloatTensor([[0, 2, 5]]),
-                },
+                "batch": {**BASE_BATCH},
                 "encoded": torch.Tensor(
                     [
                         [
@@ -903,11 +899,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
             {
                 "message": "Model should yield the correct outputs given inputs for an LogNormalMixture.",
                 "TTE_generation_layer_type": "log_normal_mixture",
-                "batch": {
-                    **BASE_BATCH,
-                    # 'time' copied here just for clarity; it is the same as in the `BASE_BATCH`
-                    "time": torch.FloatTensor([[0, 2, 5]]),
-                },
+                "batch": {**BASE_BATCH},
                 "encoded": torch.Tensor(
                     [
                         [
@@ -984,8 +976,6 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 "TTE_generation_layer_type": "exponential",
                 "batch": {
                     **BASE_BATCH,
-                    # 'time' copied here just for clarity; it is the same as in the `BASE_BATCH`
-                    "time": torch.FloatTensor([[0, 2, 5]]),
                     # TODO(mmd): Were there only one valid event, the model would return a NaN Loss here, as
                     # opposed to just zeroing out that component for that patient. Is that desired?
                     "event_mask": torch.BoolTensor([[True, True, False]]),

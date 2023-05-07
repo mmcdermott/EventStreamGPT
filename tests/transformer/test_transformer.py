@@ -61,7 +61,7 @@ BASE_CONFIG_KWARGS = dict(
 
 BASE_BATCH = {
     "event_mask": torch.BoolTensor([[True, True, True]]),
-    "time": torch.FloatTensor([[0, 2, 5]]),
+    "time_delta": torch.FloatTensor([[0, 2, 5]]),
     "static_indices": torch.LongTensor([[1, 2, 3]]),
     "static_measurement_indices": torch.LongTensor([[1, 2, 3]]),
     "dynamic_values_mask": torch.BoolTensor(

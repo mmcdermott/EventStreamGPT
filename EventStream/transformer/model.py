@@ -130,10 +130,7 @@ class GenerativeOutputLayer(torch.nn.Module):
         TTE_delta = batch["time_delta"][:, :-1]
         TTE_true = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
 
-        if TTE_true.min() <= 0:
-            with open("/home/mu363/tmp.pkl", mode="wb") as f:
-                pickle.dump((self, TTE_true, batch), f)
-            raise ValueError("TTE_true should be > 0!")
+        if TTE_true.min() <= 0: raise ValueError("TTE_true should be > 0!")
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
         # for generative purposes, we add a fake observation to the last element.

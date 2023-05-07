@@ -174,11 +174,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 "task_row_num"
             )
             time_dep_cols = [
-                "time",
-                "time_delta",
-                "dynamic_indices",
-                "dynamic_values",
-                "dynamic_measurement_indices",
+                t for t in [
+                    "time", "time_delta", "dynamic_indices", "dynamic_values", "dynamic_measurement_indices",
+                ] if t in self.cached_data.columns
             ]
 
             if "time" in self.cached_data.columns:

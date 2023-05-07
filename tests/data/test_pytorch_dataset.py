@@ -190,7 +190,7 @@ DL_REP_DF = pl.DataFrame(
 )
 
 WANT_SUBJ_1_UNCUT = {
-    "time": subj_1_event_times,
+    "time_delta": list(np.diff(subj_1_event_times)) + [1],
     "static_indices": [
         UNIFIED_VOCABULARY_IDXMAP["static1"]["foo"],
         UNIFIED_VOCABULARY_IDXMAP["static2"]["V3"],
@@ -235,7 +235,7 @@ WANT_SUBJ_1_UNCUT = {
 }
 
 WANT_SUBJ_2_UNCUT = {
-    "time": subj_2_event_times,
+    "time_delta": list(np.diff(subj_2_event_times)) + [1],
     "static_indices": [
         UNIFIED_VOCABULARY_IDXMAP["static2"]["V1"],
         UNIFIED_VOCABULARY_IDXMAP["static1"]["bar"],
@@ -256,7 +256,7 @@ WANT_SUBJ_2_UNCUT = {
 }
 
 WANT_SUBJ_3_UNCUT = {
-    "time": subj_3_event_times,
+    "time_delta": list(np.diff(subj_3_event_times)) + [1],
     "static_indices": [],
     "static_measurement_indices": [],
     "dynamic_indices": [
@@ -389,6 +389,9 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         "multi_class_cat": 0,
                         "regression": 1.2,
                         **WANT_SUBJ_1_UNCUT,
+                        "time_delta": [
+                            t if i < (2-1) else 1 for i, t in enumerate(WANT_SUBJ_1_UNCUT["time_delta"])
+                        ],
                     },
                     {
                         "binary": False,
@@ -396,6 +399,9 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         "multi_class_cat": 0,
                         "regression": 3.2,
                         **WANT_SUBJ_3_UNCUT,
+                        "time_delta": [
+                            t if i < (3-1) else 1 for i, t in enumerate(WANT_SUBJ_3_UNCUT["time_delta"])
+                        ],
                     },
                 ],
                 "want_start_idx": [0, 1],
@@ -403,7 +409,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             },
         ]
         time_dep_cols = [
-            "time",
+            "time_delta",
             "dynamic_indices",
             "dynamic_values",
             "dynamic_measurement_indices",
@@ -449,7 +455,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
         pyd.do_produce_static_data = False
 
         subj_1 = {
-            "time": [0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0],
+            "time_delta": [0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0],
             "dynamic_indices": [
                 [1, 4],
                 [2, 7, 7, 7, 8, 8],
@@ -470,7 +476,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ],
         }
         subj_2 = {
-            "time": [0.0, 5, 10],
+            "time_delta": [0.0, 5, 10],
             "dynamic_indices": [
                 [1, 4, 3],
                 [2, 7, 7, 7],
@@ -512,7 +518,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                     ]
                 ),
-                "time": torch.Tensor(
+                "time_delta": torch.Tensor(
                     [[0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0], [0, 5, 10, 0]]
                 ),
                 "dynamic_indices": torch.LongTensor(
@@ -599,7 +605,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                     ]
                 ),
-                "time": torch.Tensor(
+                "time_delta": torch.Tensor(
                     [[0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0], [0, 0, 5, 10]]
                 ),
                 "dynamic_indices": torch.LongTensor(
@@ -674,7 +680,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             [2 + 15 / (24 * 365), 2 + 1 / 365 + 2 / (24 * 365)],
         ]
         subj_1 = {
-            "time": [0.0, (24 + 14) * 60.0, (2 * 24 + 10) * 60.0, (3 * 24 + 23) * 60.0],
+            "time_delta": [0.0, (24 + 14) * 60.0, (2 * 24 + 10) * 60.0, (3 * 24 + 23) * 60.0],
             "static_indices": [16],
             "static_measurement_indices": [6],
             "dynamic_indices": [
@@ -697,7 +703,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ],
         }
         subj_2 = {
-            "time": [0.0, 11 * 60.0],
+            "time_delta": [0.0, 11 * 60.0],
             "static_indices": [17],
             "static_measurement_indices": [6],
             "dynamic_indices": [
@@ -738,7 +744,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                     ]
                 ),
-                "time": torch.Tensor(
+                "time_delta": torch.Tensor(
                     [
                         [0.0, (24 + 14) * 60.0, (2 * 24 + 10) * 60.0, (3 * 24 + 23) * 60.0],
                         [0.0, 11 * 60.0, 0.0, 0.0],
