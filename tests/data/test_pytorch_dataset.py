@@ -390,7 +390,8 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         "regression": 1.2,
                         **WANT_SUBJ_1_UNCUT,
                         "time_delta": [
-                            t if i < (2-1) else 1 for i, t in enumerate(WANT_SUBJ_1_UNCUT["time_delta"])
+                            t if i < (2 - 1) else 1
+                            for i, t in enumerate(WANT_SUBJ_1_UNCUT["time_delta"])
                         ],
                     },
                     {
@@ -400,7 +401,8 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         "regression": 3.2,
                         **WANT_SUBJ_3_UNCUT,
                         "time_delta": [
-                            t if i < (3-1) else 1 for i, t in enumerate(WANT_SUBJ_3_UNCUT["time_delta"])
+                            t if i < (3 - 1) else 1
+                            for i, t in enumerate(WANT_SUBJ_3_UNCUT["time_delta"])
                         ],
                     },
                 ],

@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import Dict, Union
 
 import polars as pl
 

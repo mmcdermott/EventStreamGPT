@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 

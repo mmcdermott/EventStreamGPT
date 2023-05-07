@@ -1,6 +1,5 @@
 import dataclasses
 import enum
-from typing import Dict, Optional, Union
 
 import torch
 
@@ -154,9 +153,8 @@ class DataModality(StrEnum):
 class NumericDataModalitySubtype(StrEnum):
     """Numeric value types. Is used to characterize both entire measures (e.g., 'age' takes on
     integer values) or sub-measures (e.g., within the measure of "vitals signs", observations for
-    the key "heart rate" take on float values). As a `StrEnum`, can be used interchangeably with
-    the lowercase versions of the member name strings (e.g., `DROPPED` is equivalent to
-    `'dropped'`).
+    the key "heart rate" take on float values). As a `StrEnum`, can be used interchangeably with the
+    lowercase versions of the member name strings (e.g., `DROPPED` is equivalent to `'dropped'`).
 
     Members:
         `DROPPED` (`'dropped'`): The values of this measure (or sub-measure) were dropped.

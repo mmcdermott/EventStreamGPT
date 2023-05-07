@@ -2,7 +2,7 @@ import dataclasses
 import multiprocessing
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,9 @@ class Query:
     partition_num: int | None = None
     protocol: str = "binary"
 
-    def __str__(self): return f"Query(\"{self.query}\")"
+    def __str__(self):
+        return f'Query("{self.query}")'
+
 
 DF_T = Union[pl.LazyFrame, pl.DataFrame, pl.Expr, pl.Series]
 INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame, Query]
@@ -112,7 +114,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pass
             case Query() as q:
                 query = q.query
-                if not isinstance(query, (list, tuple)): query = [query]
+                if not isinstance(query, (list, tuple)):
+                    query = [query]
 
                 out_query = []
                 for qq in query:
@@ -125,9 +128,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
                 if len(out_query) == 1:
                     partition_kwargs = {
-                        'partition_on': subject_id_col if q.partition_on is None else q.partition_on,
-                        'partition_num': (
-                            multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
+                        "partition_on": subject_id_col
+                        if q.partition_on is None
+                        else q.partition_on,
+                        "partition_num": (
+                            multiprocessing.cpu_count()
+                            if q.partition_num is None
+                            else q.partition_num
                         ),
                     }
                 elif q.partition_on is not None or q.partition_num is not None:
@@ -142,7 +149,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     query=out_query,
                     connection_uri=q.connection_uri,
                     protocol=q.protocol,
-                    **partition_kwargs
+                    **partition_kwargs,
                 ).lazy()
             case _:
                 raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
@@ -190,7 +197,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             df = df.select(col_exprs).collect()
 
             ID_map = {o: n for o, n in zip(df[subject_id_source_col], df[internal_subj_key])}
-            df = df.with_columns(pl.col(internal_subj_key).alias('subject_id'))
+            df = df.with_columns(pl.col(internal_subj_key).alias("subject_id"))
             return df, ID_map
         else:
             return df.select(col_exprs)
@@ -254,8 +261,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def split_range_events_df(cls, df: DF_T) -> tuple[DF_T, DF_T, DF_T]:
         """Performs the following steps:
 
-        1. Produces unified start and end timestamp columns representing the minimum of the passed start and end
-           timestamps, respectively.
+        1. Produces unified start and end timestamp columns representing the minimum of the passed start and
+           end timestamps, respectively.
         2. Filters out records where the end timestamp is earlier than the start timestamp.
         3. Splits the dataframe into 3 events dataframes, all with only a single timestamp column, named
            `'timestamp'`:

@@ -6,7 +6,6 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Dict
 
 import numpy as np
 import pandas as pd

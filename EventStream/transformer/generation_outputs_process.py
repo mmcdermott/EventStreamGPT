@@ -1,4 +1,5 @@
-# Sourced from https://github.com/huggingface/transformers/blob/v4.23.1/src/transformers/generation_logits_process.py
+# Sourced from
+# https://github.com/huggingface/transformers/blob/v4.23.1/src/transformers/generation_logits_process.py
 # Then modified.
 
 # coding=utf-8
@@ -66,7 +67,9 @@ class OutputsWarper:
 class OutputsProcessorList(list):
     """This class can be used to create a list of [`OutputsProcessor`] or [`OutputsWarper`] to
     subsequently process a `outputs` input tensor. This class inherits from list and adds a
-    specific *__call__* method to apply each.
+    specific.
+
+    *__call__* method to apply each.
 
     [`OutputsProcessor`] or [`OutputsWarper`] to the inputs.
     """

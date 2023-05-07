@@ -2,7 +2,6 @@
 # interface expected by the data preprocessing pipeline.
 
 from abc import ABC, abstractmethod
-from typing import Dict
 
 import polars as pl
 

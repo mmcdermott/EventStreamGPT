@@ -1,11 +1,11 @@
-# Sourced from https://github.com/huggingface/transformers/blob/v4.23.1/src/transformers/generation_stopping_criteria.py
+# Sourced from
+# https://github.com/huggingface/transformers/blob/v4.23.1/src/transformers/generation_stopping_criteria.py
 # Then modified
 
 import time
 import warnings
 from abc import ABC
 from copy import deepcopy
-from typing import Optional
 
 from transformers.utils import add_start_docstrings
 
@@ -55,8 +55,8 @@ class MaxLengthCriteria(StoppingCriteria):
 
 
 class MaxTimeCriteria(StoppingCriteria):
-    """This class can be used to stop generation whenever the full generation exceeds some amount
-    of time.
+    """This class can be used to stop generation whenever the full generation exceeds some amount of
+    time.
 
     By default, the
     time will start being counted when you initialize this function. You can override this by passing an

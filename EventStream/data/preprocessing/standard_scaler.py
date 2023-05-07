@@ -1,5 +1,3 @@
-from typing import Dict
-
 import polars as pl
 
 from .preprocessor import Preprocessor

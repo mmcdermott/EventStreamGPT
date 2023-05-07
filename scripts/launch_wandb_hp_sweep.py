@@ -11,7 +11,7 @@ from typing import Any
 
 import hydra
 import wandb
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 WANDB_SWEEP_KEYS = {"value", "values", "min", "max", "distribution"}
 

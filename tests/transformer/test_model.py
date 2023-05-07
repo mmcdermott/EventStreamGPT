@@ -582,8 +582,8 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                     ),
                 },
                 "want_labels": {
-                    # Labels ignore event_mask, and only respect data mask and dynamic_measurement_indices, so these are
-                    # unchanged from the prior test.
+                    # Labels ignore event_mask, and only respect data mask and dynamic_measurement_indices, so
+                    # these are unchanged from the prior test.
                     "event_type": torch.LongTensor(
                         [
                             [0, 1, 1],
@@ -824,9 +824,9 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                     }
                 )
 
-                # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab size, but
-                # the model assumes there is one extra universally unused vocab element up front, so we need to adjust
-                # that.
+                # TODO(mmd): The config right now assumes the passed vocabulary sizes sum to the total vocab
+                # size, but the model assumes there is one extra universally unused vocab element up front, so
+                # we need to adjust that.
                 config.vocab_size = 10
 
                 layer = GenerativeOutputLayer(config)
@@ -957,15 +957,20 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 # LL = 1/2 * (
                 #   math.log(
                 #     math.exp(2)/(math.exp(2) + math.exp(5)) * (
-                #       1/(2*math.exp(1)*math.sqrt(2*math.pi))*math.exp(-((math.log(2) - 0)**2)/(2*math.exp(1)**2))
+                #       1/(2*math.exp(1)*math.sqrt(2*math.pi))*math.exp(
+                #           -((math.log(2) - 0)**2)/(2*math.exp(1)**2)
+                #          )
                 #     ) + math.exp(5) / (math.exp(2) + math.exp(5)) * (
-                #       1/(2*math.exp(4)*math.sqrt(2*math.pi))*math.exp(-((math.log(2) - 3)**2)/(2*math.exp(4)**2))
+                #       1/(2*math.exp(4)*math.sqrt(2*math.pi))*math.exp(
+                #            -((math.log(2) - 3)**2)/(2*math.exp(4)**2))
                 #     )
                 #   ) + math.log(
                 #     math.exp(5)/(math.exp(11) + math.exp(5)) * (
-                #       1/(3*math.exp(3)*math.sqrt(2*math.pi))*math.exp(-((math.log(3) - 1)**2)/(2*math.exp(3)**2))
+                #       1/(3*math.exp(3)*math.sqrt(2*math.pi))*math.exp(
+                #            -((math.log(3) - 1)**2)/(2*math.exp(3)**2))
                 #     ) + math.exp(11) / (math.exp(11) + math.exp(5)) * (
-                #       1/(3*math.exp(9)*math.sqrt(2*math.pi))*math.exp(-((math.log(3) - 7)**2)/(2*math.exp(9)**2))
+                #       1/(3*math.exp(9)*math.sqrt(2*math.pi))*math.exp(
+                #            -((math.log(3) - 7)**2)/(2*math.exp(9)**2))
                 #     )
                 #  )
                 # ) = -7.6554941334115565

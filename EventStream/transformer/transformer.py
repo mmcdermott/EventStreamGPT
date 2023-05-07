@@ -5,7 +5,6 @@
 """PyTorch StructuredTransformer model."""
 
 import math
-from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
@@ -395,7 +394,9 @@ class TemporalPositionEncoding(torch.nn.Module):
         device = t_deltas.device
 
         # First, we go from deltas to time values and unsqueeze it for broadcasting through the hidden dim.
-        t = torch.hstack([torch.zeros(bsz, 1, device=device), t_deltas.cumsum(-1)[:, :-1]]).unsqueeze(-1)
+        t = torch.hstack(
+            [torch.zeros(bsz, 1, device=device), t_deltas.cumsum(-1)[:, :-1]]
+        ).unsqueeze(-1)
 
         # temporal_embeddings will be our output container.
         # It should have shape (batch size, sequence length, embedding dim), and be on the same device as the

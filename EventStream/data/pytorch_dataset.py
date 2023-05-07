@@ -1,7 +1,5 @@
-import copy
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -174,9 +172,15 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 "task_row_num"
             )
             time_dep_cols = [
-                t for t in [
-                    "time", "time_delta", "dynamic_indices", "dynamic_values", "dynamic_measurement_indices",
-                ] if t in self.cached_data.columns
+                t
+                for t in [
+                    "time",
+                    "time_delta",
+                    "dynamic_indices",
+                    "dynamic_values",
+                    "dynamic_measurement_indices",
+                ]
+                if t in self.cached_data.columns
             ]
 
             if "time" in self.cached_data.columns:
@@ -309,12 +313,13 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             'static_measurement_indices': [seq_len, n_data_per_event] (ragged),
         }
           1. `time` captures the time of the sequence elements.
-          2. `dynamic_indices` captures the categorical metadata elements listed in `self.data_cols` in a unified
-             vocabulary space spanning all metadata vocabularies.
+          2. `dynamic_indices` captures the categorical metadata elements listed in `self.data_cols` in a
+             unified vocabulary space spanning all metadata vocabularies.
           3. `dynamic_values` captures the numerical metadata elements listed in `self.data_cols`. If no
              numerical elements are listed in `self.data_cols` for a given categorical column, the according
              index in this output will be `np.NaN`.
-          4. `dynamic_measurement_indices` captures which metadata vocabulary was used to source a given data element.
+          4. `dynamic_measurement_indices` captures which metadata vocabulary was used to source a given data
+             element.
 
         If `self.do_normalize_log_inter_event_times`, then `time` will be approximately modified as follows:
             1. `obs_TTE = time.diff()` Capture the observed inter_event_times.

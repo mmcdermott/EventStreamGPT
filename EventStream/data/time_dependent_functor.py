@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import abc
-from typing import Any, Dict
+from typing import Any
 
-import pandas as pd
 import polars as pl
 
 from .types import DataModality

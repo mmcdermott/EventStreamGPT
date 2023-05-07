@@ -1,16 +1,13 @@
 import dataclasses
-import enum
 import os
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import lightning as L
 import omegaconf
 import torch
 import torch.multiprocessing
 import torchmetrics
-import wandb
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
@@ -110,8 +107,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         """Build the various torchmetrics we'll use to track performance."""
 
         # For judging our ability to predict time-to-event, we'll use the following scores:
-        #   1. Explained Variance:
-        #      (e.g., https://scikit-learn.org/stable/modules/generated/sklearn.metrics.explained_variance_score.html)
+        #   1. Explained Variance
         #   2. Mean Squared Error
         #   3. Mean Squared Log Error
         self.tte_metrics = torch.nn.ModuleDict(
@@ -231,8 +227,8 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         measurement: str,
         cat: MetricCategories,
     ):
-        """This helper function logs the set of named metrics for the predictions `preds` and
-        labels `labels`.
+        """This helper function logs the set of named metrics for the predictions `preds` and labels
+        `labels`.
 
         Args:
             `preds` (`torch.Tensor`): The predictions for this metric calculation.

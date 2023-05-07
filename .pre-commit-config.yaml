@@ -31,6 +31,11 @@ repos:
       - id: isort
         args: ["--profile", "black", "--filter-files"]
 
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.1.1
+    hooks:
+      - id: autoflake
+
   # python upgrading syntax to newer version
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.3.1
@@ -43,7 +48,7 @@ repos:
     rev: v1.5.1
     hooks:
       - id: docformatter
-        args: [--in-place, --wrap-summaries=99, --wrap-descriptions=99]
+        args: [--in-place, --wrap-summaries=100, --wrap-descriptions=100]
 
   # python check (PEP8), programming errors and code complexity
   - repo: https://github.com/PyCQA/flake8
@@ -52,10 +57,14 @@ repos:
       - id: flake8
         args:
           [
+            "--max-complexity=10",
             "--extend-ignore",
-            "E203,E402,E501,F401,F841",
+            "E402,E701,E251,E226,E302,W504,E704,E402,E401,C901,E203",
+            "--max-line-length=110",
             "--exclude",
             "logs/*,data/*",
+            "--per-file-ignores",
+            "__init__.py:F401",
           ]
 
   # yaml formatting

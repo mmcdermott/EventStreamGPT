@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import torch
 
@@ -22,8 +22,8 @@ class TakeExistingEventEmbedding(torch.nn.Module):
 
 class StructuredAttention(torch.nn.Module):
     """This module performs a dependency-graph structured attention calculation, in which each
-    sequence element is itself composed of objects with internal dependency structures that you
-    want to respect during calculation.
+    sequence element is itself composed of objects with internal dependency structures that you want
+    to respect during calculation.
 
     This module is basically just a container for appropriately shuffling the input tensors to pass
     them to the nested modules for pooling events, processing the event sequences, then processing
