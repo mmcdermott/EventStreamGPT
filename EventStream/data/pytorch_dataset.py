@@ -118,6 +118,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             if self.config.task_df_name is not None:
                 task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
+                raw_task_df_fp = self.config.save_dir / "task_dfs" / self.config.task_df_name
                 task_df_fp = task_dir / f"{split}.parquet"
                 task_info_fp = task_dir / "task_info.json"
 
@@ -133,12 +134,16 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                         self.task_types = task_info["types"]
 
                     task_df = "PRE_CACHED_IN_DATA"
-                elif task_df is None:
+                elif raw_task_df_fp.is_file():
+                    print(f"Loading raw task df from {raw_task_df_fp}")
+                    task_df = pl.read_parquet(raw_task_df_fp)
+                    do_cache_task_data = True
+                elif task_df is not None:
+                    do_cache_task_data = True
+                else:
                     raise FileNotFoundError(
                         f"{task_df_fp} does not exist and task_df was not passed!"
                     )
-                else:
-                    do_cache_task_data = True
 
             vocabulary_config = self.config.save_dir / "vocabulary_config.json"
         else:
