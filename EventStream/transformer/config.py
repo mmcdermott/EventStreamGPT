@@ -27,7 +27,7 @@ class Split(StrEnum):
 
 class MetricCategories(StrEnum):
     LOSS_PARTS = enum.auto()
-    TTE = enum.auto()
+    TTE = "TTE"
     CLASSIFICATION = enum.auto()
     REGRESSION = enum.auto()
 
@@ -64,7 +64,7 @@ class MetricsConfig(JSONableMixin):
                     MetricCategories.LOSS_PARTS: True,
                     MetricCategories.TTE: {Metrics.MSE: True, Metrics.MSLE: True},
                     MetricCategories.CLASSIFICATION: {
-                        Metrics.AUROC: [Averaging.MACRO, Averaging.WEIGHTED],
+                        Metrics.AUROC: [Averaging.WEIGHTED],
                         Metrics.ACCURACY: True,
                     },
                     MetricCategories.REGRESSION: {Metrics.MSE: True},
@@ -73,7 +73,7 @@ class MetricsConfig(JSONableMixin):
                     MetricCategories.LOSS_PARTS: True,
                     MetricCategories.TTE: {Metrics.MSE: True, Metrics.MSLE: True},
                     MetricCategories.CLASSIFICATION: {
-                        Metrics.AUROC: [Averaging.MACRO, Averaging.WEIGHTED],
+                        Metrics.AUROC: [Averaging.WEIGHTED],
                         Metrics.ACCURACY: True,
                     },
                     MetricCategories.REGRESSION: {Metrics.MSE: True},
@@ -142,6 +142,8 @@ class OptimizationConfig(JSONableMixin):
             The maximum number of training epochs.
         `batch_size` (`int`, default is 32):
             The batch size used during stochastic gradient descent.
+        `validation_batch_size` (`int`, default is 32):
+            The batch size used during evaluation.
         `lr_frac_warmup_steps` (`Optional[float]`, *optional*, default is 0.01):
             What fraction of the total training steps should be spent increasing the learning rate during the
             learning rate warmup period. Should not be set simultaneously with `lr_num_warmup_steps`. This is
@@ -173,6 +175,7 @@ class OptimizationConfig(JSONableMixin):
     end_lr_frac_of_init_lr: float | None = 1e-3
     max_epochs: int = 100
     batch_size: int = 32
+    validation_batch_size: int = 32
     lr_frac_warmup_steps: float | None = 0.01
     lr_num_warmup_steps: int | None = None
     max_training_steps: int | None = None

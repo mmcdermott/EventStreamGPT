@@ -267,7 +267,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     f"Global min: {stats['min'].item()}",
                 ]
                 if self.config.save_dir is not None:
-                    fp = self.config.save_dir / "malformed_data_{self.split}.parquet"
+                    fp = self.config.save_dir / f"malformed_data_{self.split}.parquet"
                     bad_inter_event_times.write_parquet(fp)
                     warning_strs.append(f"Wrote malformed data records to {fp}")
                 warning_strs.append("Removing malformed subjects")
