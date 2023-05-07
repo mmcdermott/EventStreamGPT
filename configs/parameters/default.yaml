@@ -1,0 +1,20 @@
+defaults:
+  - config: default
+  - optimization_config: default
+  - data_config: default
+  - metrics_config: default
+
+experiment_dir:
+  value: ???
+do_overwrite:
+  value: False
+
+log_every_n_steps:
+  value: 50
+num_dataloader_workers:
+  value: ???
+
+do_detect_anomaly:
+  value: False
+do_final_validation_on_metrics:
+  value: True

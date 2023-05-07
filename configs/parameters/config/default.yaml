@@ -1,6 +1,8 @@
 head_dim:
   min: 2
   max: 64
+hidden_size:
+  value: "null"
 num_attention_heads:
   min: 1
   max: 16
@@ -24,7 +26,6 @@ seq_attention_types:
 seq_window_size:
   min: 2
   max: 64
-dep_graph_attention_types: null
 do_add_temporal_position_embeddings_to_data_embeddings:
   values: [True, False]
 do_full_block_in_seq_attention:
@@ -50,12 +51,12 @@ categorical_embedding_dim:
 numerical_embedding_dim:
   min: 16
   max: 128
-static_weight:
+static_embedding_weight:
   min: 0.0
   max: 1.0
-categorical_weight:
+categorical_embedding_weight:
   min: 0.0
   max: 1.0
 
-measurements_per_dep_graph:
+measurements_per_dep_graph_level:
   values: ???

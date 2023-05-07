@@ -68,7 +68,16 @@ class MetricsConfig(JSONableMixin):
                         Metrics.ACCURACY: True,
                     },
                     MetricCategories.REGRESSION: {Metrics.MSE: True},
-                }
+                },
+                Split.HELD_OUT: {
+                    MetricCategories.LOSS_PARTS: True,
+                    MetricCategories.TTE: {Metrics.MSE: True, Metrics.MSLE: True},
+                    MetricCategories.CLASSIFICATION: {
+                        Metrics.AUROC: [Averaging.MACRO, Averaging.WEIGHTED],
+                        Metrics.ACCURACY: True,
+                    },
+                    MetricCategories.REGRESSION: {Metrics.MSE: True},
+                },
             }
         )
     )
@@ -444,40 +453,6 @@ class StructuredTransformerConfig(PretrainedConfig):
             Whether to use the past key/values attentions (if applicable to the model) to speed up decoding.
     """
 
-    MANDATORY_PRESENT_PARAMS = {
-        "by_mode": {
-            StructuredEventProcessingMode.NESTED_ATTENTION: {
-                "do_full_block_in_seq_attention",
-                "do_full_block_in_dep_graph_attention",
-                "do_add_temporal_position_embeddings_to_data_embeddings",
-            },
-        },
-        "by_tte_head": {
-            TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE: {
-                "TTE_lognormal_generation_num_components",
-            },
-        },
-    }
-    MANDATORY_ABSENT_PARAMS = {
-        "by_mode": {
-            StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT: {
-                "measurements_per_dep_graph_level",
-                "do_full_block_in_seq_attention",
-                "do_full_block_in_dep_graph_attention",
-                "dep_graph_attention_types",
-                "dep_graph_window_size",
-                "do_add_temporal_position_embeddings_to_data_embeddings",
-            },
-        },
-        "by_tte_head": {
-            TimeToEventGenerationHeadType.EXPONENTIAL: {
-                "TTE_lognormal_generation_num_components",
-                "mean_log_inter_event_time_min",
-                "std_log_inter_event_time_min",
-            },
-        },
-    }
-
     def __init__(
         self,
         # Data configuration
@@ -489,6 +464,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         event_types_idxmap: dict[str, int] | None = None,
         measurements_per_dep_graph_level: list[list[MEAS_INDEX_GROUP_T]] | None = None,
         max_seq_len: int = 256,
+        do_split_embeddings: bool = False,
         categorical_embedding_dim: int | None = None,
         numerical_embedding_dim: int | None = None,
         static_embedding_mode: StaticEmbeddingMode = StaticEmbeddingMode.SUM_ALL,
@@ -499,7 +475,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_normalize_by_measurement_index: bool = False,
         # Model configuration
         structured_event_processing_mode: StructuredEventProcessingMode = "nested_attention",
-        hidden_size: int | None = 256,
+        hidden_size: int | None = None,
         head_dim: int | None = 64,
         num_hidden_layers: int = 2,
         num_attention_heads: int = 4,
@@ -543,10 +519,31 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
 
-        if categorical_embedding_dim is not None:
-            assert categorical_embedding_dim > 0
-            assert numerical_embedding_dim is not None
-            assert numerical_embedding_dim > 0
+        if do_split_embeddings:
+            if not type(categorical_embedding_dim) is int and categorical_embedding_dim > 0:
+                raise ValueError(
+                    f"When do_split_embeddings={do_split_embeddings}, categorical_embedding_dim must be "
+                    f"a positive integer. Got {categorical_embedding_dim}."
+                )
+            if not type(numerical_embedding_dim) is int and numerical_embedding_dim > 0:
+                raise ValueError(
+                    f"When do_split_embeddings={do_split_embeddings}, numerical_embedding_dim must be "
+                    f"a positive integer. Got {numerical_embedding_dim}."
+                )
+        else:
+            if categorical_embedding_dim is not None:
+                print(
+                    f"WARNING: categorical_embedding_dim is set to {categorical_embedding_dim} but "
+                    f"do_split_embeddings={do_split_embeddings}. Setting categorical_embedding_dim to None."
+                )
+                categorical_embedding_dim = None
+            if numerical_embedding_dim is not None:
+                print(
+                    f"WARNING: numerical_embedding_dim is set to {numerical_embedding_dim} but "
+                    f"do_split_embeddings={do_split_embeddings}. Setting numerical_embedding_dim to None."
+                )
+                numerical_embedding_dim = None
+        self.do_split_embeddings = do_split_embeddings
 
         self.categorical_embedding_dim = categorical_embedding_dim
         self.numerical_embedding_dim = numerical_embedding_dim
@@ -557,45 +554,82 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.numerical_embedding_weight = numerical_embedding_weight
         self.do_normalize_by_measurement_index = do_normalize_by_measurement_index
 
-        if structured_event_processing_mode not in StructuredEventProcessingMode.values():
-            raise ValueError(
-                "`structured_event_processing_mode` must be a valid `StructuredEventProcessingMode` "
-                f"enum member ({StructuredEventProcessingMode.values()}). Got "
-                f"{structured_event_processing_mode}."
-            )
-
-        dep_graph_params = {
-            "measurements_per_dep_graph_level": measurements_per_dep_graph_level,
-            "do_full_block_in_seq_attention": do_full_block_in_seq_attention,
-            "do_full_block_in_dep_graph_attention": do_full_block_in_dep_graph_attention,
-            "dep_graph_attention_types": dep_graph_attention_types,
-            "dep_graph_window_size": dep_graph_window_size,
-            "do_add_temporal_position_embeddings_to_data_embeddings": (
-                do_add_temporal_position_embeddings_to_data_embeddings
-            ),
-        }
-
-        dep_graph_mandatory_present_params = self.MANDATORY_PRESENT_PARAMS["by_mode"].get(
-            structured_event_processing_mode, []
+        missing_param_err_tmpl = (
+            f"For a {structured_event_processing_mode} model, {{}} should not be None"
         )
-        dep_graph_mandatory_absent_params = self.MANDATORY_ABSENT_PARAMS["by_mode"].get(
-            structured_event_processing_mode, []
+        extra_param_err_tmpl = (
+            f"WARNING: For a {structured_event_processing_mode} model, {{}} is not used; got {{}}. Setting "
+            "to None."
         )
-        for name, val in dep_graph_params.items():
-            if (name in dep_graph_mandatory_present_params) and (val is None):
+        match structured_event_processing_mode:
+            case StructuredEventProcessingMode.NESTED_ATTENTION:
+                if do_full_block_in_seq_attention is None:
+                    raise ValueError(
+                        missing_param_err_tmpl.format("do_full_block_in_seq_attention")
+                    )
+                if do_full_block_in_dep_graph_attention is None:
+                    raise ValueError(
+                        missing_param_err_tmpl.format("do_full_block_in_dep_graph_attention")
+                    )
+                if do_add_temporal_position_embeddings_to_data_embeddings is None:
+                    raise ValueError(
+                        missing_param_err_tmpl.format(
+                            "do_add_temporal_position_embeddings_to_data_embeddings"
+                        )
+                    )
+
+            case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
+                if measurements_per_dep_graph_level is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "measurements_per_dep_graph_level", measurements_per_dep_graph_level
+                        )
+                    )
+                    measurements_per_dep_graph_level = None
+                if do_full_block_in_seq_attention is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "do_full_block_in_seq_attention", do_full_block_in_seq_attention
+                        )
+                    )
+                    do_full_block_in_seq_attention = None
+                if do_full_block_in_dep_graph_attention is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "do_full_block_in_dep_graph_attention",
+                            do_full_block_in_dep_graph_attention,
+                        )
+                    )
+                    do_full_block_in_dep_graph_attention = None
+                if dep_graph_attention_types is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "dep_graph_attention_types", dep_graph_attention_types
+                        )
+                    )
+                    dep_graph_attention_types = None
+                if dep_graph_window_size is not None:
+                    print(
+                        extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size)
+                    )
+                    dep_graph_window_size = None
+                if do_add_temporal_position_embeddings_to_data_embeddings is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "do_add_temporal_position_embeddings_to_data_embeddings",
+                            do_add_temporal_position_embeddings_to_data_embeddings,
+                        )
+                    )
+                    do_add_temporal_position_embeddings_to_data_embeddings = None
+
+            case _:
                 raise ValueError(
-                    f"For a `'{structured_event_processing_mode}'` model, "
-                    f"dependency graph param {name} should not be `None`; got {val}."
-                )
-            if (name in dep_graph_mandatory_absent_params) and (val is not None):
-                raise ValueError(
-                    f"For a `'{structured_event_processing_mode}'` model, "
-                    f"dependency graph param {name} should be `None`; got {val}."
+                    "`structured_event_processing_mode` must be a valid `StructuredEventProcessingMode` "
+                    f"enum member ({StructuredEventProcessingMode.values()}). Got "
+                    f"{structured_event_processing_mode}."
                 )
 
-        if (structured_event_processing_mode == "nested_attention") and (
-            measurements_per_dep_graph_level is not None
-        ):
+        if measurements_per_dep_graph_level is not None:
             proc_measurements_per_dep_graph_level = []
             for group in measurements_per_dep_graph_level:
                 proc_group = []
@@ -679,52 +713,60 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.seq_window_size = seq_window_size
         self.dep_graph_window_size = dep_graph_window_size
 
-        if TTE_generation_layer_type not in TimeToEventGenerationHeadType.values():
-            raise ValueError(
-                f"Invalid option for `TTE_generation_layer_type`. Must be "
-                f"a member of the `TimeToEventGenerationHeadType` enum: "
-                f"({TimeToEventGenerationHeadType.values()}). got {TTE_generation_layer_type}."
-            )
-
-        tte_mandatory_present_params = self.MANDATORY_PRESENT_PARAMS["by_tte_head"].get(
-            TTE_generation_layer_type, []
+        missing_param_err_tmpl = (
+            f"For a {TTE_generation_layer_type} model, {{}} should not be None"
         )
-        tte_mandatory_absent_params = self.MANDATORY_ABSENT_PARAMS["by_tte_head"].get(
-            TTE_generation_layer_type, []
-        )
-        tte_params = {
-            "TTE_lognormal_generation_num_components": TTE_lognormal_generation_num_components,
-            "mean_log_inter_event_time_min": mean_log_inter_event_time_min,
-            "std_log_inter_event_time_min": std_log_inter_event_time_min,
-        }
-        for name, val in tte_params.items():
-            if (name in tte_mandatory_present_params) and (val is None):
-                raise ValueError(
-                    f"For a `'{TTE_generation_layer_type}'` model, "
-                    f"TTE generation param {name} should not be `None`; got {val}."
-                )
-            if (name in tte_mandatory_absent_params) and (val is not None):
-                print(
-                    f"For a `'{TTE_generation_layer_type}'` model, "
-                    f"TTE generation param {name} should be `None`; got {val}. Setting to None."
-                )
-                tte_params[name] = None
+        extra_param_err_tmpl = f"WARNING: For a {TTE_generation_layer_type} model, {{}} is not used; got {{}}. Setting to None."
+        match TTE_generation_layer_type:
+            case TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
+                if TTE_lognormal_generation_num_components is None:
+                    raise ValueError(
+                        missing_param_err_tmpl.format("TTE_lognormal_generation_num_components")
+                    )
+                if type(TTE_lognormal_generation_num_components) is not int:
+                    raise TypeError(
+                        f"`TTE_lognormal_generation_num_components` must be an int! "
+                        f"Got: {type(TTE_lognormal_generation_num_components)}."
+                    )
+                elif TTE_lognormal_generation_num_components <= 0:
+                    raise ValueError(
+                        "`TTE_lognormal_generation_num_components` should be >0 "
+                        f"got {TTE_lognormal_generation_num_components}."
+                    )
+                if mean_log_inter_event_time_min is None:
+                    mean_log_inter_event_time_min = 0.0
+                if std_log_inter_event_time_min is None:
+                    std_log_inter_event_time_min = 1.0
 
-        if TTE_generation_layer_type == TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
-            if type(TTE_lognormal_generation_num_components) is not int:
-                raise TypeError(
-                    f"`TTE_lognormal_generation_num_components` must be an int! "
-                    f"Got: {type(TTE_lognormal_generation_num_components)}."
-                )
-            elif TTE_lognormal_generation_num_components <= 0:
+            case TimeToEventGenerationHeadType.EXPONENTIAL:
+                if TTE_lognormal_generation_num_components is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "TTE_lognormal_generation_num_components",
+                            TTE_lognormal_generation_num_components,
+                        )
+                    )
+                    TTE_lognormal_generation_num_components = None
+                if mean_log_inter_event_time_min is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "mean_log_inter_event_time_min", mean_log_inter_event_time_min
+                        )
+                    )
+                    mean_log_inter_event_time_min = None
+                if std_log_inter_event_time_min is not None:
+                    print(
+                        extra_param_err_tmpl.format(
+                            "std_log_inter_event_time_min", std_log_inter_event_time_min
+                        )
+                    )
+                    std_log_inter_event_time_min = None
+
+            case _:
                 raise ValueError(
-                    "`TTE_lognormal_generation_num_components` should be >0 "
-                    f"got {TTE_lognormal_generation_num_components}."
+                    f"Invalid option for `TTE_generation_layer_type`. Must be in "
+                    f"({TimeToEventGenerationHeadType.values()}). Got {TTE_generation_layer_type}."
                 )
-            if mean_log_inter_event_time_min is None:
-                mean_log_inter_event_time_min = 0.0
-            if std_log_inter_event_time_min is None:
-                std_log_inter_event_time_min = 1.0
 
         self.TTE_generation_layer_type = TTE_generation_layer_type
         self.TTE_lognormal_generation_num_components = TTE_lognormal_generation_num_components

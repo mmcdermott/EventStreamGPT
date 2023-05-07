@@ -1,5 +1,7 @@
-max_epochs: 100
-patience: 5
+max_epochs:
+  value: 100
+patience:
+  value: 5
 batch_size:
   min: 8
   max: 128
@@ -21,3 +23,5 @@ end_lr_frac_of_init_lr:
   distribution: log_uniform_values
   min: 1e-4
   max: 0.9
+end_lr:
+  value: "null"

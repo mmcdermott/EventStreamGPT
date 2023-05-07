@@ -1,9 +1,10 @@
-save_dir: ???
-
+save_dir:
+  value: ???
 max_seq_len:
   min: 16
   max: 512
 min_seq_len:
   min: 2
   max: 16
-seq_padding_side: "right"
+seq_padding_side:
+  value: "right"

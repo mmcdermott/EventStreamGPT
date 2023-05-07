@@ -1,3 +1,4 @@
+import pickle
 from typing import Dict, Optional, Set, Tuple, Union
 
 import torch
@@ -25,7 +26,7 @@ from .model_output import (
     get_event_type_mask_per_measurement,
 )
 from .transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
-from .utils import safe_masked_max, safe_weighted_avg, weighted_loss
+from .utils import safe_masked_max, safe_weighted_avg, str_summary, weighted_loss
 
 
 class GenerativeOutputLayer(torch.nn.Module):
@@ -126,8 +127,13 @@ class GenerativeOutputLayer(torch.nn.Module):
 
         # TTE_dist is a distribution with random variables of shape (batch size, sequence length)
         TTE_obs_mask = batch["event_mask"][:, 1:] & batch["event_mask"][:, :-1]
-        TTE_delta = batch["time"].diff()
+        TTE_delta = batch["time_delta"][:, :-1]
         TTE_true = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
+
+        if TTE_true.min() <= 0:
+            with open("/home/mu363/tmp.pkl", mode="wb") as f:
+                pickle.dump((self, TTE_true, batch), f)
+            raise ValueError("TTE_true should be > 0!")
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
         # for generative purposes, we add a fake observation to the last element.
@@ -140,7 +146,11 @@ class GenerativeOutputLayer(torch.nn.Module):
 
         # We skip the last event as we have no true time to event for that event.
         # TODO(mmd): Use NLL-\beta?
-        TTE_LL = TTE_dist.log_prob(TTE_true_exp)
+        try:
+            TTE_LL = TTE_dist.log_prob(TTE_true_exp)
+        except ValueError as e:
+            print(f"Failed to compute TTE log prob on input {str_summary(TTE_true_exp)}: {e}")
+            raise
 
         if TTE_obs_mask_exp.isnan().any():
             raise ValueError(f"NaNs in TTE_obs_mask_exp: {batch}")

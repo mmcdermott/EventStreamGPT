@@ -292,7 +292,9 @@ class ESTForStreamClassificationLM(L.LightningModule):
 @hydra_dataclass
 class FinetuneConfig:
     save_dir: str = omegaconf.MISSING
-    pretrained_weights_fp: Path | None = (None,)
+    load_from_model_dir: str | Path | None = omegaconf.MISSING
+    pretrained_weights_fp: Path | None = None
+
     do_overwrite: bool = False
 
     config: dict[str, Any] = dataclasses.field(

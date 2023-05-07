@@ -1,0 +1,4 @@
+n_auc_thresholds:
+  value: 50
+do_skip_all_metrics:
+  value: True

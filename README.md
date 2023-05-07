@@ -1,4 +1,4 @@
-# EventStream
+# Event Stream ML
 
 EventStream is a codebase for managing and modeling event stream datasets, which consist of sequences of continuous-time events containing various categorical or continuous measurements. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: EventStreamData, for handling event stream datasets in raw form and with Pytorch for modeling, and EventStreamTransformer, which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, and Lightning wrappers for training these models.
 
@@ -30,6 +30,168 @@ Please see the EventStreamData `README.md` file for more information.
 ### EventStreamTransformer
 
 Functionally, there are three areas of differences between a traditional sequence transformer and an EventStreamTransformer: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
+
+## Scripts
+
+You can use several scripts from this repository. These scripts are built using
+[hydra](https://hydra.cc/docs/intro/), so generally you will use them by specifying a mixture of command line
+overrides and local configuration options in `yaml` files.
+
+### Pre-training
+
+The script endpoint to launch a pre-training run, with the built in transformer model class here, is in
+[.../scripts/pretrain.py](scripts/pretrain.py). To run this script, simply call it and override its parameters
+via hydra:
+
+```bash
+PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pretrain.py  \
+--config-path='/path/to/local/configs' \
+--config-name='local_config_name' \
+optimization_config.batch_size=24 optimization_config.num_dataloader_workers=64` # hydra overrides...
+```
+
+In your local config file (or via the command line), you can override various parameters, e.g.
+
+```yaml
+defaults:
+  - pretrain_config # IMPORTANT: This defaults to the pre-defined repository config!
+  - _self_
+
+experiment_dir: /path/to/base/model/dir...
+
+data_config:
+  save_dir: /path/to/data/cohort
+
+config:
+  measurements_per_dep_graph_level:
+    - ['age', 'time_of_day']
+    - ['event_type']
+    - ['next_param', ['multivariate_regression_task', 'categorical_only'], ...
+        'can_do_multiline', ...]
+    - - 'can_also_use_yaml_syntax'
+      - ['multivariate_regression_task', 'categorical_and_numerical']
+```
+
+The default hydra config for this object is a structured config stored in the configstore with name
+`pretrain_config`, defined in the `PretrainConfig` dataclass object in
+`generative_sequence_modeling_lightning.py` file:
+
+```python
+@hydra_dataclass
+class PretrainConfig:
+    do_overwrite: bool = False
+
+    config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
+            **{k: v for k, v in StructuredTransformerConfig().to_dict().items() if k not in SKIP_CFG_PARAMS}
+        }
+    )
+    optimization_config: OptimizationConfig = OptimizationConfig()
+    data_config: PytorchDatasetConfig = PytorchDatasetConfig()
+    metrics_config: MetricsConfig = MetricsConfig()
+
+    experiment_dir: str = omegaconf.MISSING
+    save_dir: str = "${experiment_dir}/pretrain/${now:%Y-%m-%d_%H-%M-%S}"
+
+    wandb_name: str | None = "generative_event_stream_transformer"
+    wandb_project: str | None = None
+    wandb_team: str | None = None
+    log_every_n_steps: int = 50
+
+    num_dataloader_workers: int = 1
+
+    do_detect_anomaly: bool = False
+    do_final_validation_on_metrics: bool = True
+
+    def __post_init__(self):
+        if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
+            self.save_dir = Path(self.save_dir)
+```
+
+#### Hyperparameter Tuning
+
+To launch a weights and biases hyperparameter sweep, you can use the
+[.../scripts/launch_wandb_hp_sweep.py](scripts/launch_wandb_hp_sweep.py) file.
+
+```bash
+PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/launch_wandb_hp_sweep.py \
+    --config-path='/path/to/local/configs' \
+    --config-name='local_config_name' \
+    'hydra.searchpath=[$EVENT_STREAM_PATH/configs]' # This line ensures hydra can find the pre-defined default
+```
+
+An example of the overriding local config is:
+
+```yaml
+defaults:
+  - hyperparameter_sweep # IMPORTANT: This defaults to the pre-defined repository config!
+  - _self_
+
+parameters:
+  experiment_dir:
+    value: /path/to/experiment/dir
+  num_dataloader_workers:
+    value: # of dataloader workers
+  data_config:
+    save_dir:
+      value: /path/to/data/cohort
+  config:
+    measurements_per_dep_graph_level:
+      values:
+        - - [param list 1 entry 1]
+          - [param list 1 entry 2]
+          - ...
+```
+
+The default config establishes default ranges for a number of standard parameters, and uses hydra mandatory
+missing parameters for other arguments that must be set on the command line. After you create the weights and
+biases sweep, you can simply launch weights and biases agents, _in the directory `$EVENT_STREAM_PATH/scripts`
+and sourced in the appropriate environment_ and models will spin up as normal.
+
+During hyperparameter tuning, many warnings about "unnecessary parameters" may be printed -- e.g., `WARNING: categorical_embedding_dim is set to 16 but do_split_embeddings=False. Setting categorical_embedding_dim to None.` These are normal and do not indicate anything is wrong; rather, they merely reflect the fact that the
+hyperparameter sweep will search over parameters even when they are made irrelevant by other choices in the
+config.
+
+#### Pre-training your own model
+
+Of course, this module isn't merely intended for you to be able to run this class of models, but rather should
+also enable you to easily test your own, huggingface API compatible models. To make your own model, you can
+follow the below steps:
+
+1. Write your own model class. Structure it to follow the interface (inputs and outputs) of
+   [`ESTForGenerativeSequenceModeling`](EventStream/transformer/model.py).
+2. Copy the
+   [.../EventStream/transformer/generative_sequence_model_lightning.py](EventStream/transformer/generative_sequence_model_lightning.py)
+   file into your own repository. Adjust imports as necessary to refer to the installed EventStream Package
+   and your new model.
+3. Adjust the internals of your new lightning class so the internal model used is your model class.
+4. Adjust the defined `PretrainConfig` object to point to your model's config class in the `_target_`
+   variable. Rename the config so it does not conflict in the Hydra Store with the EventStream default
+   `PretrainConfig`.
+5. Copy whichever scripts you want to use from the repository, adjust them to point to your new lightning's
+   train function and config by default, and launch models with these scripts as you would have previously
+   with the built-in model.
+
+On our roadmap of features to add includes support for dynamically defined user models and configs from the
+command line with built in scripts out of the gate, so that fewer (if any) components need to be directly
+copied from this repository; stay tuned for further updates on that front!
+
+### Fine-tuning
+
+To-do.
+
+### Foundation Model Evaluation
+
+Our suggested evaluation suite focuses on assessing the emergence of foundation model capabilities. To that
+end, it consists of the following steps:
+
+1. Determine appropriate hyperparameters for your pretraining setup. In our current evaluation suite, we
+   leverage a single set of hyperparameters across all pretraining dataset subset sizes, though this is
+   likely sub-optimal in practice.
+2. Pre-train models at optimal hyperparameters on a robust range of pretraining dataset subset sizes, with
+   multiple random seeds being run over smaller subsets to ameliorate variance.
+3. ...
 
 ## Examples
 

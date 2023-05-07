@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import random
 from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Sequence
 from io import StringIO, TextIOBase
@@ -235,7 +236,8 @@ class InputDFSchema(JSONableMixin):
         columns_to_load = {}
 
         for in_col, (out_col, dt) in self.unified_schema.items():
-            if in_col in columns_to_load: raise ValueError(f"Duplicate column {in_col}!")
+            if in_col in columns_to_load:
+                raise ValueError(f"Duplicate column {in_col}!")
             columns_to_load[in_col] = dt
 
         if self.type == InputDFType.RANGE:
@@ -243,13 +245,14 @@ class InputDFSchema(JSONableMixin):
                 if in_col in columns_to_load:
                     if dt != columns_to_load[in_col]:
                         raise ValueError(f"Duplicate column {in_col} with differing dts!")
-                else: columns_to_load[in_col] = dt
+                else:
+                    columns_to_load[in_col] = dt
             for in_col, (out_col, dt) in self.unified_end_schema.items():
                 if in_col in columns_to_load:
                     if dt != columns_to_load[in_col]:
                         raise ValueError(f"Duplicate column {in_col} with differing dts!")
-                else: columns_to_load[in_col] = dt
-
+                else:
+                    columns_to_load[in_col] = dt
 
         columns_to_load = list(columns_to_load.items())
 
@@ -414,10 +417,14 @@ class PytorchDatasetConfig(JSONableMixin):
     """
 
     save_dir: Path = omegaconf.MISSING
+    task_df_name: str | None = None
 
     max_seq_len: int = 256
     min_seq_len: int = 2
     seq_padding_side: str = "right"
+
+    train_subset_size: int | str = "FULL"
+    train_subset_seed: int | None = None
 
     def __post_init__(self):
         assert self.seq_padding_side in ("left", "right")
@@ -427,6 +434,29 @@ class PytorchDatasetConfig(JSONableMixin):
 
         if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
             self.save_dir = Path(self.save_dir)
+
+        match self.train_subset_size:
+            case (None | "FULL") if self.train_subset_seed is not None:
+                raise ValueError(
+                    f"train_subset_seed {self.train_subset_seed} should be None "
+                    "if train_subset_size is {self.train_subset_size}."
+                )
+            case int() as n if n < 0:
+                raise ValueError(f"If integral, train_subset_size must be positive! Got {n}")
+            case float() as frac if frac <= 0 or frac >= 1:
+                raise ValueError(f"If float, train_subset_size must be in (0, 1)! Got {frac}")
+            case int() | float() if self.train_subset_seed is None:
+                seed = int(random.randint(1, int(1e6)))
+                print(
+                    f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}"
+                )
+                self.train_subset_seed = seed
+            case None | "FULL":
+                pass
+            case _:
+                raise TypeError(
+                    f"train_subset_size is of unrecognized type {type(self.train_subset_size)}."
+                )
 
     def to_dict(self) -> dict:
         """Represents this configuration object as a plain dictionary."""
@@ -892,7 +922,8 @@ class DatasetConfig(JSONableMixin):
         cls,
         dynamic_measurement_columns: Sequence[str | tuple[str, str]] | None = None,
         static_measurement_columns: Sequence[str] | None = None,
-        time_dependent_measurement_columns: None | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
+        time_dependent_measurement_columns: None
+        | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
         **kwargs,
     ) -> DatasetConfig:
         """Builds an appropriate configuration object given a simple list of columns:
@@ -924,17 +955,18 @@ class DatasetConfig(JSONableMixin):
 
         if dynamic_measurement_columns is not None:
             for measurement in dynamic_measurement_columns:
-                col_kwargs = {'temporality': TemporalityType.DYNAMIC}
+                col_kwargs = {"temporality": TemporalityType.DYNAMIC}
                 col_name = None
                 match measurement:
-                    case (None, str() as col_name): 
-                        col_kwargs['modality'] = DataModality.UNIVARIATE_REGRESSION
+                    case (None, str() as col_name):
+                        col_kwargs["modality"] = DataModality.UNIVARIATE_REGRESSION
                     case (str() as col_name, str() as val_col):
-                        col_kwargs['modality'] = DataModality.MULTIVARIATE_REGRESSION
-                        col_kwargs['values_column'] = val_col
+                        col_kwargs["modality"] = DataModality.MULTIVARIATE_REGRESSION
+                        col_kwargs["values_column"] = val_col
                     case str() as col_name:
-                        col_kwargs['modality'] = DataModality.MULTI_LABEL_CLASSIFICATION
-                    case _: raise TypeError(f"{measurement} is of incorrect type!")
+                        col_kwargs["modality"] = DataModality.MULTI_LABEL_CLASSIFICATION
+                    case _:
+                        raise TypeError(f"{measurement} is of incorrect type!")
 
                 measurement_configs[col_name] = MeasurementConfig(**col_kwargs)
 

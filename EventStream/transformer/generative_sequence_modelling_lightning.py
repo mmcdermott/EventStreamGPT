@@ -491,6 +491,9 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         }
 
 
+SKIP_CFG_PARAMS = {"seq_attention_layers", "dep_graph_attention_layers"}
+
+
 @hydra_dataclass
 class PretrainConfig:
     do_overwrite: bool = False
@@ -498,6 +501,11 @@ class PretrainConfig:
     config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
+            **{
+                k: v
+                for k, v in StructuredTransformerConfig().to_dict().items()
+                if k not in SKIP_CFG_PARAMS
+            },
         }
     )
     optimization_config: OptimizationConfig = OptimizationConfig()

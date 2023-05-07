@@ -321,8 +321,12 @@ class Visualizer(JSONableMixin):
 
         events_df = (
             events_df.with_columns(
-                (pl.col("age") / age_bucket_size).round(0).cast(pl.Int64).alias("age_bucket")
+                (pl.col("age") / age_bucket_size)
+                .round(0)
+                .cast(pl.Int64, strict=False)
+                .alias("age_bucket")
             )
+            .drop_nulls("age_bucket")
             .groupby("age_bucket", *self.static_covariates)
             .agg(
                 pl.col(self.age_col).mean(),

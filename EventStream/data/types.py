@@ -23,7 +23,9 @@ class InputDataType(StrEnum):
 @dataclasses.dataclass
 class PytorchBatch:
     event_mask: torch.BoolTensor | None = None
-    time: torch.FloatTensor | None = None
+
+    # We track this instead of raw times as it is less likely to suffer from underflow errors.
+    time_delta: torch.FloatTensor | None = None
 
     static_indices: torch.LongTensor | None = None
     static_measurement_indices: torch.LongTensor | None = None

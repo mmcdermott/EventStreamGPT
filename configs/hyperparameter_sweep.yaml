@@ -1,5 +1,5 @@
 defaults:
-  - pretrain_config: default
+  - parameters: default
   - _self_
 
 program: pretrain.py

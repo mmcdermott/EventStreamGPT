@@ -20,7 +20,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
     Ultimately, this class will produce a set of batches for ML that will have the following structure:
     {
         'event_mask': [batch_size X seq_len],
-        'time': [batch_size X seq_len],
+        'time_delta': [batch_size X seq_len],
 
         'static_indices': [batch_size X N_static_data],
         'static_measurement_indices': [batch_size X N_static_data],
@@ -36,8 +36,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
     In this batch, the tensors will have the following types/properties:
     'event_mask'
         boolean type, represents whether or not an event is present at that index in the batch.
-    'time'
-        floating point type, represents the time in minutes since the start of that subject's data for the
+    'time_delta'
+        floating point type, represents the time_delta in minutes from that subject's prior event for the
         given event in the sequence.
 
     'dynamic_indices'
@@ -137,9 +137,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
-        self.cached_data = self.cached_data.filter(
-            pl.col("time").arr.lengths() >= config.min_seq_len
-        )
+        if "time" in self.cached_data.columns:
+            seq_lens = pl.col("time").arr.lengths()
+        else:
+            seq_lens = pl.col("time_delta").arr.lengths()
+        self.cached_data = self.cached_data.filter(seq_lens >= config.min_seq_len)
 
         self.subject_ids = list(self.cached_data["subject_id"])
 
@@ -173,17 +175,30 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             )
             time_dep_cols = [
                 "time",
+                "time_delta",
                 "dynamic_indices",
                 "dynamic_values",
                 "dynamic_measurement_indices",
             ]
 
-            start_idx_expr = (
-                pl.col("time").arr.explode().search_sorted(pl.col("start_time_min").first())
-            )
-            end_idx_expr = (
-                pl.col("time").arr.explode().search_sorted(pl.col("end_time_min").first())
-            )
+            if "time" in self.cached_data.columns:
+                start_idx_expr = (
+                    pl.col("time").arr.explode().search_sorted(pl.col("start_time_min").first())
+                )
+                end_idx_expr = (
+                    pl.col("time").arr.explode().search_sorted(pl.col("end_time_min").first())
+                )
+            else:
+                start_idx_expr = (
+                    pl.col("time_delta")
+                    .arr.explode()
+                    .search_sorted(pl.col("start_time_min").first())
+                )
+                end_idx_expr = (
+                    pl.col("time_delta")
+                    .arr.explode()
+                    .search_sorted(pl.col("end_time_min").first())
+                )
 
             self.cached_data = (
                 self.cached_data.join(T_df, on="subject_id", how="inner", suffix="_task")
@@ -214,25 +229,56 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             )
 
             self.cached_data = (
-                self.cached_data.filter(pl.col("time").arr.lengths() >= config.min_seq_len)
+                self.cached_data.filter(seq_lens >= config.min_seq_len)
                 .sort("task_row_num")
                 .drop("task_row_num")
             )
 
+        if "time" in self.cached_data.columns:
+            with self._time_as("convert_to_time_deltas"):
+                self.cached_data = self.cached_data.with_columns(
+                    pl.col("time")
+                    .arr.eval(
+                        # We fill with 1 here as it will be ignored in the code anyways as the next event's
+                        # event mask will be null.
+                        # TODO(mmd): validate this in a test.
+                        (pl.col("").shift(-1) - pl.col("")).fill_null(1)
+                    )
+                    .alias("time_delta")
+                ).drop("time")
+
         with self._time_as("inter_event_time_norm"):
             stats = self.cached_data.select(
-                pl.col("time")
-                .arr.eval((pl.col("").shift(-1) - pl.col("")).log())
-                .explode()
-                .drop_nulls()
-                .alias("log_inter_event_time")
+                pl.col("time_delta").explode().drop_nulls().alias("inter_event_time")
             ).select(
-                pl.col("log_inter_event_time").mean().alias("mean"),
-                pl.col("log_inter_event_time").std().alias("std"),
+                pl.col("inter_event_time").min().alias("min"),
+                pl.col("inter_event_time").log().mean().alias("mean_log"),
+                pl.col("inter_event_time").log().std().alias("std_log"),
             )
 
-            self.mean_log_inter_event_time_min = stats["mean"].item()
-            self.std_log_inter_event_time_min = stats["std"].item()
+            if stats["min"].item() <= 0:
+                raise ValueError(
+                    f"Observed a minimum inter-event time <= 0: {stats['min'].item()}!"
+                )
+
+            self.mean_log_inter_event_time_min = stats["mean_log"].item()
+            self.std_log_inter_event_time_min = stats["std_log"].item()
+
+        if self.config.train_subset_size not in (None, "FULL") and self.split == "train":
+            match self.config.train_subset_size:
+                case int() as n if n > 0:
+                    kwargs = {"n": n}
+                case float() as frac if 0 < frac < 1:
+                    kwargs = {"fraction": frac}
+                case _:
+                    raise TypeError(
+                        f"Can't process subset size of {type(self.config.train_subset_size)}, "
+                        f"{self.config.train_subset_size}"
+                    )
+
+            self.cached_data = self.cached_data.sample(
+                seed=self.config.train_subset_seed, **kwargs
+            )
 
         with self._time_as("convert_to_rows"):
             self.cached_data = self.cached_data.drop("subject_id", "start_time")
@@ -245,19 +291,6 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
     def __len__(self):
         return len(self.cached_data)
-
-    @SeedableMixin.WithSeed
-    def subset(self, subset_size: int, do_replace: bool = False) -> "PytorchDataset":
-        sub_idx = np.random.choice(len(self), subset_size, replace=do_replace)
-
-        out = copy.deepcopy(self)
-        if self.has_task:
-            out.task_df = self.task_df.iloc[sub_idx]
-
-        out.cached_data = [out.cached_data[i] for i in sub_idx]
-        assert len(out) == subset_size
-
-        return out
 
     def __getitem__(self, idx: int) -> dict[str, list]:
         return self._seeded_getitem(idx)
@@ -299,11 +332,12 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         # If we need to truncate to `self.max_seq_len`, grab a random full-size span to capture that.
         # TODO(mmd): This will proportionally underweight the front and back ends of the subjects data
         # relative to the middle, as there are fewer full length sequences containing those elements.
-        if len(full_subj_data["time"]) > self.max_seq_len:
+        seq_len = len(full_subj_data["time_delta"])
+        if seq_len > self.max_seq_len:
             with self._time_as("truncate_to_max_seq_len"):
-                start_idx = np.random.choice(len(full_subj_data["time"]) - self.max_seq_len)
+                start_idx = np.random.choice(seq_len - self.max_seq_len)
                 for k in (
-                    "time",
+                    "time_delta",
                     "dynamic_indices",
                     "dynamic_values",
                     "dynamic_measurement_indices",
@@ -354,7 +388,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
     def __dynamic_only_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         # Get the local max sequence length and n_data elements for padding.
-        max_seq_len = max(len(e["time"]) for e in batch)
+        max_seq_len = max(len(e["time_delta"]) for e in batch)
 
         max_n_data = 0
         for e in batch:
@@ -369,16 +403,20 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         self._register_start("collate_dynamic_padding")
         out = defaultdict(list)
         for e in batch:
-            seq_len = len(e["time"])
+            seq_len = len(e["time_delta"])
             seq_delta = max_seq_len - seq_len
 
             if self.seq_padding_side == "right":
-                out["time"].append(
-                    torch.nn.functional.pad(torch.Tensor(e["time"]), (0, seq_delta), value=np.NaN)
+                out["time_delta"].append(
+                    torch.nn.functional.pad(
+                        torch.Tensor(e["time_delta"]), (0, seq_delta), value=np.NaN
+                    )
                 )
             else:
-                out["time"].append(
-                    torch.nn.functional.pad(torch.Tensor(e["time"]), (seq_delta, 0), value=np.NaN)
+                out["time_delta"].append(
+                    torch.nn.functional.pad(
+                        torch.Tensor(e["time_delta"]), (seq_delta, 0), value=np.NaN
+                    )
                 )
 
             data_elements = defaultdict(list)
@@ -420,10 +458,10 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         # Add event and data masks on the basis of which elements are present, then convert the tensor
         # elements to the appropriate types.
-        out_batch["event_mask"] = ~out_batch["time"].isnan()
+        out_batch["event_mask"] = ~out_batch["time_delta"].isnan()
         out_batch["dynamic_values_mask"] = ~out_batch["dynamic_values"].isnan()
 
-        out_batch["time"] = torch.nan_to_num(out_batch["time"], nan=0)
+        out_batch["time_delta"] = torch.nan_to_num(out_batch["time_delta"], nan=0)
 
         out_batch["dynamic_indices"] = torch.nan_to_num(out_batch["dynamic_indices"], nan=0).long()
         out_batch["dynamic_measurement_indices"] = torch.nan_to_num(

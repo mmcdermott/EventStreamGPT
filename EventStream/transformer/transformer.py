@@ -370,36 +370,31 @@ class TemporalPositionEncoding(torch.nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        device: str = ("cuda" if torch.cuda.is_available() else "cpu"),
         max_timepoint: float = 10000.0,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
-        div_term = torch.nn.Parameter(
-            torch.exp(
-                torch.arange(0, embedding_dim, 2, device=device)
-                * (-math.log(max_timepoint) / embedding_dim)
-            ),
-            requires_grad=False,
+        div_term = torch.exp(
+            torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim)
         )
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
         # embedding. This is not a principled decision, but enabling odd embedding dimensions helps avoid edge
         # cases during hyperparameter tuning when searching over possible embedding spaces.
         if self.embedding_dim % 2 == 0:
-            self.sin_div_term = div_term
-            self.cos_div_term = div_term
+            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=False)
+            self.cos_div_term = torch.nn.Parameter(div_term, requires_grad=False)
         else:
-            self.sin_div_term = div_term
-            self.cos_div_term = div_term[:-1]
+            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=False)
+            self.cos_div_term = torch.nn.Parameter(div_term[:-1], requires_grad=False)
 
-    def forward(self, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, t_deltas: torch.Tensor) -> torch.Tensor:
         """t is the tensor of input timepoints, with shape (batch size, sequence length)"""
 
-        bsz, seq_len = t.shape
+        bsz, seq_len = t_deltas.shape
 
-        # First, we unsqueeze it for broadcasting through the hidden dim.
-        t = t.unsqueeze(-1)
+        # First, we go from deltas to time values and unsqueeze it for broadcasting through the hidden dim.
+        t = t_deltas.cumsum(-1).unsqueeze(-1)
 
         # temporal_embeddings will be our output container.
         # It should have shape (batch size, sequence length, embedding dim), and be on the same device as the
@@ -475,7 +470,7 @@ class StructuredInputLayer(torch.nn.Module):
         # data_embed is either of shape (batch_size, sequence_length, config.hidden_size) or of shape
         # (batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
 
-        time_embed = self.time_embedding_layer(batch["time"])
+        time_embed = self.time_embedding_layer(batch["time_delta"])
         # time_embed is of shape (batch_size, sequence_length, config.hidden_size)
 
         if self.config.measurements_per_dep_graph_level is not None:
