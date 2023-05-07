@@ -179,7 +179,71 @@ copied from this repository; stay tuned for further updates on that front!
 
 ### Fine-tuning
 
-To-do.
+To fine-tune a model, use the [finetune.py](scripts/finetune.py) script. Much like pre-training, this script
+leverages hydra to run, but now using the [`FinetuneConfig`](transformer/stream_classification_lightning.py)
+configuration object:
+
+```python
+@hydra_dataclass
+class FinetuneConfig:
+    load_from_model_dir: str | Path = omegaconf.MISSING
+
+    pretrained_weights_fp: Path | None = None
+    save_dir: str | None = None
+
+    do_overwrite: bool = False
+
+    optimization_config: OptimizationConfig = OptimizationConfig()
+
+    task_df_name: str | None = omegaconf.MISSING
+    train_subset_size: int | str | None = "FULL"
+    train_subset_seed: int | None = 1
+
+    trainer_config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "accelerator": "auto",
+            "devices": "auto",
+            "detect_anomaly": False,
+            "default_root_dir": None,
+        }
+    )
+
+    task_specific_params: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "pooling_method": "last",
+        }
+    )
+
+    config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
+
+    wandb_name: str | None = "${task_df_name}_finetuning"
+    wandb_project: str | None = None
+    wandb_team: str | None = None
+    extra_wandb_log_params: dict[str, Any] | None = None
+
+    num_dataloader_workers: int = 1
+```
+
+The hydra integration is not quite as smooth at fine-tuning time as it is during pre-training; namely, this is
+because it the user may want to simultaneously load all prescient details from the pre-trained model
+configuration setting and overwrite some details, such as dropout rates. This configuration object handles
+much of this logic for you, and in general you will only need to specify (1) the directory of the pre-trained
+model to load and fine-tune, (2) the name of the task dataframe (stored in the `task_dfs` subdirectory of the
+dataset configuration file's `save_dir` parameter) for models to run successfully. In this case, a command may
+look like:
+
+```bash
+PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/finetune.py \
+load_from_model_dir=/pretrained/model/dir \
+optimization_config.batch_size=64 \
+optimization_config.init_lr=1e-4 \
+optimization_config.end_lr=null  \
+optimization_config.max_epochs=25 \
+task_df_name=lv_ef/60d
+```
+
+If you wish to pursue a few-shot fine-tuning experiment, you can use the parameters `train_subset_size` and
+`train_subset_seed` to control that.
 
 ### Foundation Model Evaluation
 
