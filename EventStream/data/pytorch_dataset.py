@@ -543,6 +543,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         out_batch = PytorchBatch(**out_batch)
         self._register_end("collate_post_padding_processing")
 
+        if not self.has_task:
+            return out_batch
+
         self._register_start("collate_task_labels")
         out_labels = {}
 

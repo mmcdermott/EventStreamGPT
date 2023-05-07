@@ -1856,7 +1856,7 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
         E.preprocess_measurements()
 
         self.assertNestedDictEqual(
-            WANT_INFERRED_MEASUREMENT_CONFIGS, E.inferred_measurement_configs
+            WANT_INFERRED_MEASUREMENT_CONFIGS, E.inferred_measurement_configs, check_like=True
         )
         self.assertEqual(WANT_SUBJECTS_DF, E.subjects_df)
         self.assertEqual(WANT_EVENTS_DF, E.events_df)

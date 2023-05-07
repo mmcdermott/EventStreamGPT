@@ -350,8 +350,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             max_seq_len=4,
             min_seq_len=2,
         )
-        pyd_kwargs = {"data": DL_REP_DF, "config": config, "vocabulary_config": VocabularyConfig()}
-        pyd = PytorchDataset(**pyd_kwargs)
+        pyd = PytorchDataset(data=DL_REP_DF, config=config, vocabulary_config=VocabularyConfig())
 
         items = [pyd._seeded_getitem(i, seed=1) for i in range(3)]
         pyd.collate(items)
