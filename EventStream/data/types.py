@@ -34,6 +34,8 @@ class PytorchBatch:
     dynamic_values: torch.FloatTensor | None = None
     dynamic_values_mask: torch.BoolTensor | None = None
 
+    start_time: torch.FloatTensor | None = None
+
     stream_labels: dict[str, torch.FloatTensor | torch.LongTensor] | None = None
 
     @property

@@ -27,7 +27,7 @@ from torchmetrics.classification import (
 )
 from transformers import get_polynomial_decay_schedule_with_warmup
 
-from ..data.config import PytorchDatasetConfig
+from ..data.config import PytorchDatasetConfig, SubsequenceSamplingStrategy
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass, task_wrapper
 from .config import OptimizationConfig, StructuredTransformerConfig
@@ -289,8 +289,12 @@ class FinetuneConfig:
     optimization_config: OptimizationConfig = OptimizationConfig()
 
     task_df_name: str | None = omegaconf.MISSING
-    train_subset_size: int | str | None = "FULL"
-    train_subset_seed: int | None = 1
+
+    data_config_overrides: dict[str, Any] | None = dataclasses.field(
+        default_factory=lambda: {
+            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+        }
+    )
 
     trainer_config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -324,20 +328,24 @@ class FinetuneConfig:
             if self.pretrained_weights_fp is None:
                 self.pretrained_weights_fp = self.load_from_model_dir / "pretrained_weights"
             if self.save_dir is None:
-                if self.train_subset_size in (None, "FULL"):
+                if self.data_config_overrides.get("train_subset_size", None) in (None, "FULL"):
                     self.save_dir = self.load_from_model_dir / "finetuning" / self.task_df_name
                 else:
-                    if self.train_subset_seed is None:
-                        self.train_subset_seed = int(random.randint(1, int(1e6)))
+                    self.data_config_overrides["train_subset_size"]
+                    self.data_config_overrides["train_subset_seed"]
+                    if self.data_config_overrides["train_subset_seed"] is None:
+                        self.data_config_overrides["train_subset_seed"] = int(
+                            random.randint(1, int(1e6))
+                        )
                         print(
                             f"WARNING: train_subset_size={self.train_subset_size} but seed is unset. Setting "
-                            f"to {self.train_subset_seed}"
+                            f"to {self.data_config_overrides['train_subset_seed']}"
                         )
                     self.save_dir = (
                         self.load_from_model_dir
                         / "finetuning"
-                        / f"subset_size_{self.train_subset_size}"
-                        / f"subset_seed_{self.train_subset_seed}"
+                        / f"subset_size_{self.data_config_overrides['train_subset_size']}"
+                        / f"subset_seed_{self.data_config_overrides['train_subset_seed']}"
                         / self.task_df_name
                     )
             if self.trainer_config.get("default_root_dir", None) is None:
@@ -348,9 +356,17 @@ class FinetuneConfig:
             self.data_config = PytorchDatasetConfig.from_json_file(data_config_fp)
             self.data_config.task_df_name = self.task_df_name
 
-            if self.train_subset_size is not None:
-                self.data_config.train_subset_size = self.train_subset_size
-                self.data_config.train_subset_seed = self.train_subset_seed
+            for param, val in self.data_config_overrides.items():
+                if param == "task_df_name":
+                    print(
+                        f"WARNING: task_df_name is set in data_config_overrides to {val}! "
+                        f"Original is {self.task_df_name}. Ignoring data_config_overrides..."
+                    )
+                    continue
+                print(
+                    f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}"
+                )
+                setattr(self.data_config, param, val)
 
             config_fp = self.load_from_model_dir / "config.json"
             print(f"Loading config from {config_fp}")
@@ -361,7 +377,7 @@ class FinetuneConfig:
                     self.config.task_specific_params = {}
                 self.config.task_specific_params.update(self.task_specific_params)
 
-            for param, val in self.config_overrides:
+            for param, val in self.config_overrides.items():
                 print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
                 setattr(self.config, param, val)
 

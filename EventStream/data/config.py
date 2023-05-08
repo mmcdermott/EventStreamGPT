@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import random
 from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Sequence
@@ -16,6 +17,7 @@ from ..utils import (
     COUNT_OR_PROPORTION,
     PROPORTION,
     JSONableMixin,
+    StrEnum,
     hydra_dataclass,
     num_initial_spaces,
 )
@@ -399,6 +401,17 @@ class VocabularyConfig(JSONableMixin):
         )
 
 
+class SeqPaddingSide(StrEnum):
+    RIGHT = enum.auto()
+    LEFT = enum.auto()
+
+
+class SubsequenceSamplingStrategy(StrEnum):
+    TO_END = enum.auto()
+    FROM_START = enum.auto()
+    RANDOM = enum.auto()
+
+
 @hydra_dataclass
 class PytorchDatasetConfig(JSONableMixin):
     """Configuration options for building a PyTorch dataset from an `Dataset`.
@@ -420,12 +433,15 @@ class PytorchDatasetConfig(JSONableMixin):
 
     max_seq_len: int = 256
     min_seq_len: int = 2
-    seq_padding_side: str = "right"
+    seq_padding_side: SeqPaddingSide = SeqPaddingSide.RIGHT
+    subsequence_sampling_strategy: SubsequenceSamplingStrategy = SubsequenceSamplingStrategy.RANDOM
 
     train_subset_size: int | str = "FULL"
     train_subset_seed: int | None = None
 
     task_df_name: str | None = None
+
+    do_include_start_time_min: bool = False
 
     def __post_init__(self):
         assert self.seq_padding_side in ("left", "right")
