@@ -376,8 +376,14 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
             vocab_offset = config.vocab_offsets_by_measurement[measurement]
             try:
-                values = regressed_values.gather(-1, indices - vocab_offset)
-                values_mask = regressed_values_mask.gather(-1, indices - vocab_offset)
+                if mask is None:
+                    mask = indices >= vocab_offset
+                else:
+                    mask = mask.unsqueeze(-1).expand_as(indices) & (indices >= vocab_offset)
+                idx_gather_T = torch.where(mask, indices - vocab_offset, 0)
+
+                values = regressed_values.gather(-1, idx_gather_T)
+                values_mask = regressed_values_mask.gather(-1, idx_gather_T)
             except RuntimeError:
                 print(f"Failed on {measurement} with {indices.shape} indices")
                 print(f"Vocab offset: {vocab_offset}")

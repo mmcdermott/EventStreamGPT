@@ -51,7 +51,7 @@ class MaxLengthCriteria(StoppingCriteria):
     def __call__(
         self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs
     ) -> bool:
-        return batch.time.shape[-1] >= self.max_length
+        return batch.sequence_length >= self.max_length
 
 
 class MaxTimeCriteria(StoppingCriteria):
