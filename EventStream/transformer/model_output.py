@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any, Union
 
 import pandas as pd
@@ -20,14 +21,20 @@ def get_event_type_mask_per_measurement(
     dynamic_indices: torch.LongTensor,
     config: StructuredTransformerConfig,
 ) -> dict[str, torch.BoolTensor | None]:
+    datetime.now()
     if config.event_types_per_measurement is None:
         return None
 
     event_type_mask = dynamic_measurement_indices == config.measurements_idxmap["event_type"]
 
-    event_type_indices = torch.where(
-        event_type_mask, dynamic_indices - config.vocab_offsets_by_measurement["event_type"], -1
+    num_event_types = event_type_mask.sum(-1)
+    torch._assert(
+        (num_event_types <= 1).all().all(), f"Got {num_event_types.max()} event types per event!"
     )
+
+    event_type_indices = torch.where(
+        event_type_mask, dynamic_indices - config.vocab_offsets_by_measurement["event_type"], 0
+    ).sum(-1)
 
     out_masks = {}
     for measurement, valid_event_types in config.event_types_per_measurement.items():
@@ -37,8 +44,35 @@ def get_event_type_mask_per_measurement(
         # We only want to predict for events that are of the correct type.
         out_masks[measurement] = torch.any(
             torch.stack([(event_type_indices == i) for i in valid_event_type_indices], 0), dim=0
-        ).any(-1)
+        )
     return out_masks
+
+
+def strip_unused_indices(dynamic_indices, *other_tensors):
+    is_present = dynamic_indices != 0
+
+    present_indices = torch.argwhere(is_present)
+    present_rows = present_indices[:, 0]
+    col_counts = torch.ones_like(present_rows).cumsum(0)
+    present_row_change = torch.cat([torch.ones_like(present_rows[:1]), present_rows.diff()], 0)
+
+    present_cols = col_counts - (col_counts * present_row_change).cummax(0)[0]
+
+    device = dynamic_indices.device
+    index = torch.zeros(dynamic_indices.shape[0], is_present.sum(-1).max(), device=device).long()
+    mask = torch.zeros(dynamic_indices.shape[0], is_present.sum(-1).max(), device=device).bool()
+    index.index_put_((present_rows, present_cols), present_indices[:, 1])
+    mask.index_put_((present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool())
+
+    def idx_fn(T: torch.Tensor) -> torch.Tensor:
+        return torch.where(
+            mask, torch.gather(T, -1, index=index), torch.zeros_like(index, dtype=T.dtype)
+        )
+
+    if not other_tensors:
+        return idx_fn(dynamic_indices)
+    else:
+        return tuple([idx_fn(dynamic_indices), *[idx_fn(T) for T in other_tensors]])
 
 
 class NestedIndexableMixin:
@@ -119,25 +153,6 @@ class GenerativeSequenceModelSamples(ModelOutput):
     regression: dict[str, torch.FloatTensor] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
 
-    def set_event_mask(self, event_mask: torch.BoolTensor):
-        self.event_mask = event_mask
-        event_mask_exp = event_mask.unsqueeze(-1)
-
-        self.time_to_event = torch.where(self.event_mask, self.time_to_event, 0)
-
-        new_classification = {}
-        for k, v in self.classification.items():
-            if len(v.shape) == 1:
-                new_classification[k] = torch.where(self.event_mask, v, 0)
-            else:
-                new_classification[k] = torch.where(event_mask_exp.expand_as(v), v, 0)
-        self.classification = new_classification
-
-        new_regression = {}
-        for k, v in self.regression.items():
-            new_regression[k] = torch.where(event_mask_exp.expand_as(v), v, 0)
-        self.regression = new_regression
-
     def build_new_batch_element(
         self,
         batch: PytorchBatch,
@@ -215,10 +230,12 @@ class GenerativeSequenceModelSamples(ModelOutput):
         return (
             self.time_to_event,
             event_mask,
-            dynamic_indices,
-            dynamic_measurement_indices,
-            dynamic_values,
-            dynamic_values_mask,
+            *strip_unused_indices(
+                dynamic_indices,
+                dynamic_measurement_indices,
+                dynamic_values,
+                dynamic_values_mask,
+            ),
         )
 
     def format_updates_to_last_batch_event(
@@ -299,11 +316,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
             indices = indices.unsqueeze(0).expand_as(preds)
             indices = torch.where(preds == 1, indices, 0)
 
-            present_mask = (indices != 0).any(dim=0)
-            indices = indices[:, present_mask]
+            indices = strip_unused_indices(indices)
 
-            measurement_indices = config.measurements_idxmap[measurement] * torch.ones_like(
-                indices
+            measurement_indices = config.measurements_idxmap[measurement] * (
+                torch.where(indices != 0, torch.ones_like(indices), torch.zeros_like(indices))
             )
 
             if mask is not None:
@@ -380,7 +396,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     mask = indices >= vocab_offset
                 else:
                     mask = mask.unsqueeze(-1).expand_as(indices) & (indices >= vocab_offset)
-                idx_gather_T = torch.where(mask, indices - vocab_offset, 0)
+                idx_gather_T = torch.where(mask, indices - vocab_offset, 0).long()
 
                 values = regressed_values.gather(-1, idx_gather_T)
                 values_mask = regressed_values_mask.gather(-1, idx_gather_T)
@@ -473,6 +489,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     existing_mask = batch.dynamic_measurement_indices[:, -1] == meas_index
 
                     indices = torch.where(existing_mask, batch.dynamic_indices[:, -1], 0)
+
                     present_mask = (indices != 0).any(dim=0)
                     if not present_mask.any():
                         continue
@@ -503,14 +520,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
         dynamic_values = torch.cat(dynamic_values, 1)
         dynamic_values_mask = torch.cat(dynamic_values_mask, 1)
 
-        present_mask = (dynamic_indices != 0).any(dim=0)
-
-        dynamic_indices = dynamic_indices[:, present_mask]
-        dynamic_measurement_indices = dynamic_measurement_indices[:, present_mask]
-        dynamic_values = dynamic_values[:, present_mask]
-        dynamic_values_mask = dynamic_values_mask[:, present_mask]
-
-        return dynamic_indices, dynamic_measurement_indices, dynamic_values, dynamic_values_mask
+        return strip_unused_indices(
+            dynamic_indices, dynamic_measurement_indices, dynamic_values, dynamic_values_mask
+        )
 
     @staticmethod
     def pad_data_elements(
@@ -586,8 +598,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
         # Combine everything
         seq_dim = 1
 
+        time_delta = batch.time_delta.clone()
+        time_delta[:, -1] = new_event_time_delta
         time_delta = torch.cat(
-            (batch.time_delta, new_event_time_delta.unsqueeze(seq_dim)), seq_dim
+            (time_delta, torch.ones_like(new_event_time_delta).unsqueeze(seq_dim)), seq_dim
         )
         event_mask = torch.cat((batch.event_mask, new_event_mask.unsqueeze(seq_dim)), seq_dim)
 
@@ -673,8 +687,6 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 prev_dynamic_measurement_indices == config.measurements_idxmap[m]
             )
 
-        kept_cols_mask = ~(prev_measurements_to_drop_idx.all(dim=0))
-
         data_tensors = []
         for dt in (
             prev_dynamic_indices,
@@ -682,16 +694,14 @@ class GenerativeSequenceModelSamples(ModelOutput):
             prev_dynamic_values,
             prev_dynamic_values_mask,
         ):
-            data_tensors.append(
-                torch.where(prev_measurements_to_drop_idx, 0, dt)[:, kept_cols_mask]
-            )
+            data_tensors.append(torch.where(prev_measurements_to_drop_idx, 0, dt))
 
         (
             prev_dynamic_indices,
             prev_dynamic_measurement_indices,
             prev_dynamic_values,
             prev_dynamic_values_mask,
-        ) = data_tensors
+        ) = strip_unused_indices(*data_tensors)
 
         try:
             new_dynamic_indices = torch.cat((prev_dynamic_indices, new_dynamic_indices), 1)
@@ -798,6 +808,10 @@ class GenerativeSequenceModelOutput(ModelOutput):
     event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None
     event_mask: torch.BoolTensor | None = None
     dynamic_values_mask: torch.BoolTensor | None = None
+
+    past_key_values: tuple[tuple[torch.FloatTensor]] | None = None
+    hidden_states: tuple[torch.FloatTensor] | None = None
+    attentions: tuple[torch.FloatTensor] | None = None
 
 
 @dataclass
