@@ -569,6 +569,25 @@ class StructuredGenerationMixin:
         # keep track of which sequences are already finished
         unfinished_sequences = batch["event_mask"].new_ones(batch.batch_size)
 
+        # set measurements_to_fill
+        match self.config.structured_event_processing_mode:
+            case "conditionally_independent":
+                measurements_to_fill_list = [
+                    {"time"},
+                    set(self.config.measurements_idxmap.keys()),
+                ]
+            case "nested_attention":
+                if self.config.measurements_per_dep_graph_level:
+                    measurements_to_fill_list = [
+                        {"time"},
+                        *self.config.measurements_per_dep_graph_level[1:],
+                    ]
+                else:
+                    measurements_to_fill_list = [
+                        {"time"},
+                        set(self.config.measurements_idxmap.keys()),
+                    ]
+
         this_peer_finished = False  # used by synced_gpus only
         while True:
             if synced_gpus:
@@ -584,24 +603,6 @@ class StructuredGenerationMixin:
                     break
 
             next_scores = ()
-
-            match self.config.structured_event_processing_mode:
-                case "conditionally_independent":
-                    measurements_to_fill_list = [
-                        {"time"},
-                        set(self.config.measurements_idxmap.keys()),
-                    ]
-                case "nested_attention":
-                    if self.config.measurements_per_dep_graph_level:
-                        measurements_to_fill_list = [
-                            {"time"},
-                            *self.config.measurements_per_dep_graph_level[1:],
-                        ]
-                    else:
-                        measurements_to_fill_list = [
-                            {"time"},
-                            set(self.config.measurements_idxmap.keys()),
-                        ]
 
             for measurements_to_fill in measurements_to_fill_list:
                 # TODO(mmd): Here -- need to loop over dependency graph elements.

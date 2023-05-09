@@ -718,9 +718,26 @@ class ESTForGenerativeSequenceModeling(
         # Initialize weights and apply final processing
         self.post_init()
 
-    def forward(self, batch: PytorchBatch, is_generation: bool = False, **kwargs):
-        encoded = self.encoder(batch, **kwargs).last_hidden_state
-        return self.output_layer(batch, encoded, is_generation=is_generation)
+    def forward(
+        self, batch: PytorchBatch, is_generation: bool = False, **kwargs
+    ) -> GenerativeSequenceModelOutput:
+        use_cache = kwargs.get("use_cache", False)
+        output_attentions = kwargs.get("output_attentions", False)
+        output_hidden_states = kwargs.get("output_hidden_states", False)
+
+        encoded = self.encoder(batch, **kwargs)
+        output = self.output_layer(batch, encoded.last_hidden_state, is_generation=is_generation)
+
+        if use_cache:
+            output.past_key_values = encoded.past_key_values
+
+        if output_attentions:
+            output.attentions = encoded.attentions
+
+        if output_hidden_states:
+            output.hidden_states = encoded.hidden_states
+
+        return output
 
 
 class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
