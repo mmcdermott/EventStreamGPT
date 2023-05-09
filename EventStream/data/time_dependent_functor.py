@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import abc
-from typing import Any
 from datetime import datetime
+from typing import Any
 
 import pandas as pd
 import polars as pl

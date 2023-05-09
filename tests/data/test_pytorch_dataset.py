@@ -338,15 +338,19 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             with self.subTest(C["msg"]):
                 if C.get("want_raise", None) is not None:
                     with self.assertRaises(C["want_raise"]):
-                        PytorchDataset.normalize_task(pl.col('c'), C["vals"].dtype)
+                        PytorchDataset.normalize_task(pl.col("c"), C["vals"].dtype)
                 else:
-                    got_type, got_normalizer = PytorchDataset.normalize_task(pl.col('c'), C["vals"].dtype)
+                    got_type, got_normalizer = PytorchDataset.normalize_task(
+                        pl.col("c"), C["vals"].dtype
+                    )
                     self.assertEqual(C["want_type"], got_type)
 
-                    got_vals = pl.DataFrame({'c': C["vals"]}).select(got_normalizer).get_column('c')
-                    want_vals = pl.DataFrame({'c': C["want_vals"]}).get_column('c')
+                    got_vals = (
+                        pl.DataFrame({"c": C["vals"]}).select(got_normalizer).get_column("c")
+                    )
+                    want_vals = pl.DataFrame({"c": C["want_vals"]}).get_column("c")
 
-                    self.assertEqual(C["want_vals"].to_pandas(), got_vals.to_pandas())
+                    self.assertEqual(want_vals.to_pandas(), got_vals.to_pandas())
 
     def test_get_item_should_collate(self):
         config = PytorchDatasetConfig(

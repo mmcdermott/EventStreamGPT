@@ -19,8 +19,10 @@ from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
 
+
 def to_int_index(col: pl.Expr) -> pl.Expr:
     return col.unique(maintain_order=True).search_sorted(col)
+
 
 class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
     """
@@ -231,10 +233,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     self.task_vocabs[t] = [False, True]
 
             self.task_df = (
-                self.task_df
-                    .with_columns(normalized_cols)
-                    .join(self.cached_data.select("subject_id"), on="subject_id", how="inner")
-                    .with_row_count("task_row_num")
+                self.task_df.with_columns(normalized_cols)
+                .join(self.cached_data.select("subject_id"), on="subject_id", how="inner")
+                .with_row_count("task_row_num")
             )
 
             time_dep_cols = [c for c in ("time", "time_delta") if c in self.cached_data.columns]
@@ -326,7 +327,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         if "time_delta" not in self.cached_data.columns:
             self.cached_data = self.cached_data.with_columns(
-                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias('start_time'),
+                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias(
+                    "start_time"
+                ),
                 pl.col("time")
                 .arr.eval(
                     # We fill with 1 here as it will be ignored in the code anyways as the next event's

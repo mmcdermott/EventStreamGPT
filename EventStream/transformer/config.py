@@ -7,10 +7,10 @@ from typing import Any, Union
 
 from transformers import PretrainedConfig
 
+from ..data.config import MeasurementConfig
 from ..data.data_embedding_layer import MeasIndexGroupOptions, StaticEmbeddingMode
 from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality
-from ..data.config import MeasurementConfig
 from ..utils import JSONableMixin, StrEnum, hydra_dataclass
 
 MEAS_INDEX_GROUP_T = Union[str, tuple[str, MeasIndexGroupOptions]]

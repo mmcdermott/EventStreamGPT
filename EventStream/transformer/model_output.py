@@ -2,7 +2,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Union
 
-import pandas as pd
 import torch
 from mixins import SeedableMixin
 from transformers.utils import ModelOutput
@@ -177,11 +176,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
         # Add event_mask
         event_mask = self.event_mask
 
-        duration_since_start = torch.where(batch.event_mask[:, :-1], batch.time_delta[:, :-1], 0).sum(-1)
+        duration_since_start = torch.where(
+            batch.event_mask[:, :-1], batch.time_delta[:, :-1], 0
+        ).sum(-1)
         new_time = torch.where(
-            event_mask,
-            batch.start_time + duration_since_start + self.time_to_event,
-            0
+            event_mask, batch.start_time + duration_since_start + self.time_to_event, 0
         )
 
         # Add time-dependent values if present.
