@@ -8,7 +8,6 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import torch
 
@@ -275,9 +274,9 @@ WANT_SUBJ_3_UNCUT = {
     "dynamic_values": [None, None, None],
 }
 
-TASK_DF = pd.DataFrame(
+TASK_DF = pl.DataFrame(
     {
-        "subject_id": [1, 3, 4],
+        "subject_id": pl.Series([1, 3, 4], dtype=pl.UInt8),
         "start_time": [
             datetime(2000, 1, 1),
             datetime(2001, 1, 1, 12, 30),
@@ -290,7 +289,7 @@ TASK_DF = pd.DataFrame(
         ],
         "binary": [True, False, True],
         "multi_class_int": [0, 1, 2],
-        "multi_class_cat": pd.Series(["a", "a", "b"], dtype="category"),
+        "multi_class_cat": pl.Series(["a", "a", "b"], dtype=pl.Categorical),
         "regression": [1.2, 3.2, 1.5],
     }
 )
@@ -306,31 +305,31 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
         cases = [
             {
                 "msg": "Should flag Integer values as multi-class.",
-                "vals": pd.Series([1, 2, 1, 4], dtype=int),
+                "vals": pl.Series([1, 2, 1, 4], dtype=pl.UInt8),
                 "want_type": "multi_class_classification",
-                "want_vals": pd.Series([1, 2, 1, 4], dtype=int),
+                "want_vals": pl.Series([1, 2, 1, 4], dtype=pl.UInt8),
             },
             {
                 "msg": "Should flag Categorical values as multi-class and normalize to integers.",
-                "vals": pd.Series(["a", "b", "a", "z"], dtype="category"),
+                "vals": pl.Series(["a", "b", "a", "z"], dtype=pl.Categorical),
                 "want_type": "multi_class_classification",
-                "want_vals": pd.Series([0, 1, 0, 2], dtype=int),
+                "want_vals": pl.Series([0, 1, 0, 2], dtype=pl.UInt32),
             },
             {
                 "msg": "Should flag Boolean values as binary and normalize to float.",
-                "vals": pd.Series([True, False, True, False], dtype=bool),
+                "vals": pl.Series([True, False, True, False]),
                 "want_type": "binary_classification",
-                "want_vals": pd.Series([1.0, 0.0, 1.0, 0.0]),
+                "want_vals": pl.Series([1.0, 0.0, 1.0, 0.0], dtype=pl.Float32),
             },
             {
                 "msg": "Should flag Float values as regression.",
-                "vals": pd.Series([1.0, 2.1, 1.3, 4.1]),
+                "vals": pl.Series([1.0, 2.1, 1.3, 4.1]),
                 "want_type": "regression",
-                "want_vals": pd.Series([1.0, 2.1, 1.3, 4.1]),
+                "want_vals": pl.Series([1.0, 2.1, 1.3, 4.1]),
             },
             {
                 "msg": "Should raise TypeError on object type.",
-                "vals": pd.Series(["fuzz", 3, pd.to_datetime("12/2/22"), float("nan")]),
+                "vals": pl.Series(["fuzz", 3, float("nan")], dtype=pl.Object),
                 "want_raise": TypeError,
             },
         ]
@@ -339,11 +338,15 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
             with self.subTest(C["msg"]):
                 if C.get("want_raise", None) is not None:
                     with self.assertRaises(C["want_raise"]):
-                        PytorchDataset.normalize_task(C["vals"])
+                        PytorchDataset.normalize_task(pl.col('c'), C["vals"].dtype)
                 else:
-                    got_type, got_vals = PytorchDataset.normalize_task(C["vals"])
+                    got_type, got_normalizer = PytorchDataset.normalize_task(pl.col('c'), C["vals"].dtype)
                     self.assertEqual(C["want_type"], got_type)
-                    self.assertEqual(C["want_vals"], got_vals)
+
+                    got_vals = pl.DataFrame({'c': C["vals"]}).select(got_normalizer).get_column('c')
+                    want_vals = pl.DataFrame({'c': C["want_vals"]}).get_column('c')
+
+                    self.assertEqual(C["want_vals"].to_pandas(), got_vals.to_pandas())
 
     def test_get_item_should_collate(self):
         config = PytorchDatasetConfig(
@@ -380,7 +383,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 "msg": "Should re-set cached data based on task df",
                 "max_seq_len": 4,
                 "min_seq_len": 2,
-                "task_df": TASK_DF,
+                "task_df": TASK_DF.lazy(),
                 "want_items": [
                     {
                         "binary": True,

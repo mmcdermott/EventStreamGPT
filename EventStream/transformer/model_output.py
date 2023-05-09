@@ -157,7 +157,6 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
-        static_data: pd.DataFrame | None = None,
     ) -> tuple[
         torch.FloatTensor,
         torch.BoolTensor,
@@ -177,6 +176,13 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
         # Add event_mask
         event_mask = self.event_mask
+
+        duration_since_start = torch.where(batch.event_mask[:, :-1], batch.time_delta[:, :-1], 0).sum(-1)
+        new_time = torch.where(
+            event_mask,
+            batch.start_time + duration_since_start + self.time_to_event,
+            0
+        )
 
         # Add time-dependent values if present.
         for m, cfg in config.measurement_configs.items():
@@ -204,11 +210,12 @@ class GenerativeSequenceModelSamples(ModelOutput):
             vals = torch.where(is_meas_map & values_mask, values, torch.zeros_like(values)).sum(-1)
 
             offset = config.vocab_offsets_by_measurement[m]
+
             new_indices, new_values = fn.update_from_prior_timepoint(
                 prior_indices=indices - offset,
                 prior_values=vals,
                 new_delta=self.time_to_event,
-                new_time=batch.start_time + self.time_to_event,
+                new_time=new_time,
                 vocab=cfg.vocabulary,
                 measurement_metadata=cfg.measurement_metadata,
             )

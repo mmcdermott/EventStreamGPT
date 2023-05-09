@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 from typing import Any
+from datetime import datetime
 
 import pandas as pd
 import polars as pl
@@ -133,16 +134,20 @@ class TimeOfDayFunctor(TimeDependentFunctor):
         vocab: Vocabulary | None,
         measurement_metadata: pd.Series | None,
     ) -> tuple[torch.LongTensor, torch.FloatTensor]:
-        new_hour = (new_time / 60) % 24
+        hrs_local_at_midnight_epoch = datetime(1970, 1, 1).timestamp() / 60 / 60
+
+        # new time is in minutes since 01/01/1970 UTC
+        new_hour_utc = new_time / 60
+        new_hour_local = (new_hour_utc - hrs_local_at_midnight_epoch) % 24
 
         new_indices = torch.where(
-            new_hour < 6,
+            new_hour_local < 6,
             vocab.idxmap.get("EARLY_AM", 0),
             torch.where(
-                new_hour < 12,
+                new_hour_local < 12,
                 vocab.idxmap.get("AM", 0),
                 torch.where(
-                    new_hour < 21, vocab.idxmap.get("PM", 0), vocab.idxmap.get("LATE_PM", 0)
+                    new_hour_local < 21, vocab.idxmap.get("PM", 0), vocab.idxmap.get("LATE_PM", 0)
                 ),
             ),
         )

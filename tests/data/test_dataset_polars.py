@@ -73,7 +73,7 @@ class TestAgeFunctor(TimeDependentFunctor):
     def __init__(self):
         self.link_static_cols = [DOB_COL]
 
-    def __call__(self):
+    def update_from_prior_timepoint(self, *args, **kwargs):
         return None
 
     def pl_expr(self):
@@ -85,7 +85,7 @@ class TestAgeFunctor(TimeDependentFunctor):
 class TestTimeOfDayFunctor(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.SINGLE_LABEL_CLASSIFICATION
 
-    def __call__(self):
+    def update_from_prior_timepoint(self, *args, **kwargs):
         return None
 
     def pl_expr(self):

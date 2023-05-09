@@ -10,6 +10,7 @@ from transformers import PretrainedConfig
 from ..data.data_embedding_layer import MeasIndexGroupOptions, StaticEmbeddingMode
 from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality
+from ..data.config import MeasurementConfig
 from ..utils import JSONableMixin, StrEnum, hydra_dataclass
 
 MEAS_INDEX_GROUP_T = Union[str, tuple[str, MeasIndexGroupOptions]]
@@ -463,6 +464,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         # Data configuration
         vocab_sizes_by_measurement: dict[str, int] | None = None,
         vocab_offsets_by_measurement: dict[str, int] | None = None,
+        measurement_configs: dict[str, MeasurementConfig] | None = None,
         measurements_idxmap: dict[str, dict[Hashable, int]] | None = None,
         measurements_per_generative_mode: dict[DataModality, list[str]] | None = None,
         event_types_per_measurement: dict[str, list[str]] | None = None,
@@ -520,9 +522,12 @@ class StructuredTransformerConfig(PretrainedConfig):
             event_types_per_measurement = {}
         if event_types_idxmap is None:
             event_types_idxmap = {}
+        if measurement_configs is None:
+            measurement_configs = {}
 
         self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
+        self.measurement_configs = measurement_configs
 
         if do_split_embeddings:
             if not type(categorical_embedding_dim) is int and categorical_embedding_dim > 0:
@@ -847,6 +852,9 @@ class StructuredTransformerConfig(PretrainedConfig):
 
     def set_to_dataset(self, dataset: PytorchDataset):
         """Set various configuration parameters to match `dataset`."""
+        # TODO(mmd): The overlap of information here is getting large -- should likely be simplified and
+        # streamlined.
+        self.measurement_configs = dataset.measurement_configs
         self.measurements_idxmap = dataset.vocabulary_config.measurements_idxmap
         self.measurements_per_generative_mode = (
             dataset.vocabulary_config.measurements_per_generative_mode
@@ -888,7 +896,6 @@ class StructuredTransformerConfig(PretrainedConfig):
             self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
 
         if dataset.has_task:
-            print("Attempting to infer task properties...")
             if len(dataset.tasks) == 1:
                 # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
                 self.finetuning_task = dataset.tasks[0]
@@ -909,8 +916,6 @@ class StructuredTransformerConfig(PretrainedConfig):
             elif all(t == "regression" for t in dataset.task_types.values()):
                 self.num_labels = len(dataset.tasks)
                 self.problem_type = "regression"
-            else:
-                print(f"Can't infer task parameters. dataset.tasks = {dataset.tasks}")
 
     def __eq__(self, other):
         """Checks equality in a type sensitive manner to avoid pytorch lightning issues."""

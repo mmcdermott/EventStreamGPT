@@ -14,10 +14,13 @@ from .config import (
     SubsequenceSamplingStrategy,
     VocabularyConfig,
 )
+from .dataset_polars import Dataset
 from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
 
+def to_int_index(col: pl.Expr) -> pl.Expr:
+    return col.unique(maintain_order=True).search_sorted(col)
 
 class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
     """
@@ -69,8 +72,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 {pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, pl.Int8, pl.Int16, pl.Int32, pl.Int64},
                 None,
             ),
-            ({pl.Categorical}, lambda Y: Y.to_physical()),
-            ({pl.Utf8}, lambda Y: Y.cast(pl.Categorical).to_physical()),
+            ({pl.Categorical}, to_int_index),
+            ({pl.Utf8}, to_int_index),
         ],
         "binary_classification": [({pl.Boolean}, lambda Y: Y.cast(pl.Float32))],
         "regression": [({pl.Float32, pl.Float64}, None)],
@@ -153,6 +156,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     )
 
             vocabulary_config = self.config.save_dir / "vocabulary_config.json"
+
+            # TODO(mmd): This is bad as it necessitates loading the dataset regardless of dataset class
+            # identity!
+            ESD = Dataset._load(self.config.save_dir)
+            self.measurement_configs = ESD.measurement_configs
         else:
             assert vocabulary_config is not None
             assert split is None
@@ -222,12 +230,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 if task_type == "binary_classification":
                     self.task_vocabs[t] = [False, True]
 
-            self.task_df = self.task_df.join(
-                self.cached_data.select("subject_id"), on="subject_id", how="inner"
-            )
-
-            self.task_df = self.task_df.with_columns(normalized_vals.alias(t)).with_row_count(
-                "task_row_num"
+            self.task_df = (
+                self.task_df
+                    .with_columns(normalized_cols)
+                    .join(self.cached_data.select("subject_id"), on="subject_id", how="inner")
+                    .with_row_count("task_row_num")
             )
 
             time_dep_cols = [c for c in ("time", "time_delta") if c in self.cached_data.columns]
@@ -319,6 +326,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         if "time_delta" not in self.cached_data.columns:
             self.cached_data = self.cached_data.with_columns(
+                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias('start_time'),
                 pl.col("time")
                 .arr.eval(
                     # We fill with 1 here as it will be ignored in the code anyways as the next event's
@@ -326,7 +334,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     # TODO(mmd): validate this in a test.
                     (pl.col("").shift(-1) - pl.col("")).fill_null(1)
                 )
-                .alias("time_delta")
+                .alias("time_delta"),
             ).drop("time")
 
         stats = (
