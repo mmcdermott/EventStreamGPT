@@ -137,16 +137,6 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         else:
             container.update([val])
 
-    @classmethod
-    def build_vocab(cls, observations: NESTED_VOCAB_SEQUENCE) -> Vocabulary:
-        """Builds a vocabulary from a set of observed elements."""
-        counter = Counter()
-        cls.__nested_update_container(counter, observations)
-
-        vocab = list(counter.keys())
-        freq = [counter[k] / len(observations) for k in vocab]
-        return cls(vocabulary=vocab, obs_frequencies=freq)
-
     def describe(
         self,
         line_width: int = 60,

@@ -119,25 +119,6 @@ class GenerativeSequenceModelSamples(ModelOutput):
     regression: dict[str, torch.FloatTensor] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
 
-    def set_event_mask(self, event_mask: torch.BoolTensor):
-        self.event_mask = event_mask
-        event_mask_exp = event_mask.unsqueeze(-1)
-
-        self.time_to_event = torch.where(self.event_mask, self.time_to_event, 0)
-
-        new_classification = {}
-        for k, v in self.classification.items():
-            if len(v.shape) == 1:
-                new_classification[k] = torch.where(self.event_mask, v, 0)
-            else:
-                new_classification[k] = torch.where(event_mask_exp.expand_as(v), v, 0)
-        self.classification = new_classification
-
-        new_regression = {}
-        for k, v in self.regression.items():
-            new_regression[k] = torch.where(event_mask_exp.expand_as(v), v, 0)
-        self.regression = new_regression
-
     def build_new_batch_element(
         self,
         batch: PytorchBatch,
