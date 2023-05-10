@@ -483,9 +483,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     None | MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL,
                 ):
                     add_multi_label_classification(m, mask=event_type_mask)
-                    add_multivariate_regression(
-                        m, indices=dynamic_indices[-1], mask=event_type_mask
-                    )
+                    if event_type_mask is not None:
+                        etm = event_type_mask.unsqueeze(-1).expand_as(dynamic_indices[-1])
+                    else:
+                        etm = None
+                    add_multivariate_regression(m, indices=dynamic_indices[-1], mask=etm)
                 case (
                     DataModality.MULTIVARIATE_REGRESSION,
                     MeasIndexGroupOptions.CATEGORICAL_ONLY,
