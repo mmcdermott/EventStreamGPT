@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, "dev"]
   pull_request:
     branches: [main, "release/*", "dev"]
 
@@ -61,6 +61,7 @@ jobs:
         run: |
           conda env update --file env.yml --name base
           pip install pytest
+          pip install pytest-cov[toml]
           pip install sh
 
       - name: Run tests and collect coverage
