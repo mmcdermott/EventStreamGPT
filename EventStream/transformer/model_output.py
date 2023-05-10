@@ -134,13 +134,16 @@ class GenerativeSequenceModelSamples(ModelOutput):
             or per-label binary labels for multi label data types for the prediction for that data type. If
             the event is not present, all predictions will be zero.
         `regression` (`Dict[str, torch.FloatTensor]`, default: None):
-            Shape: {measurement: [batch_size, n_regression_targets]}
+            Shape: {
+                measurement:
+                    [batch_size,] if measurement is univariate or [batch_size, n_regression_targets]
+            }
             If a prediction for measurement is present, then at that key, the tensor contains the
             floating-point predictions for that measurement. If an event is not present, predictions will be
             zero. Predictions are ordered in accordance with the index-labels (starting at zero) for the
             data-type vocabulary contained in regression_indices. If regression_indices is `None`, predictions
             span the entire vocabulary in vocabulary order.
-        `regression_indices` (`Dict[str, torch.LongTensor]`, default: None):
+        `regression_indices` (`dict[str, torch.LongTensor | None] | None`, default: None):
             Shape: {measurement: [batch_size, n_regression_targets]}
             Contains the indices for which `self.regression` contains predictions for each data type. If
             `None`, self.regression predictions correspond to the entire vocabulary in vocabulary order.
@@ -278,7 +281,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 raise ValueError(f"For {measurement}, expect 1D preds, got {preds.shape}!")
             if (preds >= vocab_size).any():
                 raise ValueError("For {measurement}, need preds < vocab_size!")
-            indices = (vocab_offset + preds).unsqueeze(-1)
+            indices = (vocab_offset + preds)
 
             measurement_indices = config.measurements_idxmap[measurement] * torch.ones_like(
                 indices
@@ -296,8 +299,8 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     print(mask)
                     raise
 
-            dynamic_indices.append(indices)
-            dynamic_measurement_indices.append(measurement_indices)
+            dynamic_indices.append(indices.unsqueeze(-1))
+            dynamic_measurement_indices.append(measurement_indices.unsqueeze(-1))
 
         def add_multi_label_classification(measurement: str, mask: torch.BoolTensor | None = None):
             if measurement not in config.vocab_offsets_by_measurement:
@@ -401,7 +404,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 if mask is None:
                     mask = indices >= vocab_offset
                 else:
-                    mask = mask.unsqueeze(-1).expand_as(indices) & (indices >= vocab_offset)
+                    mask = mask & (indices >= vocab_offset)
                 idx_gather_T = torch.where(mask, indices - vocab_offset, 0).long()
 
                 values = regressed_values.gather(-1, idx_gather_T)
@@ -483,10 +486,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     add_multivariate_regression(
                         m, indices=dynamic_indices[-1], mask=event_type_mask
                     )
-                case (
-                    DataModality.MULTIVARIATE_REGRESSION,
-                    MeasIndexGroupOptions.CATEGORICAL_ONLY,
-                ):
+                case (DataModality.MULTIVARIATE_REGRESSION, MeasIndexGroupOptions.CATEGORICAL_ONLY):
                     add_multi_label_classification(m, mask=event_type_mask)
                     dynamic_values.append((0 * dynamic_indices[-1]).float())
                     dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())
@@ -496,14 +496,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
                     indices = torch.where(existing_mask, batch.dynamic_indices[:, -1], 0)
 
-                    present_mask = (indices != 0).any(dim=0)
-                    if not present_mask.any():
-                        continue
-
-                    indices = indices[:, present_mask]
+                    indices = strip_unused_indices(indices)
                     measurement_indices = meas_index * torch.ones_like(indices)
 
                     if event_type_mask is not None:
+                        event_type_mask = event_type_mask.unsqueeze(-1).expand_as(indices)
                         try:
                             indices = torch.where(event_type_mask, indices, 0)
                             measurement_indices = torch.where(

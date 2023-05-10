@@ -571,6 +571,153 @@ WANT_APPENDED_BATCH = {
 }
 
 
+
+# UNIFIED_VOCABULARY = {
+#     "event_type": ["event_A", "event_B"],
+#     "static_clf": ["UNK", "static_clf_1", "static_clf_2"],
+#     "age": None,
+#     "tod": ["UNK", "EARLY_AM", "LATE_PM", "AM", "PM"],
+#     "dynamic_single_label_clf": ["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
+#     "dynamic_multi_label_clf": [
+#         "UNK",
+#         "dynamic_multi_label_1",
+#         "dynamic_multi_label_2",
+#         "dynamic_multi_label_3",
+#     ],
+#     "dynamic_univariate_reg": None,
+#     "dynamic_multivariate_reg": [
+#         "UNK",
+#         "dynamic_multivariate_reg_1",
+#         "dynamic_multivariate_reg_2",
+#     ],
+# }
+CLASSIFICATION = {
+    "event_type": torch.LongTensor([1, 1]),
+    "dynamic_single_label_clf": torch.LongTensor([2, 1]),
+    "dynamic_multi_label_clf": torch.LongTensor([
+        [0, 0, 0, 0],
+        [0, 1, 0, 1],
+    ]),
+    "dynamic_multivariate_reg": torch.LongTensor([
+        [0, 0, 1],
+        [0, 0, 0],
+    ]),
+}
+REGRESSION = {
+    "dynamic_multivariate_reg": torch.FloatTensor([
+        [0, 0, 0.5],
+        [0, 0, 0],
+    ]),
+    "dynamic_univariate_reg": torch.FloatTensor([0.8, 0.2]),
+}
+
+WANT_UPDATED_DATA = [
+    (
+        ["event_type", "dynamic_single_label_clf", ("dynamic_multivariate_reg", "categorical_only")],
+        {
+            'dynamic_measurement_indices': torch.LongTensor([
+                [
+                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
+                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                    MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"], 0
+                ],
+                [
+                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
+                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                    0, 0
+                ],
+            ]),
+            'dynamic_indices': torch.LongTensor([
+                [
+                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["AM"],
+                    UNIFIED_IDXMAP["event_type"]["event_B"],
+                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
+                    UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"], 0
+                ],
+                [
+                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["EARLY_AM"],
+                    UNIFIED_IDXMAP["event_type"]["event_B"],
+                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
+                    0, 0
+                ],
+            ]),
+            'dynamic_values': torch.FloatTensor([
+                [
+                    NEW_EVENT_AGES[0], 0,
+                    0, 0,
+                    0, 0
+                ],
+                [
+                    NEW_EVENT_AGES[1], 0,
+                    0, 0,
+                    0, 0
+                ],
+            ]),
+            'dynamic_values_mask': torch.BoolTensor([
+                [True, False, False, False, False, False],
+                [True, False, False, False, False, False],
+            ]),
+        },
+    ), (
+        ["dynamic_univariate_reg", "dynamic_multi_label_clf", ("dynamic_multivariate_reg", "numerical_only")],
+        {
+            'dynamic_measurement_indices': torch.LongTensor([
+                [
+                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
+                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                    MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
+                    MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                    0
+                ],
+                [
+                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
+                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                    MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
+                    MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
+                    MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
+                ],
+            ]),
+            'dynamic_indices': torch.LongTensor([
+                [
+                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["AM"],
+                    UNIFIED_IDXMAP["event_type"]["event_B"],
+                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
+                    UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
+                    UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                    0
+                ],
+                [
+                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["EARLY_AM"],
+                    UNIFIED_IDXMAP["event_type"]["event_B"],
+                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
+                    UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
+                    UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_1"],
+                    UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_3"],
+                ],
+            ]),
+            'dynamic_values': torch.FloatTensor([
+                [
+                    NEW_EVENT_AGES[0], 0,
+                    0, 0,
+                    0.8, 0.5,
+                    0,
+                ],
+                [
+                    NEW_EVENT_AGES[1], 0,
+                    0, 0,
+                    0.2, 0,
+                    0,
+                ],
+            ]),
+            'dynamic_values_mask': torch.BoolTensor([
+                [True, False, False, False, True, True, False],
+                [True, False, False, False, True, False, False],
+            ]),
+        },
+    ),
+]
+
+
 class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.TestCase):
     """Tests Generation Batch-building Logic."""
 
@@ -588,9 +735,9 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
         self.samp = GenerativeSequenceModelSamples(
             event_mask=torch.BoolTensor([True, True]),
             time_to_event=torch.FloatTensor(NEW_EVENT_DELTA_TIMES),
-            classification={},
-            regression={},
-            regression_indices={},
+            classification=CLASSIFICATION,
+            regression=REGRESSION,
+            regression_indices=None,
         )
 
     def test_strip_unused_indices(self):
@@ -648,14 +795,30 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
         self.assertEqual(got_T2, want_T2)
         self.assertEqual(got_T3, want_T3)
 
-    def test_build_new_batch_element(self):
-        got_batch = self.samp.append_to_batch(self.batch, self.config)
+    def test_e2e(self):
+        batch = self.samp.append_to_batch(self.batch, self.config)
 
-        self.assertNestedDictEqual(WANT_APPENDED_BATCH, {k: v for k, v in got_batch.items()})
+        self.assertNestedDictEqual(WANT_APPENDED_BATCH, {k: v for k, v in batch.items()})
 
-        for param in ("static_indices", "start_time", "static_measurement_indices"):
-            with self.subTest(f"{param} should not change"):
-                self.assertEqual(getattr(self.batch, param), getattr(got_batch, param))
+        for meas_to_fill, want_updates in WANT_UPDATED_DATA:
+            batch = self.samp.update_last_event_data(
+                batch=batch, config=self.config, measurements_to_fill=meas_to_fill
+            )
+
+            want_batch = copy.deepcopy(WANT_APPENDED_BATCH)
+            for key, val in want_updates.items():
+                want_L = val.shape[-1]
+                old_L = want_batch[key].shape[-1]
+                if want_L > old_L:
+                    want_batch[key] = torch.nn.functional.pad(want_batch[key], (0, want_L - old_L), value=0)
+                elif want_L < old_L:
+                    val = torch.nn.functional.pad(val, (0, old_L - want_L), value=0)
+
+                want_batch[key][:, -1, :] = val
+
+            self.assertNestedDictEqual(
+                want_batch, {k: v for k, v in batch.items()}, f"Batch failed for {meas_to_fill}"
+            )
 
 
 if __name__ == "__main__":
