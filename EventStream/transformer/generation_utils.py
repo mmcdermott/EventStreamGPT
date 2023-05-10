@@ -124,11 +124,7 @@ class StructuredGenerationMixin:
     """
 
     @staticmethod
-    def _expand_inputs_for_generation(
-        batch: PytorchBatch,
-        expand_size: int = 1,
-        **model_kwargs,
-    ) -> tuple[PytorchBatch, dict[str, Any]]:
+    def _expand_inputs_for_generation(batch: PytorchBatch, expand_size: int = 1) -> PytorchBatch:
         expanded_return_idx = (
             torch.arange(batch.batch_size)
             .view(-1, 1)
@@ -148,7 +144,7 @@ class StructuredGenerationMixin:
                 case _:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
 
-        return batch, model_kwargs
+        return batch
 
     @staticmethod
     def _update_model_kwargs_for_generation(
@@ -474,11 +470,7 @@ class StructuredGenerationMixin:
             outputs_warper = self._get_outputs_warper()
 
             # 11. expand batch with `num_return_sequences` additional sequences per batch
-            batch, model_kwargs = self._expand_inputs_for_generation(
-                batch,
-                expand_size=num_return_sequences,
-                **model_kwargs,
-            )
+            batch = self._expand_inputs_for_generation(batch, expand_size=num_return_sequences)
 
             # 12. run sample
             return self.sample(

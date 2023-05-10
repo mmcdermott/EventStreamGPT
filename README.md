@@ -246,9 +246,11 @@ If you wish to pursue a few-shot fine-tuning experiment, you can use the paramet
 `train_subset_seed` to control that.
 
 ### Zero-shot Generation
+
 Building on the existing HuggingFace API, you can also generate future values given a generative model very
 easily. In particular, given a [`FinetuneConfig`](transformer/stream_classification_lightning.py) object
 describing the data/model you wish to use for generation, you can simply do the following:
+
 ```python
 # Initialize the config, overwriting the `max_seq_len` argument to a smaller value for the `data_config` to
 # account for the elements you'll generate within the model's maximum sequence length.
