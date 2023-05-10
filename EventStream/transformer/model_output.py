@@ -281,7 +281,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 raise ValueError(f"For {measurement}, expect 1D preds, got {preds.shape}!")
             if (preds >= vocab_size).any():
                 raise ValueError("For {measurement}, need preds < vocab_size!")
-            indices = (vocab_offset + preds)
+            indices = vocab_offset + preds
 
             measurement_indices = config.measurements_idxmap[measurement] * torch.ones_like(
                 indices
@@ -486,7 +486,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     add_multivariate_regression(
                         m, indices=dynamic_indices[-1], mask=event_type_mask
                     )
-                case (DataModality.MULTIVARIATE_REGRESSION, MeasIndexGroupOptions.CATEGORICAL_ONLY):
+                case (
+                    DataModality.MULTIVARIATE_REGRESSION,
+                    MeasIndexGroupOptions.CATEGORICAL_ONLY,
+                ):
                     add_multi_label_classification(m, mask=event_type_mask)
                     dynamic_values.append((0 * dynamic_indices[-1]).float())
                     dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())

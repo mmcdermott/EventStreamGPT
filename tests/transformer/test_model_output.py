@@ -13,9 +13,7 @@ from EventStream.data.config import MeasurementConfig
 from EventStream.data.time_dependent_functor import AgeFunctor, TimeOfDayFunctor
 from EventStream.data.types import DataModality, PytorchBatch, TemporalityType
 from EventStream.data.vocabulary import Vocabulary
-from EventStream.transformer.config import (
-    StructuredTransformerConfig,
-)
+from EventStream.transformer.config import StructuredTransformerConfig
 from EventStream.transformer.model_output import (
     GenerativeSequenceModelSamples,
     strip_unused_indices,
@@ -571,7 +569,6 @@ WANT_APPENDED_BATCH = {
 }
 
 
-
 # UNIFIED_VOCABULARY = {
 #     "event_type": ["event_A", "event_B"],
 #     "static_clf": ["UNK", "static_clf_1", "static_clf_2"],
@@ -594,125 +591,170 @@ WANT_APPENDED_BATCH = {
 CLASSIFICATION = {
     "event_type": torch.LongTensor([1, 1]),
     "dynamic_single_label_clf": torch.LongTensor([2, 1]),
-    "dynamic_multi_label_clf": torch.LongTensor([
-        [0, 0, 0, 0],
-        [0, 1, 0, 1],
-    ]),
-    "dynamic_multivariate_reg": torch.LongTensor([
-        [0, 0, 1],
-        [0, 0, 0],
-    ]),
+    "dynamic_multi_label_clf": torch.LongTensor(
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 1],
+        ]
+    ),
+    "dynamic_multivariate_reg": torch.LongTensor(
+        [
+            [0, 0, 1],
+            [0, 0, 0],
+        ]
+    ),
 }
 REGRESSION = {
-    "dynamic_multivariate_reg": torch.FloatTensor([
-        [0, 0, 0.5],
-        [0, 0, 0],
-    ]),
+    "dynamic_multivariate_reg": torch.FloatTensor(
+        [
+            [0, 0, 0.5],
+            [0, 0, 0],
+        ]
+    ),
     "dynamic_univariate_reg": torch.FloatTensor([0.8, 0.2]),
 }
 
 WANT_UPDATED_DATA = [
     (
-        ["event_type", "dynamic_single_label_clf", ("dynamic_multivariate_reg", "categorical_only")],
+        [
+            "event_type",
+            "dynamic_single_label_clf",
+            ("dynamic_multivariate_reg", "categorical_only"),
+        ],
         {
-            'dynamic_measurement_indices': torch.LongTensor([
+            "dynamic_measurement_indices": torch.LongTensor(
                 [
-                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
-                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
-                    MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"], 0
-                ],
+                    [
+                        MEASUREMENTS_IDXMAP["age"],
+                        MEASUREMENTS_IDXMAP["tod"],
+                        MEASUREMENTS_IDXMAP["event_type"],
+                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                        MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                        0,
+                    ],
+                    [
+                        MEASUREMENTS_IDXMAP["age"],
+                        MEASUREMENTS_IDXMAP["tod"],
+                        MEASUREMENTS_IDXMAP["event_type"],
+                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                        0,
+                        0,
+                    ],
+                ]
+            ),
+            "dynamic_indices": torch.LongTensor(
                 [
-                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
-                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
-                    0, 0
-                ],
-            ]),
-            'dynamic_indices': torch.LongTensor([
+                    [
+                        UNIFIED_IDXMAP["age"][None],
+                        UNIFIED_IDXMAP["tod"]["AM"],
+                        UNIFIED_IDXMAP["event_type"]["event_B"],
+                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
+                        UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                        0,
+                    ],
+                    [
+                        UNIFIED_IDXMAP["age"][None],
+                        UNIFIED_IDXMAP["tod"]["EARLY_AM"],
+                        UNIFIED_IDXMAP["event_type"]["event_B"],
+                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
+                        0,
+                        0,
+                    ],
+                ]
+            ),
+            "dynamic_values": torch.FloatTensor(
                 [
-                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["AM"],
-                    UNIFIED_IDXMAP["event_type"]["event_B"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
-                    UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"], 0
-                ],
+                    [NEW_EVENT_AGES[0], 0, 0, 0, 0, 0],
+                    [NEW_EVENT_AGES[1], 0, 0, 0, 0, 0],
+                ]
+            ),
+            "dynamic_values_mask": torch.BoolTensor(
                 [
-                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["EARLY_AM"],
-                    UNIFIED_IDXMAP["event_type"]["event_B"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
-                    0, 0
-                ],
-            ]),
-            'dynamic_values': torch.FloatTensor([
-                [
-                    NEW_EVENT_AGES[0], 0,
-                    0, 0,
-                    0, 0
-                ],
-                [
-                    NEW_EVENT_AGES[1], 0,
-                    0, 0,
-                    0, 0
-                ],
-            ]),
-            'dynamic_values_mask': torch.BoolTensor([
-                [True, False, False, False, False, False],
-                [True, False, False, False, False, False],
-            ]),
+                    [True, False, False, False, False, False],
+                    [True, False, False, False, False, False],
+                ]
+            ),
         },
-    ), (
-        ["dynamic_univariate_reg", "dynamic_multi_label_clf", ("dynamic_multivariate_reg", "numerical_only")],
+    ),
+    (
+        [
+            "dynamic_univariate_reg",
+            "dynamic_multi_label_clf",
+            ("dynamic_multivariate_reg", "numerical_only"),
+        ],
         {
-            'dynamic_measurement_indices': torch.LongTensor([
+            "dynamic_measurement_indices": torch.LongTensor(
                 [
-                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
-                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
-                    MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
-                    MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
-                    0
-                ],
+                    [
+                        MEASUREMENTS_IDXMAP["age"],
+                        MEASUREMENTS_IDXMAP["tod"],
+                        MEASUREMENTS_IDXMAP["event_type"],
+                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                        MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
+                        MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                        0,
+                    ],
+                    [
+                        MEASUREMENTS_IDXMAP["age"],
+                        MEASUREMENTS_IDXMAP["tod"],
+                        MEASUREMENTS_IDXMAP["event_type"],
+                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                        MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
+                        MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
+                        MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
+                    ],
+                ]
+            ),
+            "dynamic_indices": torch.LongTensor(
                 [
-                    MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"],
-                    MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
-                    MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
-                    MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
-                    MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
-                ],
-            ]),
-            'dynamic_indices': torch.LongTensor([
+                    [
+                        UNIFIED_IDXMAP["age"][None],
+                        UNIFIED_IDXMAP["tod"]["AM"],
+                        UNIFIED_IDXMAP["event_type"]["event_B"],
+                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
+                        UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
+                        UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                        0,
+                    ],
+                    [
+                        UNIFIED_IDXMAP["age"][None],
+                        UNIFIED_IDXMAP["tod"]["EARLY_AM"],
+                        UNIFIED_IDXMAP["event_type"]["event_B"],
+                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
+                        UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
+                        UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_1"],
+                        UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_3"],
+                    ],
+                ]
+            ),
+            "dynamic_values": torch.FloatTensor(
                 [
-                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["AM"],
-                    UNIFIED_IDXMAP["event_type"]["event_B"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
-                    UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
-                    UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
-                    0
-                ],
+                    [
+                        NEW_EVENT_AGES[0],
+                        0,
+                        0,
+                        0,
+                        0.8,
+                        0.5,
+                        0,
+                    ],
+                    [
+                        NEW_EVENT_AGES[1],
+                        0,
+                        0,
+                        0,
+                        0.2,
+                        0,
+                        0,
+                    ],
+                ]
+            ),
+            "dynamic_values_mask": torch.BoolTensor(
                 [
-                    UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["EARLY_AM"],
-                    UNIFIED_IDXMAP["event_type"]["event_B"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
-                    UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
-                    UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_1"],
-                    UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_3"],
-                ],
-            ]),
-            'dynamic_values': torch.FloatTensor([
-                [
-                    NEW_EVENT_AGES[0], 0,
-                    0, 0,
-                    0.8, 0.5,
-                    0,
-                ],
-                [
-                    NEW_EVENT_AGES[1], 0,
-                    0, 0,
-                    0.2, 0,
-                    0,
-                ],
-            ]),
-            'dynamic_values_mask': torch.BoolTensor([
-                [True, False, False, False, True, True, False],
-                [True, False, False, False, True, False, False],
-            ]),
+                    [True, False, False, False, True, True, False],
+                    [True, False, False, False, True, False, False],
+                ]
+            ),
         },
     ),
 ]
@@ -810,7 +852,9 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
                 want_L = val.shape[-1]
                 old_L = want_batch[key].shape[-1]
                 if want_L > old_L:
-                    want_batch[key] = torch.nn.functional.pad(want_batch[key], (0, want_L - old_L), value=0)
+                    want_batch[key] = torch.nn.functional.pad(
+                        want_batch[key], (0, want_L - old_L), value=0
+                    )
                 elif want_L < old_L:
                     val = torch.nn.functional.pad(val, (0, old_L - want_L), value=0)
 
