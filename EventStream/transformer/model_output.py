@@ -60,8 +60,18 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
     device = dynamic_indices.device
     index = torch.zeros(dynamic_indices.shape[0], is_present.sum(-1).max(), device=device).long()
     mask = torch.zeros(dynamic_indices.shape[0], is_present.sum(-1).max(), device=device).bool()
-    index.index_put_((present_rows, present_cols), present_indices[:, 1])
-    mask.index_put_((present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool())
+
+    try:
+        index.index_put_((present_rows, present_cols), present_indices[:, 1])
+        mask.index_put_((present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool())
+    except IndexError as e:
+        print(index)
+        print(present_rows)
+        print(present_cols)
+        print(present_indices)
+        print(dynamic_indices)
+        raise e
+
 
     def idx_fn(T: torch.Tensor) -> torch.Tensor:
         return torch.where(
