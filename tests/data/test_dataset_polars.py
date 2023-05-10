@@ -25,7 +25,7 @@ from EventStream.data.vocabulary import Vocabulary
 from ..mixins import ConfigComparisonsMixin
 
 
-class TestNormalizer(Preprocessor):
+class NormalizerMock(Preprocessor):
     def __init__(self, *args, **kwargs):
         pass
 
@@ -41,7 +41,7 @@ class TestNormalizer(Preprocessor):
         return column - model.struct.field("min").round(0)
 
 
-class TestOutlierDetector(Preprocessor):
+class OutlierDetectorMock(Preprocessor):
     def __init__(self, *args, **kwargs):
         pass
 
@@ -57,17 +57,17 @@ class TestOutlierDetector(Preprocessor):
         return ((column - model.struct.field("mean")) > 10).cast(pl.Boolean)
 
 
-class TestESD(Dataset):
+class ESDMock(Dataset):
     PREPROCESSORS = {
-        "outlier": TestOutlierDetector,
-        "normalizer": TestNormalizer,
+        "outlier": OutlierDetectorMock,
+        "normalizer": NormalizerMock,
     }
 
 
 DOB_COL = "dob"
 
 
-class TestAgeFunctor(TimeDependentFunctor):
+class AgeFunctorMock(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.UNIVARIATE_REGRESSION
 
     def __init__(self):
@@ -82,7 +82,7 @@ class TestAgeFunctor(TimeDependentFunctor):
         )
 
 
-class TestTimeOfDayFunctor(TimeDependentFunctor):
+class TimeOfDayFunctorMock(TimeDependentFunctor):
     OUTPUT_MODALITY = DataModality.SINGLE_LABEL_CLASSIFICATION
 
     def update_from_prior_timepoint(self, *args, **kwargs):
@@ -133,7 +133,7 @@ TEST_CONFIG = DatasetConfig(
         ),
         "time_dependent_age_lt_90": MeasurementConfig(
             temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-            functor=TestAgeFunctor(),
+            functor=AgeFunctorMock(),
             measurement_metadata=pd.Series(
                 [90, False],
                 index=pd.Index(
@@ -144,11 +144,11 @@ TEST_CONFIG = DatasetConfig(
         ),
         "time_dependent_age_all": MeasurementConfig(
             temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-            functor=TestAgeFunctor(),
+            functor=AgeFunctorMock(),
         ),
         "time_dependent_time_of_day": MeasurementConfig(
             temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-            functor=TestTimeOfDayFunctor(),
+            functor=TimeOfDayFunctorMock(),
         ),
         "multivariate_regression_bounded_outliers": MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
@@ -634,7 +634,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
     "time_dependent_age_lt_90": MeasurementConfig(
         name="time_dependent_age_lt_90",
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-        functor=TestAgeFunctor(),
+        functor=AgeFunctorMock(),
         measurement_metadata=pd.Series(
             [
                 90,
@@ -660,7 +660,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
     "time_dependent_age_all": MeasurementConfig(
         name="time_dependent_age_all",
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-        functor=TestAgeFunctor(),
+        functor=AgeFunctorMock(),
         observation_frequency=1,
         vocabulary=None,
         measurement_metadata=pd.Series(
@@ -676,7 +676,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
     "time_dependent_time_of_day": MeasurementConfig(
         name="time_dependent_time_of_day",
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-        functor=TestTimeOfDayFunctor(),
+        functor=TimeOfDayFunctorMock(),
         observation_frequency=1,
         vocabulary=Vocabulary(["UNK", "EARLY_AM", "PM", "LATE_PM"], [0, 4, 3, 2]),
     ),
@@ -1844,7 +1844,7 @@ WANT_DL_REP_DF = pl.DataFrame(
 
 class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
     def test_end_to_end(self):
-        E = TestESD(
+        E = ESDMock(
             config=TEST_CONFIG,
             subjects_df=IN_SUBJECTS_DF,
             events_df=IN_EVENTS_DF,
