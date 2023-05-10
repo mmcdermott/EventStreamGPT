@@ -276,7 +276,7 @@ generated = M.generate(
     output_scores=True,
 )
 
-# generated.batch contains an extended [PytorchBatch](data/types.py) object with both the original data and
+# generated.batch contains an extended PytorchBatch object with both the original data and
 # the new, generated data
 ```
 
