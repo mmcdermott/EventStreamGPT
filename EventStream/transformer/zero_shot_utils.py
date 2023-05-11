@@ -165,19 +165,20 @@ def get_death_event_from_config(config, verbose=False):
 
 
 
-def template_labeling_function(generated, original):
+def template_labeling_function(generated_batch):
     """
     input:
        generated (GeneratedModelOutput): the generated batch
-       original  (PytorchBatch): the original batch
     returns:
        (Tensor) : which contains predicted labels per patient (as appropriate integer indices for class option)
     """
 
-    raise NotImplementedError
+    # return a dummy tensor that is the same size as generated batch, of type longtensor, with 1's and 0's.
+
+    dummy_tensor = torch.random.randint(0,2, generated_batc.shape)
 
 
-    return 
+    return dummy_tensor
 
 
 # class TimeDependentFunctor(abc.ABC):
@@ -217,7 +218,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         optimization_config: OptimizationConfig | dict[str, Any],
         pretrained_weights_fp: Path | None = None,
         do_debug_mode: bool = True,
-        num_samples=1
+        num_samples=1,
         labeling_function = None
     ):
         """Initializes the Lightning Module.
@@ -413,15 +414,23 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                                                 output_scores=False))
         assert out.dtype==torch.Longtensor
         # streamclassificationmdeloutput
-        StreamClassificationModelOutput(loss)
-        loss=np.nan
-        labels=batch['stream_labels'][self.task]
+        output = StreamClassificationModelOutput(loss)
+        output.loss = np.nan
+        output.labels=batch['stream_labels'][self.task]
         # if num_return_sequences is larger
 
-        num_return_sequences >>> expanded batch tiles the model
+        # num_return_sequences >>> expanded batch tiles the model
         # count occurences of each label sum acrosss patient and create a logit.
 
-        return
+        output.preds = torch.mean(out,dim=1) # torch.mean along one axis
+
+        # assert output preds shape is the same as th labels shape
+        assert len(output.preds.shape)==len(output.labels.shape)
+        assert output.preds.shape[0] == output.labels.shape[0]
+        assert output.preds.shape[1] == output.labels.shape[1]
+
+
+        return output
 
 
 
@@ -515,7 +524,7 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
         optimization_config=optimization_config,
         metrics_config=metrics_config,
         pretrained_weights_fp=cfg.pretrained_weights_fp,
-        num_samples=
+        num_samples=2
     )
 
 
