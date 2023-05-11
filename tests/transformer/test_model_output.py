@@ -786,7 +786,7 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
         T = torch.LongTensor(
             [
                 [1, 0, 4, 5, 0, 1],
-                [8, 2, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0],
                 [3, 5, 0, 0, 0, 6],
             ]
         )
@@ -795,7 +795,7 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
         want = torch.LongTensor(
             [
                 [1, 4, 5, 1],
-                [8, 2, 0, 0],
+                [0, 0, 0, 0],
                 [3, 5, 6, 0],
             ]
         )
@@ -822,14 +822,14 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
         want_T2 = torch.FloatTensor(
             [
                 [1, 0, 0, 0],
-                [0, 2, 0, 0],
+                [0, 0, 0, 0],
                 [4, 0, 5, 0],
             ]
         )
         want_T3 = torch.BoolTensor(
             [
                 [True, True, False, False],
-                [False, True, False, False],
+                [False, False, False, False],
                 [True, False, True, False],
             ]
         )

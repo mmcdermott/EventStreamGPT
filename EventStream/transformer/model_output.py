@@ -53,7 +53,9 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
     present_indices = torch.argwhere(is_present)
     present_rows = present_indices[:, 0]
     col_counts = torch.ones_like(present_rows).cumsum(0)
-    present_row_change = torch.cat([torch.ones_like(present_rows[:1]), present_rows.diff()], 0)
+    present_row_change = torch.cat(
+        [torch.ones_like(present_rows[:1]), (present_rows.diff() != 0).long()], 0
+    )
 
     present_cols = col_counts - (col_counts * present_row_change).cummax(0)[0]
 
@@ -67,11 +69,15 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
             (present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool()
         )
     except IndexError as e:
-        print(index)
-        print(present_rows)
-        print(present_cols)
-        print(present_indices)
         print(dynamic_indices)
+        print(index)
+        print(present_indices)
+        print(present_rows)
+        print(present_row_change)
+        print(col_counts)
+        print(col_counts * present_row_change)
+        print((col_counts * present_row_change).cummax(0)[0])
+        print(present_cols)
         raise e
 
     def idx_fn(T: torch.Tensor) -> torch.Tensor:

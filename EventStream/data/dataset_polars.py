@@ -21,7 +21,7 @@ from .types import (
 )
 from .vocabulary import Vocabulary
 
-pl.toggle_string_cache(True)
+pl.enable_string_cache(True)
 
 
 @dataclasses.dataclass(frozen=True)

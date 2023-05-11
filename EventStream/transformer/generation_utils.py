@@ -19,6 +19,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import logging
 import warnings
 from dataclasses import dataclass
@@ -132,6 +133,8 @@ class StructuredGenerationMixin:
             .view(-1)
             .to(batch.device)
         )
+
+        batch = copy.deepcopy(batch)
 
         for k, v in batch.items():
             match v:
