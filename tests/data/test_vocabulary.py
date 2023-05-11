@@ -70,8 +70,3 @@ class TestVocabulary(MLTypeEqualityCheckableMixin, unittest.TestCase):
             vocab = Vocabulary(["foo", "bar", "baz"], [0.3, 0.7])
         with self.assertRaises(AssertionError, msg="Vocab doesn't support integer vocabularies."):
             vocab = Vocabulary([3, 4], [0.3, 0.7])
-
-    def test_build_vocab(self):
-        got_vocab = Vocabulary.build_vocab(["foo", "foo", "foo", "bar", "bar"])
-        want_vocab = Vocabulary(["foo", "bar"], [3 / 5, 2 / 5])
-        self.assertEqual(want_vocab, got_vocab)

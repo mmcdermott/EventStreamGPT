@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import random
 from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Sequence
@@ -16,6 +17,7 @@ from ..utils import (
     COUNT_OR_PROPORTION,
     PROPORTION,
     JSONableMixin,
+    StrEnum,
     hydra_dataclass,
     num_initial_spaces,
 )
@@ -399,6 +401,17 @@ class VocabularyConfig(JSONableMixin):
         )
 
 
+class SeqPaddingSide(StrEnum):
+    RIGHT = enum.auto()
+    LEFT = enum.auto()
+
+
+class SubsequenceSamplingStrategy(StrEnum):
+    TO_END = enum.auto()
+    FROM_START = enum.auto()
+    RANDOM = enum.auto()
+
+
 @hydra_dataclass
 class PytorchDatasetConfig(JSONableMixin):
     """Configuration options for building a PyTorch dataset from an `Dataset`.
@@ -417,14 +430,18 @@ class PytorchDatasetConfig(JSONableMixin):
     """
 
     save_dir: Path = omegaconf.MISSING
-    task_df_name: str | None = None
 
     max_seq_len: int = 256
     min_seq_len: int = 2
-    seq_padding_side: str = "right"
+    seq_padding_side: SeqPaddingSide = SeqPaddingSide.RIGHT
+    subsequence_sampling_strategy: SubsequenceSamplingStrategy = SubsequenceSamplingStrategy.RANDOM
 
     train_subset_size: int | str = "FULL"
     train_subset_seed: int | None = None
+
+    task_df_name: str | None = None
+
+    do_include_start_time_min: bool = False
 
     def __post_init__(self):
         assert self.seq_padding_side in ("left", "right")
@@ -445,13 +462,13 @@ class PytorchDatasetConfig(JSONableMixin):
                 raise ValueError(f"If integral, train_subset_size must be positive! Got {n}")
             case float() as frac if frac <= 0 or frac >= 1:
                 raise ValueError(f"If float, train_subset_size must be in (0, 1)! Got {frac}")
-            case int() | float() if self.train_subset_seed is None:
+            case int() | float() if (self.train_subset_seed is None):
                 seed = int(random.randint(1, int(1e6)))
                 print(
                     f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}"
                 )
                 self.train_subset_seed = seed
-            case None | "FULL":
+            case None | "FULL" | int() | float():
                 pass
             case _:
                 raise TypeError(

@@ -1,5 +1,16 @@
 # Event Stream ML
 
+[![python](https://img.shields.io/badge/-Python_3.10-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![pytorch](https://img.shields.io/badge/PyTorch_2.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
+[![lightning](https://img.shields.io/badge/-Lightning_2.0+-792ee5?logo=pytorchlightning&logoColor=white)](https://pytorchlightning.ai/)
+[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
+[![tests](https://github.com/mmcdermott/EventStreamML/actions/workflows/test.yml/badge.svg)](https://github.com/mmcdermott/EventStreamML/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/mmcdermott/EventStreamML/branch/main/graph/badge.svg?token=F9NYFEN5FX)](https://codecov.io/gh/mmcdermott/EventStreamML)
+[![code-quality](https://github.com/mmcdermott/EventStreamML/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/EventStreamML/actions/workflows/code-quality-main.yaml)
+[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/EventStreamML#license)
+[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamML/pulls)
+[![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamML.svg)](https://github.com/mmcdermott/EventStreamML/graphs/contributors)
+
 EventStream is a codebase for managing and modeling event stream datasets, which consist of sequences of continuous-time events containing various categorical or continuous measurements. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: EventStreamData, for handling event stream datasets in raw form and with Pytorch for modeling, and EventStreamTransformer, which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, and Lightning wrappers for training these models.
 
 ## Installation
@@ -179,7 +190,108 @@ copied from this repository; stay tuned for further updates on that front!
 
 ### Fine-tuning
 
-To-do.
+To fine-tune a model, use the [finetune.py](scripts/finetune.py) script. Much like pre-training, this script
+leverages hydra to run, but now using the [`FinetuneConfig`](transformer/stream_classification_lightning.py)
+configuration object:
+
+```python
+@hydra_dataclass
+class FinetuneConfig:
+    load_from_model_dir: str | Path = omegaconf.MISSING
+
+    pretrained_weights_fp: Path | None = None
+    save_dir: str | None = None
+
+    do_overwrite: bool = False
+
+    optimization_config: OptimizationConfig = OptimizationConfig()
+
+    task_df_name: str | None = omegaconf.MISSING
+    train_subset_size: int | str | None = "FULL"
+    train_subset_seed: int | None = 1
+
+    trainer_config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "accelerator": "auto",
+            "devices": "auto",
+            "detect_anomaly": False,
+            "default_root_dir": None,
+        }
+    )
+
+    task_specific_params: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "pooling_method": "last",
+        }
+    )
+
+    config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
+
+    wandb_name: str | None = "${task_df_name}_finetuning"
+    wandb_project: str | None = None
+    wandb_team: str | None = None
+    extra_wandb_log_params: dict[str, Any] | None = None
+
+    num_dataloader_workers: int = 1
+```
+
+The hydra integration is not quite as smooth at fine-tuning time as it is during pre-training; namely, this is
+because it the user may want to simultaneously load all prescient details from the pre-trained model
+configuration setting and overwrite some details, such as dropout rates. This configuration object handles
+much of this logic for you, and in general you will only need to specify (1) the directory of the pre-trained
+model to load and fine-tune, (2) the name of the task dataframe (stored in the `task_dfs` subdirectory of the
+dataset configuration file's `save_dir` parameter) for models to run successfully. In this case, a command may
+look like:
+
+```bash
+PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/finetune.py \
+load_from_model_dir=/pretrained/model/dir \
+optimization_config.batch_size=64 \
+optimization_config.init_lr=1e-4 \
+optimization_config.end_lr=null  \
+optimization_config.max_epochs=25 \
+task_df_name=lv_ef/60d
+```
+
+If you wish to pursue a few-shot fine-tuning experiment, you can use the parameters `train_subset_size` and
+`train_subset_seed` to control that.
+
+### Zero-shot Generation
+
+Building on the existing HuggingFace API, you can also generate future values given a generative model very
+easily. In particular, given a [`FinetuneConfig`](transformer/stream_classification_lightning.py) object
+describing the data/model you wish to use for generation, you can simply do the following:
+
+```python
+# Initialize the config, overwriting the `max_seq_len` argument to a smaller value for the `data_config` to
+# account for the elements you'll generate within the model's maximum sequence length.
+cfg = FinetuneConfig(
+    load_from_model_dir=MODEL_DIR,
+    task_df_name = TASK_DF_NAME,
+    data_config_overrides={
+        'max_seq_len': 128,
+        'subsequence_sampling_strategy': 'to_end',
+        'do_include_start_time_min': True,
+        'seq_padding_side': 'left',
+    },
+)
+ESD = Dataset._load(cfg.data_config.save_dir)
+train_pyd = PytorchDataset(cfg.data_config, split='train')
+M = ESTForGenerativeSequenceModeling.from_pretrained(cfg.pretrained_weights_fp, config=cfg.config)
+sample_dataloader = DataLoader(train_pyd, batch_size=1, collate_fn=train_pyd.collate, shuffle=False)
+sample_batch = next(iter(sample_dataloader))
+
+generated = M.generate(
+    sample_batch,
+    max_new_events=2, # Note that this must be within the model's `max_seq_len` - the input data length
+    do_sample=True,
+    return_dict_in_generate=True,
+    output_scores=True,
+)
+
+# generated.batch contains an extended PytorchBatch object with both the original data and
+# the new, generated data
+```
 
 ### Foundation Model Evaluation
 

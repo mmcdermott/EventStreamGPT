@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from pathlib import Path
 
@@ -7,10 +8,20 @@ import polars as pl
 import torch
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin
 
-from .config import PytorchDatasetConfig, VocabularyConfig
+from .config import (
+    PytorchDatasetConfig,
+    SeqPaddingSide,
+    SubsequenceSamplingStrategy,
+    VocabularyConfig,
+)
+from .dataset_polars import Dataset
 from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
+
+
+def to_int_index(col: pl.Expr) -> pl.Expr:
+    return col.unique(maintain_order=True).search_sorted(col)
 
 
 class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
@@ -59,23 +70,25 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
     TYPE_CHECKERS = {
         "multi_class_classification": [
-            (pd.api.types.is_integer_dtype, None),
-            (pd.api.types.is_categorical_dtype, lambda Y: Y.cat.codes.astype(int)),
+            (
+                {pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, pl.Int8, pl.Int16, pl.Int32, pl.Int64},
+                None,
+            ),
+            ({pl.Categorical}, to_int_index),
+            ({pl.Utf8}, to_int_index),
         ],
-        "binary_classification": [(pd.api.types.is_bool_dtype, lambda Y: Y.astype(float))],
-        "regression": [
-            (pd.api.types.is_float_dtype, None),
-        ],
+        "binary_classification": [({pl.Boolean}, lambda Y: Y.cast(pl.Float32))],
+        "regression": [({pl.Float32, pl.Float64}, None)],
     }
 
     @classmethod
-    def normalize_task(cls, val: pd.Series) -> tuple[str, pd.Series]:
+    def normalize_task(cls, col: pl.Expr, dtype: pl.DataType) -> tuple[str, pl.Expr]:
         for task_type, checkers in cls.TYPE_CHECKERS.items():
-            for check_fn, normalize_fn in checkers:
-                if check_fn(val.dtype):
-                    return task_type, (val if normalize_fn is None else normalize_fn(val))
+            for valid_dtypes, normalize_fn in checkers:
+                if dtype in valid_dtypes:
+                    return task_type, (col if normalize_fn is None else normalize_fn(col))
 
-        raise TypeError(f"Can't process label of {val.dtype} type!")
+        raise TypeError(f"Can't process label of {dtype} type!")
 
     def __init__(
         self,
@@ -103,26 +116,72 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         super().__init__()
 
         self.config = config
-
+        do_cache_task_data = False
+        self.task_types = {}
+        self.task_vocabs = {}
         if data is None:
             assert vocabulary_config is None
             assert self.config.save_dir is not None
             assert split is not None
 
             data = self.config.save_dir / "DL_reps" / f"{split}*.parquet"
+
+            if self.config.task_df_name is not None:
+                task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
+                raw_task_df_fp = (
+                    self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
+                )
+                task_df_fp = task_dir / f"{split}.parquet"
+                task_info_fp = task_dir / "task_info.json"
+
+                if task_df_fp.is_file():
+                    print(
+                        f"Re-loading task data for {self.config.task_df_name} from {task_df_fp}..."
+                    )
+                    data = task_df_fp
+                    with open(task_info_fp) as f:
+                        task_info = json.load(f)
+                        self.tasks = sorted(task_info["tasks"])
+                        self.task_vocabs = task_info["vocabs"]
+                        self.task_types = task_info["types"]
+
+                    task_df = "PRE_CACHED_IN_DATA"
+                elif raw_task_df_fp.is_file():
+                    print(f"Loading raw task df from {raw_task_df_fp}")
+                    task_df = pl.scan_parquet(raw_task_df_fp)
+                    do_cache_task_data = True
+                elif task_df is not None:
+                    do_cache_task_data = True
+                else:
+                    raise FileNotFoundError(
+                        f"Neither {task_df_fp} nor {raw_task_df_fp} exist and task_df was not passed!"
+                    )
+
             vocabulary_config = self.config.save_dir / "vocabulary_config.json"
+
+            # TODO(mmd): This is bad as it necessitates loading the dataset regardless of dataset class
+            # identity!
+            ESD = Dataset._load(self.config.save_dir)
+            self.measurement_configs = ESD.measurement_configs
         else:
             assert vocabulary_config is not None
             assert split is None
 
         self.split = split
 
-        if isinstance(data, pl.DataFrame):
-            self.cached_data = data
-        elif isinstance(data, Path):
-            self.cached_data = pl.read_parquet(data)
-        else:
-            raise TypeError(f"Can't process data of type {type(data)}!")
+        match data:
+            case pl.DataFrame():
+                self.cached_data = data.lazy()
+            case pl.LazyFrame():
+                pass
+            case Path() as fp if fp.suffix == ".parquet":
+                self.cached_data = pl.scan_parquet(fp)
+            case Path() as fp if fp.suffix == ".csv":
+                self.cached_data = pl.scan_csv(fp)
+            case Path() as fp:
+                raise ValueError(f"Can't read a dataframe of suffix {fp.suffix}!")
+            case _:
+                raise TypeError(f"Can't process data of type {type(data)}!")
 
         if isinstance(vocabulary_config, VocabularyConfig):
             self.vocabulary_config = vocabulary_config
@@ -131,7 +190,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         else:
             raise TypeError(f"Can't process vocabulary_config of type {type(vocabulary_config)}!")
 
-        self.do_produce_static_data = "static_indices" in self.cached_data
+        self.do_produce_static_data = "static_indices" in self.cached_data.columns
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
@@ -139,71 +198,65 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             seq_lens = pl.col("time").arr.lengths()
         else:
             seq_lens = pl.col("time_delta").arr.lengths()
+
         self.cached_data = self.cached_data.filter(seq_lens >= config.min_seq_len)
 
-        self.subject_ids = list(self.cached_data["subject_id"])
-
-        self.task_types = {}
-        self.task_vocabs = {}
         if task_df is None:
             self.task_df = None
             self.tasks = None
+        elif type(task_df) is str and task_df == "PRE_CACHED_IN_DATA":
+            self.task_df = task_df
         else:
-            self.task_df = task_df[task_df.subject_id.isin(self.subject_ids)].copy()
-            self.tasks = [
-                c for c in self.task_df if c not in ["subject_id", "start_time", "end_time"]
-            ]
-            task_schema = {"subject_id": self.cached_data["subject_id"].dtype}
-            for t in self.tasks:
-                task_type, normalized_vals = self.normalize_task(self.task_df[t])
-                if task_type == "multi_class_classification":
-                    if pd.api.types.is_categorical_dtype(self.task_df[t]):
-                        self.task_vocabs[t] = list(self.task_df[t].cat.categories.values)
-                    else:
-                        self.task_vocabs[t] = list(range(self.task_df[t].max() + 1))
-                elif task_type == "binary_classification":
-                    self.task_vocabs[t] = [False, True]
-                    task_schema[t] = pl.Boolean
+            print("Constructing task-specific cached dataset!")
+            if split != "train":
+                print(f"WARNING: Constructing task-specific dataset on non-train split {split}!")
 
-                self.task_types[t] = task_type
-                self.task_df[t] = normalized_vals
+            self.task_df = task_df
 
-            T_df = pl.from_pandas(self.task_df, schema_overrides=task_schema).with_row_count(
-                "task_row_num"
-            )
-            time_dep_cols = [
-                t
-                for t in [
-                    "time",
-                    "time_delta",
-                    "dynamic_indices",
-                    "dynamic_values",
-                    "dynamic_measurement_indices",
+            self.tasks = sorted(
+                [
+                    c
+                    for c in self.task_df.columns
+                    if c not in ["subject_id", "start_time", "end_time"]
                 ]
-                if t in self.cached_data.columns
-            ]
+            )
+
+            normalized_cols = []
+            for t in self.tasks:
+                task_type, normalized_vals = self.normalize_task(
+                    col=pl.col(t), dtype=self.task_df.schema[t]
+                )
+                self.task_types[t] = task_type
+                normalized_cols.append(normalized_vals.alias(t))
+
+                if task_type == "binary_classification":
+                    self.task_vocabs[t] = [False, True]
+
+            self.task_df = (
+                self.task_df.with_columns(normalized_cols)
+                .join(self.cached_data.select("subject_id"), on="subject_id", how="inner")
+                .with_row_count("task_row_num")
+            )
+
+            time_dep_cols = [c for c in ("time", "time_delta") if c in self.cached_data.columns]
+            time_dep_cols.extend(
+                ["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"]
+            )
 
             if "time" in self.cached_data.columns:
-                start_idx_expr = (
-                    pl.col("time").arr.explode().search_sorted(pl.col("start_time_min").first())
-                )
-                end_idx_expr = (
-                    pl.col("time").arr.explode().search_sorted(pl.col("end_time_min").first())
-                )
-            else:
-                start_idx_expr = (
-                    pl.col("time_delta")
-                    .arr.explode()
-                    .search_sorted(pl.col("start_time_min").first())
-                )
-                end_idx_expr = (
-                    pl.col("time_delta")
-                    .arr.explode()
-                    .search_sorted(pl.col("end_time_min").first())
-                )
+                time_col_expr = pl.col("time")
+            elif "time_delta" in self.cached_data.columns:
+                time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
+
+            start_idx_expr = time_col_expr.arr.explode().search_sorted(
+                pl.col("start_time_min").first()
+            )
+            end_idx_expr = time_col_expr.arr.explode().search_sorted(
+                pl.col("end_time_min").first()
+            )
 
             self.cached_data = (
-                self.cached_data.join(T_df, on="subject_id", how="inner", suffix="_task")
+                self.cached_data.join(self.task_df, on="subject_id", how="inner", suffix="_task")
                 .with_columns(
                     start_time_min=(pl.col("start_time_task") - pl.col("start_time"))
                     / np.timedelta64(1, "m"),
@@ -236,35 +289,93 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 .drop("task_row_num")
             )
 
-        if "time" in self.cached_data.columns:
-            with self._time_as("convert_to_time_deltas"):
-                self.cached_data = self.cached_data.with_columns(
-                    pl.col("time")
-                    .arr.eval(
-                        # We fill with 1 here as it will be ignored in the code anyways as the next event's
-                        # event mask will be null.
-                        # TODO(mmd): validate this in a test.
-                        (pl.col("").shift(-1) - pl.col("")).fill_null(1)
-                    )
-                    .alias("time_delta")
-                ).drop("time")
+            self.task_df = self.task_df.collect()
 
-        with self._time_as("inter_event_time_norm"):
-            stats = self.cached_data.select(
+            for t in self.tasks:
+                if task_type == "multi_class_classification":
+                    self.task_vocabs[t] = list(range(self.task_df.select(pl.col(t).max()).item()))
+
+            if self.config.task_df_name is not None and do_cache_task_data:
+                task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
+                task_df_fp = task_dir / f"{split}.parquet"
+                task_info_fp = task_dir / "task_info.json"
+
+                if task_df_fp.is_file():
+                    print(f"Re-built existent {task_df_fp} dataset! Not overwriting...")
+                else:
+                    task_df_fp.parent.mkdir(exist_ok=True, parents=True)
+                    self.cached_data.collect().write_parquet(task_df_fp)
+
+                task_info = {
+                    "tasks": sorted(self.tasks),
+                    "vocabs": self.task_vocabs,
+                    "types": self.task_types,
+                }
+                if task_info_fp.is_file():
+                    with open(task_info_fp) as f:
+                        loaded_task_info = json.load(f)
+                    if loaded_task_info != task_info and self.split != "train":
+                        raise ValueError(
+                            f"Task info differs from on disk!\nDisk:\n{loaded_task_info}\n"
+                            f"Local:\n{task_info}\nSplit: {self.split}"
+                        )
+                    print(f"Re-built existing {task_info_fp}! Not overwriting...")
+                else:
+                    task_info_fp.parent.mkdir(exist_ok=True, parents=True)
+                    with open(task_info_fp, mode="w") as f:
+                        json.dump(task_info, f)
+
+        if "time_delta" not in self.cached_data.columns:
+            self.cached_data = self.cached_data.with_columns(
+                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias(
+                    "start_time"
+                ),
+                pl.col("time")
+                .arr.eval(
+                    # We fill with 1 here as it will be ignored in the code anyways as the next event's
+                    # event mask will be null.
+                    # TODO(mmd): validate this in a test.
+                    (pl.col("").shift(-1) - pl.col("")).fill_null(1)
+                )
+                .alias("time_delta"),
+            ).drop("time")
+
+        stats = (
+            self.cached_data.select(
                 pl.col("time_delta").explode().drop_nulls().alias("inter_event_time")
-            ).select(
+            )
+            .select(
                 pl.col("inter_event_time").min().alias("min"),
                 pl.col("inter_event_time").log().mean().alias("mean_log"),
                 pl.col("inter_event_time").log().std().alias("std_log"),
             )
+            .collect()
+        )
 
-            if stats["min"].item() <= 0:
-                raise ValueError(
-                    f"Observed a minimum inter-event time <= 0: {stats['min'].item()}!"
-                )
+        if stats["min"].item() <= 0:
+            bad_inter_event_times = self.cached_data.filter(
+                pl.col("time_delta").arr.min() <= 0
+            ).collect()
+            bad_subject_ids = [str(x) for x in list(bad_inter_event_times["subject_id"])]
+            warning_strs = [
+                f"WARNING: Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
+                f"ESD Subject IDs: {', '.join(bad_subject_ids)}",
+                f"Global min: {stats['min'].item()}",
+            ]
+            if self.config.save_dir is not None:
+                fp = self.config.save_dir / f"malformed_data_{self.split}.parquet"
+                bad_inter_event_times.write_parquet(fp)
+                warning_strs.append(f"Wrote malformed data records to {fp}")
+            warning_strs.append("Removing malformed subjects")
 
-            self.mean_log_inter_event_time_min = stats["mean_log"].item()
-            self.std_log_inter_event_time_min = stats["std_log"].item()
+            print("\n".join(warning_strs))
+
+            self.cached_data = self.cached_data.filter(pl.col("time_delta").arr.min() > 0)
+
+        self.mean_log_inter_event_time_min = stats["mean_log"].item()
+        self.std_log_inter_event_time_min = stats["std_log"].item()
+
+        self.cached_data = self.cached_data.collect()
 
         if self.config.train_subset_size not in (None, "FULL") and self.split == "train":
             match self.config.train_subset_size:
@@ -283,7 +394,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             )
 
         with self._time_as("convert_to_rows"):
-            self.cached_data = self.cached_data.drop("subject_id", "start_time")
+            self.cached_data = self.cached_data.drop("subject_id")
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
 
@@ -331,6 +442,10 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         """
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
+        if self.config.do_include_start_time_min:
+            full_subj_data["start_time"] = full_subj_data["start_time"].timestamp() / 60.0
+        else:
+            full_subj_data.pop("start_time")
 
         # If we need to truncate to `self.max_seq_len`, grab a random full-size span to capture that.
         # TODO(mmd): This will proportionally underweight the front and back ends of the subjects data
@@ -338,7 +453,18 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         seq_len = len(full_subj_data["time_delta"])
         if seq_len > self.max_seq_len:
             with self._time_as("truncate_to_max_seq_len"):
-                start_idx = np.random.choice(seq_len - self.max_seq_len)
+                match self.config.subsequence_sampling_strategy:
+                    case SubsequenceSamplingStrategy.RANDOM:
+                        start_idx = np.random.choice(seq_len - self.max_seq_len)
+                    case SubsequenceSamplingStrategy.TO_END:
+                        start_idx = seq_len - self.max_seq_len
+                    case SubsequenceSamplingStrategy.FROM_START:
+                        start_idx = 0
+                    case _:
+                        raise ValueError(
+                            f"Invalid sampling strategy: {self.config.subsequence_sampling_strategy}!"
+                        )
+
                 for k in (
                     "time_delta",
                     "dynamic_indices",
@@ -409,7 +535,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             seq_len = len(e["time_delta"])
             seq_delta = max_seq_len - seq_len
 
-            if self.seq_padding_side == "right":
+            if self.seq_padding_side == SeqPaddingSide.RIGHT:
                 out["time_delta"].append(
                     torch.nn.functional.pad(
                         torch.Tensor(e["time_delta"]), (0, seq_delta), value=np.NaN
@@ -439,7 +565,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 if len(data_elements[k]) == 0:
                     raise ValueError(f"Batch element has no {k}! Got:\n{e}.")
 
-                if self.seq_padding_side == "right":
+                if self.seq_padding_side == SeqPaddingSide.RIGHT:
                     data_elements[k] = torch.nn.functional.pad(
                         torch.cat([T.unsqueeze(0) for T in data_elements[k]]),
                         (0, 0, 0, seq_delta),
@@ -471,6 +597,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             out_batch["dynamic_measurement_indices"], nan=0
         ).long()
         out_batch["dynamic_values"] = torch.nan_to_num(out_batch["dynamic_values"], nan=0)
+
+        if self.config.do_include_start_time_min:
+            out_batch["start_time"] = torch.FloatTensor([e["start_time"] for e in batch])
 
         out_batch = PytorchBatch(**out_batch)
         self._register_end("collate_post_padding_processing")

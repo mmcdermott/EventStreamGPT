@@ -7,6 +7,7 @@ from typing import Any, Union
 
 from transformers import PretrainedConfig
 
+from ..data.config import MeasurementConfig
 from ..data.data_embedding_layer import MeasIndexGroupOptions, StaticEmbeddingMode
 from ..data.pytorch_dataset import PytorchDataset
 from ..data.types import DataModality
@@ -27,7 +28,7 @@ class Split(StrEnum):
 
 class MetricCategories(StrEnum):
     LOSS_PARTS = enum.auto()
-    TTE = enum.auto()
+    TTE = "TTE"
     CLASSIFICATION = enum.auto()
     REGRESSION = enum.auto()
 
@@ -64,7 +65,7 @@ class MetricsConfig(JSONableMixin):
                     MetricCategories.LOSS_PARTS: True,
                     MetricCategories.TTE: {Metrics.MSE: True, Metrics.MSLE: True},
                     MetricCategories.CLASSIFICATION: {
-                        Metrics.AUROC: [Averaging.MACRO, Averaging.WEIGHTED],
+                        Metrics.AUROC: [Averaging.WEIGHTED],
                         Metrics.ACCURACY: True,
                     },
                     MetricCategories.REGRESSION: {Metrics.MSE: True},
@@ -73,7 +74,7 @@ class MetricsConfig(JSONableMixin):
                     MetricCategories.LOSS_PARTS: True,
                     MetricCategories.TTE: {Metrics.MSE: True, Metrics.MSLE: True},
                     MetricCategories.CLASSIFICATION: {
-                        Metrics.AUROC: [Averaging.MACRO, Averaging.WEIGHTED],
+                        Metrics.AUROC: [Averaging.WEIGHTED],
                         Metrics.ACCURACY: True,
                     },
                     MetricCategories.REGRESSION: {Metrics.MSE: True},
@@ -142,6 +143,8 @@ class OptimizationConfig(JSONableMixin):
             The maximum number of training epochs.
         `batch_size` (`int`, default is 32):
             The batch size used during stochastic gradient descent.
+        `validation_batch_size` (`int`, default is 32):
+            The batch size used during evaluation.
         `lr_frac_warmup_steps` (`Optional[float]`, *optional*, default is 0.01):
             What fraction of the total training steps should be spent increasing the learning rate during the
             learning rate warmup period. Should not be set simultaneously with `lr_num_warmup_steps`. This is
@@ -173,6 +176,7 @@ class OptimizationConfig(JSONableMixin):
     end_lr_frac_of_init_lr: float | None = 1e-3
     max_epochs: int = 100
     batch_size: int = 32
+    validation_batch_size: int = 32
     lr_frac_warmup_steps: float | None = 0.01
     lr_num_warmup_steps: int | None = None
     max_training_steps: int | None = None
@@ -460,6 +464,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         # Data configuration
         vocab_sizes_by_measurement: dict[str, int] | None = None,
         vocab_offsets_by_measurement: dict[str, int] | None = None,
+        measurement_configs: dict[str, MeasurementConfig] | None = None,
         measurements_idxmap: dict[str, dict[Hashable, int]] | None = None,
         measurements_per_generative_mode: dict[DataModality, list[str]] | None = None,
         event_types_per_measurement: dict[str, list[str]] | None = None,
@@ -517,9 +522,12 @@ class StructuredTransformerConfig(PretrainedConfig):
             event_types_per_measurement = {}
         if event_types_idxmap is None:
             event_types_idxmap = {}
+        if measurement_configs is None:
+            measurement_configs = {}
 
         self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
+        self.measurement_configs = measurement_configs
 
         if do_split_embeddings:
             if not type(categorical_embedding_dim) is int and categorical_embedding_dim > 0:
@@ -844,6 +852,9 @@ class StructuredTransformerConfig(PretrainedConfig):
 
     def set_to_dataset(self, dataset: PytorchDataset):
         """Set various configuration parameters to match `dataset`."""
+        # TODO(mmd): The overlap of information here is getting large -- should likely be simplified and
+        # streamlined.
+        self.measurement_configs = dataset.measurement_configs
         self.measurements_idxmap = dataset.vocabulary_config.measurements_idxmap
         self.measurements_per_generative_mode = (
             dataset.vocabulary_config.measurements_per_generative_mode
