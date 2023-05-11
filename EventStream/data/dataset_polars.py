@@ -1081,7 +1081,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     case NumericDataModalitySubtype.CATEGORICAL_INTEGER:
                         observations = source_df.with_columns(
                             (
-                                f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
+                                f"{measure}__EQ_"
+                                + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
                             ).alias(measure)
                         ).get_column(measure)
                     case NumericDataModalitySubtype.CATEGORICAL_FLOAT:
