@@ -237,24 +237,22 @@ class InputDFSchema(JSONableMixin):
     def columns_to_load(self) -> list[tuple[str, InputDataType]]:
         columns_to_load = {}
 
-        for in_col, (out_col, dt) in self.unified_schema.items():
-            if in_col in columns_to_load:
-                raise ValueError(f"Duplicate column {in_col}!")
-            columns_to_load[in_col] = dt
-
-        if self.type == InputDFType.RANGE:
-            for in_col, (out_col, dt) in self.unified_start_schema.items():
-                if in_col in columns_to_load:
-                    if dt != columns_to_load[in_col]:
-                        raise ValueError(f"Duplicate column {in_col} with differing dts!")
-                else:
+        match self.type:
+            case InputDFType.EVENT | InputDFType.STATIC:
+                for in_col, (out_col, dt) in self.unified_schema.items():
+                    if in_col in columns_to_load:
+                        raise ValueError(f"Duplicate column {in_col}!")
                     columns_to_load[in_col] = dt
-            for in_col, (out_col, dt) in self.unified_end_schema.items():
-                if in_col in columns_to_load:
-                    if dt != columns_to_load[in_col]:
-                        raise ValueError(f"Duplicate column {in_col} with differing dts!")
-                else:
-                    columns_to_load[in_col] = dt
+            case InputDFType.RANGE:
+                for unified_schema in self.unified_schema:
+                    for in_col, (out_col, dt) in unified_schema.items():
+                        if in_col in columns_to_load:
+                            if dt != columns_to_load[in_col]:
+                                raise ValueError(f"Duplicate column {in_col} with differing dts!")
+                        else:
+                            columns_to_load[in_col] = dt
+            case _:
+                raise ValueError(f"Unrecognized type {self.type}!")
 
         columns_to_load = list(columns_to_load.items())
 
@@ -350,9 +348,9 @@ class InputDFSchema(JSONableMixin):
 
         if type(in_col) is not str or type(out_col) is not str:
             raise ValueError(f"Column names must be strings! Got {in_col}, {out_col}")
-        elif in_col in container:
+        elif in_col in container and container[in_col] != (out_col, dt):
             raise ValueError(
-                f"Column {in_col} is repeated in schema!\n"
+                f"Column {in_col} is repeated in schema with different value!\n"
                 f"Existing: {container[in_col]}\n"
                 f"New: ({out_col}, {dt})"
             )
