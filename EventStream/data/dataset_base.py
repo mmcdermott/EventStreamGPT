@@ -399,6 +399,9 @@ class DatasetBase(
             if dynamic_measurements_df is not None:
                 raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
 
+            if config.save_dir is not None:
+                input_schema.to_json_file(config.save_dir / "input_schema.json", do_overwrite=True)
+
             subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
             subject_id_dtype = subjects_df["subject_id"].dtype
 
