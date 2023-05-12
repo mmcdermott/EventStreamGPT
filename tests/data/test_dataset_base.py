@@ -537,7 +537,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "name": "numeric",
                 "values_column": "value",
                 "modality": DataModality.MULTIVARIATE_REGRESSION,
-                "measurement_metadata": empty_measurement_metadata,
+                "_measurement_metadata": empty_measurement_metadata,
                 "observation_frequency": 1.0,
             }
         )
@@ -561,7 +561,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                             "values_column": "value",
                             "observation_frequency": 1.0,
                             "name": "numeric",
-                            "measurement_metadata": empty_measurement_metadata,
+                            "_measurement_metadata": empty_measurement_metadata,
                         }
                     ),
                     mock_source_df,
@@ -594,7 +594,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "name": "numeric",
                 "values_column": "value",
                 "modality": DataModality.MULTIVARIATE_REGRESSION,
-                "measurement_metadata": empty_measurement_metadata,
+                "_measurement_metadata": empty_measurement_metadata,
                 "vocabulary": mock_vocab,
                 "observation_frequency": 1.0,
             }

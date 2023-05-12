@@ -34,7 +34,7 @@ MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
         functor=AgeFunctor("dob"),
         vocabulary=None,
-        measurement_metadata=pd.Series(
+        _measurement_metadata=pd.Series(
             {
                 "value_type": "float",
                 "normalizer": {"mean_": 40.0, "std_": 10.0},
@@ -75,7 +75,7 @@ MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.UNIVARIATE_REGRESSION,
         vocabulary=None,
-        measurement_metadata=pd.Series(
+        _measurement_metadata=pd.Series(
             {
                 "value_type": "float",
                 "normalizer": {"mean_": 2.0, "std_": 3.0},
@@ -91,7 +91,7 @@ MEASUREMENT_CONFIGS = {
             vocabulary=["UNK", "dynamic_multivariate_reg_1", "dynamic_multivariate_reg_2"],
             obs_frequencies=[0.1, 0.5, 0.4],
         ),
-        measurement_metadata=pd.DataFrame(
+        _measurement_metadata=pd.DataFrame(
             {
                 "value_type": ["float", "float"],
                 "normalizer": [{"mean_": 2.0, "std_": 3.0}, {"mean_": 4.0, "std_": 5.0}],

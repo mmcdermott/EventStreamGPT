@@ -545,7 +545,7 @@ class MeasurementConfig(JSONableMixin):
             pre-procesisng, and not specified at construction.
 
         # Specific to dynamic measures
-        `present_in_event_types` (`Optional[Set[str]]`, defaults to `None`):
+        `present_in_event_types` (`Optional[List[str]]`, defaults to `None`):
             Within which event types this column can be present.
             If `None`, this column can be present in *all* event types.
 
@@ -598,7 +598,7 @@ class MeasurementConfig(JSONableMixin):
     observation_frequency: float | None = None
 
     # Specific to dynamic measures
-    present_in_event_types: set[str] | None = None
+    present_in_event_types: list[str] | None = None
 
     # Specific to time-dependent measures
     functor: TimeDependentFunctor | None = None
@@ -608,7 +608,7 @@ class MeasurementConfig(JSONableMixin):
 
     # Specific to numeric measures
     values_column: str | None = None
-    measurement_metadata: pd.DataFrame | pd.Series | None = None
+    _measurement_metadata: pd.DataFrame | pd.Series | str | Path | None = None
 
     def __post_init__(self):
         self._validate()
@@ -639,28 +639,66 @@ class MeasurementConfig(JSONableMixin):
             case _:
                 raise ValueError(f"`self.temporality = {self.temporality}` Invalid!")
 
+        err_strings = []
         match self.modality:
             case DataModality.MULTIVARIATE_REGRESSION:
-                assert self.values_column is not None
-                if self.measurement_metadata is not None:
-                    assert type(self.measurement_metadata) is pd.DataFrame
+                if self.values_column is None:
+                    err_strings.append(
+                        f"values_column must be set on a {self.modality} MeasurementConfig"
+                    )
+                if (self.measurement_metadata is not None) and not isinstance(
+                    self.measurement_metadata, pd.DataFrame
+                ):
+                    err_strings.append(
+                        f"If set, measurement_metadata must be a DataFrame on a {self.modality} "
+                        f"MeasurementConfig. Got {type(self.measurement_metadata)}\n"
+                        f"{self.measurement_metadata}"
+                    )
             case DataModality.UNIVARIATE_REGRESSION:
-                assert self.values_column is None
-                if self.measurement_metadata is not None:
-                    assert type(self.measurement_metadata) is pd.Series
+                if self.values_column is not None:
+                    err_strings.append(
+                        f"values_column must be None on a {self.modality} MeasurementConfig. "
+                        f"Got {self.values_column}"
+                    )
+                if (self.measurement_metadata is not None) and not isinstance(
+                    self.measurement_metadata, pd.Series
+                ):
+                    err_strings.append(
+                        f"If set, measurement_metadata must be a Series on a {self.modality} "
+                        f"MeasurementConfig. Got {type(self.measurement_metadata)}\n"
+                        f"{self.measurement_metadata}"
+                    )
             case DataModality.SINGLE_LABEL_CLASSIFICATION | DataModality.MULTI_LABEL_CLASSIFICATION:
-                assert self.measurement_metadata is None
-                assert self.values_column is None
+                if self.values_column is not None:
+                    err_strings.append(
+                        f"values_column must be None on a {self.modality} MeasurementConfig. "
+                        f"Got {self.values_column}"
+                    )
+                if self._measurement_metadata is not None:
+                    err_strings.append(
+                        f"measurement_metadata must be None on a {self.modality} MeasurementConfig. "
+                        f"Got {type(self.measurement_metadata)}\n{self.measurement_metadata}"
+                    )
             case DataModality.DROPPED:
-                assert self.measurement_metadata is None
-                assert self.vocabulary is None
+                if self.vocabulary is not None:
+                    err_strings.append(
+                        f"vocabulary must be None on a {self.modality} MeasurementConfig. "
+                        f"Got {self.vocabulary}"
+                    )
+                if self._measurement_metadata is not None:
+                    err_strings.append(
+                        f"measurement_metadata must be None on a {self.modality} MeasurementConfig. "
+                        f"Got {type(self.measurement_metadata)}\n{self.measurement_metadata}"
+                    )
             case _:
                 raise ValueError(f"`self.modality = {self.modality}` Invalid!")
+        if err_strings:
+            raise ValueError("\n".join(err_strings))
 
     def drop(self):
         """Sets the modality to DROPPED and does associated post-processing to ensure validity."""
         self.modality = DataModality.DROPPED
-        self.measurement_metadata = None
+        self._measurement_metadata = None
         self.vocabulary = None
 
     @property
@@ -674,19 +712,78 @@ class MeasurementConfig(JSONableMixin):
             DataModality.UNIVARIATE_REGRESSION,
         )
 
+    @property
+    def measurement_metadata(self) -> pd.DataFrame | pd.Series | None:
+        match self._measurement_metadata:
+            case None | pd.DataFrame() | pd.Series():
+                return self._measurement_metadata
+            case (Path() | str()) as fp:
+                out = pd.read_csv(fp, index_col=0)
+
+                if self.modality == DataModality.UNIVARIATE_REGRESSION:
+                    assert out.shape[1] == 1
+                    out = out.iloc[:, 0]
+                    for col in ("outlier_model", "normalizer"):
+                        if col in out:
+                            out[col] = eval(out[col])
+                else:
+                    assert self.modality == DataModality.MULTIVARIATE_REGRESSION
+                    for col in ("outlier_model", "normalizer"):
+                        if col in out:
+                            out[col] = out[col].apply(eval)
+                return out
+            case _:
+                raise ValueError(
+                    f"_measurement_metadata is invalid! Got {type(self.measurement_metadata)}!"
+                )
+
+    @measurement_metadata.setter
+    def measurement_metadata(self, new_metadata: pd.DataFrame | pd.Series | None):
+        if new_metadata is None:
+            self._measurement_metadata = None
+            return
+
+        if isinstance(self._measurement_metadata, (str, Path)):
+            new_metadata.to_csv(self._measurement_metadata)
+        else:
+            self._measurement_metadata = new_metadata
+
+    def cache_measurement_metadata(self, fp: Path):
+        if isinstance(self._measurement_metadata, (str, Path)):
+            if str(fp) != str(self._measurement_metadata):
+                raise ValueError(
+                    f"Caching is already enabled at {self._measurement_metadata} != {fp}"
+                )
+            return
+        if self.measurement_metadata is None:
+            return
+
+        fp.parent.mkdir(exist_ok=True, parents=True)
+        self.measurement_metadata.to_csv(fp)
+        self._measurement_metadata = str(fp)
+
+    def uncache_measurement_metadata(self):
+        if self._measurement_metadata is None:
+            return
+
+        if not isinstance(self._measurement_metadata, (str, Path)):
+            raise ValueError("Caching is not enabled, can't uncache!")
+
+        self._measurement_metadata = self.measurement_metadata
+
     def add_empty_metadata(self):
         """Adds an empty `measurement_metadata` dataframe or series."""
         assert self.measurement_metadata is None
 
         match self.modality:
             case DataModality.UNIVARIATE_REGRESSION:
-                self.measurement_metadata = pd.Series(
+                self._measurement_metadata = pd.Series(
                     [None] * len(self.PREPROCESSING_METADATA_COLUMNS),
                     index=self.PREPROCESSING_METADATA_COLUMNS,
                     dtype=object,
                 )
             case DataModality.MULTIVARIATE_REGRESSION:
-                self.measurement_metadata = pd.DataFrame(
+                self._measurement_metadata = pd.DataFrame(
                     {
                         c: pd.Series([], dtype=t)
                         for c, t in self.PREPROCESSING_METADATA_COLUMNS.items()
@@ -718,17 +815,19 @@ class MeasurementConfig(JSONableMixin):
     def to_dict(self) -> dict:
         """Represents this configuration object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
-        match self.measurement_metadata:
+        match self._measurement_metadata:
             case pd.DataFrame():
-                as_dict["measurement_metadata"] = self.measurement_metadata.to_dict(orient="tight")
+                as_dict["_measurement_metadata"] = self.measurement_metadata.to_dict(
+                    orient="tight"
+                )
             case pd.Series():
-                as_dict["measurement_metadata"] = self.measurement_metadata.to_dict(
+                as_dict["_measurement_metadata"] = self.measurement_metadata.to_dict(
                     into=OrderedDict
                 )
+            case Path():
+                as_dict["_measurement_metadata"] = str(self._measurement_metadata)
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
             as_dict["functor"] = self.functor.to_dict()
-        if self.present_in_event_types is not None:
-            as_dict["present_in_event_types"] = list(self.present_in_event_types)
         return as_dict
 
     @classmethod
@@ -737,27 +836,25 @@ class MeasurementConfig(JSONableMixin):
         if as_dict["vocabulary"] is not None:
             as_dict["vocabulary"] = Vocabulary(**as_dict["vocabulary"])
 
-        if as_dict["measurement_metadata"] is not None:
-            match as_dict["modality"]:
-                case DataModality.MULTIVARIATE_REGRESSION:
-                    as_dict["measurement_metadata"] = pd.DataFrame.from_dict(
-                        as_dict["measurement_metadata"], orient="tight"
-                    )
-                case DataModality.UNIVARIATE_REGRESSION:
-                    as_dict["measurement_metadata"] = pd.Series(as_dict["measurement_metadata"])
-                case _:
-                    raise ValueError(
-                        "Config is non-numeric but has a measurement_metadata value observed."
-                    )
+        match as_dict["_measurement_metadata"], as_dict["modality"]:
+            case str() | None, _:
+                pass
+            case dict(), DataModality.MULTIVARIATE_REGRESSION:
+                as_dict["_measurement_metadata"] = pd.DataFrame.from_dict(
+                    as_dict["_measurement_metadata"], orient="tight"
+                )
+            case dict(), DataModality.UNIVARIATE_REGRESSION:
+                as_dict["_measurement_metadata"] = pd.Series(as_dict["_measurement_metadata"])
+            case _:
+                raise ValueError(
+                    f"{as_dict['measurement_metadata']} and {as_dict['modality']} incompatible!"
+                )
 
         if as_dict["functor"] is not None:
             assert as_dict["temporality"] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
             as_dict["functor"] = cls.FUNCTORS[as_dict["functor"]["class"]].from_dict(
                 as_dict["functor"]
             )
-
-        if as_dict["present_in_event_types"] is not None:
-            as_dict["present_in_event_types"] = set(as_dict["present_in_event_types"])
 
         return cls(**as_dict)
 
@@ -928,6 +1025,8 @@ class DatasetConfig(JSONableMixin):
     def to_dict(self) -> dict:
         """Represents this configuration object as a plain dictionary."""
         as_dict = dataclasses.asdict(self)
+        if self.save_dir is not None:
+            as_dict["save_dir"] = str(self.save_dir)
         as_dict["measurement_configs"] = {
             k: v.to_dict() for k, v in self.measurement_configs.items()
         }
@@ -939,6 +1038,8 @@ class DatasetConfig(JSONableMixin):
         as_dict["measurement_configs"] = {
             k: MeasurementConfig.from_dict(v) for k, v in as_dict["measurement_configs"].items()
         }
+        if type(as_dict["save_dir"]) is str:
+            as_dict["save_dir"] = Path(as_dict["save_dir"])
 
         return cls(**as_dict)
 

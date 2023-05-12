@@ -100,6 +100,9 @@ class TimeOfDayFunctorMock(TimeDependentFunctor):
         )
 
 
+MeasurementConfig.FUNCTORS["AgeFunctorMock"] = AgeFunctorMock
+MeasurementConfig.FUNCTORS["TimeOfDayFunctorMock"] = TimeOfDayFunctorMock
+
 TEST_CONFIG = DatasetConfig(
     min_valid_column_observations=0.5,
     min_valid_vocab_element_observations=2,
@@ -134,8 +137,8 @@ TEST_CONFIG = DatasetConfig(
         "time_dependent_age_lt_90": MeasurementConfig(
             temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
             functor=AgeFunctorMock(),
-            measurement_metadata=pd.Series(
-                [90, False],
+            _measurement_metadata=pd.Series(
+                [90.0, False],
                 index=pd.Index(
                     ["drop_upper_bound", "drop_upper_bound_inclusive"],
                 ),
@@ -155,7 +158,7 @@ TEST_CONFIG = DatasetConfig(
             modality=DataModality.MULTIVARIATE_REGRESSION,
             values_column="mrbo_vals",
             present_in_event_types=["MVR"],
-            measurement_metadata=pd.DataFrame(
+            _measurement_metadata=pd.DataFrame(
                 {
                     "drop_lower_bound": [-1.1, -10.1, None],
                     "drop_lower_bound_inclusive": [True, False, None],
@@ -174,7 +177,7 @@ TEST_CONFIG = DatasetConfig(
             modality=DataModality.MULTIVARIATE_REGRESSION,
             values_column="pvt_vals",
             present_in_event_types=["MVR"],
-            measurement_metadata=pd.DataFrame(
+            _measurement_metadata=pd.DataFrame(
                 {
                     "value_type": [
                         NumericDataModalitySubtype.CATEGORICAL_INTEGER,
@@ -635,9 +638,9 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         name="time_dependent_age_lt_90",
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
         functor=AgeFunctorMock(),
-        measurement_metadata=pd.Series(
+        _measurement_metadata=pd.Series(
             [
-                90,
+                90.0,
                 False,
                 NumericDataModalitySubtype.FLOAT,
                 {"mean": outlier_mean_lt_90},
@@ -663,7 +666,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         functor=AgeFunctorMock(),
         observation_frequency=1,
         vocabulary=None,
-        measurement_metadata=pd.Series(
+        _measurement_metadata=pd.Series(
             [
                 NumericDataModalitySubtype.FLOAT,
                 {"mean": outlier_mean_all},
@@ -698,7 +701,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="mrbo_vals",
         present_in_event_types=["MVR"],
-        measurement_metadata=pd.DataFrame(
+        _measurement_metadata=pd.DataFrame(
             {
                 "drop_lower_bound": [-1.1, -10.1, None],
                 "drop_lower_bound_inclusive": [True, False, None],
@@ -735,7 +738,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="pvt_vals",
         present_in_event_types=["MVR"],
-        measurement_metadata=pd.DataFrame(
+        _measurement_metadata=pd.DataFrame(
             {
                 "value_type": [
                     NumericDataModalitySubtype.INTEGER,
@@ -802,7 +805,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
             ],
             [3, 3, 3, 2, 2, 2, 2],
         ),
-        measurement_metadata=pd.DataFrame(
+        _measurement_metadata=pd.DataFrame(
             {
                 "value_type": [
                     NumericDataModalitySubtype.FLOAT,
@@ -1889,6 +1892,11 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
                 self.assertEqual(WANT_MEASUREMENTS_DF, got_E.dynamic_measurements_df)
                 self.assertEqual(WANT_EVENTS_DF, got_E.events_df)
                 self.assertEqual(WANT_SUBJECTS_DF, got_E.subjects_df)
+
+                got_inferred_measurement_configs = got_E.inferred_measurement_configs
+                for v in got_inferred_measurement_configs.values():
+                    v.uncache_measurement_metadata()
+
                 self.assertNestedDictEqual(
-                    WANT_INFERRED_MEASUREMENT_CONFIGS, got_E.inferred_measurement_configs
+                    WANT_INFERRED_MEASUREMENT_CONFIGS, got_inferred_measurement_configs
                 )
