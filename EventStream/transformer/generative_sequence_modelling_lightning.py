@@ -516,15 +516,22 @@ class PretrainConfig:
             "devices": "auto",
             "detect_anomaly": False,
             "default_root_dir": "${save_dir}/model_checkpoints",
+            "log_every_n_steps": 10,
         }
     )
 
     experiment_dir: str = omegaconf.MISSING
     save_dir: str = "${experiment_dir}/pretrain/${now:%Y-%m-%d_%H-%M-%S}"
 
-    wandb_name: str | None = "generative_event_stream_transformer"
-    wandb_project: str | None = None
-    wandb_team: str | None = None
+    wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "name": "generative_event_stream_transformer",
+            "project": None,
+            "team": None,
+            "log_model": True,
+            "do_log_graph": True,
+        }
+    )
 
     num_dataloader_workers: int = 1
 
@@ -628,18 +635,20 @@ def train(cfg: PretrainConfig):
         callbacks=callbacks,
     )
 
-    do_use_wandb = cfg.wandb_name is not None
-    if do_use_wandb:
-        wandb_logger_savedir = cfg.save_dir  # Wandb automatically adds a "wandb" suffix.
+    if cfg.wandb_logger_kwargs.get("name", None):
+        if "do_log_graph" in cfg.wandb_logger_kwargs:
+            do_log_graph = cfg.wandb_logger_kwargs.pop("do_log_graph")
+        else:
+            do_log_graph = False
+
         wandb_logger = WandbLogger(
-            name=cfg.wandb_name,
-            project=cfg.wandb_project,
-            entity=cfg.wandb_team,
-            save_dir=wandb_logger_savedir,
-            log_model=True,
+            **{k: v for k, v in cfg.wandb_logger_kwargs.items() if v is not None},
+            save_dir=cfg.save_dir,
         )
-        # Watching the model naturally tracks parameter values and gradients.
-        wandb_logger.watch(LM, log="all", log_graph=True)
+
+        if do_log_graph:
+            # Watching the model naturally tracks parameter values and gradients.
+            wandb_logger.watch(LM, log="all", log_graph=True)
 
         trainer_kwargs["logger"] = wandb_logger
 

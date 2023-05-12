@@ -1,0 +1,2 @@
+do_skip_all_metrics:
+  value: True
