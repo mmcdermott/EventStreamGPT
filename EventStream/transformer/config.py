@@ -923,3 +923,21 @@ class StructuredTransformerConfig(PretrainedConfig):
             return False
         else:
             return PretrainedConfig.__eq__(self, other)
+
+    def to_dict(self) -> dict[str, Any]:
+        as_dict = super().to_dict()
+        if as_dict.get("measurement_configs", {}):
+            new_meas_configs = {}
+            for k, v in as_dict["measurement_configs"].items():
+                new_meas_configs[k] = v.to_dict()
+            as_dict["measurement_configs"] = new_meas_configs
+        return as_dict
+
+    @classmethod
+    def from_dict(cls, *args, **kwargs) -> "StructuredTransformerConfig":
+        raw_from_dict = super().from_dict(*args, **kwargs)
+        if raw_from_dict.measurmeent_configs:
+            new_meas_configs = {}
+            for k, v in raw_from_dict.measurement_configs.items():
+                new_meas_configs[k] = MeasurementConfig.from_dict(v)
+            raw_from_dict.measurement_configs = new_meas_configs
