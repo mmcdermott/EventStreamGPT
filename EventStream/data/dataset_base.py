@@ -217,7 +217,7 @@ class DatasetBase(
                     self._inc_df_col(measurements, "event_id", running_event_id_max)
                 )
 
-            running_event_id_max = all_events[-1]['event_id'].max() + 1
+            running_event_id_max = all_events[-1]["event_id"].max() + 1
 
         return self._concat_dfs(all_events), self._concat_dfs(all_measurements)
 

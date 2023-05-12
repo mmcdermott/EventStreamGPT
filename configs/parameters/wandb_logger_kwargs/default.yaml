@@ -1,8 +1,8 @@
 name:
   value: "generative_event_stream_transformer"
-project: 
+project:
   value: ${project}
-entity: 
+entity:
   value: ${entity}
 do_log_graph:
   value: False

@@ -20,8 +20,10 @@ def collapse_cfg(k: str, v: Any) -> dict[str, dict[str, Any]]:
     if type(v) is not dict:
         raise ValueError(f"Misconfigured @ {k}")
     if len(WANDB_SWEEP_KEYS.intersection(v.keys())) > 0:
-        if set(v.keys()) == {'value'} and v['value'] is None: return {}
-        else: return {k: v}
+        if set(v.keys()) == {"value"} and v["value"] is None:
+            return {}
+        else:
+            return {k: v}
 
     out = {}
     if k:
