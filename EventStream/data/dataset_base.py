@@ -185,10 +185,14 @@ class DatasetBase(
                     case InputDFType.RANGE:
                         df = self.resolve_ts_col(df, schema.start_ts_col, "start_time")
                         df = self.resolve_ts_col(df, schema.end_ts_col, "end_time")
-                        for et, sp_df in zip(schema.event_type, self.split_range_events_df(df=df)):
+                        for et, unified_schema, sp_df in zip(
+                            schema.event_type,
+                            schema.unified_schema,
+                            self.split_range_events_df(df=df),
+                        ):
                             all_events_and_measurements.append(
                                 self.process_events_and_measurements_df(
-                                    sp_df, columns_schema=schema.unified_schema, event_type=et
+                                    sp_df, columns_schema=unified_schema, event_type=et
                                 )
                             )
                         event_types.extend(schema.event_type)

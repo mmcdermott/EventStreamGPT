@@ -284,6 +284,16 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def unified_schema(self) -> dict[str, tuple[str, InputDataType]]:
+        match self.type:
+            case InputDFType.EVENT | InputDFType.STATIC:
+                return self.unified_event_schema
+            case InputDFType.RANGE:
+                return [self.unified_eq_schema, self.unified_start_schema, self.unified_end_schema]
+            case _:
+                raise ValueError(f"Unrecognized type {self.type}!")
+
+    @property
+    def unified_event_schema(self) -> dict[str, tuple[str, InputDataType]]:
         return self._unify_schema(self.data_schema)
 
     @property
