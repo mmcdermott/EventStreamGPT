@@ -117,7 +117,7 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> tuple[DF_T, int]:
         """Increments the values in a column by a given amount and returns a dataframe with the
         incremented column."""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -217,7 +217,7 @@ class DatasetBase(
                     self._inc_df_col(measurements, "event_id", running_event_id_max)
                 )
 
-            running_event_id_max = all_events[-1]["event_id"].max() + 1
+            running_event_id_max = all_events[-1]['event_id'].max() + 1
 
         return self._concat_dfs(all_events), self._concat_dfs(all_measurements)
 
@@ -739,6 +739,7 @@ class DatasetBase(
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
+                print(f"WARNING: Measure {measure} not found! Dropping...")
                 config.drop()
                 continue
 

@@ -6,5 +6,3 @@ max_seq_len:
 min_seq_len:
   min: 2
   max: 16
-seq_padding_side:
-  value: "right"

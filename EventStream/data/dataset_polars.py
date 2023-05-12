@@ -975,9 +975,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         )
 
         source_df = (
-            source_df.update(
-                measurement_metadata.select(vocab_keys_col, "value_type"), on=vocab_keys_col
-            )
+            source_df
+            .update(measurement_metadata.select(vocab_keys_col, "value_type"), on=vocab_keys_col)
             .with_columns(
                 pl.when(pl.col("value_type") == NumericDataModalitySubtype.INTEGER)
                 .then(pl.col(vals_col).round(0))

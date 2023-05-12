@@ -127,16 +127,16 @@ To launch a weights and biases hyperparameter sweep, you can use the
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/launch_wandb_hp_sweep.py \
-    --config-path='/path/to/local/configs' \
-    --config-name='local_config_name' \
-    'hydra.searchpath=[$EVENT_STREAM_PATH/configs]' # This line ensures hydra can find the pre-defined default
+    --config-path=/path/to/local/configs \
+    --config-name=local_config_name \
+    hydra.searchpath=[$EVENT_STREAM_PATH/configs] # This line ensures hydra can find the pre-defined default
 ```
 
 An example of the overriding local config is:
 
 ```yaml
 defaults:
-  - hyperparameter_sweep # IMPORTANT: This defaults to the pre-defined repository config!
+  - hyperparameter_sweep_base # IMPORTANT: This defaults to the pre-defined repository config!
   - _self_
 
 parameters:
