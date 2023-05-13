@@ -10,10 +10,7 @@ except ImportError:
 import hydra
 import torch
 
-from EventStream.transformer.zero_shot_utils import (
-    FinetuneConfig,
-    zero_shot_evaluation,
-)
+from EventStream.transformer.zero_shot_utils import FinetuneConfig, zero_shot_evaluation
 
 torch.set_float32_matmul_precision("high")
 

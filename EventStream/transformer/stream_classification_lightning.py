@@ -320,8 +320,6 @@ class FinetuneConfig:
 
     num_dataloader_workers: int = 1
 
-    
-
     def __post_init__(self):
         if isinstance(self.save_dir, str):
             self.save_dir = Path(self.save_dir)
@@ -355,7 +353,7 @@ class FinetuneConfig:
                         / self.task_df_name
                     )
             if self.trainer_config.get("default_root_dir", None) is None:
-                print(self.save_dir, type(self.save_dir),"model_checkpoints")
+                print(self.save_dir, type(self.save_dir), "model_checkpoints")
                 self.trainer_config["default_root_dir"] = Path(self.save_dir) / "model_checkpoints"
 
             data_config_fp = self.load_from_model_dir / "data_config.json"

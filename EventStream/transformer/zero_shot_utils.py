@@ -1,13 +1,11 @@
 import dataclasses
-import json
-import os
-import random
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import lightning as L
 import omegaconf
+import polars as pl
 import torch
 import torch.multiprocessing
 import torchmetrics
@@ -41,14 +39,10 @@ from .config import (
     StructuredTransformerConfig,
 )
 from .model import ESTForGenerativeSequenceModeling
-from .model_output import GenerativeSequenceModelOutput
-from .model_output import StreamClassificationModelOutput
-from ..utils import hydra_dataclass, task_wrapper
-from .utils import expand_indexed_regression, str_summary
-from .utils import str_summary
+from .model_output import GenerativeSequenceModelOutput, StreamClassificationModelOutput
 from .stream_classification_lightning import FinetuneConfig
+from .utils import expand_indexed_regression, str_summary
 
-import polars as pl
 
 def get_death_event_from_config(config, verbose=False):
     """
@@ -58,27 +52,34 @@ def get_death_event_from_config(config, verbose=False):
         indices of all measaurements corresponding to death events.
     """
 
-    death_event_indices=[]
+    death_event_indices = []
 
-    for k in config['vocab_offsets_by_measurement'].keys():
-        if k not in config['event_types_per_measurement'].keys():continue
-        if verbose:print(k)
-        offset = config['vocab_offsets_by_measurement'][k]
-        if verbose:[event for i, event in enumerate(config['event_types_per_measurement'][k]) if 'DEATH' in event]
-        death_event_indices = death_event_indices+ [i+offset for i,event in enumerate(config['event_types_per_measurement'][k]) if 'DEATH' in event]
+    for k in config["vocab_offsets_by_measurement"].keys():
+        if k not in config["event_types_per_measurement"].keys():
+            continue
+        if verbose:
+            print(k)
+        offset = config["vocab_offsets_by_measurement"][k]
+        if verbose:
+            [
+                event
+                for i, event in enumerate(config["event_types_per_measurement"][k])
+                if "DEATH" in event
+            ]
+        death_event_indices = death_event_indices + [
+            i + offset
+            for i, event in enumerate(config["event_types_per_measurement"][k])
+            if "DEATH" in event
+        ]
 
     # handle event type 1 to 688
 
     return death_event_indices
 
 
-    
-
-
-
 # def zero_shot_evaluation(model_output, task_df, vocabulary_config, event_name, time_frame=None):
 #     """
-#     Given a model output, lookup the event_name (to determine if it occured within the given timeframe). Evaluate against task_df.
+#     Given a model output, lookup the event_name (to determine if it occurred within the given timeframe). Evaluate against task_df.
 #     """
 
 #     if event_name == 'in-hospital mortality':
@@ -93,7 +94,7 @@ def get_death_event_from_config(config, verbose=False):
 #             pred = 1.
 #         else:
 #             pred = 0.
-    
+
 #     # get patient id
 #     label = task_df.loc['patient_id', 'in-hospital mortality']
 
@@ -109,28 +110,24 @@ def get_death_event_from_config(config, verbose=False):
 #         raise NotImplementedError
 
 
-
-
-
 # v0): something one can import in a python script, has the following signature.
 # Assume easy access to MeasurementConfigs -- can pass in by hand for now.
 # Inputs:
 # Fine-tuning config (https://github.com/mmcdermott/EventStreamML/blob/dev/EventStream/transformer/stream_classification_lightning.py#L281)
 # Dataloader can be built from fine-tuning config -- see stream classification for example.
 # BUT fine_tuning config must overwrite data_config
-# seq_padding_side in the dataset config to be SeqPaddingSide.RIGHT or ’right’ (https://github.com/mmcdermott/EventStreamML/blob/dev/EventStream/data/config.py#L416) 
+# seq_padding_side in the dataset config to be SeqPaddingSide.RIGHT or ’right’ (https://github.com/mmcdermott/EventStreamML/blob/dev/EventStream/data/config.py#L416)
 # Do_include_start_time to be True (this is needed for generation).
 # Function for empirical labeling:
 # Inputs:
-# Generation output: https://github.com/mmcdermott/EventStreamML/blob/dev/EventStream/transformer/generation_utils.py#L80 
-# Original batch (PytorchBatch object) so that they can know at what time the original sequences ended. 
-# Output: 
+# Generation output: https://github.com/mmcdermott/EventStreamML/blob/dev/EventStream/transformer/generation_utils.py#L80
+# Original batch (PytorchBatch object) so that they can know at what time the original sequences ended.
+# Output:
 # Tensor that looks contains predicted labels per patient (as appropriate integer indices for class option) -- may need to know dataset vocab as well.
-# Think about the time-dependent-functor 
+# Think about the time-dependent-functor
 # Outputs:
 # Final performance metrics for a zero-shot system, using same metrics from fine-tuning (https://github.com/mmcdermott/EventStreamML/blob/dev/EventStream/transformer/stream_classification_lightning.py)
 # (advanced): Sync to weights-and-biases under a given model config (much like FT does).
-
 
 
 # @hydra_dataclass
@@ -174,7 +171,6 @@ def get_death_event_from_config(config, verbose=False):
 #             self.task_df_name = self.task_df_fp.stem
 
 
-
 def template_labeling_function(generated_batch):
     """
     input:
@@ -185,8 +181,7 @@ def template_labeling_function(generated_batch):
 
     # return a dummy tensor that is the same size as generated batch, of type longtensor, with 1's and 0's.
 
-    dummy_tensor = torch.random.randint(0,2, generated_batc.shape)
-
+    dummy_tensor = torch.random.randint(0, 2, generated_batc.shape)
 
     return dummy_tensor
 
@@ -229,7 +224,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         pretrained_weights_fp: Path | None = None,
         do_debug_mode: bool = True,
         num_samples=1,
-        labeling_function = None
+        labeling_function=None,
     ):
         """Initializes the Lightning Module.
 
@@ -257,7 +252,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         self.config = config
         self.optimization_config = optimization_config
         self.do_debug_mode = do_debug_mode
-        self.num_samples=num_samples
+        self.num_samples = num_samples
 
         self.save_hyperparameters(
             {
@@ -344,7 +339,6 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
             raise ValueError(f"{self.config.problem_type} not valid")
         # self.metrics_defined = False
 
-
     def _log_metric_dict(
         self,
         preds: torch.Tensor,
@@ -412,38 +406,36 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
 
         self.log(f"{prefix}_loss", results.loss)
 
+    def get_generative_predictions(self, batch):
+        """# capture num_samples to generate"""
 
-    def get_generative_predictions(self,batch):
-        """
-        # capture num_samples to generate
-        """
-
-        out = self.labeling_function(M.generate(batch,
-                                                max_new_events=self.max_new_events, 
-                                                do_sample=True,
-                                                return_dict_in_generate=True,
-                                                output_scores=False))
-        assert out.dtype==torch.Longtensor
+        out = self.labeling_function(
+            M.generate(
+                batch,
+                max_new_events=self.max_new_events,
+                do_sample=True,
+                return_dict_in_generate=True,
+                output_scores=False,
+            )
+        )
+        assert out.dtype == torch.Longtensor
         # streamclassificationmdeloutput
         output = StreamClassificationModelOutput(loss)
         output.loss = np.nan
-        output.labels=batch['stream_labels'][self.task]
+        output.labels = batch["stream_labels"][self.task]
         # if num_return_sequences is larger
 
         # num_return_sequences >>> expanded batch tiles the model
-        # count occurences of each label sum acrosss patient and create a logit.
+        # count occurrences of each label sum across patient and create a logit.
 
-        output.preds = torch.mean(out,dim=1) # torch.mean along one axis
+        output.preds = torch.mean(out, dim=1)  # torch.mean along one axis
 
         # assert output preds shape is the same as th labels shape
-        assert len(output.preds.shape)==len(output.labels.shape)
+        assert len(output.preds.shape) == len(output.labels.shape)
         assert output.preds.shape[0] == output.labels.shape[0]
         assert output.preds.shape[1] == output.labels.shape[1]
 
-
         return output
-
-
 
     def validation_step(self, batch, batch_idx):
         """Validation step.
@@ -454,7 +446,6 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         ## TODO
         out = get_generative_predictions(batch)
         self.log_metrics(out, skip_metrics=[], prefix="tuning")
-
 
     def test_step(self, batch, batch_idx):
         """Validation step.
@@ -467,16 +458,10 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
 
         self.log_metrics(out, skip_metrics=[], prefix="held_out")
 
-    
-
-
-
-
 
 @task_wrapper
 def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_from_config):
-    """
-    """
+    """"""
 
     # make sure config is in the right format
     print(type(cfg))
@@ -484,8 +469,12 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
     # for k in cfg.keys():
     #     if isinstance(cfg[k],dict):
     #         print(sorted(list(cfg[k].keys())))
-    assert cfg.data_config.seq_padding_side=='right', "seq_padding_side must be set to right for generation"
-    assert cfg.data_config.do_include_start_time_min, "do_include_start_time_min must be True for generation" # data config overrides
+    assert (
+        cfg.data_config.seq_padding_side == "right"
+    ), "seq_padding_side must be set to right for generation"
+    assert (
+        cfg.data_config.do_include_start_time_min
+    ), "do_include_start_time_min must be True for generation"  # data config overrides
 
     print(type(cfg))
 
@@ -493,7 +482,6 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
     # for k in cfg.keys():
     #     if isinstance(cfg[k],dict):
     #         print(sorted(list(cfg[k].keys())))
-
 
     # build the dataloader
 
@@ -506,8 +494,6 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
     # held_out_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split="held_out")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
     # held_out_pyd = PytorchDataset(cfg.data_config,  split="held_out")
-
-
 
     config = cfg.config
     optimization_config = cfg.optimization_config
@@ -531,18 +517,14 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
         cfg.save_dir / "metrics_config.json", do_overwrite=cfg.do_overwrite
     )
 
-
-
-
     # Model
     LM = ESTForZeroShotClassificationLM(
         config=config,
         optimization_config=optimization_config,
         metrics_config=metrics_config,
         pretrained_weights_fp=cfg.pretrained_weights_fp,
-        num_samples=2
+        num_samples=2,
     )
-
 
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
@@ -552,10 +534,8 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
         shuffle=False,
     )
 
-
     if cfg.do_final_validation_on_metrics:
         trainer.validate(model=LM, dataloaders=tuning_dataloader)
         trainer.test(model=LM, dataloaders=held_out_dataloader)
 
     return config, LM
-

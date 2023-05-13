@@ -27,7 +27,6 @@ except:
     pl.toggle_string_cache(True)
 
 
-
 @dataclasses.dataclass(frozen=True)
 class Query:
     connection_uri: str
