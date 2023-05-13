@@ -331,8 +331,6 @@ class FinetuneConfig:
                 self.pretrained_weights_fp = self.load_from_model_dir / "pretrained_weights"
             if self.save_dir is None:
                 if self.data_config_overrides.get("train_subset_size", None) in (None, "FULL"):
-                    if isinstance(self.save_dir, str):
-                        self.save_dir = Path(self.save_dir)
                     self.save_dir = self.load_from_model_dir / "finetuning" / self.task_df_name
                 else:
                     self.data_config_overrides["train_subset_size"]
@@ -353,8 +351,7 @@ class FinetuneConfig:
                         / self.task_df_name
                     )
             if self.trainer_config.get("default_root_dir", None) is None:
-                print(self.save_dir, type(self.save_dir), "model_checkpoints")
-                self.trainer_config["default_root_dir"] = Path(self.save_dir) / "model_checkpoints"
+                self.trainer_config["default_root_dir"] = self.save_dir / "model_checkpoints"
 
             data_config_fp = self.load_from_model_dir / "data_config.json"
             print(f"Loading data_config from {data_config_fp}")
