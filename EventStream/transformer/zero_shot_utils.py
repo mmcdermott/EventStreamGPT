@@ -1,5 +1,8 @@
 import dataclasses
+import json
 import os
+import random
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +15,9 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
 from torchmetrics.classification import (
+    BinaryAccuracy,
+    BinaryAUROC,
+    BinaryAveragePrecision,
     MulticlassAccuracy,
     MulticlassAUROC,
     MulticlassAveragePrecision,
@@ -36,9 +42,13 @@ from .config import (
 )
 from .model import ESTForGenerativeSequenceModeling
 from .model_output import GenerativeSequenceModelOutput
+from .model_output import StreamClassificationModelOutput
+from ..utils import hydra_dataclass, task_wrapper
 from .utils import expand_indexed_regression, str_summary
-
+from .utils import str_summary
 from .stream_classification_lightning import FinetuneConfig
+
+import polars as pl
 
 def get_death_event_from_config(config, verbose=False):
     """
@@ -332,7 +342,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
             )
         else:
             raise ValueError(f"{self.config.problem_type} not valid")
-        self.metrics_defined = False
+        # self.metrics_defined = False
 
 
     def _log_metric_dict(
@@ -405,6 +415,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
 
     def get_generative_predictions(self,batch):
         """
+        # capture num_samples to generate
         """
 
         out = self.labeling_function(M.generate(batch,
@@ -469,28 +480,33 @@ def zero_shot_evaluation(cfg: FinetuneConfig, labeling_function=get_death_event_
 
     # make sure config is in the right format
     print(type(cfg))
-    assert cfg['data_config']['seq_padding_side']=='right', "seq_padding_side must be set to right for generation"
-    # assert cfg.do_include_start_time_min, "do_include_start_time_min must be True for generation" # data config overrides
+    print(cfg)
+    # for k in cfg.keys():
+    #     if isinstance(cfg[k],dict):
+    #         print(sorted(list(cfg[k].keys())))
+    assert cfg.data_config.seq_padding_side=='right', "seq_padding_side must be set to right for generation"
+    assert cfg.data_config.do_include_start_time_min, "do_include_start_time_min must be True for generation" # data config overrides
 
     print(type(cfg))
 
-    print(cfg.keys())
-    for k in cfg.keys():
-        if isinstance(cfg[k],dict):
-            print(sorted(list(cfg[k].keys())))
+    # print(cfg.keys())
+    # for k in cfg.keys():
+    #     if isinstance(cfg[k],dict):
+    #         print(sorted(list(cfg[k].keys())))
 
 
     # build the dataloader
 
-    # cfg.save_dir.mkdir(parents=True, exist_ok=True)
-    cfg['save_dir'].mkdir(parents=True, exist_ok=True)
+    cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
-    # task_df = pd.read_parquet(cfg.task_df_fp)
-    task_df = pd.read_parquet('/ais/bulbasaur/bretnestor/')
+    # task_df = pl.read_parquet(cfg.task_df_name)
+    # task_df = pd.read_parquet('/ais/bulbasaur/bretnestor/')
 
     # Creating or loading training/tuning datasets
     # held_out_pyd = PytorchDataset(cfg.data_config, task_df=task_df, split="held_out")
-    held_out_pyd = PytorchDataset(cfg['data_config'], task_df=task_df, split="held_out")
+    tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
+    # held_out_pyd = PytorchDataset(cfg.data_config,  split="held_out")
+
 
 
     config = cfg.config
