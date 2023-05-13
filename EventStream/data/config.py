@@ -464,7 +464,7 @@ class PytorchDatasetConfig(JSONableMixin):
             case (None | "FULL") if self.train_subset_seed is not None:
                 raise ValueError(
                     f"train_subset_seed {self.train_subset_seed} should be None "
-                    "if train_subset_size is {self.train_subset_size}."
+                    f"if train_subset_size is {self.train_subset_size}."
                 )
             case int() as n if n < 0:
                 raise ValueError(f"If integral, train_subset_size must be positive! Got {n}")
