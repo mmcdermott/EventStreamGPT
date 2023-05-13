@@ -1,0 +1,4 @@
+detect_anomaly:
+  value: False
+log_every_n_steps:
+  value: 50

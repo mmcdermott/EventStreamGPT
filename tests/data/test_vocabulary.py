@@ -4,11 +4,13 @@ sys.path.append("../..")
 
 import unittest
 
-import numpy as np
-
 from EventStream.data.vocabulary import Vocabulary
 
 from ..mixins import MLTypeEqualityCheckableMixin
+
+
+def rounded_obs_freq(v: Vocabulary) -> list[float]:
+    return [round(x, 5) for x in v.obs_frequencies]
 
 
 class TestVocabulary(MLTypeEqualityCheckableMixin, unittest.TestCase):
@@ -19,7 +21,7 @@ class TestVocabulary(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         self.assertEqual(vocab.element_types, {str})
         self.assertEqual(vocab.vocabulary, ["UNK", "bar", "foo", "baz"])
-        self.assertEqual(vocab.obs_frequencies, np.array([0, 0.7, 0.2, 0.1]))
+        self.assertEqual(rounded_obs_freq(vocab), [0, 0.7, 0.2, 0.1])
         self.assertEqual(vocab.idxmap, {"UNK": 0, "bar": 1, "foo": 2, "baz": 3})
         self.assertEqual(vocab.vocab_set, {"UNK", "bar", "foo", "baz"})
         self.assertEqual(len(vocab), 4)
@@ -31,7 +33,7 @@ class TestVocabulary(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         vocab.filter(total_observations=10, min_valid_element_freq=0.25)
         self.assertEqual(vocab.vocabulary, ["UNK", "bar"])
-        self.assertEqual(vocab.obs_frequencies, np.array([0.3, 0.7]))
+        self.assertEqual(rounded_obs_freq(vocab), [0.3, 0.7])
         self.assertEqual(vocab.idxmap, {"UNK": 0, "bar": 1})
         self.assertEqual(vocab.vocab_set, {"UNK", "bar"})
         self.assertEqual(len(vocab), 2)
@@ -44,7 +46,7 @@ class TestVocabulary(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         self.assertEqual(vocab.element_types, {float})
         self.assertEqual(vocab.vocabulary, ["UNK", 100.0, 3.5])
-        self.assertEqual(vocab.obs_frequencies, np.array([0.3, 0.5, 0.2]))
+        self.assertEqual(rounded_obs_freq(vocab), [0.3, 0.5, 0.2])
         self.assertEqual(vocab.idxmap, {"UNK": 0, 100.0: 1, 3.5: 2})
         self.assertEqual(vocab.vocab_set, {"UNK", 100.0, 3.5})
         self.assertEqual(len(vocab), 3)
@@ -57,7 +59,7 @@ class TestVocabulary(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         vocab.filter(total_observations=3, min_valid_element_freq=1)
         self.assertEqual(vocab.vocabulary, ["UNK", 100.0])
-        self.assertEqual(vocab.obs_frequencies, np.array([0.5, 0.5]))
+        self.assertEqual(rounded_obs_freq(vocab), [0.5, 0.5])
         self.assertEqual(vocab.idxmap, {"UNK": 0, 100.0: 1})
 
         with self.assertRaises(AssertionError, msg="Vocab can't have duplicates."):

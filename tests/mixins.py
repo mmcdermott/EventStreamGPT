@@ -4,6 +4,7 @@ sys.path.append("..")
 
 import math
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
@@ -18,6 +19,10 @@ from EventStream.transformer.config import StructuredTransformerConfig
 from EventStream.transformer.model_output import TransformerOutputWithPast
 
 ASSERT_FN = Callable[[Any, Any, Optional[str]], None]
+
+
+def round_dict(d: dict[str, float]) -> dict[str, float]:
+    return {k: None if v is None else round(v, 5) for k, v in d.items()}
 
 
 class MLTypeEqualityCheckableMixin:
@@ -168,7 +173,7 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
     def assert_vocabulary_equal(self, want: Vocabulary, got: Vocabulary, msg: str | None = None):
         self.assertEqual(type(want), type(got), msg)
         self.assertEqual(want.vocabulary, got.vocabulary, msg)
-        self.assertEqual(want.obs_frequencies, got.obs_frequencies, msg)
+        self.assertEqual(np.array(want.obs_frequencies), np.array(got.obs_frequencies), msg)
 
     def assert_measurement_config_equal(
         self, want: MeasurementConfig, got: MeasurementConfig, msg: str | None = None
@@ -180,9 +185,9 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
         )
 
         want_less_metadata = vars(want).copy()
-        want_metadata = want_less_metadata.pop("measurement_metadata")
+        want_metadata = want_less_metadata.pop("_measurement_metadata")
         got_less_metadata = vars(got).copy()
-        got_metadata = got_less_metadata.pop("measurement_metadata")
+        got_metadata = got_less_metadata.pop("_measurement_metadata")
 
         self.assertNestedDictEqual(
             want_less_metadata,
@@ -191,33 +196,84 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
             check_like=True,
         )
 
-        if want_metadata is None:
-            self.assertIsNone(got_metadata, msg=f"{msg}: got metadata is not None")
-        elif isinstance(want_metadata, pd.DataFrame):
-            self.assertTrue(
-                isinstance(got_metadata, pd.DataFrame),
-                msg=f"{msg}: got metadata is not a DataFrame",
-            )
-            want_idx = want_metadata.index
-            got_idx = got_metadata.index
+        match want_metadata:
+            case None:
+                self.assertIsNone(got_metadata, msg=f"{msg}: got metadata is not None")
+            case str() | Path():
+                self.assertEqual(
+                    str(want_metadata),
+                    str(got_metadata),
+                    msg=f"{msg}: {want_metadata} != {got_metadata}!",
+                )
+            case pd.DataFrame():
+                self.assertTrue(
+                    isinstance(got_metadata, pd.DataFrame),
+                    msg=f"{msg}: got metadata is not a DataFrame",
+                )
+                want_idx = want_metadata.index
+                got_idx = got_metadata.index
 
-            self.assertEqual(set(want_idx), set(got_idx), msg)
-            reordered_got = got_metadata.reindex(want_idx).copy()
-            try:
-                pd.testing.assert_frame_equal(want_metadata, reordered_got, check_like=True)
-            except Exception as e:
-                if msg is None:
-                    msg = ""
-                msg = f"{msg}\nWant:\n{want_metadata}\nGot:\n{reordered_got}"
-                raise self.failureException(msg) from e
-        else:
-            self.assertTrue(
-                isinstance(want_metadata, pd.Series), msg=f"{msg}: want metadata is not a Series"
-            )
-            self.assertTrue(
-                isinstance(got_metadata, pd.Series), msg=f"{msg}: got metadata is not a Series"
-            )
-            self.assertEqual(want_metadata, got_metadata, msg=f"{msg}: Series metadata not equal")
+                for model_col in ("outlier_model", "normalizer"):
+                    self.assertEqual((model_col in want_metadata), (model_col in got_metadata))
+
+                    if model_col not in want_metadata:
+                        continue
+
+                    want_metadata[model_col] = want_metadata[model_col].apply(round_dict)
+                    got_metadata[model_col] = got_metadata[model_col].apply(round_dict)
+
+                self.assertEqual(set(want_idx), set(got_idx), msg)
+                reordered_got = got_metadata.reindex(want_idx).copy()
+                try:
+                    pd.testing.assert_frame_equal(want_metadata, reordered_got, check_like=True)
+                except Exception as e:
+                    if msg is None:
+                        msg = ""
+                    msg = f"{msg}\nWant:\n{want_metadata}\nGot:\n{reordered_got}"
+                    raise self.failureException(msg) from e
+            case _:
+                self.assertTrue(
+                    isinstance(want_metadata, pd.Series),
+                    msg=f"{msg}: want metadata is not a Series",
+                )
+                self.assertTrue(
+                    isinstance(got_metadata, pd.Series), msg=f"{msg}: got metadata is not a Series"
+                )
+                want_metadata = want_metadata.to_dict()
+                got_metadata = got_metadata.to_dict()
+                for model_col in ("outlier_model", "normalizer"):
+                    self.assertEqual((model_col in want_metadata), (model_col in got_metadata))
+
+                    if model_col not in want_metadata:
+                        continue
+
+                    try:
+                        want_metadata[model_col] = round_dict(want_metadata[model_col])
+                    except AttributeError as e:
+                        raise self.failureException(
+                            f"Rounding dict failed for {model_col} on want!\n{want_metadata}"
+                        ) from e
+
+                    try:
+                        got_metadata[model_col] = round_dict(got_metadata[model_col])
+                    except AttributeError as e:
+                        raise self.failureException(
+                            f"Rounding dict failed for {model_col} on got!\n{got_metadata}"
+                        ) from e
+
+                for k in want_metadata:
+                    self.assertTrue(k in got_metadata, f"{msg}: Key {k} in want but not got!")
+                for k in got_metadata:
+                    self.assertTrue(k in want_metadata, f"{msg}: Key {k} in got but not want!")
+
+                for k in got_metadata:
+                    want_v = want_metadata[k]
+                    got_v = want_metadata[k]
+                    self.assertEqual(
+                        want_v,
+                        got_v,
+                        msg=f"{msg}: Series metadata values for {k} differ! {want_v} vs. {got_v}",
+                    )
 
     def setUp(self):
         self.addTypeEqualityFunc(StructuredTransformerConfig, self.assert_type_and_vars_equal)

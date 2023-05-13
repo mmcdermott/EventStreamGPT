@@ -30,7 +30,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
     vocabulary: list[str | VOCAB_ELEMENT] | None = None
 
     # The observed frequencies of elements of the vocabulary.
-    obs_frequencies: np.ndarray | None = None
+    obs_frequencies: np.ndarray | list[float] | None = None
 
     @cached_property
     def idxmap(self) -> dict[VOCAB_ELEMENT, int]:
@@ -58,7 +58,9 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         return (
             (type(self) is type(other))
             and (self.vocabulary == other.vocabulary)
-            and (self.obs_frequencies.round(3) == other.obs_frequencies.round(3)).all()
+            and (
+                np.array(self.obs_frequencies).round(3) == np.array(other.obs_frequencies).round(3)
+            ).all()
         )
 
     def __post_init__(self):
@@ -89,7 +91,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         idx = np.lexsort((vocab, obs_frequencies))[::-1]
 
         self.vocabulary = ["UNK"] + [vocab[i] for i in idx]
-        self.obs_frequencies = np.concatenate(([unk_freq], obs_frequencies[idx]))
+        self.obs_frequencies = list(np.concatenate(([unk_freq], obs_frequencies[idx])))
 
     def filter(self, total_observations: int, min_valid_element_freq: COUNT_OR_PROPORTION):
         """Filters the vocabulary elements to only those occurring sufficiently often, pushing the
@@ -112,6 +114,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         # self.obs_frequencies[i] >= min_valid_element_freq > self.obs_frequencies[i+1]
         # which is precisely the index i such that self.obs_frequencies[:i+1] are >= min_valid_element_freq
         # and self.obs_frequencies[i+1:] are < min_valid_element_freq
+        self.obs_frequencies = np.array(self.obs_frequencies)
         idx = np.searchsorted(-self.obs_frequencies[1:], -min_valid_element_freq, side="right")
 
         # Now, we need to filter the vocabulary elements, but also put anything dropped in the UNK bucket.
@@ -121,6 +124,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         self.obs_frequencies = self.obs_frequencies[: idx + 1]
         if hasattr(self, "idxmap"):
             delattr(self, "idxmap")
+        self.obs_frequencies = list(self.obs_frequencies)
 
     @staticmethod
     def __nested_update_container(container: set | Counter, val: NESTED_VOCAB_SEQUENCE):

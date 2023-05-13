@@ -1,6 +1,7 @@
 import abc
 import copy
 import itertools
+import json
 from collections import defaultdict
 from collections.abc import Hashable, Sequence
 from pathlib import Path
@@ -41,7 +42,13 @@ class DatasetBase(
     _PICKLER = "dill"
 
     # Attributes that are saved via separate, explicit filetypes.
-    _DEL_BEFORE_SAVING_ATTRS = ["_subjects_df", "_events_df", "_dynamic_measurements_df"]
+    _DEL_BEFORE_SAVING_ATTRS = [
+        "_subjects_df",
+        "_events_df",
+        "_dynamic_measurements_df",
+        "config",
+        "inferred_measurement_configs",
+    ]
 
     # Dictates how dataframes are saved and loaded in this class.
     DF_SAVE_FORMAT = "parquet"
@@ -117,7 +124,7 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
+    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> tuple[DF_T, int]:
         """Increments the values in a column by a given amount and returns a dataframe with the
         incremented column."""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -185,10 +192,14 @@ class DatasetBase(
                     case InputDFType.RANGE:
                         df = self.resolve_ts_col(df, schema.start_ts_col, "start_time")
                         df = self.resolve_ts_col(df, schema.end_ts_col, "end_time")
-                        for et, sp_df in zip(schema.event_type, self.split_range_events_df(df=df)):
+                        for et, unified_schema, sp_df in zip(
+                            schema.event_type,
+                            schema.unified_schema,
+                            self.split_range_events_df(df=df),
+                        ):
                             all_events_and_measurements.append(
                                 self.process_events_and_measurements_df(
-                                    sp_df, columns_schema=schema.unified_schema, event_type=et
+                                    sp_df, columns_schema=unified_schema, event_type=et
                                 )
                             )
                         event_types.extend(schema.event_type)
@@ -301,22 +312,23 @@ class DatasetBase(
 
         attrs_fp = load_dir / "E.pkl"
 
+        attrs_to_add = {
+            "config": DatasetConfig.from_json_file(load_dir / "config.json"),
+        }
+        inferred_measurement_configs_fp = load_dir / "inferred_measurement_configs.json"
+        if inferred_measurement_configs_fp.is_file():
+            with open(inferred_measurement_configs_fp) as f:
+                attrs_to_add["inferred_measurement_configs"] = {
+                    k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
+                }
         if do_load_dfs:
             subjects_fp = cls.subjects_fp(load_dir)
             events_fp = cls.events_fp(load_dir)
             dynamic_measurements_fp = cls.dynamic_measurements_fp(load_dir)
 
-            subjects_df = cls._read_df(subjects_fp)
-            events_df = cls._read_df(events_fp)
-            dynamic_measurements_df = cls._read_df(dynamic_measurements_fp)
-
-            attrs_to_add = {
-                "subjects_df": subjects_df,
-                "events_df": events_df,
-                "dynamic_measurements_df": dynamic_measurements_df,
-            }
-        else:
-            attrs_to_add = {}
+            attrs_to_add["subjects_df"] = cls._read_df(subjects_fp)
+            attrs_to_add["events_df"] = cls._read_df(events_fp)
+            attrs_to_add["dynamic_measurements_df"] = cls._read_df(dynamic_measurements_fp)
 
         return super()._load(attrs_fp, **attrs_to_add)
 
@@ -325,6 +337,27 @@ class DatasetBase(
         # the other base properties, and the actual dataframes.
 
         self.config.save_dir.mkdir(parents=True, exist_ok=True)
+
+        config_fp = self.config.save_dir / "config.json"
+        self.config.to_json_file(config_fp)
+
+        if self._is_fit:
+            inferred_measurement_metadata_dir = (
+                self.config.save_dir / "inferred_measurement_metadata"
+            )
+            for k, v in self.inferred_measurement_configs.items():
+                fp = inferred_measurement_metadata_dir / f"{k}.csv"
+                v.cache_measurement_metadata(fp)
+
+            inferred_measurement_configs_fp = (
+                self.config.save_dir / "inferred_measurement_configs.json"
+            )
+            inferred_measurement_configs = {
+                k: v.to_dict() for k, v in self.inferred_measurement_configs.items()
+            }
+
+            with open(inferred_measurement_configs_fp, mode="w") as f:
+                json.dump(inferred_measurement_configs, f)
 
         super()._save(self.config.save_dir / "E.pkl", **kwargs)
 
@@ -394,6 +427,9 @@ class DatasetBase(
                 raise ValueError("Can't set events_df if input_schema is not None!")
             if dynamic_measurements_df is not None:
                 raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
+
+            if config.save_dir is not None:
+                input_schema.to_json_file(config.save_dir / "input_schema.json", do_overwrite=True)
 
             subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
             subject_id_dtype = subjects_df["subject_id"].dtype
@@ -735,6 +771,7 @@ class DatasetBase(
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
+                print(f"WARNING: Measure {measure} not found! Dropping...")
                 config.drop()
                 continue
 

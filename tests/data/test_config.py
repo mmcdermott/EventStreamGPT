@@ -90,7 +90,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             dict(
                 temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
                 modality=DataModality.UNIVARIATE_REGRESSION,
-                measurement_metadata=pd.Series([None]),
+                _measurement_metadata=pd.Series([None]),
                 functor=AgeFunctor("dob"),
             ),
             dict(
@@ -123,7 +123,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             dict(
                 temporality=TemporalityType.STATIC,
                 modality=DataModality.UNIVARIATE_REGRESSION,
-                measurement_metadata=pd.Series([None]),
+                _measurement_metadata=pd.Series([None]),
             ),
             dict(
                 modality="dropped",
@@ -136,7 +136,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             dict(
                 temporality=TemporalityType.DYNAMIC,
                 modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-                measurement_metadata=pd.Series([None]),
+                _measurement_metadata=pd.Series([None]),
             ),
             dict(
                 temporality=TemporalityType.DYNAMIC,
@@ -146,7 +146,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             dict(
                 temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
                 modality=DataModality.UNIVARIATE_REGRESSION,
-                measurement_metadata=pd.DataFrame({"value_type": []}, index=pd.Index([])),
+                _measurement_metadata=pd.DataFrame({"value_type": []}, index=pd.Index([])),
                 functor=AgeFunctor("dob"),
             ),
         ]
@@ -159,7 +159,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         config = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTIVARIATE_REGRESSION,
-            measurement_metadata=pd.DataFrame({"value_type": []}, index=pd.Index([])),
+            _measurement_metadata=pd.DataFrame({"value_type": []}, index=pd.Index([])),
             values_column="vals",
             vocabulary=Vocabulary(vocabulary=["UNK", "A", "B"], obs_frequencies=[0, 0.5, 0.5]),
         )
@@ -179,7 +179,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
             functor=AgeFunctor,
             modality=DataModality.UNIVARIATE_REGRESSION,
-            measurement_metadata=pd.Series([None], index=pd.Index(["value_type"])),
+            _measurement_metadata=pd.Series([None], index=pd.Index(["value_type"])),
         )
 
         config.add_missing_mandatory_metadata_cols()
@@ -231,7 +231,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         config = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTIVARIATE_REGRESSION,
-            measurement_metadata=pd.DataFrame({"value_type": []}, index=pd.Index([])),
+            _measurement_metadata=pd.DataFrame({"value_type": []}, index=pd.Index([])),
             values_column="vals",
             vocabulary=Vocabulary(vocabulary=["UNK", "A", "B"], obs_frequencies=[0, 0.5, 0.5]),
         )
@@ -287,7 +287,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             "observation_frequency": None,
             "functor": None,
             "values_column": None,
-            "measurement_metadata": None,
+            "_measurement_metadata": None,
         }
         nontrivial_measurement_metadata_df = pd.DataFrame(
             {"A": [1, 2, 3], "B": ["a", "b", "c"]},
@@ -312,14 +312,14 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 "config": MeasurementConfig(
                     temporality=TemporalityType.DYNAMIC,
                     modality=DataModality.MULTIVARIATE_REGRESSION,
-                    measurement_metadata=nontrivial_measurement_metadata_df,
+                    _measurement_metadata=nontrivial_measurement_metadata_df,
                     values_column="foo",
                 ),
                 "want_dict": {
                     **default_dict,
                     "modality": "multivariate_regression",
                     "values_column": "foo",
-                    "measurement_metadata": {
+                    "_measurement_metadata": {
                         "index": [2, 4, 6],
                         "columns": ["A", "B"],
                         "data": [[1, "a"], [2, "b"], [3, "c"]],
@@ -333,14 +333,14 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 "config": MeasurementConfig(
                     temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
                     modality=DataModality.UNIVARIATE_REGRESSION,
-                    measurement_metadata=nontrivial_measurement_metadata_series,
+                    _measurement_metadata=nontrivial_measurement_metadata_series,
                     functor=AgeFunctor("dob"),
                 ),
                 "want_dict": {
                     **default_dict,
                     "temporality": "functional_time_dependent",
                     "modality": "univariate_regression",
-                    "measurement_metadata": {"value_type": "foo"},
+                    "_measurement_metadata": {"value_type": "foo"},
                     "functor": {"class": "AgeFunctor", "params": {"dob_col": "dob"}},
                 },
             },
@@ -438,7 +438,7 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
                 modality=DataModality.MULTIVARIATE_REGRESSION,
                 temporality=TemporalityType.DYNAMIC,
                 values_column="foo",
-                measurement_metadata=pd.DataFrame(
+                _measurement_metadata=pd.DataFrame(
                     {"A": [1, 2, 3], "B": ["a", "b", "c"]},
                     index=pd.Index([2, 4, 6], name="index_var"),
                 ),

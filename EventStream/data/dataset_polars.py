@@ -472,8 +472,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         source_df = source_df.with_columns(id_col)
 
         for col, cfg in self.config.measurement_configs.items():
-            if cfg.is_dropped:
-                continue
             match cfg.modality:
                 case DataModality.DROPPED:
                     continue
@@ -602,37 +600,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .alias("event_type"),
             )
         )
-
-        new_to_old_set = grouped[["event_id", "old_event_id"]].explode("old_event_id")
-
-        self.events_df = grouped.drop("old_event_id")
-
-        self.dynamic_measurements_df = (
-            self.dynamic_measurements_df.rename({"event_id": "old_event_id"})
-            .join(new_to_old_set, on="old_event_id", how="left")
-            .drop("old_event_id")
-        )
-
-    @TimeableMixin.TimeAs
-    def agg_by_time_type(self):
-        """Aggregates the events_df by subject_id, timestamp, and event_type, tracking all
-        associated metadata.
-
-        Note that no numerical aggregation (e.g., mean, etc.) happens here; duplicate entries will
-        both be captured in the output metadata object.
-        """
-
-        grouped = (
-            self.events_df.groupby(["subject_id", "timestamp", "event_type"], maintain_order=True)
-            .all()
-            .with_columns(pl.col("event_id").arr.unique())
-        )
-
-        grouped = grouped.rename({"event_id": "old_event_id"}).sort(
-            "subject_id", "timestamp", descending=False
-        )
-        grouped = grouped.with_row_count("event_id")
-        grouped = grouped.with_columns(self._validate_id_col(grouped["event_id"])[0])
 
         new_to_old_set = grouped[["event_id", "old_event_id"]].explode("old_event_id")
 
@@ -1110,24 +1077,20 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     .get_column(measure)
                 )
             case DataModality.UNIVARIATE_REGRESSION:
-                if (
-                    config.measurement_metadata.value_type
-                    == NumericDataModalitySubtype.CATEGORICAL_INTEGER
-                ):
-                    observations = source_df.with_columns(
-                        (
-                            f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
-                        ).alias(measure)
-                    ).get_column(measure)
-                elif (
-                    config.measurement_metadata.value_type
-                    == NumericDataModalitySubtype.CATEGORICAL_FLOAT
-                ):
-                    observations = source_df.with_columns(
-                        (f"{measure}__EQ_" + pl.col(measure).cast(pl.Utf8)).alias(measure)
-                    ).get_column(measure)
-                else:
-                    return
+                match config.measurement_metadata.value_type:
+                    case NumericDataModalitySubtype.CATEGORICAL_INTEGER:
+                        observations = source_df.with_columns(
+                            (
+                                f"{measure}__EQ_"
+                                + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
+                            ).alias(measure)
+                        ).get_column(measure)
+                    case NumericDataModalitySubtype.CATEGORICAL_FLOAT:
+                        observations = source_df.with_columns(
+                            (f"{measure}__EQ_" + pl.col(measure).cast(pl.Utf8)).alias(measure)
+                        ).get_column(measure)
+                    case _:
+                        return
             case _:
                 observations = source_df.get_column(measure)
 
@@ -1135,7 +1098,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         observations = observations.drop_nulls()
         N = len(observations)
         if N == 0:
-            return None
+            return
 
         # 3. Fit metadata vocabularies on the training set.
         if config.vocabulary is None:

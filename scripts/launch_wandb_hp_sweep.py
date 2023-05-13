@@ -20,7 +20,10 @@ def collapse_cfg(k: str, v: Any) -> dict[str, dict[str, Any]]:
     if type(v) is not dict:
         raise ValueError(f"Misconfigured @ {k}")
     if len(WANDB_SWEEP_KEYS.intersection(v.keys())) > 0:
-        return {k: v}
+        if set(v.keys()) == {"value"} and v["value"] is None:
+            return {}
+        else:
+            return {k: v}
 
     out = {}
     if k:
@@ -32,11 +35,10 @@ def collapse_cfg(k: str, v: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="hyperparameter_sweep")
+@hydra.main(version_base=None, config_path="../configs", config_name="hyperparameter_sweep_base")
 def main(cfg: DictConfig):
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
     cfg["command"] = [
-        # "WANDB_START_METHOD=thread",
         "${env}",
         "${interpreter}",
         "${program}",
@@ -49,7 +51,17 @@ def main(cfg: DictConfig):
 
     cfg["parameters"] = new_params
 
-    sweep_id = wandb.sweep(sweep=cfg)
+    sweep_kwargs = {}
+    if "entity" in cfg:
+        entity = cfg.pop("entity")
+        if entity:
+            sweep_kwargs["entity"] = entity
+    if "project" in cfg:
+        project = cfg.pop("project")
+        if project:
+            sweep_kwargs["project"] = project
+
+    sweep_id = wandb.sweep(sweep=cfg, **sweep_kwargs)
     return sweep_id
 
 
