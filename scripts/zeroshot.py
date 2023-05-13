@@ -17,20 +17,8 @@ torch.set_float32_matmul_precision("high")
 
 @hydra.main(version_base=None, config_name="finetune_config")
 def main(cfg: FinetuneConfig):
-    # print(cfg)
-    # print(cfg.keys())
     if type(cfg) is not FinetuneConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
-    print(type(cfg))
-    # print(cfg)
-    # for k in cfg.keys():
-    #     if isinstance(cfg[k], dict):
-    #         print()
-    #         print(k,cfg[k].keys())
-    #         if "do_include_start_time" in cfg[k].keys():
-    #             print(k)
-    #             break
-    # TODO(mmd): This isn't the right return value for hyperparameter sweeps.
     return zero_shot_evaluation(cfg)
 
 
