@@ -1,0 +1,289 @@
+#!/usr/bin/env python
+
+try:
+    import stackprinter
+
+    stackprinter.set_excepthook(style="darkbg2")
+except ImportError:
+    pass  # no need to fail because of missing dev dependency
+
+from collections import defaultdict
+from typing import Any
+
+import hydra
+from omegaconf import DictConfig
+
+from EventStream.data.config import (
+    DatasetConfig,
+    DatasetSchema,
+    InputDFSchema,
+    MeasurementConfig,
+)
+from EventStream.data.dataset_polars import Dataset, Query
+from EventStream.data.types import (
+    DataModality,
+    InputDataType,
+    InputDFType,
+    TemporalityType,
+)
+
+
+@hydra.main(version_base=None, config_path="../configs", config_name="dataset_base")
+def main(cfg: DictConfig):
+    cfg = hydra.utils.instantiate(cfg, _convert_="all")
+
+    # 1. Build measurement_configs and track input schemas
+    subject_id_col = cfg.pop("subject_id_col")
+    measurements_by_temporality = cfg.pop("measurements")
+
+    static_sources = defaultdict(dict)
+    dynamic_sources = defaultdict(dict)
+    measurement_configs = {}
+
+    if TemporalityType.FUNCTIONAL_TIME_DEPENDENT in measurements_by_temporality:
+        time_dep_measurements = measurements_by_temporality.pop(
+            TemporalityType.FUNCTIONAL_TIME_DEPENDENT
+        )
+    else:
+        time_dep_measurements = {}
+
+    for temporality, measurements_by_modality in measurements_by_temporality.items():
+        schema_source = (
+            static_sources if temporality == TemporalityType.STATIC else dynamic_sources
+        )
+        for modality, measurements_by_source in measurements_by_modality.items():
+            for source_name, measurements in measurements_by_source.items():
+                data_schema = schema_source[source_name]
+
+                def add_to_schema(m: str, dt: InputDataType):
+                    if m in data_schema:
+                        if data_schema[m] == dt:
+                            print(
+                                f"WARNING: {m} is specified twice (with the same data type {dt})."
+                            )
+                        else:
+                            raise ValueError(f"{m} is specified twice ({dt} v. {data_schema[m]})")
+
+                for m in measurements:
+                    measurement_config_kwargs = {
+                        "name": m,
+                        "temporality": temporality,
+                        "modality": modality,
+                    }
+                    if type(m) is dict:
+                        m_dict = m
+                        if m.get("values_column", None):
+                            values_column = m_dict.pop("values_column")
+                            m = [m_dict.pop("name"), values_column]
+                        else:
+                            m = m_dict.pop("name")
+                        measurement_config_kwargs.update(m_dict)
+
+                    match m, modality:
+                        case str(), DataModality.UNIVARIATE_REGRESSION:
+                            add_to_schema(m, InputDataType.FLOAT)
+                        case [str() as m, str() as v], DataModality.MULTIVARIATE_REGRESSION:
+                            add_to_schema(m, InputDataType.CATEGORICAL)
+                            add_to_schema(v, InputDataType.FLOAT)
+                            measurement_config_kwargs["values_column"] = v
+                        case str(), DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            add_to_schema(m, InputDataType.CATEGORICAL)
+                        case str(), DataModality.MULTI_LABEL_CLASSIFICATION:
+                            add_to_schema(m, InputDataType.CATEGORICAL)
+                        case _:
+                            raise ValueError(
+                                f"{m}, {modality} invalid! Must be in {DataModality.values()}!"
+                            )
+
+                    if m in measurement_configs:
+                        if measurement_configs[m].to_dict() != measurement_config_kwargs:
+                            raise ValueError(f"{m} differs across input sources!")
+                    else:
+                        measurement_configs[m] = MeasurementConfig(**measurement_config_kwargs)
+
+    if len(static_sources) > 1:
+        raise NotImplementedError(
+            f"Currently, only 1 static source can be specified -- you have {static_sources}"
+        )
+
+    static_key = list(static_sources.keys())[0]
+    static_col_schema = static_sources[static_key]
+
+    for m, config in time_dep_measurements.items():
+        if type(m) is not str:
+            raise ValueError(f"{m} must be a string for time-dep measurement!")
+        functor_class = config.pop("functor")
+        functor_kwargs = config.pop("kwargs", {})
+
+        measurement_config_kwargs = {
+            "name": m,
+            "temporality": TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
+            "functor": MeasurementConfig.FUNCTORS[functor_class](**functor_kwargs),
+        }
+
+        necessary_static_measurements = config.pop("necessary_static_measurements", [])
+        if necessary_static_measurements:
+            for in_col, in_fmt in necessary_static_measurements:
+                schema_key = in_col
+                schema_val = (in_col, in_fmt)
+                if in_col in static_col_schema and static_col_schema[schema_key] != schema_val:
+                    raise ValueError(
+                        f"Schema Collision! {schema_key}, {schema_val} v. {static_col_schema[schema_key]}"
+                    )
+
+                static_col_schema[schema_key] = schema_val
+
+        if (
+            m in measurement_configs
+            and measurement_configs[m].to_dict() != measurement_config_kwargs
+        ):
+            raise ValueError(f"{m} differs across input sources!")
+        measurement_configs[m] = MeasurementConfig(**measurement_config_kwargs)
+
+    # 1. Build DatasetSchema
+    connection_uri = cfg.pop("connection_uri", None)
+
+    def build_schema(
+        col_schema: dict[str, InputDataType], source_schema: dict[str, Any], **extra_kwargs
+    ) -> InputDFSchema:
+        input_schema_kwargs = {}
+
+        if "query" in source_schema:
+            if "input_df" in source_schema:
+                raise ValueError(
+                    f"Can't specify both query {source_schema['query']} "
+                    f"and input_df {source_schema['input_df']} at once!"
+                )
+            match source_schema["query"]:
+                case str() as query_str:
+                    if not connection_uri:
+                        raise ValueError(
+                            "If providing a query string, must provide a connection_uri!"
+                        )
+                    input_schema_kwargs["input_df"] = Query(
+                        query=query_str, connection_uri=connection_uri
+                    )
+                case dict() as query_kwargs:
+                    if "connection_uri" not in query_kwargs:
+                        query_kwargs["connection_uri"] = connection_uri
+                    input_schema_kwargs["input_df"] = Query(**query_kwargs)
+                case _:
+                    raise ValueError(f"Cannot parse query {source_schema['query']}!")
+        elif "input_df" in source_schema:
+            input_schema_kwargs["input_df"] = source_schema["input_df"]
+        else:
+            raise ValueError("Must specify either a query or an input dataframe!")
+
+        start_ts_col = source_schema.get("start_ts_col", None)
+        end_ts_col = source_schema.get("end_ts_col", None)
+        ts_col = source_schema.get("ts_col", None)
+        start_columns = source_schema.get("start_columns", [])
+        end_columns = source_schema.get("end_columns", [])
+        columns = source_schema.get("columns", [])
+
+        if start_ts_col:
+            if not end_ts_col:
+                raise ValueError(
+                    f"If specifying start_ts_col ({start_ts_col}), must specify end_ts_col."
+                )
+            if ts_col:
+                raise ValueError(
+                    f"If specifying start_ts_col ({start_ts_col}), must not specify ts_col ({ts_col})."
+                )
+            input_schema_kwargs["type"] = InputDFType.RANGE
+            input_schema_kwargs["start_ts_col"] = start_ts_col
+            input_schema_kwargs["end_ts_col"] = end_ts_col
+        else:
+            if end_ts_col:
+                raise ValueError(
+                    f"If specifying end_ts_col ({end_ts_col}), must specify start_ts_col."
+                )
+            if not ts_col:
+                raise ValueError("If not specifying start_ts_col, must specify ts_col.")
+            if start_columns:
+                raise ValueError("If not specifying start_ts_col, must not specify start_columns.")
+            if end_columns:
+                raise ValueError("If not specifying end_ts_col, must not specify end_columns.")
+
+            input_schema_kwargs["type"] = InputDFType.EVENT
+            input_schema_kwargs["ts_col"] = ts_col
+
+        for n, cols in (
+            ("start_data_schema", start_columns),
+            ("end_data_schema", end_columns),
+            ("data_schema", columns),
+        ):
+            data_schema = {}
+            for col in cols:
+                match col:
+                    case [
+                        str() as in_col_name,
+                        str() as out_col_name,
+                    ] if out_col_name in col_schema:
+                        schema_key = in_col_name
+                        schema_val = (out_col_name, col_schema[out_col_name])
+                    case str() as col_name if col_name in col_schema:
+                        schema_key = col_name
+                        schema_val = col_schema[col_name]
+                    case _:
+                        raise ValueError(f"{col} unprocessable! Col schema: {col_schema}")
+
+                if schema_key in data_schema and schema_val != data_schema[schema_key]:
+                    raise ValueError(
+                        f"{schema_key} duplicated with {schema_val} != {data_schema[schema_key]}"
+                    )
+                data_schema[schema_key] = schema_val
+
+            input_schema_kwargs[n] = data_schema
+
+        must_have = source_schema.get("must_have", None)
+        match must_have:
+            case None:
+                pass
+            case list():
+                input_schema_kwargs["must_have"] = must_have
+            case dict() as must_have_dict:
+                must_have = []
+                for k, v in must_have_dict.items():
+                    match v:
+                        case True:
+                            must_have.append(k)
+                        case list():
+                            must_have.append((k, v))
+                        case _:
+                            raise ValueError(f"{v} invalid for `must_have`")
+                input_schema_kwargs["must_have"] = must_have
+
+        return InputDFSchema(**input_schema_kwargs, **extra_kwargs)
+
+    inputs = cfg.pop("inputs")
+    dataset_schema = DatasetSchema(
+        static=build_schema(
+            col_schema=static_col_schema,
+            source_schema=inputs[static_key],
+            subject_id_col=subject_id_col,
+        ),
+        dynamic=[
+            build_schema(col_schema=col_schema, source_schema=inputs[dynamic_key])
+            for dynamic_key, col_schema in dynamic_sources.items()
+        ],
+    )
+
+    # 2. Build Config
+    split = cfg.pop("split", (0.8, 0.1))
+    seed = cfg.pop("seed", 1)
+    do_overwrite = cfg.pop("do_overwrite", False)
+    cfg.pop("cohort_name")
+    DL_chunk_size = cfg.pop("DL_chunk_size", 20000)
+
+    config = DatasetConfig(measurement_configs=measurement_configs, **cfg)
+
+    ESD = Dataset(config=config, input_schema=dataset_schema)
+    ESD.split(split, seed=seed)
+    ESD.preprocess_measurements()
+    ESD._save(do_overwrite=do_overwrite)
+    ESD.cache_deep_learning_representation(DL_chunk_size)
+
+
+if __name__ == "__main__":
+    main()
