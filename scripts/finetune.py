@@ -25,7 +25,7 @@ torch.set_float32_matmul_precision("high")
 def main(cfg: FinetuneConfig):
     if type(cfg) is not FinetuneConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
-    cfg_fp = cfg.save_dir / "finetune_{cfg.task_df_name}_config.yaml"
+    cfg_fp = cfg.save_dir / "finetune_config.yaml"
     cfg_fp.parent.mkdir(exist_ok=True, parents=True)
 
     cfg_dict = copy.deepcopy(cfg)

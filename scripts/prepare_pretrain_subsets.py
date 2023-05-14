@@ -14,7 +14,7 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from ..data.config import SubsequenceSamplingStrategy
+from EventStream.data.config import SubsequenceSamplingStrategy
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="pretrain_subsets_base")
@@ -75,6 +75,7 @@ def main(cfg: DictConfig):
                 new_config.data_config.train_subset_seed = seed
                 new_config.save_dir = str(seed_runs_dir)
                 new_config.wandb_logger_kwargs.name = f"pretrain_subset_{subset_size}_seed_{seed}"
+                new_config.wandb_logger_kwargs.project = cfg["project"]
                 new_config.wandb_experiment_config_kwargs = {
                     "save_dir": str(seed_runs_dir),
                     "subset_size": subset_size,
@@ -110,7 +111,7 @@ def main(cfg: DictConfig):
                             do_overwrite=False,
                             task_df_name=FT_task,
                             data_config_overrides={
-                                "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+                                "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                                 "train_subset_size": FT_subset_size,
                                 "train_subset_seed": seed,
                             },
@@ -120,29 +121,31 @@ def main(cfg: DictConfig):
                             ),
                             wandb_logger_kwargs={
                                 "name": (
-                                    f"finetune_{FT_task}_{FT_subset_size}_shot_PT_{subset_size}_seed_{seed}",
-                                )
+                                    f"finetune_{FT_task}_{FT_subset_size}_shot_PT_{subset_size}_seed_{seed}"
+                                ),
+                                "project": cfg["project"],
                             },
                             wandb_experiment_config_kwargs={
+                                "FT_task": FT_task,
                                 "save_dir": str(FT_subset_dir),
                                 "FT_subset_size": FT_subset_size,
                                 "PT_subset_size": subset_size,
                                 "subset_seed": seed,
-                                "experiment_name": cfg["experiment_name"],
+                                "experiment_name": f"{cfg['experiment_name']}/fine_tuning",
                                 "PT_model_dir": str(seed_runs_dir),
                             },
                         )
 
                         OmegaConf.save(
                             FT_config,
-                            FT_subset_dir / f"finetune_{cfg.task_df_name}_config_source.yaml",
+                            FT_subset_dir / f"finetune_config_source.yaml",
                         )
 
                         command = (
                             'PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" '
                             "python $EVENT_STREAM_PATH/scripts/finetune.py "
                             f"--config-path={FT_subset_dir} "
-                            f"--config-name=finetune_{cfg.task_df_name}_config_source "
+                            f"--config-name=finetune_config_source "
                             f"hydra.searchpath=[$EVENT_STREAM_PATH/configs]"
                         )
 
