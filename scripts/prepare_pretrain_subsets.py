@@ -111,7 +111,9 @@ def main(cfg: DictConfig):
                             do_overwrite=False,
                             task_df_name=FT_task,
                             data_config_overrides={
-                                "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
+                                "subsequence_sampling_strategy": str(
+                                    SubsequenceSamplingStrategy.TO_END
+                                ),
                                 "train_subset_size": FT_subset_size,
                                 "train_subset_seed": seed,
                             },
@@ -138,7 +140,7 @@ def main(cfg: DictConfig):
 
                         OmegaConf.save(
                             FT_config,
-                            FT_subset_dir / f"finetune_config_source.yaml",
+                            FT_subset_dir / "finetune_config_source.yaml",
                         )
 
                         command = (
