@@ -14,7 +14,7 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from EventStream.data.config import SubsequenceSamplingStrategy
+from EventStream.data.config import SeqPaddingSide, SubsequenceSamplingStrategy
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="pretrain_subsets_base")
@@ -58,6 +58,7 @@ def main(cfg: DictConfig):
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     do_FT_commands = len(cfg["few_shot_commands"]["fine_tuning_task_names"]) > 0
+    do_zero_shot_commands = len(cfg["zero_shot_commands"]["fine_tuning_task_names"]) > 0
 
     # Create subset experiment directories and run commands
     commands = defaultdict(list)
@@ -95,6 +96,62 @@ def main(cfg: DictConfig):
                     f"hydra.searchpath=[$EVENT_STREAM_PATH/configs]"  # Ensures hydra instantiates correctly
                 )
                 commands["PT"].append(command)
+
+            if do_zero_shot_commands:
+                zero_shot_dir = seed_runs_dir / "zero_shot"
+                for FT_task in cfg["zero_shot_commands"]["fine_tuning_task_names"]:
+                    zero_shot_task_dir = zero_shot_dir / FT_task
+                    zero_shot_task_dir.mkdir(parents=True, exist_ok=True)
+
+                    zero_shot_config = dict(
+                        defaults=["finetune_config", "_self_"],
+                        load_from_model_dir=str(seed_runs_dir),
+                        save_dir=zero_shot_task_dir,
+                        do_overwrite=False,
+                        task_df_name=FT_task,
+                        data_config_overrides={
+                            "subsequence_sampling_strategy": str(
+                                SubsequenceSamplingStrategy.TO_END
+                            ),
+                            "seq_padding_side": str(SeqPaddingSide.LEFT),
+                            "max_seq_len": cfg["zero_shot_commands"]["input_seq_len"],
+                            "do_include_start_time_min": True,
+                        },
+                        task_specific_params={
+                            "num_samples": cfg["zero_shot_commands"]["num_samples"],
+                        },
+                        optimization_config=dict(
+                            **cfg["zero_shot_commands"]["optimization_config"]
+                        ),
+                        wandb_logger_kwargs={
+                            "name": f"zero_shot_{FT_task}_PT_{subset_size}_seed_{seed}",
+                            "project": cfg["project"],
+                        },
+                        wandb_experiment_config_kwargs={
+                            "FT_task": FT_task,
+                            "save_dir": str(zero_shot_task_dir),
+                            "FT_subset_size": 0,
+                            "PT_subset_size": subset_size,
+                            "subset_seed": seed,
+                            "experiment_name": f"{cfg['experiment_name']}/zero_shot",
+                            "PT_model_dir": str(seed_runs_dir),
+                        },
+                    )
+
+                    OmegaConf.save(
+                        zero_shot_config,
+                        zero_shot_task_dir / "zero_shot_config_source.yaml",
+                    )
+
+                    command = (
+                        'PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" '
+                        "python $EVENT_STREAM_PATH/scripts/zeroshot.py "
+                        f"--config-path={zero_shot_task_dir} "
+                        f"--config-name=zero_shot_config_source "
+                        f"hydra.searchpath=[$EVENT_STREAM_PATH/configs]"
+                    )
+
+                    commands["zero_shot"].append(command)
 
             if do_FT_commands:
                 FT_dir = seed_runs_dir / "fine_tuning"

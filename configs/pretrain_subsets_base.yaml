@@ -23,3 +23,11 @@ few_shot_commands:
     patience: 5
     gradient_accumulation: null
     num_dataloader_workers: 10
+
+zero_shot_commands:
+  fine_tuning_task_names: [] # Add fine-tuning task_DF names here.
+  optimization_config:
+    validation_batch_size: 8 # small b/c num_samples multiplies by this.
+    num_dataloader_workers: 10
+  num_samples: 10
+  input_seq_len: 32

@@ -27,7 +27,11 @@ from torchmetrics.classification import (
 )
 from transformers import get_polynomial_decay_schedule_with_warmup
 
-from ..data.config import PytorchDatasetConfig, SubsequenceSamplingStrategy
+from ..data.config import (
+    PytorchDatasetConfig,
+    SeqPaddingSide,
+    SubsequenceSamplingStrategy,
+)
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass, task_wrapper
 from .config import OptimizationConfig, StructuredTransformerConfig
@@ -293,6 +297,7 @@ class FinetuneConfig:
     data_config_overrides: dict[str, Any] | None = dataclasses.field(
         default_factory=lambda: {
             "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+            "seq_padding_side": SeqPaddingSide.RIGHT,
         }
     )
 
@@ -308,6 +313,7 @@ class FinetuneConfig:
     task_specific_params: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "pooling_method": "last",
+            "num_samples": None,
         }
     )
 
