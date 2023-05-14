@@ -332,6 +332,7 @@ class FinetuneConfig:
     def __post_init__(self):
         if isinstance(self.save_dir, str):
             self.save_dir = Path(self.save_dir)
+
         if self.load_from_model_dir != omegaconf.MISSING:
             if type(self.load_from_model_dir) is str:
                 self.load_from_model_dir = Path(self.load_from_model_dir)
