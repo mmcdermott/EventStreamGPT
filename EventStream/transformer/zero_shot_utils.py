@@ -29,7 +29,7 @@ from .config import StructuredTransformerConfig
 from .model import ESTForGenerativeSequenceModeling
 from .model_output import StreamClassificationModelOutput
 from .stream_classification_lightning import FinetuneConfig
-from .utils import str_summary
+from .utils import str_summary, safe_weighted_avg
 from .zero_shot_labeler import Labeler
 
 
@@ -71,7 +71,6 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 "config": config.to_dict(),
                 "num_samples": num_samples,
                 "max_new_events": max_new_events,
-                "labeling_function": labeling_function.__name__,
             }
         )
         self.build_metrics()
@@ -181,7 +180,11 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 )
 
     def log_metrics(
-        self, results: StreamClassificationModelOutput, skip_metrics: Sequence[str], prefix: str
+        self,
+        results: StreamClassificationModelOutput,
+        unpredictable: torch.BoolTensor,
+        skip_metrics: Sequence[str],
+        prefix: str
     ):
         """Logs metric results for a given output result.
 
@@ -198,6 +201,8 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 or 'held_out', for example.
         """
 
+        self.log(f"{prefix}_frac_unpredictable", unpredictable.float().mean(), on_step=False, on_epoch=True)
+
         self._log_metric_dict(
             preds=results.preds,
             labels=results.labels,
@@ -209,7 +214,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
     def get_generative_predictions(self, batch: PytorchBatch) -> StreamClassificationModelOutput:
         """# capture num_samples to generate"""
 
-        empirical_labels = self.labeling_function(
+        empirical_labels, labels_unpredicted = self.labeling_function(
             self.model.generate(
                 batch,
                 max_new_events=self.max_new_events,
@@ -220,19 +225,42 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
             )
         )
 
-        # empirical_labels is of shape [batch_size * num_samples, num_labels], but we want to average over
-        # the num_samples dimension:
+        # empirical_labels is of shape [batch_size * num_samples, num_labels], and stores a binary indicator
+        # of a prediction for each generated sample.
+        # labels_unpredicted is of shape [batch_size * num_samples], and stores a boolean indicator of whether
+        # or not the label was able to be predicted from the generated output. If this is True, then the label
+        # was not predicted, and we should not count it in our metrics. We also want to track how frequently
+        # this happens.
+
+        # We'll reshape empirical_labels to be of shape [batch_size, num_samples, num_labels], so that we can
+        # average over the num_samples dimension. We'll then take the weighted mean over the num_samples
+        # dimension (weighted by whether or not the label was predicted) to get the empirical label for each
+        # batch.
+
         empirical_labels = (
-            empirical_labels.reshape(batch.batch_size, self.num_samples, self.config.num_labels)
+            empirical_labels
+            .reshape(batch.batch_size, self.num_samples, self.config.num_labels)
             .float()
-            .mean(dim=1)
+        )
+        weighting_factor = (
+            ~labels_unpredicted
+            .reshape(batch.batch_size, self.num_samples)
+            .unsqueeze(-1)
+            .expand_as(empirical_labels)
         )
 
-        return StreamClassificationModelOutput(
+        empirical_labels = empirical_labels.transpose(1, 2)
+        weighting_factor = weighting_factor.transpose(1, 2)
+
+        empirical_labels = safe_weighted_avg(empirical_labels, weighting_factor)
+
+        output = StreamClassificationModelOutput(
             loss=torch.tensor(float("nan")),
             preds=empirical_labels,
             labels=batch["stream_labels"][self.task],
         )
+
+        return output, labels_unpredicted.reshape(batch.batch_size, self.num_samples).mean(dim=-1)
 
     def validation_step(self, batch, batch_idx):
         """Validation step.
@@ -240,7 +268,8 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         Differs from training only in that it does not skip metrics.
         """
 
-        self.log_metrics(self.get_generative_predictions(batch), skip_metrics=[], prefix="tuning")
+        output, unpredictable = self.get_generative_predictions(batch)
+        self.log_metrics(output, unpredictable, skip_metrics=[], prefix="tuning")
 
     def test_step(self, batch, batch_idx):
         """Validation step.
@@ -248,9 +277,8 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         Differs from training only in that it does not skip metrics.
         """
 
-        self.log_metrics(
-            self.get_generative_predictions(batch), skip_metrics=[], prefix="held_out"
-        )
+        output, unpredictable = self.get_generative_predictions(batch)
+        self.log_metrics(output, unpredictable, skip_metrics=[], prefix="held_out")
 
 
 def import_class_from_file(module_path, class_name):
@@ -310,21 +338,25 @@ def zero_shot_evaluation(cfg: FinetuneConfig):
 
     trainer_kwargs = {**cfg.trainer_config}
 
-    do_use_wandb = cfg.wandb_name is not None
-    if do_use_wandb:
-        wandb_logger_savedir = cfg.save_dir  # Wandb automatically adds a "wandb" suffix.
+    if cfg.wandb_logger_kwargs.get("name", None):
+        if "do_log_graph" in cfg.wandb_logger_kwargs:
+            do_log_graph = cfg.wandb_logger_kwargs.pop("do_log_graph")
+        else:
+            do_log_graph = False
+
         wandb_logger = WandbLogger(
-            name=cfg.wandb_name,
-            project=cfg.wandb_project,
-            entity=cfg.wandb_team,
-            save_dir=wandb_logger_savedir,
-            log_model=True,
+            **{k: v for k, v in cfg.wandb_logger_kwargs.items() if v is not None},
+            save_dir=cfg.save_dir,
         )
 
-        trainer_kwargs["logger"] = wandb_logger
+        if do_log_graph:
+            # Watching the model naturally tracks parameter values and gradients.
+            wandb_logger.watch(LM, log="all", log_graph=True)
 
-        if cfg.extra_wandb_log_params is not None:
-            wandb_logger.experiment.config.update(cfg.extra_wandb_log_params)
+        if cfg.wandb_experiment_config_kwargs:
+            wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
+
+        trainer_kwargs["logger"] = wandb_logger
 
     trainer = L.Trainer(**trainer_kwargs)
 

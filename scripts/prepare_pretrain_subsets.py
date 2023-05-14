@@ -114,6 +114,8 @@ def main(cfg: DictConfig):
                                 SubsequenceSamplingStrategy.TO_END
                             ),
                             "seq_padding_side": str(SeqPaddingSide.LEFT),
+                            "max_seq_len": cfg["zero_shot_commands"]["input_seq_len"],
+                            "do_include_start_time_min": True,
                         },
                         task_specific_params={
                             "num_samples": cfg["zero_shot_commands"]["num_samples"],
