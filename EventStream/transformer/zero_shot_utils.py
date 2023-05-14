@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -29,6 +30,7 @@ from .model import ESTForGenerativeSequenceModeling
 from .model_output import StreamClassificationModelOutput
 from .stream_classification_lightning import FinetuneConfig
 from .utils import str_summary
+from .zero_shot_labeler import Labeler
 
 
 class ESTForZeroShotClassificationLM(L.LightningModule):
@@ -38,8 +40,9 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         self,
         config: StructuredTransformerConfig | dict[str, Any],
         pretrained_weights_fp: Path,
-        labeling_function: Callable[[PytorchBatch], torch.Tensor],
+        labeling_function: Labeler,
         num_samples: int = 10,
+        max_new_events: int = 10,
     ):
         """Initializes the Lightning Module.
 
@@ -59,13 +62,15 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
             config = StructuredTransformerConfig(**config)
 
         self.config = config
-        self.num_samples = num_samples
+        self.num_samples = config.task_specific_params["num_samples"]
+        self.max_new_events = max_new_events
         self.labeling_function = labeling_function
 
         self.save_hyperparameters(
             {
                 "config": config.to_dict(),
                 "num_samples": num_samples,
+                "max_new_events": max_new_events,
                 "labeling_function": labeling_function.__name__,
             }
         )
@@ -248,11 +253,15 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         )
 
 
+def import_class_from_file(module_path, class_name):
+    spec = importlib.util.spec_from_file_location(class_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, class_name)
+
 @task_wrapper
 def zero_shot_evaluation(
     cfg: FinetuneConfig,
-    labeling_function: Callable[[PytorchBatch], torch.LongTensor],
-    num_samples: int = 10,
 ):
     torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -266,18 +275,26 @@ def zero_shot_evaluation(
     batch_size = cfg.optimization_config.validation_batch_size
     num_dataloader_workers = cfg.optimization_config.num_dataloader_workers
 
+    orig_max_seq_len = config.max_seq_len
+    config.set_to_dataset(tuning_pyd)
+    config.max_seq_len = orig_max_seq_len
+
+    # Load the labeler
+    labeler_fp = cfg.data_config.save_dir / "task_dfs" / f"{cfg.task_df_name}_labeler.py"
+    labeler_cls = import_class_from_file(labeler_fp, "TaskLabeler")
+
+    labeling_function = labeler_cls(
+        input_seq_len=tuning_pyd.max_seq_len
+        config=config
+    )
+
     # Model
     LM = ESTForZeroShotClassificationLM(
         config=config,
         pretrained_weights_fp=cfg.pretrained_weights_fp,
         labeling_function=labeling_function,
-        num_samples=num_samples,
+        max_new_events=(orig_max_seq_len - tuning_pyd.max_seq_len),
     )
-
-    # TODO(mmd): Get this working!
-    # if cfg.compile:
-    #     print("Compiling model!")
-    #     LM = torch.compile(LM)
 
     # Setting up torch dataloader
     tuning_dataloader = torch.utils.data.DataLoader(

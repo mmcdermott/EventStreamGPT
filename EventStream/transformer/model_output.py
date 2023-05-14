@@ -1,5 +1,4 @@
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from typing import Any, Union
 
 import torch
@@ -13,6 +12,20 @@ from .utils import INDEX_SELECT_T, expand_indexed_regression, idx_distribution
 
 CATEGORICAL_DIST_T = Union[torch.distributions.Bernoulli, torch.distributions.Categorical]
 
+def get_event_types(
+    dynamic_measurement_indices: torch.LongTensor,
+    dynamic_indices: torch.LongTensor,
+    event_type_measurment_idx: int,
+    event_type_vocab_offset: int,
+) -> torch.LongTensor:
+    event_type_mask = dynamic_measurement_indices == event_type_measurment_idx
+
+    num_event_types = event_type_mask.sum(-1)
+    torch._assert(
+        (num_event_types <= 1).all().all(), f"Got {num_event_types.max()} event types per event!"
+    )
+
+    return torch.where(event_type_mask, dynamic_indices - event_type_vocab_offset, 0).sum(-1)
 
 # TODO(mmd): Move to batch class?
 def get_event_type_mask_per_measurement(
@@ -20,20 +33,15 @@ def get_event_type_mask_per_measurement(
     dynamic_indices: torch.LongTensor,
     config: StructuredTransformerConfig,
 ) -> dict[str, torch.BoolTensor | None]:
-    datetime.now()
     if config.event_types_per_measurement is None:
         return None
 
-    event_type_mask = dynamic_measurement_indices == config.measurements_idxmap["event_type"]
-
-    num_event_types = event_type_mask.sum(-1)
-    torch._assert(
-        (num_event_types <= 1).all().all(), f"Got {num_event_types.max()} event types per event!"
+    event_type_indices = get_event_types(
+        dynamic_measurement_indices,
+        dynamic_indices,
+        config.measurements_idxmap["event_type"],
+        config.vocab_offsets_by_measurement["event_type"],
     )
-
-    event_type_indices = torch.where(
-        event_type_mask, dynamic_indices - config.vocab_offsets_by_measurement["event_type"], 0
-    ).sum(-1)
 
     out_masks = {}
     for measurement, valid_event_types in config.event_types_per_measurement.items():
