@@ -227,7 +227,8 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 return_dict_in_generate=True,
                 output_scores=False,
                 num_return_sequences=self.num_samples,
-            )
+            ),
+            input_seq_len=batch.sequence_length,
         )
 
         # empirical_labels is of shape [batch_size * num_samples, num_labels], and stores a binary indicator
@@ -312,7 +313,7 @@ def zero_shot_evaluation(cfg: FinetuneConfig):
     labeler_fp = cfg.data_config.save_dir / "task_dfs" / f"{cfg.task_df_name}_labeler.py"
     labeler_cls = import_class_from_file(labeler_fp, "TaskLabeler")
 
-    labeling_function = labeler_cls(input_seq_len=tuning_pyd.max_seq_len, config=config)
+    labeling_function = labeler_cls(config=config)
 
     # Model
     LM = ESTForZeroShotClassificationLM(

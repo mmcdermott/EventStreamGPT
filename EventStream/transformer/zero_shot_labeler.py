@@ -7,8 +7,7 @@ from .config import StructuredTransformerConfig
 
 
 class Labeler(abc.ABC):
-    def __init__(self, input_seq_len: int, config: StructuredTransformerConfig):
-        self.input_seq_len = input_seq_len
+    def __init__(self, config: StructuredTransformerConfig):
         self.config = config
 
     @abc.abstractmethod
