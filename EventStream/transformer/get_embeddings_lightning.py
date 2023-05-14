@@ -1,20 +1,15 @@
-import dataclasses
+import os
 from pathlib import Path
 from typing import Any
 
 import lightning as L
-import omegaconf
-import pandas as pd
 import torch
-from tqdm.auto import tqdm
 
-from ..data.config import PytorchDatasetConfig
 from ..data.pytorch_dataset import PytorchDataset
-from ..utils import hydra_dataclass
 from .config import StructuredEventProcessingMode, StructuredTransformerConfig
+from .stream_classification_lightning import FinetuneConfig
 from .transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
 from .utils import safe_masked_max, safe_weighted_avg
-from .stream_classification_lightning import FinetuneConfig
 
 
 class EmbeddingsOnlyModel(StructuredTransformerPreTrainedModel):
@@ -86,7 +81,10 @@ class ESTForEmbedding(L.LightningModule):
 
 
 def get_embeddings(cfg: FinetuneConfig):
-    """Gets embeddings. TODO"""
+    """Gets embeddings.
+
+    TODO
+    """
 
     torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -95,7 +93,7 @@ def get_embeddings(cfg: FinetuneConfig):
     held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
 
     config = cfg.config
-    data_config = cfg.data_config
+    cfg.data_config
     optimization_config = cfg.optimization_config
 
     config.set_to_dataset(train_pyd)
@@ -133,7 +131,6 @@ def get_embeddings(cfg: FinetuneConfig):
         ("tuning", tuning_dataloader),
         ("held_out", held_out_dataloader),
     ):
-
         # Getting Embeddings model
         embeddings = torch.cat(trainer.predict(LM, dataloader), 0)
 
@@ -141,7 +138,9 @@ def get_embeddings(cfg: FinetuneConfig):
 
         if os.environ.get("LOCAL_RANK", "0") == "0":
             if embeddings_fp.is_file() and not cfg.do_overwrite:
-                print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
+                print(
+                    f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`."
+                )
             else:
                 print(f"Saving {sp} embeddings to {embeddings_fp}.")
                 torch.save(embeddings, embeddings_fp)
