@@ -313,6 +313,7 @@ class FinetuneConfig:
     task_specific_params: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "pooling_method": "last",
+            "num_samples": None,
         }
     )
 

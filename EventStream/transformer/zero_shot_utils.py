@@ -261,9 +261,7 @@ def import_class_from_file(module_path, class_name):
 
 
 @task_wrapper
-def zero_shot_evaluation(
-    cfg: FinetuneConfig,
-):
+def zero_shot_evaluation(cfg: FinetuneConfig):
     torch.multiprocessing.set_sharing_strategy("file_system")
 
     cfg.save_dir.mkdir(parents=True, exist_ok=True)
