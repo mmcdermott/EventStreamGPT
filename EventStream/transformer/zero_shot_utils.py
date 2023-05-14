@@ -224,9 +224,12 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 batch,
                 max_new_events=self.max_new_events,
                 do_sample=True,
-                return_dict_in_generate=True,
+                return_dict_in_generate=False,
                 output_scores=False,
                 num_return_sequences=self.num_samples,
+                output_attentions=False,
+                output_hidden_states=False,
+                use_cache=False,
             ),
             input_seq_len=batch.sequence_length,
         )
@@ -255,15 +258,26 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         empirical_labels = empirical_labels.transpose(1, 2)
         weighting_factor = weighting_factor.transpose(1, 2)
 
-        empirical_labels = safe_weighted_avg(empirical_labels, weighting_factor)
+        empirical_labels, denom = safe_weighted_avg(empirical_labels, weighting_factor)
+        labels_unpredicted = labels_unpredicted.reshape(batch.batch_size, self.num_samples).float().mean(dim=-1)
+
+        # Remove unpredicted labels
+        empirical_labels = empirical_labels[labels_unpredicted != 1]
+        true_labels = batch["stream_labels"][self.config.finetuning_task][labels_unpredicted != 1]
+
+        is_binary = (self.config.id2label == {0: False, 1: True})
+
+        if is_binary:
+            empirical_labels = empirical_labels[:, 1]
+            true_labels = true_labels.long()
 
         output = StreamClassificationModelOutput(
             loss=torch.tensor(float("nan")),
             preds=empirical_labels,
-            labels=batch["stream_labels"][self.task],
+            labels=true_labels,
         )
 
-        return output, labels_unpredicted.reshape(batch.batch_size, self.num_samples).mean(dim=-1)
+        return output, labels_unpredicted
 
     def validation_step(self, batch, batch_idx):
         """Validation step.
