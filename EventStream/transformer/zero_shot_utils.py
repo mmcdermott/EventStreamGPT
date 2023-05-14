@@ -29,7 +29,7 @@ from .config import StructuredTransformerConfig
 from .model import ESTForGenerativeSequenceModeling
 from .model_output import StreamClassificationModelOutput
 from .stream_classification_lightning import FinetuneConfig
-from .utils import str_summary, safe_weighted_avg
+from .utils import safe_weighted_avg, str_summary
 from .zero_shot_labeler import Labeler
 
 
@@ -184,7 +184,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         results: StreamClassificationModelOutput,
         unpredictable: torch.BoolTensor,
         skip_metrics: Sequence[str],
-        prefix: str
+        prefix: str,
     ):
         """Logs metric results for a given output result.
 
@@ -201,7 +201,12 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 or 'held_out', for example.
         """
 
-        self.log(f"{prefix}_frac_unpredictable", unpredictable.float().mean(), on_step=False, on_epoch=True)
+        self.log(
+            f"{prefix}_frac_unpredictable",
+            unpredictable.float().mean(),
+            on_step=False,
+            on_epoch=True,
+        )
 
         self._log_metric_dict(
             preds=results.preds,
@@ -237,14 +242,11 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         # dimension (weighted by whether or not the label was predicted) to get the empirical label for each
         # batch.
 
-        empirical_labels = (
-            empirical_labels
-            .reshape(batch.batch_size, self.num_samples, self.config.num_labels)
-            .float()
-        )
+        empirical_labels = empirical_labels.reshape(
+            batch.batch_size, self.num_samples, self.config.num_labels
+        ).float()
         weighting_factor = (
-            ~labels_unpredicted
-            .reshape(batch.batch_size, self.num_samples)
+            ~labels_unpredicted.reshape(batch.batch_size, self.num_samples)
             .unsqueeze(-1)
             .expand_as(empirical_labels)
         )
