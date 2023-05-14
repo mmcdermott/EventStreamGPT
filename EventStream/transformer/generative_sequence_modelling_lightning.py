@@ -533,6 +533,12 @@ class PretrainConfig:
         }
     )
 
+    wandb_experiment_config_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "save_dir": "${save_dir}",
+        }
+    )
+
     num_dataloader_workers: int = 1
 
     do_final_validation_on_metrics: bool = True
@@ -649,6 +655,9 @@ def train(cfg: PretrainConfig):
         if do_log_graph:
             # Watching the model naturally tracks parameter values and gradients.
             wandb_logger.watch(LM, log="all", log_graph=True)
+
+        if cfg.wandb_experiment_config_kwargs:
+            wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
 
         trainer_kwargs["logger"] = wandb_logger
 

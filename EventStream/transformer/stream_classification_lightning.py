@@ -313,12 +313,21 @@ class FinetuneConfig:
 
     config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
-    wandb_name: str | None = "${task_df_name}_finetuning"
-    wandb_project: str | None = None
-    wandb_team: str | None = None
-    extra_wandb_log_params: dict[str, Any] | None = None
+    wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "name": "${task_df_name}_finetuning",
+            "project": None,
+            "team": None,
+            "log_model": True,
+            "do_log_graph": True,
+        }
+    )
 
-    num_dataloader_workers: int = 1
+    wandb_experiment_config_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "save_dir": "${save_dir}",
+        }
+    )
 
     def __post_init__(self):
         if isinstance(self.save_dir, str):
@@ -465,23 +474,25 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
         callbacks=callbacks,
     )
 
-    do_use_wandb = cfg.wandb_name is not None
-    if do_use_wandb:
-        wandb_logger_savedir = cfg.save_dir  # Wandb automatically adds a "wandb" suffix.
+    if cfg.wandb_logger_kwargs.get("name", None):
+        if "do_log_graph" in cfg.wandb_logger_kwargs:
+            do_log_graph = cfg.wandb_logger_kwargs.pop("do_log_graph")
+        else:
+            do_log_graph = False
+
         wandb_logger = WandbLogger(
-            name=cfg.wandb_name,
-            project=cfg.wandb_project,
-            entity=cfg.wandb_team,
-            save_dir=wandb_logger_savedir,
-            log_model=True,
+            **{k: v for k, v in cfg.wandb_logger_kwargs.items() if v is not None},
+            save_dir=cfg.save_dir,
         )
-        # Watching the model naturally tracks parameter values and gradients.
-        wandb_logger.watch(LM, log="all", log_graph=True)
+
+        if do_log_graph:
+            # Watching the model naturally tracks parameter values and gradients.
+            wandb_logger.watch(LM, log="all", log_graph=True)
+
+        if cfg.wandb_experiment_config_kwargs:
+            wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
 
         trainer_kwargs["logger"] = wandb_logger
-
-        if cfg.extra_wandb_log_params is not None:
-            wandb_logger.experiment.config.update(cfg.extra_wandb_log_params)
 
     if (optimization_config.gradient_accumulation is not None) and (
         optimization_config.gradient_accumulation > 1
