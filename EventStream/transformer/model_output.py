@@ -348,7 +348,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     f"For {measurement}, expect preds.shape[-1] == vocab_size, got {preds.shape[-1]}!"
                 )
 
-            indices = torch.arange(vocab_size).long() + vocab_offset
+            indices = torch.arange(vocab_size, device=preds.device).long() + vocab_offset
             indices = indices.unsqueeze(0).expand_as(preds)
             indices = torch.where(preds == 1, indices, 0)
 

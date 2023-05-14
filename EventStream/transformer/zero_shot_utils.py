@@ -274,7 +274,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
             true_labels = true_labels.long()
 
         output = StreamClassificationModelOutput(
-            loss=torch.tensor(float("nan")),
+            loss=float("nan") * (torch.ones_like(true_labels[0]).float()),
             preds=empirical_labels,
             labels=true_labels,
         )
