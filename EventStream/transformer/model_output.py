@@ -12,6 +12,7 @@ from .utils import INDEX_SELECT_T, expand_indexed_regression, idx_distribution
 
 CATEGORICAL_DIST_T = Union[torch.distributions.Bernoulli, torch.distributions.Categorical]
 
+
 def get_event_types(
     dynamic_measurement_indices: torch.LongTensor,
     dynamic_indices: torch.LongTensor,
@@ -26,6 +27,7 @@ def get_event_types(
     )
 
     return torch.where(event_type_mask, dynamic_indices - event_type_vocab_offset, 0).sum(-1)
+
 
 # TODO(mmd): Move to batch class?
 def get_event_type_mask_per_measurement(

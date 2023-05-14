@@ -1,13 +1,16 @@
-import torch
 import abc
-from .config import StructuredTransformerConfig
+
+import torch
+
 from ..data.types import PytorchBatch
+from .config import StructuredTransformerConfig
+
 
 class Labeler(abc.ABC):
     def __init__(self, input_seq_len: int, config: StructuredTransformerConfig):
         self.input_seq_len = input_seq_len
         self.config = config
-        
+
     @abc.abstractmethod
     def __call__(self, batch: PytorchBatch) -> tuple[torch.LongTensor, torch.BoolTensor]:
-        raise NotImplementedError(f"Must be overwritten by a subclass!")
+        raise NotImplementedError("Must be overwritten by a subclass!")

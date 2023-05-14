@@ -27,7 +27,11 @@ from torchmetrics.classification import (
 )
 from transformers import get_polynomial_decay_schedule_with_warmup
 
-from ..data.config import PytorchDatasetConfig, SubsequenceSamplingStrategy, SeqPaddingSide
+from ..data.config import (
+    PytorchDatasetConfig,
+    SeqPaddingSide,
+    SubsequenceSamplingStrategy,
+)
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass, task_wrapper
 from .config import OptimizationConfig, StructuredTransformerConfig

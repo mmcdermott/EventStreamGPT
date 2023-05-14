@@ -1,7 +1,7 @@
-import json
 import importlib.util
+import json
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -259,6 +259,7 @@ def import_class_from_file(module_path, class_name):
     spec.loader.exec_module(module)
     return getattr(module, class_name)
 
+
 @task_wrapper
 def zero_shot_evaluation(
     cfg: FinetuneConfig,
@@ -283,10 +284,7 @@ def zero_shot_evaluation(
     labeler_fp = cfg.data_config.save_dir / "task_dfs" / f"{cfg.task_df_name}_labeler.py"
     labeler_cls = import_class_from_file(labeler_fp, "TaskLabeler")
 
-    labeling_function = labeler_cls(
-        input_seq_len=tuning_pyd.max_seq_len
-        config=config
-    )
+    labeling_function = labeler_cls(input_seq_len=tuning_pyd.max_seq_len, config=config)
 
     # Model
     LM = ESTForZeroShotClassificationLM(
