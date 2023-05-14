@@ -259,13 +259,15 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         weighting_factor = weighting_factor.transpose(1, 2)
 
         empirical_labels, denom = safe_weighted_avg(empirical_labels, weighting_factor)
-        labels_unpredicted = labels_unpredicted.reshape(batch.batch_size, self.num_samples).float().mean(dim=-1)
+        labels_unpredicted = (
+            labels_unpredicted.reshape(batch.batch_size, self.num_samples).float().mean(dim=-1)
+        )
 
         # Remove unpredicted labels
         empirical_labels = empirical_labels[labels_unpredicted != 1]
         true_labels = batch["stream_labels"][self.config.finetuning_task][labels_unpredicted != 1]
 
-        is_binary = (self.config.id2label == {0: False, 1: True})
+        is_binary = self.config.id2label == {0: False, 1: True}
 
         if is_binary:
             empirical_labels = empirical_labels[:, 1]
