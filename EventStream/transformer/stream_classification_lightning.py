@@ -401,7 +401,7 @@ class FinetuneConfig:
 
 
 @task_wrapper
-def train(cfg: FinetuneConfig, return_early: bool = False):
+def train(cfg: FinetuneConfig):
     """Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
 
     Args: TODO
@@ -411,7 +411,6 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
 
     cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Loading datasets...")
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -458,7 +457,7 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size=optimization_config.batch_size // 2,
+        batch_size=optimization_config.validation_batch_size,
         num_workers=optimization_config.num_dataloader_workers,
         collate_fn=tuning_pyd.collate,
         shuffle=False,
@@ -506,22 +505,13 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     ):
         trainer_kwargs["accumulate_grad_batches"] = optimization_config.gradient_accumulation
 
-    if return_early:
-        return (
-            (train_pyd, tuning_pyd),
-            (config, optimization_config, cfg.data_config),
-            (train_dataloader, tuning_dataloader),
-            (trainer_kwargs, L.Trainer(**trainer_kwargs)),
-            LM,
-        )
-
     trainer = L.Trainer(**trainer_kwargs)
     trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
 
     held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size=optimization_config.batch_size // 2,
+        batch_size=optimization_config.validation_batch_size,
         num_workers=optimization_config.num_dataloader_workers,
         collate_fn=held_out_pyd.collate,
         shuffle=False,
