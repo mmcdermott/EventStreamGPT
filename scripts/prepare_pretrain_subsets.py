@@ -109,10 +109,12 @@ def main(cfg: DictConfig):
                             "subsequence_sampling_strategy": str(
                                 SubsequenceSamplingStrategy.TO_END
                             ),
+                            "train_subset_size": "FULL",
+                            "train_subset_seed": None,
                         },
                         task_specific_params={"pooling_method": "last"},
                         optimization_config=dict(
-                            **cfg["get_optimization_commands"]["optimization_config"]
+                            **cfg["get_embeddings_commands"]["optimization_config"]
                         ),
                     )
 
