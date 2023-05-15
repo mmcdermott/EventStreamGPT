@@ -59,6 +59,7 @@ def main(cfg: DictConfig):
 
     do_FT_commands = len(cfg["few_shot_commands"]["fine_tuning_task_names"]) > 0
     do_zero_shot_commands = len(cfg["zero_shot_commands"]["fine_tuning_task_names"]) > 0
+    do_embeddings_commands = len(cfg["get_embeddings_commands"]["fine_tuning_task_names"]) > 0
 
     # Create subset experiment directories and run commands
     commands = defaultdict(list)
@@ -96,6 +97,43 @@ def main(cfg: DictConfig):
                     f"hydra.searchpath=[$EVENT_STREAM_PATH/configs]"  # Ensures hydra instantiates correctly
                 )
                 commands["PT"].append(command)
+
+            if do_embeddings_commands:
+                for FT_task in cfg["get_embeddings_commands"]["fine_tuning_task_names"]:
+                    get_embeddings_config = dict(
+                        defaults=["finetune_config", "_self_"],
+                        load_from_model_dir=str(seed_runs_dir),
+                        do_overwrite=False,
+                        task_df_name=FT_task,
+                        data_config_overrides={
+                            "subsequence_sampling_strategy": str(
+                                SubsequenceSamplingStrategy.TO_END
+                            ),
+                        },
+                        task_specific_params={"pooling_method": "last"},
+                        optimization_config=dict(
+                            **cfg["get_optimization_commands"]["optimization_config"]
+                        ),
+                    )
+
+                    get_embeddings_config_path = (
+                        seed_runs_dir
+                        / "embeddings"
+                        / FT_task
+                        / "get_embeddings_config_source.yaml"
+                    )
+                    get_embeddings_config_path.parent.mkdir(exist_ok=True, parents=True)
+
+                    OmegaConf.save(get_embeddings_config, get_embeddings_config_path)
+
+                    command = (
+                        'PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" '
+                        "python $EVENT_STREAM_PATH/scripts/get_embeddings.py "
+                        f"--config-path={get_embeddings_config_path.parent} "
+                        f"--config-name=get_embeddings_config_source "
+                        f"hydra.searchpath=[$EVENT_STREAM_PATH/configs]"
+                    )
+                    commands["get_embeddings"].append(command)
 
             if do_zero_shot_commands:
                 zero_shot_dir = seed_runs_dir / "zero_shot"

@@ -134,7 +134,9 @@ def get_embeddings(cfg: FinetuneConfig):
         # Getting Embeddings model
         embeddings = torch.cat(trainer.predict(LM, dataloader), 0)
 
-        embeddings_fp = cfg.load_from_model_dir / f"{sp}_embeddings.pt"
+        embeddings_fp = (
+            cfg.load_from_model_dir / "embeddings" / cfg.task_df_name / f"{sp}_embeddings.pt"
+        )
 
         if os.environ.get("LOCAL_RANK", "0") == "0":
             if embeddings_fp.is_file() and not cfg.do_overwrite:
