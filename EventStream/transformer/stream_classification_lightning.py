@@ -27,7 +27,11 @@ from torchmetrics.classification import (
 )
 from transformers import get_polynomial_decay_schedule_with_warmup
 
-from ..data.config import PytorchDatasetConfig, SubsequenceSamplingStrategy
+from ..data.config import (
+    PytorchDatasetConfig,
+    SeqPaddingSide,
+    SubsequenceSamplingStrategy,
+)
 from ..data.pytorch_dataset import PytorchDataset
 from ..utils import hydra_dataclass, task_wrapper
 from .config import OptimizationConfig, StructuredTransformerConfig
@@ -293,6 +297,7 @@ class FinetuneConfig:
     data_config_overrides: dict[str, Any] | None = dataclasses.field(
         default_factory=lambda: {
             "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+            "seq_padding_side": SeqPaddingSide.RIGHT,
         }
     )
 
@@ -308,19 +313,32 @@ class FinetuneConfig:
     task_specific_params: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "pooling_method": "last",
+            "num_samples": None,
         }
     )
 
     config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
-    wandb_name: str | None = "${task_df_name}_finetuning"
-    wandb_project: str | None = None
-    wandb_team: str | None = None
-    extra_wandb_log_params: dict[str, Any] | None = None
+    wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "name": "${task_df_name}_finetuning",
+            "project": None,
+            "team": None,
+            "log_model": True,
+            "do_log_graph": True,
+        }
+    )
 
-    num_dataloader_workers: int = 1
+    wandb_experiment_config_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "save_dir": "${save_dir}",
+        }
+    )
 
     def __post_init__(self):
+        if isinstance(self.save_dir, str):
+            self.save_dir = Path(self.save_dir)
+
         if self.load_from_model_dir != omegaconf.MISSING:
             if type(self.load_from_model_dir) is str:
                 self.load_from_model_dir = Path(self.load_from_model_dir)
@@ -383,7 +401,7 @@ class FinetuneConfig:
 
 
 @task_wrapper
-def train(cfg: FinetuneConfig, return_early: bool = False):
+def train(cfg: FinetuneConfig):
     """Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
 
     Args: TODO
@@ -393,7 +411,6 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
 
     cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Loading datasets...")
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -440,7 +457,7 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     )
     tuning_dataloader = torch.utils.data.DataLoader(
         tuning_pyd,
-        batch_size=optimization_config.batch_size // 2,
+        batch_size=optimization_config.validation_batch_size,
         num_workers=optimization_config.num_dataloader_workers,
         collate_fn=tuning_pyd.collate,
         shuffle=False,
@@ -463,37 +480,30 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
         callbacks=callbacks,
     )
 
-    do_use_wandb = cfg.wandb_name is not None
-    if do_use_wandb:
-        wandb_logger_savedir = cfg.save_dir  # Wandb automatically adds a "wandb" suffix.
+    if cfg.wandb_logger_kwargs.get("name", None):
+        if "do_log_graph" in cfg.wandb_logger_kwargs:
+            do_log_graph = cfg.wandb_logger_kwargs.pop("do_log_graph")
+        else:
+            do_log_graph = False
+
         wandb_logger = WandbLogger(
-            name=cfg.wandb_name,
-            project=cfg.wandb_project,
-            entity=cfg.wandb_team,
-            save_dir=wandb_logger_savedir,
-            log_model=True,
+            **{k: v for k, v in cfg.wandb_logger_kwargs.items() if v is not None},
+            save_dir=cfg.save_dir,
         )
-        # Watching the model naturally tracks parameter values and gradients.
-        wandb_logger.watch(LM, log="all", log_graph=True)
+
+        if do_log_graph:
+            # Watching the model naturally tracks parameter values and gradients.
+            wandb_logger.watch(LM, log="all", log_graph=True)
+
+        if cfg.wandb_experiment_config_kwargs:
+            wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
 
         trainer_kwargs["logger"] = wandb_logger
-
-        if cfg.extra_wandb_log_params is not None:
-            wandb_logger.experiment.config.update(cfg.extra_wandb_log_params)
 
     if (optimization_config.gradient_accumulation is not None) and (
         optimization_config.gradient_accumulation > 1
     ):
         trainer_kwargs["accumulate_grad_batches"] = optimization_config.gradient_accumulation
-
-    if return_early:
-        return (
-            (train_pyd, tuning_pyd),
-            (config, optimization_config, cfg.data_config),
-            (train_dataloader, tuning_dataloader),
-            (trainer_kwargs, L.Trainer(**trainer_kwargs)),
-            LM,
-        )
 
     trainer = L.Trainer(**trainer_kwargs)
     trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
@@ -501,7 +511,7 @@ def train(cfg: FinetuneConfig, return_early: bool = False):
     held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
-        batch_size=optimization_config.batch_size // 2,
+        batch_size=optimization_config.validation_batch_size,
         num_workers=optimization_config.num_dataloader_workers,
         collate_fn=held_out_pyd.collate,
         shuffle=False,

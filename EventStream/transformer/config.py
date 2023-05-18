@@ -929,7 +929,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         if as_dict.get("measurement_configs", {}):
             new_meas_configs = {}
             for k, v in as_dict["measurement_configs"].items():
-                new_meas_configs[k] = v.to_dict()
+                new_meas_configs[k] = v if isinstance(v, dict) else v.to_dict()
             as_dict["measurement_configs"] = new_meas_configs
         return as_dict
 
