@@ -99,7 +99,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 raise ValueError("Must set subject_id_dtype if subject_id_col is set")
 
         match df:
-            case Path() as fp:
+            case (str() | Path()) as fp:
+                if not isinstance(fp, Path):
+                    fp = Path(fp)
+
                 if fp.suffix == ".csv":
                     df = pl.scan_csv(df, null_values="")
                 elif fp.suffix == ".parquet":

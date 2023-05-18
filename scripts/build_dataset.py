@@ -8,10 +8,12 @@ except ImportError:
     pass  # no need to fail because of missing dev dependency
 
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 import hydra
-from omegaconf import DictConfig
+import inflect
+from omegaconf import DictConfig, OmegaConf
 
 from EventStream.data.config import (
     DatasetConfig,
@@ -27,10 +29,26 @@ from EventStream.data.types import (
     TemporalityType,
 )
 
+inflect = inflect.engine()
+
+
+def add_to_container(key: str, val: Any, cont: dict[str, Any]):
+    if key in cont:
+        if cont[key] == val:
+            print(f"WARNING: {key} is specified twice with value {val}.")
+        else:
+            raise ValueError(f"{key} is specified twice ({val} v. {cont[key]})")
+    else:
+        cont[key] = val
+
 
 @hydra.main(version_base=None, config_path="../configs", config_name="dataset_base")
 def main(cfg: DictConfig):
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
+
+    cfg_fp = Path(cfg["save_dir"]) / "hydra_config.yaml"
+    cfg_fp.parent.mkdir(exist_ok=True, parents=True)
+    OmegaConf.save(cfg, cfg_fp)
 
     # 1. Build measurement_configs and track input schemas
     subject_id_col = cfg.pop("subject_id_col")
@@ -52,18 +70,13 @@ def main(cfg: DictConfig):
             static_sources if temporality == TemporalityType.STATIC else dynamic_sources
         )
         for modality, measurements_by_source in measurements_by_modality.items():
+            if not measurements_by_source:
+                continue
             for source_name, measurements in measurements_by_source.items():
                 data_schema = schema_source[source_name]
 
-                def add_to_schema(m: str, dt: InputDataType):
-                    if m in data_schema:
-                        if data_schema[m] == dt:
-                            print(
-                                f"WARNING: {m} is specified twice (with the same data type {dt})."
-                            )
-                        else:
-                            raise ValueError(f"{m} is specified twice ({dt} v. {data_schema[m]})")
-
+                if type(measurements) is str:
+                    measurements = [measurements]
                 for m in measurements:
                     measurement_config_kwargs = {
                         "name": m,
@@ -81,15 +94,16 @@ def main(cfg: DictConfig):
 
                     match m, modality:
                         case str(), DataModality.UNIVARIATE_REGRESSION:
-                            add_to_schema(m, InputDataType.FLOAT)
+                            add_to_container(m, InputDataType.FLOAT, data_schema)
                         case [str() as m, str() as v], DataModality.MULTIVARIATE_REGRESSION:
-                            add_to_schema(m, InputDataType.CATEGORICAL)
-                            add_to_schema(v, InputDataType.FLOAT)
+                            add_to_container(m, InputDataType.CATEGORICAL, data_schema)
+                            add_to_container(v, InputDataType.FLOAT, data_schema)
                             measurement_config_kwargs["values_column"] = v
+                            measurement_config_kwargs["name"] = m
                         case str(), DataModality.SINGLE_LABEL_CLASSIFICATION:
-                            add_to_schema(m, InputDataType.CATEGORICAL)
+                            add_to_container(m, InputDataType.CATEGORICAL, data_schema)
                         case str(), DataModality.MULTI_LABEL_CLASSIFICATION:
-                            add_to_schema(m, InputDataType.CATEGORICAL)
+                            add_to_container(m, InputDataType.CATEGORICAL, data_schema)
                         case _:
                             raise ValueError(
                                 f"{m}, {modality} invalid! Must be in {DataModality.values()}!"
@@ -121,9 +135,9 @@ def main(cfg: DictConfig):
             "functor": MeasurementConfig.FUNCTORS[functor_class](**functor_kwargs),
         }
 
-        necessary_static_measurements = config.pop("necessary_static_measurements", [])
+        necessary_static_measurements = config.pop("necessary_static_measurements", {})
         if necessary_static_measurements:
-            for in_col, in_fmt in necessary_static_measurements:
+            for in_col, in_fmt in necessary_static_measurements.items():
                 schema_key = in_col
                 schema_val = (in_col, in_fmt)
                 if in_col in static_col_schema and static_col_schema[schema_key] != schema_val:
@@ -142,9 +156,13 @@ def main(cfg: DictConfig):
 
     # 1. Build DatasetSchema
     connection_uri = cfg.pop("connection_uri", None)
+    cfg.pop("raw_data_dir", None)
 
     def build_schema(
-        col_schema: dict[str, InputDataType], source_schema: dict[str, Any], **extra_kwargs
+        col_schema: dict[str, InputDataType],
+        source_schema: dict[str, Any],
+        schema_name: str,
+        **extra_kwargs,
     ) -> InputDFSchema:
         input_schema_kwargs = {}
 
@@ -174,67 +192,71 @@ def main(cfg: DictConfig):
         else:
             raise ValueError("Must specify either a query or an input dataframe!")
 
-        start_ts_col = source_schema.get("start_ts_col", None)
-        end_ts_col = source_schema.get("end_ts_col", None)
-        ts_col = source_schema.get("ts_col", None)
-        start_columns = source_schema.get("start_columns", [])
-        end_columns = source_schema.get("end_columns", [])
-        columns = source_schema.get("columns", [])
-
-        if start_ts_col:
-            if not end_ts_col:
-                raise ValueError(
-                    f"If specifying start_ts_col ({start_ts_col}), must specify end_ts_col."
-                )
-            if ts_col:
-                raise ValueError(
-                    f"If specifying start_ts_col ({start_ts_col}), must not specify ts_col ({ts_col})."
-                )
-            input_schema_kwargs["type"] = InputDFType.RANGE
-            input_schema_kwargs["start_ts_col"] = start_ts_col
-            input_schema_kwargs["end_ts_col"] = end_ts_col
-        else:
-            if end_ts_col:
-                raise ValueError(
-                    f"If specifying end_ts_col ({end_ts_col}), must specify start_ts_col."
-                )
-            if not ts_col:
-                raise ValueError("If not specifying start_ts_col, must specify ts_col.")
-            if start_columns:
-                raise ValueError("If not specifying start_ts_col, must not specify start_columns.")
-            if end_columns:
-                raise ValueError("If not specifying end_ts_col, must not specify end_columns.")
-
-            input_schema_kwargs["type"] = InputDFType.EVENT
-            input_schema_kwargs["ts_col"] = ts_col
-
-        for n, cols in (
-            ("start_data_schema", start_columns),
-            ("end_data_schema", end_columns),
-            ("data_schema", columns),
+        for param in (
+            "start_ts_col",
+            "end_ts_col",
+            "ts_col",
+            "event_type",
+            "start_ts_format",
+            "end_ts_format",
+            "ts_format",
         ):
+            if param in source_schema:
+                input_schema_kwargs[param] = source_schema[param]
+
+        if source_schema.get("start_ts_col", None):
+            input_schema_kwargs["type"] = InputDFType.RANGE
+        elif source_schema.get("ts_col", None):
+            input_schema_kwargs["type"] = InputDFType.EVENT
+        else:
+            input_schema_kwargs["type"] = InputDFType.STATIC
+
+        if (
+            input_schema_kwargs["type"] != InputDFType.STATIC
+            and "event_type" not in input_schema_kwargs
+        ):
+            input_schema_kwargs["event_type"] = inflect.singular_noun(schema_name).upper()
+
+        cols_covered = []
+        any_schemas_present = False
+        for n, cols_n in (
+            ("start_data_schema", "start_columns"),
+            ("end_data_schema", "end_columns"),
+            ("data_schema", "columns"),
+        ):
+            if cols_n not in source_schema:
+                continue
+            cols = source_schema[cols_n]
             data_schema = {}
+            if type(cols) is dict:
+                cols = [list(t) for t in cols.items()]
+
             for col in cols:
                 match col:
-                    case [
-                        str() as in_col_name,
-                        str() as out_col_name,
-                    ] if out_col_name in col_schema:
-                        schema_key = in_col_name
-                        schema_val = (out_col_name, col_schema[out_col_name])
+                    case [str() as in_name, str() as out_name] if out_name in col_schema:
+                        schema_key = in_name
+                        schema_val = (out_name, col_schema[out_name])
                     case str() as col_name if col_name in col_schema:
                         schema_key = col_name
-                        schema_val = col_schema[col_name]
+                        schema_val = (col_name, col_schema[col_name])
                     case _:
                         raise ValueError(f"{col} unprocessable! Col schema: {col_schema}")
 
-                if schema_key in data_schema and schema_val != data_schema[schema_key]:
-                    raise ValueError(
-                        f"{schema_key} duplicated with {schema_val} != {data_schema[schema_key]}"
-                    )
-                data_schema[schema_key] = schema_val
-
+                cols_covered.append(schema_val[0])
+                add_to_container(schema_key, schema_val, data_schema)
             input_schema_kwargs[n] = data_schema
+            any_schemas_present = True
+
+        if not any_schemas_present and (len(col_schema) > len(cols_covered)):
+            input_schema_kwargs["data_schema"] = {}
+
+        for col, dt in col_schema.items():
+            if col in cols_covered:
+                continue
+
+            for schema in ("start_data_schema", "end_data_schema", "data_schema"):
+                if schema in input_schema_kwargs:
+                    input_schema_kwargs[schema][col] = dt
 
         must_have = source_schema.get("must_have", None)
         match must_have:
@@ -262,9 +284,12 @@ def main(cfg: DictConfig):
             col_schema=static_col_schema,
             source_schema=inputs[static_key],
             subject_id_col=subject_id_col,
+            schema_name=static_key,
         ),
         dynamic=[
-            build_schema(col_schema=col_schema, source_schema=inputs[dynamic_key])
+            build_schema(
+                col_schema=col_schema, source_schema=inputs[dynamic_key], schema_name=dynamic_key
+            )
             for dynamic_key, col_schema in dynamic_sources.items()
         ],
     )
@@ -278,10 +303,10 @@ def main(cfg: DictConfig):
 
     config = DatasetConfig(measurement_configs=measurement_configs, **cfg)
 
-    ESD = Dataset(config=config, input_schema=dataset_schema)
+    ESD = Dataset(config=config, input_schema=dataset_schema, do_overwrite=do_overwrite)
     ESD.split(split, seed=seed)
     ESD.preprocess_measurements()
-    ESD._save(do_overwrite=do_overwrite)
+    ESD._save()
     ESD.cache_deep_learning_representation(DL_chunk_size)
 
 
