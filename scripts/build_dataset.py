@@ -314,7 +314,7 @@ def main(cfg: DictConfig):
     ESD.split(split, seed=seed)
     ESD.preprocess_measurements()
     ESD._save(do_overwrite=do_overwrite)
-    ESD.cache_deep_learning_representation(DL_chunk_size)
+    ESD.cache_deep_learning_representation(DL_chunk_size, do_overwrite=do_overwrite)
 
 
 if __name__ == "__main__":

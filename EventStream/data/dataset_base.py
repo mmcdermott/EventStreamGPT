@@ -962,7 +962,9 @@ class DatasetBase(
         return vocabs
 
     @TimeableMixin.TimeAs
-    def cache_deep_learning_representation(self, subjects_per_output_file: int | None = None):
+    def cache_deep_learning_representation(
+        self, subjects_per_output_file: int | None = None, do_overwrite: bool = False
+    ):
         """Produces a cached, batched representation of the dataset suitable for deep learning
         applications and writes it to cache_fp in the specified format."""
 
@@ -986,7 +988,7 @@ class DatasetBase(
                 fp = DL_dir / f"{split}_{chunk_idx}.{self.DF_SAVE_FORMAT}"
 
                 split_cached_df = self._filter_col_inclusion(cached_df, {"subject_id": subjects})
-                self._write_df(split_cached_df, fp)
+                self._write_df(split_cached_df, fp, do_overwrite=do_overwrite)
 
     @property
     def vocabulary_config(self) -> VocabularyConfig:
