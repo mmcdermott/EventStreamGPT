@@ -366,23 +366,27 @@ class InputDFSchema(JSONableMixin):
         unified_schema = {}
         for schema in data_schema:
             match schema:
-                case (str() as col, (InputDataType() | (InputDataType(), str())) as dt):
+                case str() as col, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
                     cls.__add_to_schema(unified_schema, in_col=col, dt=dt)
-                case (list() as cols, (InputDataType() | (InputDataType(), str())) as dt):
+                case list() as cols, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
                     for c in cols:
                         cls.__add_to_schema(unified_schema, in_col=c, dt=dt)
                 case dict():
                     for in_col, schema_info in schema.items():
                         match schema_info:
-                            case (out_col, (InputDataType() | (InputDataType(), str())) as dt):
+                            case str() as out_col, (
+                                InputDataType() | [InputDataType.TIMESTAMP, str()]
+                            ) as dt:
                                 cls.__add_to_schema(
                                     unified_schema, in_col=in_col, dt=dt, out_col=out_col
                                 )
-                            case (InputDataType() | (InputDataType(), str())) as dt:
+                            case (InputDataType() | [InputDataType(), str()]) as dt:
                                 cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
                             case _:
                                 raise ValueError(f"Schema Unprocessable!\n{schema_info}")
-                case (dict() as col_names_map, (InputDataType() | (InputDataType(), str())) as dt):
+                case dict() as col_names_map, (
+                    InputDataType() | [InputDataType.TIMESTAMP, str()]
+                ) as dt:
                     for in_col, out_col in col_names_map.items():
                         cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
                 case _:
@@ -452,10 +456,17 @@ class PytorchDatasetConfig(JSONableMixin):
     do_include_start_time_min: bool = False
 
     def __post_init__(self):
-        assert self.seq_padding_side in ("left", "right")
-        assert self.min_seq_len >= 0
-        assert self.max_seq_len >= 1
-        assert self.max_seq_len >= self.min_seq_len
+        if self.seq_padding_side not in SeqPaddingSide.values():
+            raise ValueError(
+                f"seq_padding_side invalid; must be in {', '.join(SeqPaddingSide.values())}"
+            )
+        if type(self.min_seq_len) is not int or self.min_seq_len < 0:
+            raise ValueError(f"min_seq_len must be a non-negative integer; got {self.min_seq_len}")
+        if type(self.max_seq_len) is not int or self.max_seq_len < self.min_seq_len:
+            raise ValueError(
+                f"max_seq_len must be an integer at least equal to min_seq_len; got {self.max_seq_len} "
+                f"(min_seq_len = {self.min_seq_len})"
+            )
 
         if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
             self.save_dir = Path(self.save_dir)
@@ -617,27 +628,47 @@ class MeasurementConfig(JSONableMixin):
         """Checks the internal state of `self` and ensures internal consistency and validity."""
         match self.temporality:
             case TemporalityType.STATIC:
-                assert self.present_in_event_types is None
-                assert self.functor is None
+                if self.present_in_event_types is not None:
+                    raise ValueError(
+                        f"present_in_event_types should be None for {self.temporality} measurements! Got "
+                        f"{self.present_in_event_types}"
+                    )
+                if self.functor is not None:
+                    raise ValueError(
+                        f"functor should be None for {self.temporality} measurements! Got {self.functor}"
+                    )
 
                 if self.is_numeric:
                     raise NotImplementedError(
                         f"Numeric data modalities like {self.modality} not yet supported on static measures."
                     )
             case TemporalityType.DYNAMIC:
-                assert self.functor is None
+                if self.functor is not None:
+                    raise ValueError(
+                        f"functor should be None for {self.temporality} measurements! Got {self.functor}"
+                    )
 
             case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
-                assert self.functor is not None
-                assert self.present_in_event_types is None
+                if self.functor is None:
+                    raise ValueError(f"functor must be set for {self.temporality} measurements!")
+                if self.present_in_event_types is not None:
+                    raise ValueError(
+                        f"present_in_event_types should be None for {self.temporality} measurements! Got "
+                        f"{self.present_in_event_types}"
+                    )
 
                 if self.modality is None:
                     self.modality = self.functor.OUTPUT_MODALITY
-                else:
-                    assert self.modality in (DataModality.DROPPED, self.functor.OUTPUT_MODALITY)
-
+                elif self.modality not in (DataModality.DROPPED, self.functor.OUTPUT_MODALITY):
+                    raise ValueError(
+                        "self.modality must either be DataModality.DROPPED or "
+                        f"{self.functor.OUTPUT_MODALITY} for {self.temporality} measures; got {self.modality}"
+                    )
             case _:
-                raise ValueError(f"`self.temporality = {self.temporality}` Invalid!")
+                raise ValueError(
+                    f"`self.temporality = {self.temporality}` Invalid! Must be in "
+                    f"{', '.join(TemporalityType.values())}"
+                )
 
         err_strings = []
         match self.modality:
@@ -721,13 +752,22 @@ class MeasurementConfig(JSONableMixin):
                 out = pd.read_csv(fp, index_col=0)
 
                 if self.modality == DataModality.UNIVARIATE_REGRESSION:
-                    assert out.shape[1] == 1
+                    if out.shape[1] != 1:
+                        raise ValueError(
+                            f"For {self.modality}, measurement metadata at {fp} should be a series, but "
+                            f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
+                        )
                     out = out.iloc[:, 0]
                     for col in ("outlier_model", "normalizer"):
                         if col in out:
                             out[col] = eval(out[col])
+                elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
+                    raise ValueError(
+                        "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
+                        f"measurements should have measurement metadata paths stored. Got {fp} on "
+                        f"{self.modality} measurement!"
+                    )
                 else:
-                    assert self.modality == DataModality.MULTIVARIATE_REGRESSION
                     for col in ("outlier_model", "normalizer"):
                         if col in out:
                             out[col] = out[col].apply(eval)
@@ -773,7 +813,10 @@ class MeasurementConfig(JSONableMixin):
 
     def add_empty_metadata(self):
         """Adds an empty `measurement_metadata` dataframe or series."""
-        assert self.measurement_metadata is None
+        if self.measurement_metadata is not None:
+            raise ValueError(
+                f"Can't add empty metadata; already set to {self.measurement_metadata}"
+            )
 
         match self.modality:
             case DataModality.UNIVARIATE_REGRESSION:
@@ -794,7 +837,8 @@ class MeasurementConfig(JSONableMixin):
                 raise ValueError(f"Can't add metadata to a {self.modality} measure!")
 
     def add_missing_mandatory_metadata_cols(self):
-        assert self.is_numeric
+        if not self.is_numeric:
+            raise ValueError("Only numeric measurements can have measurement metadata")
         match self.measurement_metadata:
             case None:
                 self.add_empty_metadata()
@@ -851,7 +895,11 @@ class MeasurementConfig(JSONableMixin):
                 )
 
         if as_dict["functor"] is not None:
-            assert as_dict["temporality"] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
+            if as_dict["temporality"] != TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
+                raise ValueError(
+                    "Only TemporalityType.FUNCTIONAL_TIME_DEPENDENT measures can have functors. Got "
+                    f"{as_dict['temporality']}"
+                )
             as_dict["functor"] = cls.FUNCTORS[as_dict["functor"]["class"]].from_dict(
                 as_dict["functor"]
             )
@@ -989,8 +1037,10 @@ class DatasetConfig(JSONableMixin):
         for name, cfg in self.measurement_configs.items():
             if cfg.name is None:
                 cfg.name = name
-            else:
-                assert cfg.name == name
+            elif cfg.name != name:
+                raise ValueError(
+                    f"Measurement config {name} has name {cfg.name} which differs from dict key!"
+                )
 
         for var in (
             "min_valid_column_observations",
@@ -998,20 +1048,43 @@ class DatasetConfig(JSONableMixin):
             "min_unique_numerical_observations",
         ):
             val = getattr(self, var)
-            if val is not None:
-                assert ((type(val) is float) and (0 < val) and (val < 1)) or (
-                    (type(val) is int) and (val > 1)
-                )
+            match val:
+                case None:
+                    pass
+                case float() if (0 < val) and (val < 1):
+                    pass
+                case int() if val > 1:
+                    pass
+                case float():
+                    raise ValueError(f"{var} must be in (0, 1) if float; got {val}!")
+                case int():
+                    raise ValueError(f"{var} must be > 1 if integral; got {val}!")
+                case _:
+                    raise TypeError(
+                        f"{var} must either be a fraction (float between 0 and 1) or count (int > 1). Got "
+                        f"{type(val)} of {val}"
+                    )
 
         for var in ("min_true_float_frequency",):
             val = getattr(self, var)
-            if val is not None:
-                assert type(val) is float and (0 < val) and (val < 1)
+            match val:
+                case None:
+                    pass
+                case float() if (0 < val) and (val < 1):
+                    pass
+                case float():
+                    raise ValueError(f"{var} must be in (0, 1) if float; got {val}!")
+                case _:
+                    raise TypeError(
+                        f"{var} must be a fraction (float between 0 and 1). Got {type(val)} of {val}"
+                    )
 
         for var in ("outlier_detector_config", "normalizer_config"):
             val = getattr(self, var)
-            if val is not None:
-                assert type(val) is dict and "cls" in val
+            if val is not None and (type(val) is not dict or "cls" not in val):
+                raise ValueError(
+                    f"{var} must be either None or a dictionary with 'cls' as a key! Got {val}"
+                )
 
         for k, v in self.measurement_configs.items():
             try:

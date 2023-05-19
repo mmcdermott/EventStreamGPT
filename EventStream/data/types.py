@@ -141,10 +141,6 @@ class DataModality(StrEnum):
             univariate data.
     """
 
-    @classmethod
-    def values(cls):
-        return list(map(lambda c: c.value, cls))
-
     DROPPED = enum.auto()
     SINGLE_LABEL_CLASSIFICATION = enum.auto()
     MULTI_LABEL_CLASSIFICATION = enum.auto()

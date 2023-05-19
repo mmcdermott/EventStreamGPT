@@ -311,8 +311,6 @@ def import_class_from_file(module_path, class_name):
 def zero_shot_evaluation(cfg: FinetuneConfig):
     torch.multiprocessing.set_sharing_strategy("file_system")
 
-    cfg.save_dir.mkdir(parents=True, exist_ok=True)
-
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
     held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
 
@@ -384,6 +382,7 @@ def zero_shot_evaluation(cfg: FinetuneConfig):
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
         print("Saving final metrics...")
+        cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
         with open(cfg.save_dir / "zero_shot_tuning_metrics.json", mode="w") as f:
             json.dump(tuning_metrics, f)

@@ -21,10 +21,6 @@ class Split(StrEnum):
     TUNING = enum.auto()
     HELD_OUT = enum.auto()
 
-    @classmethod
-    def values(cls):
-        return list(map(lambda c: c.value, cls))
-
 
 class MetricCategories(StrEnum):
     LOSS_PARTS = enum.auto()
@@ -88,36 +84,40 @@ class MetricsConfig(JSONableMixin):
             self.include_metrics = {}
 
     def do_log_only_loss(self, split: Split) -> bool:
-        if self.do_skip_all_metrics:
+        if (
+            self.do_skip_all_metrics
+            or split not in self.include_metrics
+            or not self.include_metrics[split]
+            or (
+                (len(self.include_metrics[split]) == 1)
+                and (MetricCategories.LOSS_PARTS in self.include_metrics[split])
+            )
+        ):
             return True
-        if split not in self.include_metrics:
-            return True
-        if not self.include_metrics[split]:
-            return True
-        return False
+        else:
+            return False
 
     def do_log(self, split: Split, cat: MetricCategories, metric_name: str | None = None) -> bool:
         if self.do_log_only_loss(split):
             return False
-        if self.include_metrics[split].get(cat, False):
-            inc_dict = self.include_metrics[split].get(cat, False)
-            if (metric_name is None) or (inc_dict is True):
-                return True
-            elif not inc_dict:
-                return False
 
-            if "_" in metric_name.replace("explained_variance", ""):
-                parts = metric_name.split("_")
-                averaging = parts[0]
-                metric = "_".join(parts[1:])
-            else:
-                return True
+        inc_dict = self.include_metrics[split].get(cat, False)
+        if not inc_dict:
+            return False
+        elif metric_name is None or inc_dict is True:
+            return True
 
-            permissible_averagings = inc_dict.get(metric, [])
-            if (permissible_averagings is True) or (averaging in permissible_averagings):
-                return True
-            else:
-                return False
+        has_averaging = "_" in metric_name.replace("explained_variance", "")
+        if not has_averaging:
+            return metric_name in inc_dict
+
+        parts = metric_name.split("_")
+        averaging = parts[0]
+        metric = "_".join(parts[1:])
+
+        permissible_averagings = inc_dict.get(metric, [])
+        if (permissible_averagings is True) or (averaging in permissible_averagings):
+            return True
         else:
             return False
 
