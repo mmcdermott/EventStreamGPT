@@ -9,13 +9,167 @@ from unittest.mock import MagicMock
 
 from EventStream.data.types import DataModality
 from EventStream.transformer.config import (
+    Averaging,
+    MetricCategories,
+    Metrics,
+    MetricsConfig,
     OptimizationConfig,
+    Split,
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
     TimeToEventGenerationHeadType,
 )
 
 from ..mixins import ConfigComparisonsMixin
+
+
+class TestMetricsConfig(unittest.TestCase):
+    def test_do_skip_all_metrics(self):
+        MC = MetricsConfig(do_skip_all_metrics=True)
+        self.assertEqual(MC.include_metrics, {})
+        for split in Split.values():
+            self.assertTrue(MC.do_log_only_loss(split))
+
+    def test_do_log_only_loss(self):
+        split = Split.TUNING
+
+        cases = [
+            {
+                "msg": "Should log only loss when split is not present in include_metrics",
+                "include_metrics": {Split.HELD_OUT: True},
+                "want": True,
+            },
+            {
+                "msg": "Should log only loss when split is present in include_metrics but is empty",
+                "include_metrics": {split: {}},
+                "want": True,
+            },
+            {
+                "msg": (
+                    "Should log only loss when split is present in include_metrics but only contains "
+                    "loss_parts."
+                ),
+                "include_metrics": {split: {MetricCategories.LOSS_PARTS: True}},
+                "want": True,
+            },
+            {
+                "msg": (
+                    "Should not log only loss when split is present in include_metrics and contains other "
+                    "metrics"
+                ),
+                "include_metrics": {split: {MetricCategories.TTE: {Metrics.MSE: True}}},
+                "want": False,
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                MC = MetricsConfig(
+                    do_skip_all_metrics=False,
+                    include_metrics=case["include_metrics"],
+                )
+                self.assertEqual(MC.do_log_only_loss(split), case["want"])
+
+    def test_do_log(self):
+        split = Split.TUNING
+
+        cases = [
+            {
+                "msg": "Should not log when do_log_only_loss(split) is True",
+                "do_log_only_loss": True,
+                "want": False,
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {},
+                "metric_name": None,
+            },
+            {
+                "msg": "Should not log when cat is not present in include_metrics",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {split: {MetricCategories.REGRESSION: True}},
+                "want": False,
+                "metric_name": None,
+            },
+            {
+                "msg": "Should not log when cat is present in include_metrics but is empty",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {split: {MetricCategories.CLASSIFICATION: {}}},
+                "want": False,
+                "metric_name": None,
+            },
+            {
+                "msg": "Should log when metric_name is None",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {
+                    split: {MetricCategories.CLASSIFICATION: {Metrics.AUROC: True}}
+                },
+                "metric_name": None,
+                "want": True,
+            },
+            {
+                "msg": "Should log when include_metrics is True",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {split: {MetricCategories.CLASSIFICATION: True}},
+                "metric_name": f"{Averaging.WEIGHTED}_{Metrics.AUROC}",
+                "want": True,
+            },
+            {
+                "msg": "Should log when metric is included and all averagings are included.",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {
+                    split: {MetricCategories.CLASSIFICATION: {Metrics.AUROC: True}}
+                },
+                "metric_name": f"{Averaging.WEIGHTED}_{Metrics.AUROC}",
+                "want": True,
+            },
+            {
+                "msg": "Should not log when metric is not included even if all averagings are included.",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {
+                    split: {MetricCategories.CLASSIFICATION: {Metrics.AUROC: True}}
+                },
+                "metric_name": f"{Averaging.WEIGHTED}_{Metrics.AUPRC}",
+                "want": False,
+            },
+            {
+                "msg": "Should log when metric and averagings are included.",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {
+                    split: {MetricCategories.CLASSIFICATION: {Metrics.AUROC: [Averaging.WEIGHTED]}}
+                },
+                "metric_name": f"{Averaging.WEIGHTED}_{Metrics.AUROC}",
+                "want": True,
+            },
+            {
+                "msg": "Should not log when metric is included if averaging is not included.",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {
+                    split: {MetricCategories.CLASSIFICATION: {Metrics.AUROC: [Averaging.MICRO]}}
+                },
+                "metric_name": f"{Averaging.WEIGHTED}_{Metrics.AUROC}",
+                "want": False,
+            },
+            {
+                "msg": "Should not log when metric is not included even if it has no averaging.",
+                "cat": MetricCategories.CLASSIFICATION,
+                "include_metrics": {
+                    split: {MetricCategories.CLASSIFICATION: {Metrics.AUROC: [Averaging.MICRO]}}
+                },
+                "metric_name": Metrics.AUPRC,
+                "want": False,
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                MC = MetricsConfig(
+                    do_skip_all_metrics=False, include_metrics=case["include_metrics"]
+                )
+                if case.get("do_log_only_loss", False):
+                    MC.do_log_only_loss = MagicMock(return_value=True)
+                else:
+                    MC.do_log_only_loss = MagicMock(return_value=False)
+                self.assertEqual(MC.do_log(split, case["cat"], case["metric_name"]), case["want"])
+
 
 DEFAULT_OPT_CONFIG_DICT = dict(
     init_lr=1e-2,
