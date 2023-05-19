@@ -163,7 +163,7 @@ class DatasetBase(
         all_events_and_measurements = []
         event_types = []
 
-        for df, schemas in self._tqdm(list(schemas_by_df.items()), desc="Input DataFrames"):
+        for df, schemas in schemas_by_df.items():
             all_columns = []
 
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
@@ -338,8 +338,10 @@ class DatasetBase(
 
         self.config.save_dir.mkdir(parents=True, exist_ok=True)
 
+        do_overwrite = kwargs.get("do_overwrite", False)
+
         config_fp = self.config.save_dir / "config.json"
-        self.config.to_json_file(config_fp)
+        self.config.to_json_file(config_fp, do_overwrite=do_overwrite)
 
         if self._is_fit:
             inferred_measurement_metadata_dir = (
@@ -363,20 +365,17 @@ class DatasetBase(
 
         vocab_config_fp = self.config.save_dir / "vocabulary_config.json"
 
-        if "do_overwrite" in kwargs:
-            self.vocabulary_config.to_json_file(
-                vocab_config_fp, do_overwrite=kwargs["do_overwrite"]
-            )
-        else:
-            self.vocabulary_config.to_json_file(vocab_config_fp)
+        self.vocabulary_config.to_json_file(vocab_config_fp, do_overwrite=do_overwrite)
 
         subjects_fp = self.subjects_fp(self.config.save_dir)
         events_fp = self.events_fp(self.config.save_dir)
         dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
 
-        self._write_df(self.subjects_df, subjects_fp)
-        self._write_df(self.events_df, events_fp)
-        self._write_df(self.dynamic_measurements_df, dynamic_measurements_fp)
+        self._write_df(self.subjects_df, subjects_fp, do_overwrite=do_overwrite)
+        self._write_df(self.events_df, events_fp, do_overwrite=do_overwrite)
+        self._write_df(
+            self.dynamic_measurements_df, dynamic_measurements_fp, do_overwrite=do_overwrite
+        )
 
     def __init__(
         self,
@@ -406,6 +405,9 @@ class DatasetBase(
         """
         super().__init__(**kwargs)
 
+        if "do_overwrite" in kwargs:
+            self.do_overwrite = kwargs["do_overwrite"]
+
         if (
             subjects_df is None or events_df is None or dynamic_measurements_df is None
         ) and input_schema is None:
@@ -427,12 +429,6 @@ class DatasetBase(
                 raise ValueError("Can't set events_df if input_schema is not None!")
             if dynamic_measurements_df is not None:
                 raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
-
-            if config.save_dir is not None:
-                do_overwrite = kwargs.get("do_overwrite", False)
-                input_schema.to_json_file(
-                    config.save_dir / "input_schema.json", do_overwrite=do_overwrite
-                )
 
             subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
             subject_id_dtype = subjects_df["subject_id"].dtype

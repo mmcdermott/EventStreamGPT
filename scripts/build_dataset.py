@@ -282,15 +282,17 @@ def main(cfg: DictConfig):
     dataset_schema = DatasetSchema(
         static=build_schema(
             col_schema=static_col_schema,
-            source_schema=inputs[static_key],
+            source_schema=inputs.pop(static_key),
             subject_id_col=subject_id_col,
             schema_name=static_key,
         ),
         dynamic=[
             build_schema(
-                col_schema=col_schema, source_schema=inputs[dynamic_key], schema_name=dynamic_key
+                col_schema=dynamic_sources.get(dynamic_key, {}),
+                source_schema=source_schema,
+                schema_name=dynamic_key,
             )
-            for dynamic_key, col_schema in dynamic_sources.items()
+            for dynamic_key, source_schema in inputs.items()
         ],
     )
 
@@ -303,10 +305,15 @@ def main(cfg: DictConfig):
 
     config = DatasetConfig(measurement_configs=measurement_configs, **cfg)
 
-    ESD = Dataset(config=config, input_schema=dataset_schema, do_overwrite=do_overwrite)
+    if config.save_dir is not None:
+        dataset_schema.to_json_file(
+            config.save_dir / "input_schema.json", do_overwrite=do_overwrite
+        )
+
+    ESD = Dataset(config=config, input_schema=dataset_schema)
     ESD.split(split, seed=seed)
     ESD.preprocess_measurements()
-    ESD._save()
+    ESD._save(do_overwrite=do_overwrite)
     ESD.cache_deep_learning_representation(DL_chunk_size)
 
 

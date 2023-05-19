@@ -306,6 +306,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @classmethod
     def _write_df(cls, df: DF_T, fp: Path, **kwargs):
+        do_overwrite = kwargs.get("do_overwrite", False)
+
+        if not do_overwrite and fp.is_file():
+            raise FileExistsError(f"{fp} exists and do_overwrite is {do_overwrite}!")
+
         df.write_parquet(fp)
 
     def get_metadata_schema(self, config: MeasurementConfig) -> dict[str, pl.DataType]:

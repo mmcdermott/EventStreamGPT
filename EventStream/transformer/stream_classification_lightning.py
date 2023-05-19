@@ -491,12 +491,13 @@ def train(cfg: FinetuneConfig):
             save_dir=cfg.save_dir,
         )
 
-        if do_log_graph:
-            # Watching the model naturally tracks parameter values and gradients.
-            wandb_logger.watch(LM, log="all", log_graph=True)
+        if os.environ.get("LOCAL_RANK", "0") == "0":
+            if do_log_graph:
+                # Watching the model naturally tracks parameter values and gradients.
+                wandb_logger.watch(LM, log="all", log_graph=True)
 
-        if cfg.wandb_experiment_config_kwargs:
-            wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
+            if cfg.wandb_experiment_config_kwargs:
+                wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
 
         trainer_kwargs["logger"] = wandb_logger
 

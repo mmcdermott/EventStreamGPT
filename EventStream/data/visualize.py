@@ -310,6 +310,24 @@ class Visualizer(JSONableMixin):
 
         return figures
 
+    def plot_static_variables_breakdown(self, static_variables: pl.DataFrame) -> list[Figure]:
+        figures = []
+        if not self.static_covariates:
+            return
+
+        for static_covariate in self.static_covariates:
+            df = static_variables.groupby(static_covariate).agg(
+                pl.col("subject_id").n_unique().alias("# Subjects")
+            )
+            figures.append(
+                px.bar(
+                    self._normalize_to_pandas(df, static_covariate),
+                    x=static_covariate,
+                    y="# Subjects",
+                )
+            )
+        return figures
+
     def plot_counts_over_age(self, events_df: pl.DataFrame) -> list[Figure]:
         figures = []
         if not self.plot_by_age:
@@ -324,15 +342,21 @@ class Visualizer(JSONableMixin):
                 (pl.col("age") / age_bucket_size)
                 .round(0)
                 .cast(pl.Int64, strict=False)
-                .alias("age_bucket")
+                .alias("age_bucket"),
+                pl.col("subject_id")
+                .n_unique()
+                .over(*self.static_covariates)
+                .alias("total_n_subjects"),
             )
             .drop_nulls("age_bucket")
             .groupby("age_bucket", *self.static_covariates)
             .agg(
                 pl.col(self.age_col).mean(),
                 pl.col("event_id").n_unique().alias("n_events"),
-                pl.col("subject_id").n_unique().alias("n_subjects"),
+                pl.col("subject_id").n_unique().alias("n_subjects_at_age"),
+                pl.col("total_n_subjects").first(),
             )
+            .sort(by=self.age_col, descending=False)
             .with_columns(
                 pl.col("n_events")
                 .cumsum()
@@ -348,16 +372,26 @@ class Visualizer(JSONableMixin):
                 events_df.groupby("age_bucket", static_covariate)
                 .agg(
                     (
-                        (pl.col(self.age_col) * pl.col("n_subjects")).sum()
-                        / pl.col("n_subjects").sum()
+                        (pl.col(self.age_col) * pl.col("n_subjects_at_age")).sum()
+                        / pl.col("n_subjects_at_age").sum()
                     ).alias(self.age_col),
-                    pl.col("n_subjects").sum().alias("Subjects with Event @ Age"),
+                    pl.col("n_subjects_at_age").sum().alias("Subjects with Event @ Age"),
                     pl.col("n_events").sum().alias("Events @ Age"),
                     pl.col("Cumulative Events").sum().alias("Events <= Age"),
+                    pl.col("total_n_subjects").sum().alias("Total Subjects"),
                 )
                 .with_columns(
+                    (pl.col("Subjects with Event @ Age") / pl.col("Total Subjects")).alias(
+                        "% Subjects with Event @ Age"
+                    ),
                     (pl.col("Events @ Age") / pl.col("Subjects with Event @ Age")).alias(
-                        "Events / Subject @ Age | has event"
+                        "Events @ Age / (Subjects with >= 1 Event @ Age)"
+                    ),
+                    (pl.col("Events @ Age") / pl.col("Total Subjects")).alias(
+                        "Events @ Age / Subject"
+                    ),
+                    (pl.col("Events <= Age") / pl.col("Total Subjects")).alias(
+                        "Events <= Age / Subject"
                     ),
                 )
                 .sort(self.age_col, descending=False),
@@ -366,10 +400,14 @@ class Visualizer(JSONableMixin):
 
             figures.extend(
                 [
-                    px.line(counts_at_age, y="Subjects with Event @ Age", **plt_kwargs),
-                    px.line(counts_at_age, y="Events @ Age", **plt_kwargs),
-                    px.line(counts_at_age, y="Events <= Age", **plt_kwargs),
-                    px.line(counts_at_age, y="Events / Subject @ Age | has event", **plt_kwargs),
+                    px.line(counts_at_age, y="% Subjects with Event @ Age", **plt_kwargs),
+                    px.line(counts_at_age, y="Events @ Age / Subject", **plt_kwargs),
+                    px.line(counts_at_age, y="Events <= Age / Subject", **plt_kwargs),
+                    px.line(
+                        counts_at_age,
+                        y="Events @ Age / (Subjects with >= 1 Event @ Age)",
+                        **plt_kwargs,
+                    ),
                 ]
             )
 
@@ -405,6 +443,7 @@ class Visualizer(JSONableMixin):
         events_df = events_df.join(static_variables, on="subject_id")
 
         figs = []
+        figs.extend(self.plot_static_variables_breakdown(static_variables))
         figs.extend(self.plot_counts_over_time(events_df))
         figs.extend(self.plot_age_distribution_over_time(subjects_df, subj_ranges))
         figs.extend(self.plot_counts_over_age(events_df))
