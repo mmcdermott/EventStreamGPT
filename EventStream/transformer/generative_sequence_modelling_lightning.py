@@ -562,8 +562,6 @@ def train(cfg: PretrainConfig):
 
     Args: TODO
     """
-    cfg.save_dir.mkdir(parents=True, exist_ok=True)
-
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -575,6 +573,8 @@ def train(cfg: PretrainConfig):
     optimization_config.set_to_dataset(train_pyd)
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
+        cfg.save_dir.mkdir(parents=True, exist_ok=True)
+
         print("Saving config files...")
         config_fp = cfg.save_dir / "config.json"
         if config_fp.exists() and not cfg.do_overwrite:
@@ -631,9 +631,6 @@ def train(cfg: PretrainConfig):
         callbacks.append(
             EarlyStopping(monitor="tuning_loss", mode="min", patience=optimization_config.patience)
         )
-
-    # checkpoints_dir = Path(cfg.trainer_config['default_root_dir'])
-    # checkpoints_dir.mkdir(exist_ok=True, parents=True)
 
     trainer_kwargs = dict(
         **cfg.trainer_config,

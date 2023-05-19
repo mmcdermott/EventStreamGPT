@@ -409,8 +409,6 @@ def train(cfg: FinetuneConfig):
 
     torch.multiprocessing.set_sharing_strategy("file_system")
 
-    cfg.save_dir.mkdir(parents=True, exist_ok=True)
-
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -422,6 +420,7 @@ def train(cfg: FinetuneConfig):
     optimization_config.set_to_dataset(train_pyd)
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
+        cfg.save_dir.mkdir(parents=True, exist_ok=True)
         print("Saving config files...")
         config_fp = cfg.save_dir / "config.json"
         if config_fp.exists() and not cfg.do_overwrite:
