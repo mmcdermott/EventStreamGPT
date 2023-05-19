@@ -752,13 +752,22 @@ class MeasurementConfig(JSONableMixin):
                 out = pd.read_csv(fp, index_col=0)
 
                 if self.modality == DataModality.UNIVARIATE_REGRESSION:
-                    assert out.shape[1] == 1
+                    if out.shape[1] != 1:
+                        raise ValueError(
+                            f"For {self.modality}, measurement metadata at {fp} should be a series, but "
+                            f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
+                        )
                     out = out.iloc[:, 0]
                     for col in ("outlier_model", "normalizer"):
                         if col in out:
                             out[col] = eval(out[col])
+                elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
+                    raise ValueError(
+                        "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
+                        f"measurements should have measurement metadata paths stored. Got {fp} on "
+                        f"{self.modality} measurement!"
+                    )
                 else:
-                    assert self.modality == DataModality.MULTIVARIATE_REGRESSION
                     for col in ("outlier_model", "normalizer"):
                         if col in out:
                             out[col] = out[col].apply(eval)
@@ -804,7 +813,10 @@ class MeasurementConfig(JSONableMixin):
 
     def add_empty_metadata(self):
         """Adds an empty `measurement_metadata` dataframe or series."""
-        assert self.measurement_metadata is None
+        if self.measurement_metadata is not None:
+            raise ValueError(
+                f"Can't add empty metadata; already set to {self.measurement_metadata}"
+            )
 
         match self.modality:
             case DataModality.UNIVARIATE_REGRESSION:
@@ -825,7 +837,8 @@ class MeasurementConfig(JSONableMixin):
                 raise ValueError(f"Can't add metadata to a {self.modality} measure!")
 
     def add_missing_mandatory_metadata_cols(self):
-        assert self.is_numeric
+        if not self.is_numeric:
+            raise ValueError("Only numeric measurements can have measurement metadata")
         match self.measurement_metadata:
             case None:
                 self.add_empty_metadata()
@@ -882,7 +895,11 @@ class MeasurementConfig(JSONableMixin):
                 )
 
         if as_dict["functor"] is not None:
-            assert as_dict["temporality"] == TemporalityType.FUNCTIONAL_TIME_DEPENDENT
+            if as_dict["temporality"] != TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
+                raise ValueError(
+                    "Only TemporalityType.FUNCTIONAL_TIME_DEPENDENT measures can have functors. Got "
+                    f"{as_dict['temporality']}"
+                )
             as_dict["functor"] = cls.FUNCTORS[as_dict["functor"]["class"]].from_dict(
                 as_dict["functor"]
             )
@@ -1031,15 +1048,36 @@ class DatasetConfig(JSONableMixin):
             "min_unique_numerical_observations",
         ):
             val = getattr(self, var)
-            if val is not None:
-                assert ((type(val) is float) and (0 < val) and (val < 1)) or (
-                    (type(val) is int) and (val > 1)
-                )
+            match val:
+                case None:
+                    pass
+                case float() if (0 < val) and (val < 1):
+                    pass
+                case int() if val > 1:
+                    pass
+                case float():
+                    raise ValueError(f"{var} must be in (0, 1) if float; got {val}!")
+                case int():
+                    raise ValueError(f"{var} must be > 1 if integral; got {val}!")
+                case _:
+                    raise TypeError(
+                        f"{var} must either be a fraction (float between 0 and 1) or count (int > 1). Got "
+                        f"{type(val)} of {val}"
+                    )
 
         for var in ("min_true_float_frequency",):
             val = getattr(self, var)
-            if val is not None:
-                assert type(val) is float and (0 < val) and (val < 1)
+            match val:
+                case None:
+                    pass
+                case float() if (0 < val) and (val < 1):
+                    pass
+                case float():
+                    raise ValueError(f"{var} must be in (0, 1) if float; got {val}!")
+                case _:
+                    raise TypeError(
+                        f"{var} must be a fraction (float between 0 and 1). Got {type(val)} of {val}"
+                    )
 
         for var in ("outlier_detector_config", "normalizer_config"):
             val = getattr(self, var)
