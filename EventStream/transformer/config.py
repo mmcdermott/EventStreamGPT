@@ -527,6 +527,15 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
+
+        if measurement_configs:
+            new_meas_configs = {}
+            for k, v in measurement_configs.items():
+                if type(v) is dict:
+                    new_meas_configs[k] = MeasurementConfig.from_dict(v)
+                else:
+                    new_meas_configs[k] = v
+            measurement_configs = new_meas_configs
         self.measurement_configs = measurement_configs
 
         if do_split_embeddings:
