@@ -299,7 +299,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
             vocab_size = config.vocab_sizes_by_measurement[measurement]
 
             if measurement not in self.classification:
-                print(f"WARNING: Attempting to generate improper measurement {measurement}!")
+                print(
+                    f"WARNING: Attempting to generate improper measurement {measurement}! "
+                    f"Acceptable targets: {', '.join(self.classification.keys())}"
+                )
                 return
 
             preds = self.classification[measurement]
@@ -815,7 +818,7 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, Seed
             classification={k: v.sample() for k, v in self.classification.items()},
             regression={k: v.sample() for k, v in self.regression.items()},
             regression_indices=self.regression_indices,
-            time_to_event=self.time_to_event.sample(),
+            time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
         )
 
 

@@ -130,7 +130,7 @@ class StructuredAttention(torch.nn.Module):
             )
             per_event_all[flat_seq_mask, :] = per_event
 
-            per_event_all = torch.reshape(per_event_all, (bsz, seq_len, hidden_size))
+        per_event_all = torch.reshape(per_event_all, (bsz, seq_len, hidden_size))
 
         # Next, we need to summarize the sequence of pooled event embeddings.
         contextualized_events = self.seq_module(

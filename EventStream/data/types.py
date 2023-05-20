@@ -1,5 +1,6 @@
 import dataclasses
 import enum
+from typing import Any
 
 import torch
 
@@ -25,6 +26,9 @@ class PytorchBatch:
 
     # We track this instead of raw times as it is less likely to suffer from underflow errors.
     time_delta: torch.FloatTensor | None = None
+
+    # We don't often use this, but it is used in generation.
+    time: torch.FloatTensor | None = None
 
     static_indices: torch.LongTensor | None = None
     static_measurement_indices: torch.LongTensor | None = None
@@ -58,6 +62,9 @@ class PytorchBatch:
     def n_static_data_elements(self) -> int:
         return self.static_indices.shape[1]
 
+    def get(self, item: str, default: Any) -> Any:
+        return getattr(self, item) if item in self.keys() else default
+
     def __getitem__(self, item: str) -> torch.Tensor:
         return dataclasses.asdict(self)[item]
 
@@ -70,10 +77,10 @@ class PytorchBatch:
         return dataclasses.asdict(self).items()
 
     def keys(self):
-        return dataclasses.asdict(self).items()
+        return dataclasses.asdict(self).keys()
 
     def values(self):
-        return dataclasses.asdict(self).items()
+        return dataclasses.asdict(self).values()
 
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
         return PytorchBatch(

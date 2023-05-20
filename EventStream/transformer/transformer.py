@@ -324,6 +324,7 @@ class StructuredTransformerBlock(nn.Module):
         self.block = StructuredAttention(
             seq_module=seq_block,
             dep_graph_module=dep_graph_block,
+            do_update_to_contextualized_event=config.do_update_to_contextualized_event,
         )
 
     def forward(
@@ -364,6 +365,10 @@ class StructuredTransformerPreTrainedModel(PreTrainedModel):
             module.gradient_checkpointing = value
 
 
+def time_from_deltas(t_deltas: torch.Tensor) -> torch.Tensor:
+    return torch.hstack([torch.zeros_like(t_deltas[:, :1]), t_deltas.cumsum(-1)[:, :-1]])
+
+
 # Copied from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class TemporalPositionEncoding(torch.nn.Module):
     def __init__(
@@ -387,16 +392,14 @@ class TemporalPositionEncoding(torch.nn.Module):
             self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=False)
             self.cos_div_term = torch.nn.Parameter(div_term[:-1], requires_grad=False)
 
-    def forward(self, t_deltas: torch.Tensor) -> torch.Tensor:
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
         """t is the tensor of input timepoints, with shape (batch size, sequence length)"""
 
-        bsz, seq_len = t_deltas.shape
-        device = t_deltas.device
+        bsz, seq_len = t.shape
+        device = t.device
 
         # First, we go from deltas to time values and unsqueeze it for broadcasting through the hidden dim.
-        t = torch.hstack(
-            [torch.zeros(bsz, 1, device=device), t_deltas.cumsum(-1)[:, :-1]]
-        ).unsqueeze(-1)
+        t = t.unsqueeze(-1)
 
         # temporal_embeddings will be our output container.
         # It should have shape (batch size, sequence length, embedding dim), and be on the same device as the
@@ -467,15 +470,24 @@ class StructuredInputLayer(torch.nn.Module):
 
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
-    def forward(self, batch: PytorchBatch) -> torch.Tensor:
+    def forward(
+        self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None
+    ) -> torch.Tensor:
         data_embed = self.data_embedding_layer(batch)
         # data_embed is either of shape (batch_size, sequence_length, config.hidden_size) or of shape
         # (batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
 
-        time_embed = self.time_embedding_layer(batch["time_delta"])
+        if batch.get("time", None) is None:
+            batch["time"] = time_from_deltas(batch["time_delta"])
+
+        time_embed = self.time_embedding_layer(batch["time"])
         # time_embed is of shape (batch_size, sequence_length, config.hidden_size)
 
         if self.config.measurements_per_dep_graph_level is not None:
+            if dep_graph_el_generation_target is not None and dep_graph_el_generation_target > 0:
+                # This is used in generation to take advantage of the cache.
+                data_embed = data_embed[:, :, dep_graph_el_generation_target - 1].unsqueeze(2)
+
             # In this case, we are in a non-conditionally independent mode, with a specified dependency graph
             # split. We assume that the first element of the dependency graph split reflects those components
             # that should be lumped in with time (e.g., the functional time dependent variables). We perform a
@@ -545,6 +557,8 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
         output_attentions: bool | None = None,
         output_hidden_states: bool | None = None,
         return_dict: bool | None = None,
+        dep_graph_past: tuple[torch.FloatTensor] | None = None,
+        dep_graph_el_generation_target: int | None = None,
     ) -> tuple[torch.Tensor] | TransformerOutputWithPast:
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
@@ -559,12 +573,16 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
 
         if past is None:
             past = tuple([None] * len(self.h))
+        if dep_graph_past is None:
+            dep_graph_past = tuple([None] * len(self.h))
 
         if input_embeds is None:
             assert batch is not None
             assert seq_mask is None
 
-            input_embeds = self.input_layer(batch)
+            input_embeds = self.input_layer(
+                batch, dep_graph_el_generation_target=dep_graph_el_generation_target
+            )
             seq_mask = batch["event_mask"]
         else:
             assert batch is None, "Can't specify both input_embeds and batch."
@@ -576,10 +594,25 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
         hidden_states = input_embeds
-        presents = () if use_cache else None
+
+        presents = None
+        if self.structured_event_processing_mode == "nested_attention":
+            if use_cache:
+                presents = {"seq_past": (), "dep_graph_past": ()}
+        elif self.structured_event_processing_mode == "conditionally_independent":
+            if use_cache:
+                presents = ()
+        else:
+            raise ValueError(
+                "Invalid `self.structured_event_processing_mode`! Got "
+                f"{self.structured_event_processing_mode}."
+            )
+
         all_self_attentions = () if output_attentions else None
         all_hidden_states = () if output_hidden_states else None
-        for i, (block, layer_past) in enumerate(zip(self.h, past)):
+        for i, (block, layer_past, dep_graph_layer_past) in enumerate(
+            zip(self.h, past, dep_graph_past)
+        ):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -610,7 +643,10 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                             use_cache=use_cache,
                             output_attentions=output_attentions,
                         ),
-                        {},
+                        {
+                            "layer_past": dep_graph_layer_past,
+                            "use_cache": use_cache,
+                        },
                     )
                 elif self.structured_event_processing_mode == "conditionally_independent":
                     args = (
@@ -620,11 +656,6 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                         head_mask[i],
                         use_cache,
                         output_attentions,
-                    )
-                else:
-                    raise ValueError(
-                        "Invalid `self.structured_event_processing_mode`! Got "
-                        f"{self.structured_event_processing_mode}."
                     )
 
                 outputs = torch.utils.checkpoint.checkpoint(create_custom_forward(block), *args)
@@ -640,7 +671,10 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                             use_cache=use_cache,
                             output_attentions=output_attentions,
                         ),
-                        dep_graph_module_kwargs={},
+                        dep_graph_module_kwargs={
+                            "layer_past": dep_graph_layer_past,
+                            "use_cache": use_cache,
+                        },
                     )
                 elif self.structured_event_processing_mode == "conditionally_independent":
                     kwargs = dict(
@@ -651,22 +685,30 @@ class StructuredTransformer(StructuredTransformerPreTrainedModel):
                         use_cache=use_cache,
                         output_attentions=output_attentions,
                     )
-                else:
-                    raise ValueError(
-                        "Invalid `self.structured_event_processing_mode`! Got "
-                        f"{self.structured_event_processing_mode}."
-                    )
                 outputs = block(**kwargs)
 
             hidden_states, extra_return_info = outputs
             if self.structured_event_processing_mode == "nested_attention":
-                extra_return_info = extra_return_info["seq_module"]
+                if use_cache is True:
+                    presents["seq_past"] = presents["seq_past"] + (
+                        extra_return_info["seq_module"]["present_key_value"],
+                    )
+                    presents["dep_graph_past"] = presents["dep_graph_past"] + (
+                        extra_return_info["dep_graph_module"]["present_key_value"],
+                    )
 
-            if use_cache is True:
-                presents = presents + (extra_return_info["present_key_value"],)
+                if output_attentions:
+                    all_self_attentions = all_self_attentions + (
+                        extra_return_info["seq_module"]["attn_weights"],
+                    )
+            else:
+                if use_cache is True:
+                    presents = presents + (extra_return_info["present_key_value"],)
 
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (extra_return_info["attn_weights"],)
+                if output_attentions:
+                    all_self_attentions = all_self_attentions + (
+                        extra_return_info["attn_weights"],
+                    )
 
         hidden_states = self.ln_f(hidden_states)
 

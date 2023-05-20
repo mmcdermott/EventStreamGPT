@@ -144,6 +144,8 @@ class StructuredGenerationMixin:
                     }
                 case torch.Tensor():
                     batch[k] = v.index_select(0, expanded_return_idx)
+                case None if k == "time":
+                    pass
                 case _:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
 
@@ -156,20 +158,8 @@ class StructuredGenerationMixin:
         # update past
         if "past_key_values" in outputs:
             model_kwargs["past"] = outputs.past_key_values
-        elif "mems" in outputs:
-            model_kwargs["past"] = outputs.mems
-        elif "past_buckets_states" in outputs:
-            model_kwargs["past"] = outputs.past_buckets_states
         else:
             model_kwargs["past"] = None
-
-        # update attention mask
-        if not is_encoder_decoder:
-            if "attention_mask" in model_kwargs:
-                attention_mask = model_kwargs["attention_mask"]
-                model_kwargs["attention_mask"] = torch.cat(
-                    [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
-                )
 
         return model_kwargs
 
@@ -308,10 +298,6 @@ class StructuredGenerationMixin:
             max_time(`float`, *optional*):
                 The maximum amount of time you allow the computation to run for in seconds. generation will
                 still finish the current pass after allocated time has been passed.
-            attention_mask (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Mask to avoid performing attention on padding token indices. Mask values are in `[0, 1]`, 1
-                for tokens that are not masked, and 0 for masked tokens. If not provided, will default to a
-                tensor the same shape as `input_ids` that masks the pad token.
             use_cache (`bool`, *optional*, defaults to `True`):
                 Whether or not the model should use the past last key/values attentions (if applicable to the
                 model) to speed up decoding.
@@ -605,16 +591,21 @@ class StructuredGenerationMixin:
 
             next_scores = ()
 
-            for measurements_to_fill in measurements_to_fill_list:
+            for dep_graph_el_target, measurements_to_fill in enumerate(measurements_to_fill_list):
                 # TODO(mmd): Here -- need to loop over dependency graph elements.
                 # forward pass to get next token
-                model_inputs = self.prepare_inputs_for_generation(batch, **model_kwargs)
+                model_inputs = self.prepare_inputs_for_generation(
+                    batch, dep_graph_el_generation_target=dep_graph_el_target, **model_kwargs
+                )
                 outputs = self(
                     **model_inputs,
                     return_dict=True,
                     output_attentions=output_attentions,
                     output_hidden_states=output_hidden_states,
                     is_generation=True,
+                )
+                model_kwargs = self._update_model_kwargs_for_generation(
+                    outputs, model_kwargs, is_encoder_decoder=False
                 )
 
                 if synced_gpus and this_peer_finished:
@@ -641,8 +632,10 @@ class StructuredGenerationMixin:
 
                 # update batch for next step
                 if measurements_to_fill == {"time"}:
+                    assert dep_graph_el_target == 0
                     batch = next_event.append_to_batch(batch, self.config)
                 else:
+                    assert dep_graph_el_target > 0
                     batch = next_event.update_last_event_data(
                         batch,
                         self.config,
@@ -657,10 +650,6 @@ class StructuredGenerationMixin:
                     decoder_attentions += (outputs.attentions,)
                 if output_hidden_states:
                     decoder_hidden_states += (outputs.hidden_states,)
-
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs, model_kwargs, is_encoder_decoder=False
-            )
 
             # if eos_token was found in one sentence, set sentence to finished
             # if eos_token_id is not None:

@@ -24,7 +24,11 @@ from .model_output import (
     StreamClassificationModelOutput,
     get_event_type_mask_per_measurement,
 )
-from .transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
+from .transformer import (
+    StructuredTransformer,
+    StructuredTransformerPreTrainedModel,
+    time_from_deltas,
+)
 from .utils import safe_masked_max, safe_weighted_avg, str_summary, weighted_loss
 
 
@@ -525,6 +529,7 @@ class GenerativeOutputLayer(torch.nn.Module):
         batch: PytorchBatch,
         encoded: torch.FloatTensor,
         is_generation: bool = False,
+        dep_graph_el_generation_target: int | None = None,
     ) -> GenerativeSequenceModelOutput:
         # encoded is of one of two shapes:
         #   1. (batch size, sequence length, config.hidden_size), in the case that
@@ -533,6 +538,10 @@ class GenerativeOutputLayer(torch.nn.Module):
         #      self.config.structured_event_processing_mode != 'conditionally_independent'. In this case, the
         #      last element of the dependency graph is always the whole-event embedding, and the first element
         #      of the dependency graph is always assumed to be the time of the event.
+
+        if dep_graph_el_generation_target is not None:
+            assert is_generation
+            assert self.config.structured_event_processing_mode == "nested_attention"
 
         # These are the containers we'll use to process the outputs
         classification_dists_by_measurement = {}
@@ -599,80 +608,102 @@ class GenerativeOutputLayer(torch.nn.Module):
 
         else:
             bsz, seq_len, dep_graph_len, _ = encoded.shape
-            whole_event_encoded = encoded[:, :, -1, :]
 
-            # Now we need to walk through the other elements of the dependency graph (omitting the first
-            # entry, which reflects time-only dependent values and so is covered by predicting TTE).
-            for i in range(1, dep_graph_len):
-                # In this case, unlike above, this level of the dependency graph is presumed to be used to
-                # predict the data types listed in `self.config.measurements_per_dep_graph_level`, so we don't
-                # need to shift anything as we did in the conditionally_independent case.
-                dep_graph_level_encoded = encoded[:, :, i - 1, :]
-                # dep_graph_level_encoded is of shape (batch size, sequence length, hidden size)
-
-                if self.config.measurements_per_dep_graph_level is None:
-                    # TODO(mmd): This isn't quite right.
-
-                    # If unspecified, we assume it contains all of them.
-                    classification_measurements_in_level = classification_measurements
-                    regression_measurements_in_level = regression_measurements
+            if dep_graph_el_generation_target is not None:
+                if dep_graph_el_generation_target != 0:
+                    assert dep_graph_len == 1
+                    dep_graph_loop = range(1, 2)
+                    do_TTE = False
                 else:
-                    categorical_measurements_in_level = set()
-                    numerical_measurements_in_level = set()
-                    for measurement in self.config.measurements_per_dep_graph_level[i]:
-                        if type(measurement) in (tuple, list):
-                            measurement, mode = measurement
+                    dep_graph_loop = None
+                    do_TTE = True
+            else:
+                dep_graph_loop = range(1, dep_graph_len)
+                do_TTE = True
+
+            if dep_graph_loop is not None:
+                # Now we need to walk through the other elements of the dependency graph (omitting the first
+                # entry, which reflects time-only dependent values and so is covered by predicting TTE).
+                for i in dep_graph_loop:
+                    # In this case, unlike above, this level of the dependency graph is presumed to be used to
+                    # predict the data types listed in `self.config.measurements_per_dep_graph_level`, so we
+                    # don't need to shift anything as we did in the conditionally_independent case.
+                    dep_graph_level_encoded = encoded[:, :, i - 1, :]
+                    # dep_graph_level_encoded is of shape (batch size, sequence length, hidden size)
+
+                    if self.config.measurements_per_dep_graph_level is None:
+                        raise ValueError
+                    else:
+                        if dep_graph_el_generation_target is not None:
+                            target_idx = dep_graph_el_generation_target
                         else:
-                            mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
+                            target_idx = i
 
-                        match mode:
-                            case MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL:
-                                categorical_measurements_in_level.add(measurement)
-                                numerical_measurements_in_level.add(measurement)
-                            case MeasIndexGroupOptions.CATEGORICAL_ONLY:
-                                categorical_measurements_in_level.add(measurement)
-                            case MeasIndexGroupOptions.NUMERICAL_ONLY:
-                                numerical_measurements_in_level.add(measurement)
-                            case _:
-                                raise ValueError(f"Unknown mode {mode}")
+                        categorical_measurements_in_level = set()
+                        numerical_measurements_in_level = set()
+                        for measurement in self.config.measurements_per_dep_graph_level[
+                            target_idx
+                        ]:
+                            if type(measurement) in (tuple, list):
+                                measurement, mode = measurement
+                            else:
+                                mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
 
-                    classification_measurements_in_level = (
-                        categorical_measurements_in_level.intersection(classification_measurements)
+                            match mode:
+                                case MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL:
+                                    categorical_measurements_in_level.add(measurement)
+                                    numerical_measurements_in_level.add(measurement)
+                                case MeasIndexGroupOptions.CATEGORICAL_ONLY:
+                                    categorical_measurements_in_level.add(measurement)
+                                case MeasIndexGroupOptions.NUMERICAL_ONLY:
+                                    numerical_measurements_in_level.add(measurement)
+                                case _:
+                                    raise ValueError(f"Unknown mode {mode}")
+
+                        classification_measurements_in_level = (
+                            categorical_measurements_in_level.intersection(
+                                classification_measurements
+                            )
+                        )
+                        regression_measurements_in_level = (
+                            numerical_measurements_in_level.intersection(regression_measurements)
+                        )
+
+                    classification_out = self.get_classification_outputs(
+                        batch,
+                        dep_graph_level_encoded,
+                        classification_measurements_in_level,
+                        event_type_mask_per_measurement=event_type_mask_per_measurement,
                     )
-                    regression_measurements_in_level = (
-                        numerical_measurements_in_level.intersection(regression_measurements)
+                    classification_dists_by_measurement.update(classification_out[1])
+                    if not is_generation:
+                        classification_losses_by_measurement.update(classification_out[0])
+                        classification_labels_by_measurement.update(classification_out[2])
+
+                    regression_out = self.get_regression_outputs(
+                        batch,
+                        dep_graph_level_encoded,
+                        regression_measurements_in_level,
+                        is_generation=is_generation,
+                        event_type_mask_per_measurement=event_type_mask_per_measurement,
                     )
+                    regression_dists.update(regression_out[1])
+                    if not is_generation:
+                        regression_loss_values.update(regression_out[0])
+                        regression_labels.update(regression_out[2])
+                        regression_indices.update(regression_out[3])
 
-                classification_out = self.get_classification_outputs(
-                    batch,
-                    dep_graph_level_encoded,
-                    classification_measurements_in_level,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement,
-                )
-                classification_dists_by_measurement.update(classification_out[1])
-                if not is_generation:
-                    classification_losses_by_measurement.update(classification_out[0])
-                    classification_labels_by_measurement.update(classification_out[2])
-
-                regression_out = self.get_regression_outputs(
-                    batch,
-                    dep_graph_level_encoded,
-                    regression_measurements_in_level,
-                    is_generation=is_generation,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement,
-                )
-                regression_dists.update(regression_out[1])
-                if not is_generation:
-                    regression_loss_values.update(regression_out[0])
-                    regression_labels.update(regression_out[2])
-                    regression_indices.update(regression_out[3])
-
-        # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
-        TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(
-            batch,
-            whole_event_encoded,
-            is_generation=is_generation,
-        )
+        if do_TTE:
+            # Now we need to walk through the other elements of the dependency graph (omitting the first
+            # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
+            whole_event_encoded = encoded[:, :, -1, :]
+            TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(
+                batch,
+                whole_event_encoded,
+                is_generation=is_generation,
+            )
+        else:
+            TTE_LL_overall, TTE_dist, TTE_true = None, None, None
 
         return GenerativeSequenceModelOutput(
             **{
@@ -728,13 +759,67 @@ class ESTForGenerativeSequenceModeling(
         self, batch: PytorchBatch, past=None, **kwargs
     ) -> dict[str, Any]:
         # only last sequence element in the batch if past is defined in kwargs
-        if past:
-            batch = batch.last_sequence_element_unsqueezed()
+        batch.time = time_from_deltas(batch.time_delta)
+
+        use_cache = kwargs.get("use_cache", False)
+        if not use_cache:
+            return {**kwargs, "batch": batch}
+
+        dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)
+
+        match past:
+            case None:
+                dep_graph_past = None
+
+                if (
+                    dep_graph_el_generation_target is not None
+                    and dep_graph_el_generation_target != 0
+                ):
+                    raise ValueError(
+                        f"Can't have dep target {dep_graph_el_generation_target} without past"
+                    )
+
+            case dict() as pasts_dict if "seq_past" in pasts_dict and "dep_graph_past" in pasts_dict:
+                past = pasts_dict["seq_past"]
+                batch = batch.last_sequence_element_unsqueezed()
+
+                dep_graph_past = pasts_dict["dep_graph_past"]
+                if dep_graph_el_generation_target is None:
+                    if dep_graph_past is not None:
+                        raise ValueError(
+                            "Trying to use dep_graph_past without a generation target!"
+                        )
+                elif dep_graph_el_generation_target == 0:
+                    # We're on a new sequence element, so any dep_graph_past that was retained is now null and
+                    # void.
+                    dep_graph_past = None
+                elif dep_graph_el_generation_target == 1:
+                    # We're on the first element of a new batch, so we still don't have any meaningful
+                    # dep_graph_past to retain.
+                    dep_graph_past = None
+                else:
+                    if dep_graph_past is None:
+                        raise ValueError(
+                            "Trying to target only one dep graph element without past!"
+                        )
+            case tuple():
+                if (
+                    dep_graph_el_generation_target is not None
+                    and dep_graph_el_generation_target != 0
+                ):
+                    raise ValueError(
+                        f"Can't have dep target {dep_graph_el_generation_target} without past"
+                    )
+                dep_graph_past = None
+                batch = batch.last_sequence_element_unsqueezed()
+            case _:
+                raise ValueError(f"{past} malformed!")
 
         return {
             **kwargs,
             "batch": batch,
             "past": past,
+            "dep_graph_past": dep_graph_past,
         }
 
     def forward(
@@ -745,7 +830,13 @@ class ESTForGenerativeSequenceModeling(
         output_hidden_states = kwargs.get("output_hidden_states", False)
 
         encoded = self.encoder(batch, **kwargs)
-        output = self.output_layer(batch, encoded.last_hidden_state, is_generation=is_generation)
+
+        output = self.output_layer(
+            batch,
+            encoded.last_hidden_state,
+            is_generation=is_generation,
+            dep_graph_el_generation_target=kwargs.get("dep_graph_el_generation_target", None),
+        )
 
         if use_cache:
             output["past_key_values"] = encoded.past_key_values
