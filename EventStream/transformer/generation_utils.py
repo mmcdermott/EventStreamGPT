@@ -173,6 +173,12 @@ class StructuredGenerationMixin:
 
         return model_kwargs
 
+    def prepare_inputs_for_generation(self, batch: PytorchBatch, **kwargs) -> dict[str, Any]:
+        raise NotImplementedError(
+            "A model class needs to define a `prepare_inputs_for_generation` method "
+            "in order to use `.generate()`."
+        )
+
     def _get_outputs_warper(
         self,
     ) -> OutputsProcessorList:
@@ -602,9 +608,9 @@ class StructuredGenerationMixin:
             for measurements_to_fill in measurements_to_fill_list:
                 # TODO(mmd): Here -- need to loop over dependency graph elements.
                 # forward pass to get next token
+                model_inputs = self.prepare_inputs_for_generation(batch, **model_kwargs)
                 outputs = self(
-                    batch=batch,
-                    **model_kwargs,
+                    **model_inputs,
                     return_dict=True,
                     output_attentions=output_attentions,
                     output_hidden_states=output_hidden_states,

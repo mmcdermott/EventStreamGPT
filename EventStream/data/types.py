@@ -75,6 +75,20 @@ class PytorchBatch:
     def values(self):
         return dataclasses.asdict(self).items()
 
+    def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
+        return PytorchBatch(
+            event_mask=self.event_mask[:, -1].unsqueeze(1),
+            time_delta=self.time_delta[:, -1].unsqueeze(1),
+            static_indices=self.static_indices,
+            static_measurement_indices=self.static_measurement_indices,
+            dynamic_indices=self.dynamic_indices[:, -1].unsqueeze(1),
+            dynamic_measurement_indices=self.dynamic_measurement_indices[:, -1].unsqueeze(1),
+            dynamic_values=self.dynamic_values[:, -1].unsqueeze(1),
+            dynamic_values_mask=self.dynamic_values_mask[:, -1].unsqueeze(1),
+            start_time=self.start_time,
+            stream_labels=self.stream_labels,
+        )
+
 
 class TemporalityType(StrEnum):
     """Describes the different ways in which a measure can vary w.r.t. time. As a `StrEnum`, can be

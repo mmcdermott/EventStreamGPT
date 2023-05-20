@@ -229,7 +229,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 num_return_sequences=self.num_samples,
                 output_attentions=False,
                 output_hidden_states=False,
-                use_cache=False,
+                use_cache=True,
             ),
             input_seq_len=batch.sequence_length,
         )

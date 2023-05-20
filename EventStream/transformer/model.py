@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 
 from ..data.data_embedding_layer import MeasIndexGroupOptions
@@ -89,7 +91,7 @@ class GenerativeOutputLayer(torch.nn.Module):
                 self.classification_mode_per_measurement[measurement] = generative_mode
 
     def get_TTE_outputs(
-        self, batch: PytorchBatch, encoded: torch.FloatTensor
+        self, batch: PytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False
     ) -> tuple[torch.FloatTensor, torch.distributions.Distribution, torch.FloatTensor,]:
         """Produces time-to-event predictions and log likelihoods (_not NLLs!_) for the model.
 
@@ -122,13 +124,13 @@ class GenerativeOutputLayer(torch.nn.Module):
         """
         TTE_dist = self.TTE_layer(encoded)
 
+        if is_generation:
+            return None, TTE_dist, None
+
         # TTE_dist is a distribution with random variables of shape (batch size, sequence length)
         TTE_obs_mask = batch["event_mask"][:, 1:] & batch["event_mask"][:, :-1]
         TTE_delta = batch["time_delta"][:, :-1]
         TTE_true = torch.where(TTE_obs_mask, TTE_delta, torch.ones_like(TTE_delta))
-
-        if TTE_true.min() <= 0:
-            raise ValueError("TTE_true should be > 0!")
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
         # for generative purposes, we add a fake observation to the last element.
@@ -666,7 +668,11 @@ class GenerativeOutputLayer(torch.nn.Module):
                     regression_indices.update(regression_out[3])
 
         # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
-        TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(batch, whole_event_encoded)
+        TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(
+            batch,
+            whole_event_encoded,
+            is_generation=is_generation,
+        )
 
         return GenerativeSequenceModelOutput(
             **{
@@ -718,6 +724,19 @@ class ESTForGenerativeSequenceModeling(
         # Initialize weights and apply final processing
         self.post_init()
 
+    def prepare_inputs_for_generation(
+        self, batch: PytorchBatch, past=None, **kwargs
+    ) -> dict[str, Any]:
+        # only last sequence element in the batch if past is defined in kwargs
+        if past:
+            batch = batch.last_sequence_element_unsqueezed()
+
+        return {
+            **kwargs,
+            "batch": batch,
+            "past": past,
+        }
+
     def forward(
         self, batch: PytorchBatch, is_generation: bool = False, **kwargs
     ) -> GenerativeSequenceModelOutput:
@@ -729,13 +748,13 @@ class ESTForGenerativeSequenceModeling(
         output = self.output_layer(batch, encoded.last_hidden_state, is_generation=is_generation)
 
         if use_cache:
-            output.past_key_values = encoded.past_key_values
+            output["past_key_values"] = encoded.past_key_values
 
         if output_attentions:
-            output.attentions = encoded.attentions
+            output["attentions"] = encoded.attentions
 
         if output_hidden_states:
-            output.hidden_states = encoded.hidden_states
+            output["hidden_states"] = encoded.hidden_states
 
         return output
 
