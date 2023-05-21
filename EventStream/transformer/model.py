@@ -9,7 +9,7 @@ from .config import (
     StructuredTransformerConfig,
     TimeToEventGenerationHeadType,
 )
-from .generation_utils import StructuredGenerationMixin
+from .generation.generation_utils import StructuredGenerationMixin
 from .generative_layers import (
     ExponentialTTELayer,
     GaussianIndexedRegressionLayer,

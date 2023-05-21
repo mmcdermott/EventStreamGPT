@@ -9,7 +9,7 @@ from EventStream.transformer.config import (
     OptimizationConfig,
     StructuredTransformerConfig,
 )
-from EventStream.transformer.generative_sequence_modelling_lightning import (
+from EventStream.transformer.generative_modeling_lightning import (
     ESTForGenerativeSequenceModelingLM,
 )
 

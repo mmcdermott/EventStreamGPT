@@ -7,7 +7,9 @@ import unittest
 import torch
 
 from EventStream.data.types import PytorchBatch
-from EventStream.transformer.generation_utils import StructuredGenerationMixin
+from EventStream.transformer.generation.generation_utils import (
+    StructuredGenerationMixin,
+)
 
 from ..mixins import MLTypeEqualityCheckableMixin
 
