@@ -510,7 +510,9 @@ class PretrainConfig:
             "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
             **{
                 k: v
-                for k, v in StructuredTransformerConfig().to_dict().items()
+                for k, v in StructuredTransformerConfig(measurements_per_dep_graph_level=[])
+                .to_dict()
+                .items()
                 if k not in SKIP_CFG_PARAMS
             },
         }

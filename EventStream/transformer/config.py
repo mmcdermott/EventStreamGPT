@@ -481,7 +481,9 @@ class StructuredTransformerConfig(PretrainedConfig):
         numerical_embedding_weight: float = 0.5,
         do_normalize_by_measurement_index: bool = False,
         # Model configuration
-        structured_event_processing_mode: StructuredEventProcessingMode = "nested_attention",
+        structured_event_processing_mode: StructuredEventProcessingMode = (
+            StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
+        ),
         hidden_size: int | None = None,
         head_dim: int | None = 64,
         num_hidden_layers: int = 2,
@@ -601,6 +603,27 @@ class StructuredTransformerConfig(PretrainedConfig):
                             "do_add_temporal_position_embeddings_to_data_embeddings"
                         )
                     )
+                if measurements_per_dep_graph_level is None:
+                    raise ValueError(
+                        missing_param_err_tmpl.format("measurements_per_dep_graph_level")
+                    )
+
+                proc_measurements_per_dep_graph_level = []
+                for group in measurements_per_dep_graph_level:
+                    proc_group = []
+                    for meas_index in group:
+                        match meas_index:
+                            case str():
+                                proc_group.append(meas_index)
+                            case [str() as meas_index, (str() | MeasIndexGroupOptions()) as mode]:
+                                assert mode in MeasIndexGroupOptions.values()
+                                proc_group.append((meas_index, mode))
+                            case _:
+                                raise ValueError(
+                                    f"Invalid `measurements_per_dep_graph_level` entry {meas_index}."
+                                )
+                    proc_measurements_per_dep_graph_level.append(proc_group)
+                measurements_per_dep_graph_level = proc_measurements_per_dep_graph_level
 
             case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
                 if measurements_per_dep_graph_level is not None:
@@ -652,25 +675,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                     f"enum member ({StructuredEventProcessingMode.values()}). Got "
                     f"{structured_event_processing_mode}."
                 )
-
-        if measurements_per_dep_graph_level is not None:
-            proc_measurements_per_dep_graph_level = []
-            for group in measurements_per_dep_graph_level:
-                proc_group = []
-                for meas_index in group:
-                    match meas_index:
-                        case str():
-                            proc_group.append(meas_index)
-                        case (meas_index, mode) | [meas_index, mode]:
-                            assert type(meas_index) is str
-                            assert mode in MeasIndexGroupOptions.values()
-                            proc_group.append((meas_index, mode))
-                        case _:
-                            raise ValueError(
-                                f"Invalid `measurements_per_dep_graph_level` entry {meas_index}."
-                            )
-                proc_measurements_per_dep_graph_level.append(proc_group)
-            measurements_per_dep_graph_level = proc_measurements_per_dep_graph_level
 
         self.structured_event_processing_mode = structured_event_processing_mode
 
