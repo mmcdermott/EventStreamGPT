@@ -262,6 +262,7 @@ BASE_BATCH = {
             [3 * 60, 5 * 60, 1],  # PM, PM, LATE_PM
         ]
     ),
+    "time": None,
     "static_indices": torch.LongTensor(
         [
             [UNIFIED_IDXMAP["static_clf"]["static_clf_1"]],
@@ -429,6 +430,7 @@ WANT_APPENDED_BATCH = {
             [3 * 60, 5 * 60, NEW_EVENT_DELTA_TIMES[1], 1],  # PM, PM, LATE_PM, EARLY_AM
         ]
     ),
+    "time": None,
     "static_indices": copy.deepcopy(BASE_BATCH["static_indices"]),
     "static_measurement_indices": copy.deepcopy(BASE_BATCH["static_measurement_indices"]),
     "dynamic_measurement_indices": torch.LongTensor(
