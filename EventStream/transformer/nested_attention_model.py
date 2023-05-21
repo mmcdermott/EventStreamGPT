@@ -74,7 +74,11 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
 
         if dep_graph_el_generation_target is not None:
             if dep_graph_el_generation_target != 0:
-                assert dep_graph_len == 1
+                if dep_graph_len != 1:
+                    raise ValueError(
+                        f"dep_graph_len ({dep_graph_len}) must be 1 if dep_graph_el_generation_target "
+                        f"is >0 ({dep_graph_el_generation_target})!"
+                    )
                 dep_graph_loop = range(1, 2)
                 do_TTE = False
             else:
@@ -93,39 +97,36 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                 dep_graph_level_encoded = encoded[:, :, i - 1, :]
                 # dep_graph_level_encoded is of shape (batch size, sequence length, hidden size)
 
-                if self.config.measurements_per_dep_graph_level is None:
-                    raise ValueError
+                if dep_graph_el_generation_target is not None:
+                    target_idx = dep_graph_el_generation_target
                 else:
-                    if dep_graph_el_generation_target is not None:
-                        target_idx = dep_graph_el_generation_target
+                    target_idx = i
+
+                categorical_measurements_in_level = set()
+                numerical_measurements_in_level = set()
+                for measurement in self.config.measurements_per_dep_graph_level[target_idx]:
+                    if type(measurement) in (tuple, list):
+                        measurement, mode = measurement
                     else:
-                        target_idx = i
+                        mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
 
-                    categorical_measurements_in_level = set()
-                    numerical_measurements_in_level = set()
-                    for measurement in self.config.measurements_per_dep_graph_level[target_idx]:
-                        if type(measurement) in (tuple, list):
-                            measurement, mode = measurement
-                        else:
-                            mode = MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL
+                    match mode:
+                        case MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL:
+                            categorical_measurements_in_level.add(measurement)
+                            numerical_measurements_in_level.add(measurement)
+                        case MeasIndexGroupOptions.CATEGORICAL_ONLY:
+                            categorical_measurements_in_level.add(measurement)
+                        case MeasIndexGroupOptions.NUMERICAL_ONLY:
+                            numerical_measurements_in_level.add(measurement)
+                        case _:
+                            raise ValueError(f"Unknown mode {mode}")
 
-                        match mode:
-                            case MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL:
-                                categorical_measurements_in_level.add(measurement)
-                                numerical_measurements_in_level.add(measurement)
-                            case MeasIndexGroupOptions.CATEGORICAL_ONLY:
-                                categorical_measurements_in_level.add(measurement)
-                            case MeasIndexGroupOptions.NUMERICAL_ONLY:
-                                numerical_measurements_in_level.add(measurement)
-                            case _:
-                                raise ValueError(f"Unknown mode {mode}")
-
-                    classification_measurements_in_level = (
-                        categorical_measurements_in_level.intersection(classification_measurements)
-                    )
-                    regression_measurements_in_level = (
-                        numerical_measurements_in_level.intersection(regression_measurements)
-                    )
+                classification_measurements_in_level = (
+                    categorical_measurements_in_level.intersection(classification_measurements)
+                )
+                regression_measurements_in_level = numerical_measurements_in_level.intersection(
+                    regression_measurements
+                )
 
                 classification_out = self.get_classification_outputs(
                     batch,
