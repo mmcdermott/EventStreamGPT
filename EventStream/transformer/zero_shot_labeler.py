@@ -2,8 +2,8 @@ import abc
 
 import torch
 
-from ...data.types import PytorchBatch
-from ..config import StructuredTransformerConfig
+from ..data.types import PytorchBatch
+from .config import StructuredTransformerConfig
 
 
 class Labeler(abc.ABC):

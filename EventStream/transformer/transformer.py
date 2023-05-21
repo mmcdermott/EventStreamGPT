@@ -483,7 +483,6 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
         input_embeds: torch.Tensor | None = None,
         past: tuple[torch.FloatTensor] | None = None,
         seq_mask: torch.Tensor | None = None,
-        dep_graph_mask: torch.Tensor | None = None,
         head_mask: torch.Tensor | None = None,
         use_cache: bool | None = None,
         output_attentions: bool | None = None,
@@ -652,7 +651,6 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
         # that should be lumped in with time (e.g., the functional time dependent variables). We perform a
         # cumsum in this case such that even in the first layer, our final embedding of the dep graph
         # reflects the entire event.
-        # TODO(mmd): The cumsum here should probably be normalized? Leveraging some dep_graph_mask?
 
         if dep_graph_el_generation_target is not None and dep_graph_el_generation_target > 0:
             # This is used in generation to take advantage of the cache, where we only want to process a
@@ -699,7 +697,6 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         input_embeds: torch.Tensor | None = None,
         past: tuple[torch.FloatTensor] | None = None,
         seq_mask: torch.Tensor | None = None,
-        dep_graph_mask: torch.Tensor | None = None,
         head_mask: torch.Tensor | None = None,
         use_cache: bool | None = None,
         output_attentions: bool | None = None,
@@ -768,7 +765,6 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
 
                 args = (
                     hidden_states,
-                    dep_graph_mask,
                     seq_mask,
                     dict(
                         layer_past=layer_past,
@@ -786,7 +782,6 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
             else:
                 kwargs = dict(
                     hidden_states=hidden_states,
-                    dep_graph_mask=dep_graph_mask,
                     seq_mask=seq_mask,
                     seq_module_kwargs=dict(
                         layer_past=layer_past,

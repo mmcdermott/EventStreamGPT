@@ -47,7 +47,6 @@ class StructuredAttention(torch.nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        dep_graph_mask: torch.Tensor | None = None,
         seq_mask: torch.Tensor | None = None,
         seq_module_kwargs: dict[str, Any] | None = None,
         dep_graph_module_kwargs: dict[str, Any] | None = None,
@@ -56,13 +55,13 @@ class StructuredAttention(torch.nn.Module):
         Performs a structured attention forward pass, consistent with the internal sub-modules. E.g., given
         the notation defined in the hidden_state arg documentation, this module performs the following steps:
             1. Input events are summarized into event embeddings:
-                `x_i = self.event_pooler([e_{i, 1}, ..., e_{i, m}, s_i], dep_graph_mask)`
+                `x_i = self.event_pooler([e_{i, 1}, ..., e_{i, m}, s_i])`
             2. These events are contextualized via the history:
                 `h_i = self.seq_module([x_1, ..., x_i], seq_mask, **seq_module_kwargs)`
             3. Output embeddings are produced by processing the historical context and dep. graph structure:
                 ```
                 e_{i, j}^{out} = self.dep_graph_module(
-                    [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}], dep_graph_mask, **dep_graph_module_kwargs
+                    [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}], **dep_graph_module_kwargs
                 )
                 ```
 
@@ -83,11 +82,6 @@ class StructuredAttention(torch.nn.Module):
                 (x_1, ..., x_{i-1}) -> x_i and, within x_i, the e_{i, j} elements obey dependency
                 relationships specified within the dep_graph_module. and s_i reflects the embedding of the
                 entire element x_i
-
-            dep_graph_mask (`torch.Tensor` of shape (batch, seq len, dependency graph len), *optional*):
-                A binary mask indicating which elements of the dependency graph are missing.
-                - 1 for tokens that are **not missing**,
-                - 0 for tokens that are **missing**.
 
             seq_mask (`torch.Tensor` of shape `(batch, seq len)`, *optional*):
                 Mask to avoid processing on padding token indices. Mask values selected in `[0, 1]`:
@@ -156,7 +150,7 @@ class StructuredAttention(torch.nn.Module):
 
         # Finally, we produce output embeddings
         # e_{i,j}' = self.dep_graph_module(
-        #   [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}, s_{i}], dep_graph_mask, **dep_graph_module_kwargs
+        #   [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}, s_{i}], **dep_graph_module_kwargs
         # ).
 
         # To do this, we first produce these augmented dependency graph sequences:
@@ -174,24 +168,11 @@ class StructuredAttention(torch.nn.Module):
             dep_graph_seq, (bsz * seq_len, dep_graph_len + 1, hidden_size)
         )
 
-        if dep_graph_mask is not None:
-            # We also need to reshape the mask and filter it to only present sequence elements.
-            dep_graph_mask = torch.reshape(dep_graph_mask, (bsz * seq_len, dep_graph_len))
-
         if seq_mask is not None:
             dep_graph_seq = dep_graph_seq[flat_seq_mask, :, :]
 
-            if dep_graph_mask is not None:
-                dep_graph_mask = dep_graph_mask[flat_seq_mask, :]
-
-        if dep_graph_mask is not None:
-            # ... and we need to add a one for the history embeddings everywhere.
-            dep_graph_mask = torch.cat(
-                (torch.ones_like(dep_graph_mask[:, :1]), dep_graph_mask), dim=-1
-            )
-
         dep_graph_out = self.dep_graph_module(
-            dep_graph_seq, attention_mask=dep_graph_mask, **dep_graph_module_kwargs
+            dep_graph_seq, attention_mask=None, **dep_graph_module_kwargs
         )
         # Some modules will return extra outputs (e.g., attention weights, past key values, etc.)
         if isinstance(dep_graph_out, tuple):
