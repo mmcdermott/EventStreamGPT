@@ -9,8 +9,8 @@ from copy import deepcopy
 
 from transformers.utils import add_start_docstrings
 
-from ..data.types import PytorchBatch
-from .model_output import GenerativeSequenceModelPredictions
+from ...data.types import PytorchBatch
+from ..model_output import GenerativeSequenceModelPredictions
 
 STOPPING_CRITERIA_INPUTS_DOCSTRING = r"""
     Args:

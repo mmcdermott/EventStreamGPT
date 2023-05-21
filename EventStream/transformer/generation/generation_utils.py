@@ -29,15 +29,14 @@ import torch
 import torch.distributed as dist
 from transformers.utils import ModelOutput
 
-from ..data.types import PytorchBatch
-from .generation_outputs_process import OutputsProcessorList
+from ...data.types import PytorchBatch
+from ..model_output import GenerativeSequenceModelPredictions
 from .generation_stopping_criteria import (
     MaxLengthCriteria,
     MaxTimeCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
 )
-from .model_output import GenerativeSequenceModelPredictions
 
 logger = logging.getLogger(__name__)
 
@@ -169,33 +168,6 @@ class StructuredGenerationMixin:
             "in order to use `.generate()`."
         )
 
-    def _get_outputs_warper(
-        self,
-    ) -> OutputsProcessorList:
-        """This class returns a [`OutputsProcessorList`] list object that contains all relevant.
-
-        [`OutputsWarper`] instances used for multinomial sampling.
-        """
-
-        # TODO(mmd): Does nothing for now.
-
-        warpers = OutputsProcessorList()
-
-        return warpers
-
-    def _get_model_outputs_processor(
-        self,
-    ) -> OutputsProcessorList:
-        """This class returns a [`OutputsProcessorList`] list object that contains all relevant.
-
-        [`OutputsProcessor`] instances used to modify the scores of the language model head.
-        """
-        # This is a placeholder for now, as no outputs processors are currently supported!
-        processors = OutputsProcessorList()
-
-        # init warp parameters
-        return processors
-
     def _get_stopping_criteria(
         self,
         max_length: int | None,
@@ -212,9 +184,9 @@ class StructuredGenerationMixin:
 
     def _merge_criteria_processor_list(
         self,
-        default_list: OutputsProcessorList | StoppingCriteriaList,
-        custom_list: OutputsProcessorList | StoppingCriteriaList,
-    ) -> OutputsProcessorList | StoppingCriteriaList:
+        default_list: StoppingCriteriaList,
+        custom_list: StoppingCriteriaList,
+    ) -> StoppingCriteriaList:
         if len(custom_list) == 0:
             return default_list
         for default in default_list:
@@ -432,11 +404,6 @@ class StructuredGenerationMixin:
         is_greedy_gen_mode = do_sample is False
         is_sample_gen_mode = do_sample is True
 
-        # 6. prepare distribution pre_processing samplers
-        # TODO(mmd): Right now, this does nothing, as we don't have any valid outputs processors, but
-        # eventually we may.
-        outputs_processor = self._get_model_outputs_processor()
-
         # 7. prepare stopping criteria
         stopping_criteria = self._get_stopping_criteria(
             max_length=max_length, max_time=max_time, stopping_criteria=stopping_criteria
@@ -452,7 +419,6 @@ class StructuredGenerationMixin:
             # 10. run greedy search
             return self.greedy_search(
                 batch,
-                outputs_processor=outputs_processor,
                 stopping_criteria=stopping_criteria,
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
@@ -461,17 +427,12 @@ class StructuredGenerationMixin:
             )
 
         elif is_sample_gen_mode:
-            # 10. prepare outputs warper
-            outputs_warper = self._get_outputs_warper()
-
             # 11. expand batch with `num_return_sequences` additional sequences per batch
             batch = self._expand_inputs_for_generation(batch, expand_size=num_return_sequences)
 
             # 12. run sample
             return self.sample(
                 batch,
-                outputs_processor=outputs_processor,
-                outputs_warper=outputs_warper,
                 stopping_criteria=stopping_criteria,
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
@@ -482,8 +443,6 @@ class StructuredGenerationMixin:
     def _search(
         self,
         batch: PytorchBatch,
-        outputs_processor: OutputsProcessorList | None = None,
-        outputs_warper: OutputsProcessorList | None = None,
         stopping_criteria: StoppingCriteriaList | None = None,
         output_attentions: bool | None = None,
         output_hidden_states: bool | None = None,
@@ -499,10 +458,6 @@ class StructuredGenerationMixin:
         Parameters:
             batch (`PytorchBatch`):
                 The sequence used as a prompt for the generation.
-            outputs_processor (`OutputsProcessorList`, *optional*):
-                An instance of [`OutputsProcessorList`]. List of instances of class derived from
-                [`OutputsProcessor`] used to modify the prediction scores of the language modeling head
-                applied at each generation step.
             stopping_criteria (`StoppingCriteriaList`, *optional*):
                 An instance of [`StoppingCriteriaList`]. List of instances of class derived from
                 [`StoppingCriteria`] used to tell if the generation loop should stop.
@@ -526,13 +481,9 @@ class StructuredGenerationMixin:
         assert sample_fn in ("greedy", "sample")
 
         # init values
-        outputs_processor = (
-            outputs_processor if outputs_processor is not None else OutputsProcessorList()
-        )
         stopping_criteria = (
             stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
         )
-        outputs_warper = outputs_warper if outputs_warper is not None else OutputsProcessorList()
         output_scores = output_scores if output_scores is not None else self.config.output_scores
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
@@ -612,10 +563,6 @@ class StructuredGenerationMixin:
                     continue  # don't waste resources running the code we don't need
 
                 next_event_preds = outputs.preds.slice((slice(None), -1))
-
-                # pre-process distribution
-                next_event_preds = outputs_processor(batch, next_event_preds)
-                next_event_preds = outputs_warper(batch, next_event_preds)
 
                 if return_dict_in_generate:
                     # We use the `scores` convention here as it is in the standard huggingface config.

@@ -749,6 +749,12 @@ class ESTForGenerativeSequenceModeling(
     ):
         super().__init__(config)
 
+        if (
+            self.config.structured_event_processing_mode
+            != StructuredEventProcessingMode.NESTED_ATTENTION
+        ):
+            raise NotImplementedError("Only the dependency graph mode is supported in this class.")
+
         self.encoder = StructuredTransformer(config)
         self.output_layer = GenerativeOutputLayer(config)
 

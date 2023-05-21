@@ -21,8 +21,8 @@ import inspect
 
 from transformers.utils import add_start_docstrings
 
-from ..data.types import PytorchBatch
-from .model_output import GenerativeSequenceModelPredictions
+from ...data.types import PytorchBatch
+from ..model_output import GenerativeSequenceModelPredictions
 
 OUTPUTS_PROCESSOR_INPUTS_DOCSTRING = r"""
     Args:
