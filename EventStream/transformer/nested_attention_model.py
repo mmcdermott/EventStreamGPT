@@ -223,9 +223,6 @@ class NAPPTForGenerativeSequenceModeling(
     def prepare_inputs_for_generation(
         self, batch: PytorchBatch, past=None, **kwargs
     ) -> dict[str, Any]:
-        # only last sequence element in the batch if past is defined in kwargs
-        batch.time = time_from_deltas(batch.time_delta)
-
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
             return {**kwargs, "batch": batch}
@@ -246,6 +243,9 @@ class NAPPTForGenerativeSequenceModeling(
 
             case dict() as pasts_dict if "seq_past" in pasts_dict and "dep_graph_past" in pasts_dict:
                 past = pasts_dict["seq_past"]
+
+                # only last sequence element in the batch if past is defined in kwargs
+                batch.time = time_from_deltas(batch.time_delta)
                 batch = batch.last_sequence_element_unsqueezed()
 
                 dep_graph_past = pasts_dict["dep_graph_past"]

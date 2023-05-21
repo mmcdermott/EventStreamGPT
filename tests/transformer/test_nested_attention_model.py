@@ -7,7 +7,7 @@ from unittest.mock import call, create_autospec
 
 import torch
 
-from EventStream.data.types import DataModality
+from EventStream.data.types import DataModality, PytorchBatch
 from EventStream.transformer.config import (
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
@@ -375,6 +375,76 @@ class TestNAPPTForGenerativeSequenceModeling(MLTypeEqualityCheckableMixin, unitt
                     structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
                 )
             )
+
+    def test_prepare_inputs_for_generation(self):
+        M = NAPPTForGenerativeSequenceModeling(
+            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+        )
+
+        default_batch = PytorchBatch()
+
+        cases = [
+            {
+                "msg": "Should work with use_cache=False.",
+                "want": {"batch": default_batch},
+            },
+            {
+                "msg": "Should return extra kwargs with use_cache=False.",
+                "kwargs": {"test": True},
+                "want": {"batch": default_batch, "test": True},
+            },
+            {
+                "msg": "Should error if past is None and dep_graph_el_generation_target > 0.",
+                "use_cache": True,
+                "past": None,
+                "dep_graph_el_generation_target": 1,
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should return no past or dep_graph_past and not modify batch if past is None.",
+                "use_cache": True,
+                "past": None,
+                "dep_graph_el_generation_target": 0,
+                "want": {
+                    "batch": default_batch,
+                    "past": None,
+                    "dep_graph_past": None,
+                    "use_cache": True,
+                },
+            },
+            {
+                "msg": "Should raise ValueError if past is not a dict or None.",
+                "use_cache": True,
+                "past": "not a dict",
+                "should_raise": ValueError,
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                kwargs = dict(
+                    batch=default_batch,
+                    **case.get("kwargs", {}),
+                )
+
+                if "past" in case:
+                    kwargs["past"] = case["past"]
+                if "dep_graph_el_generation_target" in case:
+                    kwargs["dep_graph_el_generation_target"] = case[
+                        "dep_graph_el_generation_target"
+                    ]
+                if "use_cache" in case:
+                    kwargs["use_cache"] = case["use_cache"]
+
+                should_raise = case.get("should_raise", None)
+                if should_raise is not None:
+                    with self.assertRaises(should_raise):
+                        M.prepare_inputs_for_generation(**kwargs)
+                    return
+
+                got = M.prepare_inputs_for_generation(**kwargs)
+                want = case["want"]
+                self.assertNestedDictEqual(want, got)
 
 
 if __name__ == "__main__":
