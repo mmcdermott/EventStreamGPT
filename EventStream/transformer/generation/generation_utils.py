@@ -30,6 +30,7 @@ import torch.distributed as dist
 from transformers.utils import ModelOutput
 
 from ...data.types import PytorchBatch
+from ..config import StructuredEventProcessingMode
 from ..model_output import GenerativeSequenceModelPredictions
 from .generation_stopping_criteria import (
     MaxLengthCriteria,
@@ -39,41 +40,6 @@ from .generation_stopping_criteria import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# TODO(mmd): All Output classes are wrong!
-@dataclass
-class GreedySearchDecoderOnlyOutput(ModelOutput):
-    """Base class for outputs of decoder-only generation models using greedy search.
-
-    Args:
-        batch (`PytorchBatch`):
-            The generated sequences.
-        scores (
-            `tuple(GenerativeSequenceModelPredictions)` *optional*, returned when `output_scores=True` is
-            passed or when `config.output_scores=True`
-        ):
-            Processed predictions of the generative sequence modeling head, as torch distributions at each
-            generation step.
-        attentions (
-            `tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_attentions=True` is passed or
-            `config.output_attentions=True`
-        ):
-            Tuple (one element for each generated token) of tuples (one element for each layer of the decoder)
-            of `torch.FloatTensor` of shape `(batch_size, num_heads, generated_length, sequence_length)`.
-        hidden_states (
-            `tuple(tuple(torch.FloatTensor))`, *optional*, returned when `output_hidden_states=True` is passed
-            or when `config.output_hidden_states=True`
-        ):
-            Tuple (one element for each generated token) of tuples (one element for each layer of the decoder)
-            of `torch.FloatTensor` of shape `(batch_size, generated_length, dependency_graph_len,
-            hidden_size)`.
-    """
-
-    batch: PytorchBatch | None = None
-    scores: tuple[GenerativeSequenceModelPredictions] | None = None
-    attentions: tuple[tuple[torch.FloatTensor]] | None = None
-    hidden_states: tuple[tuple[torch.FloatTensor]] | None = None
 
 
 @dataclass
@@ -110,17 +76,12 @@ class SampleDecoderOnlyOutput(ModelOutput):
     hidden_states: tuple[tuple[torch.FloatTensor]] | None = None
 
 
-GreedySearchOutput = GreedySearchDecoderOnlyOutput
-SampleOutput = SampleDecoderOnlyOutput
-
-
 class StructuredGenerationMixin:
     """A class containing all functions for auto-regressive structured event stream generation, to
     be used as a mixin in [`PreTrainedModel`].
 
     The class exposes [`generate`], which can be used for:
-        - *greedy decoding* by calling [`greedy_search`] if `do_sample=False`.
-        - *multinomial sampling* by calling [`sample`] if `do_sample=True`.
+        - *sampling* by calling [`sample`] if `do_sample=True`.
     """
 
     @staticmethod
@@ -213,7 +174,7 @@ class StructuredGenerationMixin:
         self,
         batch: PytorchBatch,
         max_length: int | None = None,
-        do_sample: bool | None = None,
+        do_sample: bool | None = True,
         num_return_sequences: int | None = None,
         max_time: float | None = None,
         max_new_events: int | None = None,
@@ -225,114 +186,12 @@ class StructuredGenerationMixin:
         return_dict_in_generate: bool | None = None,
         synced_gpus: bool | None = False,
         **model_kwargs,
-    ) -> GreedySearchOutput | SampleOutput | torch.LongTensor:
-        r"""Generates continuous-time sequences of events for models with an  Generation head. The
-        method supports the following generation methods:
-
-            - *greedy decoding* by calling [`greedy_search`] if `do_sample=False`.
-            - *multinomial sampling* by calling [`sample`] if `do_sample=True`.
-
-        <Tip warning={true}>
-
-        Apart from `batch`, all the arguments below will default to the value of the attribute of the same
-        name as defined in the model's config (`config.json`) which in turn defaults to the
-        [`~modeling_utils.PretrainedConfig`] of the model.
-
-        </Tip>
-
-        Parameters:
-            batch (`PytorchBatch`):
-                The sequence used as a prompt for the generation or as model inputs to the encoder.
-                Can't be `None`, currently.
-            max_length (`int`, *optional*, defaults to `model.config.max_length`):
-                The maximum length the generated stream can have. Corresponds to the length of the input
-                prompt + `max_new_events`.
-                In general, prefer the use of `max_new_events`, which ignores the number of tokens in the
-                prompt.
-            max_new_events (`int`, *optional*):
-                The maximum numbers of tokens to generate, ignoring the number of events in the prompt.
-            do_sample (
-                `bool`, *optional*, defaults to `model.config.do_sample` or `False` if the config does not set
-                any value
-            ):
-                Whether or not to use sampling ; use greedy decoding otherwise.
-            temperature (
-                `float`, *optional*, defaults to `model.config.temperature` or 1.0 if the config does not set
-                any value
-            ):
-                The value used to modulate the next token probabilities.
-
-            num_return_sequences(
-                `int`, *optional*, defaults to `model.config.num_return_sequences` or 1 if the config does not
-                set any value
-            ):
-                The number of independently computed returned sequences for each element in the batch.
-            max_time(`float`, *optional*):
-                The maximum amount of time you allow the computation to run for in seconds. generation will
-                still finish the current pass after allocated time has been passed.
-            use_cache (`bool`, *optional*, defaults to `True`):
-                Whether or not the model should use the past last key/values attentions (if applicable to the
-                model) to speed up decoding.
-            stopping_criteria (`StoppingCriteriaList`, *optional*):
-                 Custom stopping criteria that complement the default stopping criteria built from arguments
-                 and a model's config. If a stopping criteria is passed that is already created with the
-                 arguments or a model's config an error is thrown. This feature is intended for advanced
-                 users.
-            output_attentions (
-                `bool`, *optional*, defaults to `model.config.output_attentions` or `False` if the config does
-                not set any value
-            ):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions`
-                under returned tensors for more details.
-            output_hidden_states (
-                `bool`, *optional*, defaults to `model.config.output_hidden_states` or `False` if the config
-                does not set any value
-            ):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned
-                tensors for more details.
-            output_scores (
-                `bool`, *optional*, defaults to `model.config.output_scores` or `False` if the config does not
-                set any value
-            ):
-                Whether or not to return the prediction scores. See `scores` under returned tensors for more
-                details.
-            return_dict_in_generate (
-                `bool`, *optional*, defaults to `model.config.return_dict_in_generate` or `False` if the
-                config does not set any value
-            ):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
-            synced_gpus (`bool`, *optional*, defaults to `False`):
-                Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
-
-            model_kwargs:
-                Additional model specific kwargs will be forwarded to the `forward` function of the model. If
-                the model is an encoder-decoder model, encoder specific kwargs should not be prefixed and
-                decoder specific kwargs should be prefixed with *decoder_*.
-
-        Return:
-            [`~utils.ModelOutput`] or `torch.LongTensor`: A [`~utils.ModelOutput`] (if
-            `return_dict_in_generate=True` or when `config.return_dict_in_generate=True`) or a
-            `torch.FloatTensor`.
-
-                If the model is *not* an encoder-decoder model (`model.config.is_encoder_decoder=False`), the
-                possible [`~utils.ModelOutput`] types are:
-
-                    - [`~generation_utils.GreedySearchDecoderOnlyOutput`],
-                    - [`~generation_utils.SampleDecoderOnlyOutput`],
-                    - [`~generation_utils.BeamSearchDecoderOnlyOutput`],
-                    - [`~generation_utils.BeamSampleDecoderOnlyOutput`]
-
-                If the model is an encoder-decoder model (`model.config.is_encoder_decoder=True`), the
-                possible [`~utils.ModelOutput`] types are:
-
-                    - [`~generation_utils.GreedySearchEncoderDecoderOutput`],
-                    - [`~generation_utils.SampleEncoderDecoderOutput`],
-                    - [`~generation_utils.BeamSearchEncoderDecoderOutput`],
-                    - [`~generation_utils.BeamSampleEncoderDecoderOutput`]
-        """
-
+    ) -> SampleDecoderOnlyOutput | PytorchBatch:
         # 1. Set generation parameters if not already defined
         do_sample = do_sample if do_sample is not None else self.config.do_sample
+        if not do_sample:
+            raise ValueError("Only `do_sample=True` mode is currently supported")
+
         num_return_sequences = (
             num_return_sequences
             if num_return_sequences is not None
@@ -400,47 +259,36 @@ class StructuredGenerationMixin:
                     "Can't run for a maximum length longer than the current maximum sequence length!"
                 )
 
-        # 5. determine generation mode
-        is_greedy_gen_mode = do_sample is False
-        is_sample_gen_mode = do_sample is True
-
         # 7. prepare stopping criteria
         stopping_criteria = self._get_stopping_criteria(
             max_length=max_length, max_time=max_time, stopping_criteria=stopping_criteria
         )
         # 8. go into different generation modes
-        if is_greedy_gen_mode:
-            if num_return_sequences > 1:
+
+        # 11. expand batch with `num_return_sequences` additional sequences per batch
+        batch = self._expand_inputs_for_generation(batch, expand_size=num_return_sequences)
+
+        kwargs = {
+            "batch": batch,
+            "stopping_criteria": stopping_criteria,
+            "output_scores": output_scores,
+            "output_attentions": output_attentions,
+            "output_hidden_states": output_hidden_states,
+            "return_dict_in_generate": return_dict_in_generate,
+        }
+
+        match self.config.structured_event_processing_mode:
+            case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
+                return self._sample_conditionally_independent(**kwargs)
+            case StructuredEventProcessingMode.NESTED_ATTENTION:
+                return self._sample_nested_attention(**kwargs)
+            case _:
                 raise ValueError(
-                    f"num_return_sequences has to be 1, but is {num_return_sequences} "
-                    f"when doing greedy search."
+                    "Unsupported structured event processing mode: "
+                    f"{self.config.structured_event_processing_mode}"
                 )
 
-            # 10. run greedy search
-            return self.greedy_search(
-                batch,
-                stopping_criteria=stopping_criteria,
-                output_scores=output_scores,
-                return_dict_in_generate=return_dict_in_generate,
-                synced_gpus=synced_gpus,
-                **model_kwargs,
-            )
-
-        elif is_sample_gen_mode:
-            # 11. expand batch with `num_return_sequences` additional sequences per batch
-            batch = self._expand_inputs_for_generation(batch, expand_size=num_return_sequences)
-
-            # 12. run sample
-            return self.sample(
-                batch,
-                stopping_criteria=stopping_criteria,
-                output_scores=output_scores,
-                return_dict_in_generate=return_dict_in_generate,
-                synced_gpus=synced_gpus,
-                **model_kwargs,
-            )
-
-    def _search(
+    def _sample_conditionally_independent(
         self,
         batch: PytorchBatch,
         stopping_criteria: StoppingCriteriaList | None = None,
@@ -449,56 +297,103 @@ class StructuredGenerationMixin:
         output_scores: bool | None = None,
         return_dict_in_generate: bool | None = None,
         synced_gpus: bool | None = False,
-        sample_fn: str = "mode",
         **model_kwargs,
-    ) -> GreedySearchOutput | SampleOutput | PytorchBatch:
-        r"""Generates sequences of token ids for models with a generative sequence modeling head
-        using either greedy or sample decoding.
+    ) -> SampleDecoderOnlyOutput | PytorchBatch:
+        # init attention / hidden states / scores tuples
+        scores = () if (return_dict_in_generate and output_scores) else None
+        decoder_attentions = () if (return_dict_in_generate and output_attentions) else None
+        decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
 
-        Parameters:
-            batch (`PytorchBatch`):
-                The sequence used as a prompt for the generation.
-            stopping_criteria (`StoppingCriteriaList`, *optional*):
-                An instance of [`StoppingCriteriaList`]. List of instances of class derived from
-                [`StoppingCriteria`] used to tell if the generation loop should stop.
-            output_attentions (`bool`, *optional*, defaults to `False`):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions`
-                under returned tensors for more details.
-            output_hidden_states (`bool`, *optional*, defaults to `False`):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned
-                tensors for more details.
-            output_scores (`bool`, *optional*, defaults to `False`):
-                Whether or not to return the prediction scores. See `scores` under returned tensors for more
-                details.
-            return_dict_in_generate (`bool`, *optional*, defaults to `False`):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
-            synced_gpus (`bool`, *optional*, defaults to `False`):
-                Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
-            model_kwargs:
-                Additional model specific keyword arguments will be forwarded to the `forward` function of the
-                model. If model is an encoder-decoder model the kwargs should include `encoder_outputs`.
-        """
-        assert sample_fn in ("greedy", "sample")
+        # keep track of which sequences are already finished
+        unfinished_sequences = batch["event_mask"].new_ones(batch.batch_size)
 
-        # init values
-        stopping_criteria = (
-            stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
-        )
-        output_scores = output_scores if output_scores is not None else self.config.output_scores
-        output_attentions = (
-            output_attentions if output_attentions is not None else self.config.output_attentions
-        )
-        output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
-        )
-        return_dict_in_generate = (
-            return_dict_in_generate
-            if return_dict_in_generate is not None
-            else self.config.return_dict_in_generate
-        )
+        this_peer_finished = False  # used by synced_gpus only
+        while True:
+            if synced_gpus:
+                # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
+                # The following logic allows an early break if all peers finished generating their sequence
+                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(
+                    batch.device
+                )
+                # send 0.0 if we finished, 1.0 otherwise
+                dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
+                # did all peers finish? the reduced sum will be 0.0 then
+                if this_peer_finished_flag.item() == 0.0:
+                    break
 
+            next_scores = ()
+
+            # forward pass to get next token
+            model_inputs = self.prepare_inputs_for_generation(batch, **model_kwargs)
+            outputs = self(
+                **model_inputs,
+                return_dict=True,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                is_generation=True,
+            )
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs, model_kwargs, is_encoder_decoder=False
+            )
+
+            if synced_gpus and this_peer_finished:
+                continue  # don't waste resources running the code we don't need
+
+            next_event_preds = outputs.preds.slice((slice(None), -1))
+
+            if return_dict_in_generate:
+                # We use the `scores` convention here as it is in the standard huggingface config.
+                if output_scores:
+                    next_scores += (next_event_preds,)
+
+            # Prediction
+            # TODO(mmd): make this only output the appropriate data types
+            next_event = next_event_preds.sample(batch.event_mask)
+
+            batch = next_event.append_to_batch(batch, self.config)
+            batch = next_event.update_last_event_data(batch, self.config)
+
+            if return_dict_in_generate:
+                # We use the `scores` convention here as it is in the standard huggingface config.
+                if output_scores:
+                    scores += (next_scores,)
+                if output_attentions:
+                    decoder_attentions += (outputs.attentions,)
+                if output_hidden_states:
+                    decoder_hidden_states += (outputs.hidden_states,)
+
+            # if eos_token was found in one sentence, set sentence to finished
+            # if eos_token_id is not None:
+            #     unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
+
+            # stop when each sentence is finished, or if we exceed the maximum length
+            if unfinished_sequences.max() == 0 or stopping_criteria(batch, scores):
+                if not synced_gpus:
+                    break
+                else:
+                    this_peer_finished = True
+
+        if return_dict_in_generate:
+            return SampleDecoderOnlyOutput(
+                scores=scores,
+                batch=batch,
+                attentions=decoder_attentions,
+                hidden_states=decoder_hidden_states,
+            )
+        else:
+            return batch
+
+    def _sample_nested_attention(
+        self,
+        batch: PytorchBatch,
+        stopping_criteria: StoppingCriteriaList | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        output_scores: bool | None = None,
+        return_dict_in_generate: bool | None = None,
+        synced_gpus: bool | None = False,
+        **model_kwargs,
+    ) -> SampleDecoderOnlyOutput | PytorchBatch:
         # init attention / hidden states / scores tuples
         scores = () if (return_dict_in_generate and output_scores) else None
         decoder_attentions = () if (return_dict_in_generate and output_attentions) else None
@@ -508,23 +403,9 @@ class StructuredGenerationMixin:
         unfinished_sequences = batch["event_mask"].new_ones(batch.batch_size)
 
         # set measurements_to_fill
-        match self.config.structured_event_processing_mode:
-            case "conditionally_independent":
-                measurements_to_fill_list = [
-                    {"time"},
-                    set(self.config.measurements_idxmap.keys()),
-                ]
-            case "nested_attention":
-                if self.config.measurements_per_dep_graph_level:
-                    measurements_to_fill_list = [
-                        {"time"},
-                        *self.config.measurements_per_dep_graph_level[1:],
-                    ]
-                else:
-                    measurements_to_fill_list = [
-                        {"time"},
-                        set(self.config.measurements_idxmap.keys()),
-                    ]
+        # Recall that we assert that the first element of the dependency graph should encompass all the
+        # functional time dependent metrics, so we omit that with the {"time"} component.
+        measurements_to_fill_list = [{"time"}, *self.config.measurements_per_dep_graph_level[1:]]
 
         this_peer_finished = False  # used by synced_gpus only
         while True:
@@ -571,18 +452,12 @@ class StructuredGenerationMixin:
 
                 # Prediction
                 # TODO(mmd): make this only output the appropriate data types
-                match sample_fn:
-                    case "greedy":
-                        next_event = next_event_preds.mode(batch.event_mask)
-                    case "sample":
-                        next_event = next_event_preds.sample(batch.event_mask)
+                next_event = next_event_preds.sample(batch.event_mask)
 
                 # update batch for next step
                 if measurements_to_fill == {"time"}:
-                    assert dep_graph_el_target == 0
                     batch = next_event.append_to_batch(batch, self.config)
                 else:
-                    assert dep_graph_el_target > 0
                     batch = next_event.update_last_event_data(
                         batch,
                         self.config,
@@ -610,10 +485,7 @@ class StructuredGenerationMixin:
                     this_peer_finished = True
 
         if return_dict_in_generate:
-            cls = (
-                GreedySearchDecoderOnlyOutput if sample_fn == "greedy" else SampleDecoderOnlyOutput
-            )
-            return cls(
+            return SampleDecoderOnlyOutput(
                 scores=scores,
                 batch=batch,
                 attentions=decoder_attentions,
@@ -621,9 +493,3 @@ class StructuredGenerationMixin:
             )
         else:
             return batch
-
-    def greedy_search(self, *args, **kwargs) -> GreedySearchOutput | PytorchBatch:
-        return self._search(*args, **kwargs, sample_fn="greedy")
-
-    def sample(self, *args, **kwargs) -> SampleOutput | PytorchBatch:
-        return self._search(*args, **kwargs, sample_fn="sample")

@@ -6,8 +6,8 @@ from ..data.data_embedding_layer import MeasIndexGroupOptions
 from ..data.types import DataModality, PytorchBatch
 from .config import StructuredEventProcessingMode, StructuredTransformerConfig
 from .generation.generation_utils import StructuredGenerationMixin
-from .generative_model_base import GenerativeOutputLayerBase
 from .model_output import (
+    GenerativeOutputLayerBase,
     GenerativeSequenceModelLabels,
     GenerativeSequenceModelLosses,
     GenerativeSequenceModelOutput,
