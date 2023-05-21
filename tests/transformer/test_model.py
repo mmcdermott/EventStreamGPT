@@ -13,10 +13,8 @@ from EventStream.transformer.config import (
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
 )
-from EventStream.transformer.model import (
-    ESTForStreamClassification,
-    GenerativeOutputLayer,
-)
+from EventStream.transformer.fine_tuning_model import ESTForStreamClassification
+from EventStream.transformer.generative_model_base import GenerativeOutputLayerBase
 
 from ..mixins import MLTypeEqualityCheckableMixin
 
@@ -30,6 +28,7 @@ TEST_MEASUREMENTS_IDXMAP = {
     "multi_label_col": 2,
     "regression_col": 3,
 }
+TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL = [[], ["event_type"], ["multi_label_col", "regression_col"]]
 # These are all including the 'UNK' tokens. So, e.g., there are 2 real options for 'event_type'.
 TEST_VOCAB_SIZES_BY_MEASUREMENT = {
     "event_type": 2,
@@ -55,8 +54,7 @@ BASE_CONFIG_KWARGS = dict(
     hidden_size=4,
     head_dim=None,
     num_attention_heads=2,  # Needs to divide hidden_size.
-    mean_log_inter_time=0,
-    std_log_inter_time=1,
+    measurements_per_dep_graph_level=TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL,
 )
 
 BASE_BATCH = {
@@ -101,13 +99,13 @@ BASE_BATCH = {
 }
 
 
-class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
+class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestCase):
     """Tests the OutputLayer."""
 
     def test_constructs(self):
         """Tests that the Model Output Layer constructs given default configuration options."""
         config = StructuredTransformerConfig(**BASE_CONFIG_KWARGS)
-        GenerativeOutputLayer(config)
+        GenerativeOutputLayerBase(config)
 
     def test_get_event_type_mask_per_measurement(self):
         config = StructuredTransformerConfig(
@@ -145,7 +143,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
             }
         )
 
-        layer = GenerativeOutputLayer(config)
+        layer = GenerativeOutputLayerBase(config)
 
         # Recall these are our measurement types
         # TEST_MEASUREMENTS_IDXMAP = {
@@ -829,7 +827,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 # we need to adjust that.
                 config.vocab_size = 10
 
-                layer = GenerativeOutputLayer(config)
+                layer = GenerativeOutputLayerBase(config)
                 layer.ClassificationLayer.weight = torch.nn.Parameter(torch.eye(10))
                 layer.ClassificationLayer.bias = torch.nn.Parameter(
                     torch.zeros_like(layer.ClassificationLayer.bias)
@@ -1022,7 +1020,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 # we need to adjust that.
                 config.vocab_size = 10
 
-                layer = GenerativeOutputLayer(config)
+                layer = GenerativeOutputLayerBase(config)
                 layer.TTE_layer.proj.bias = torch.nn.Parameter(
                     torch.zeros_like(layer.TTE_layer.proj.bias)
                 )
@@ -1662,7 +1660,7 @@ class TestGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase)
                 # we need to adjust that.
                 config.vocab_size = 10
 
-                layer = GenerativeOutputLayer(config)
+                layer = GenerativeOutputLayerBase(config)
                 layer.regression_layers["regression_col"].proj.weight = torch.nn.Parameter(
                     torch.eye(8)
                 )
@@ -1764,6 +1762,8 @@ class TestESTForStreamClassification(MLTypeEqualityCheckableMixin, unittest.Test
             "num_classes": 4,
             "task_specific_params": {"pooling_method": "cls"},
             "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION,
+            "measurements_per_dep_graph_level": TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL,
+            "measurements_idxmap": TEST_MEASUREMENTS_IDXMAP,
         }
         default_weight = torch.nn.Parameter(torch.eye(4))
         default_bias = torch.nn.Parameter(torch.zeros(4))

@@ -14,10 +14,7 @@ import hydra
 import torch
 from omegaconf import OmegaConf
 
-from EventStream.transformer.stream_classification_lightning import (
-    FinetuneConfig,
-    train,
-)
+from EventStream.transformer.lightning_modules.fine_tuning import FinetuneConfig, train
 
 torch.set_float32_matmul_precision("high")
 

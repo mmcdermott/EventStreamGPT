@@ -30,7 +30,7 @@ from ..model import ESTForGenerativeSequenceModeling
 from ..model_output import StreamClassificationModelOutput
 from ..stream_classification_lightning import FinetuneConfig
 from ..utils import safe_weighted_avg, str_summary
-from .zero_shot_labeler import Labeler
+from ..zero_shot_labeler import Labeler
 
 
 class ESTForZeroShotClassificationLM(L.LightningModule):

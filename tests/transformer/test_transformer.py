@@ -12,7 +12,9 @@ from EventStream.transformer.config import (
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
 )
-from EventStream.transformer.transformer import StructuredTransformer
+from EventStream.transformer.transformer import (
+    ConditionallyIndependentPointProcessTransformer,
+)
 
 from ..mixins import ConfigComparisonsMixin
 
@@ -37,6 +39,7 @@ TEST_VOCAB_OFFSETS_BY_DATA_TYPE = {
     "multi_label_col": 3,
     "regression_col": 6,
 }
+TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL = [[], ["event_type"], ["multi_label_col", "regression_col"]]
 
 BASE_CONFIG_KWARGS = dict(
     structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
@@ -57,6 +60,7 @@ BASE_CONFIG_KWARGS = dict(
     mean_log_inter_time=0,
     std_log_inter_time=1,
     use_cache=False,
+    measurements_per_dep_graph_level=TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL,
 )
 
 BASE_BATCH = {
@@ -107,7 +111,7 @@ class TestStructuredTransformer(ConfigComparisonsMixin, unittest.TestCase):
     def test_forward_sensitive_to_event_mask_with_batch(self):
         config = StructuredTransformerConfig(**BASE_CONFIG_KWARGS)
 
-        M = StructuredTransformer(config).cpu()
+        M = ConditionallyIndependentPointProcessTransformer(config).cpu()
         M.eval()  # So layernorm and dropout don't affect anything.
 
         batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))

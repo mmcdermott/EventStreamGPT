@@ -9,11 +9,11 @@ from EventStream.transformer.config import (
     OptimizationConfig,
     StructuredTransformerConfig,
 )
-from EventStream.transformer.generative_modeling_lightning import (
+from EventStream.transformer.lightning_modules.generative_modeling import (
     ESTForGenerativeSequenceModelingLM,
 )
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ...mixins import MLTypeEqualityCheckableMixin
 
 TEST_MEASUREMENTS_PER_GEN_MODE = {
     DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type"],
@@ -25,6 +25,7 @@ TEST_MEASUREMENTS_IDXMAP = {
     "multi_label_col": 2,
     "regression_col": 3,
 }
+TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL = [[], ["event_type"], ["multi_label_col", "regression_col"]]
 TEST_VOCAB_SIZES_BY_MEASUREMENT = {
     "event_type": 2,
     "multi_label_col": 3,
@@ -45,6 +46,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_MEASUREMENT,
             vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_MEASUREMENT,
             measurements_idxmap=TEST_MEASUREMENTS_IDXMAP,
+            measurements_per_dep_graph_level=TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL,
         )
         optimization_config = OptimizationConfig()
 
