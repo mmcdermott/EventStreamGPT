@@ -330,10 +330,10 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                 should_raise = case.get("should_raise", None)
                 if should_raise is not None:
                     with self.assertRaises(should_raise):
-                        M.forward(**kwargs)
+                        M(**kwargs)
                     return
 
-                got = M.forward(**kwargs)
+                got = M(**kwargs)
                 want = GenerativeSequenceModelOutput(**case["want"])
                 self.assertEqual(want, got)
 
