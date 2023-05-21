@@ -223,7 +223,9 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
                     got_metadata[model_col] = got_metadata[model_col].apply(round_dict)
 
                 self.assertEqual(set(want_idx), set(got_idx), msg)
-                reordered_got = got_metadata.reindex(want_idx).copy()
+                # I don't know why, by the extra copy() is necessary to avoid the reindex sometimes not taking
+                # and the resulting dataframes to not match index orders.
+                reordered_got = got_metadata.copy().reindex(want_idx).copy()
                 try:
                     pd.testing.assert_frame_equal(want_metadata, reordered_got, check_like=True)
                 except Exception as e:
