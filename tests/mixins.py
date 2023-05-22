@@ -33,6 +33,14 @@ def round_dict(d: dict[str, float]) -> dict[str, float]:
     return {k: None if v is None else round(v, 5) for k, v in d.items()}
 
 
+class MockModule(Mock, torch.nn.Module):
+    """Useful for mocking sub-modules of a `torch.nn.Module`."""
+
+    def __init__(self, *args, **kwargs):
+        Mock.__init__(self, *args, **kwargs)
+        torch.nn.Module.__init__(self)
+
+
 class MLTypeEqualityCheckableMixin:
     """This mixin provides capability to `unittest.TestCase` submodules to check various common ML
     types for equality, including:

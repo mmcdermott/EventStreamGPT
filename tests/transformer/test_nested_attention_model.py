@@ -23,7 +23,7 @@ from EventStream.transformer.nested_attention_model import (
     NestedAttentionGenerativeOutputLayer,
 )
 
-from ..mixins import ConfigComparisonsMixin
+from ..mixins import ConfigComparisonsMixin, MockModule
 
 DEFAULT_VALID_CONFIG_KWARGS = {
     "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION,
@@ -502,6 +502,65 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                     got = M.prepare_inputs_for_generation(**kwargs)
                     want = case["want"]
                     self.assertNestedDictEqual(want, got)
+
+    def test_forward(self):
+        cases = [
+            {
+                "msg": "Should return no extra arguments if not indicated",
+                "batch": {"input": True},
+                "want": {"input": True},
+            },
+            {
+                "msg": "Should return past_key_values if use_cache is indicated",
+                "batch": {"input": True},
+                "want": {"input": True, "past_key_values": "past_key_values"},
+                "kwargs": {"use_cache": True},
+            },
+            {
+                "msg": "Should return attentions if indicated",
+                "batch": {"input": True},
+                "want": {"input": True, "attentions": "attentions"},
+                "kwargs": {"output_attentions": True},
+            },
+            {
+                "msg": "Should return hidden_states if indicated",
+                "batch": {"input": True},
+                "want": {"input": True, "hidden_states": "hidden_states"},
+                "kwargs": {"output_hidden_states": True},
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                M = NAPPTForGenerativeSequenceModeling(
+                    StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+                )
+
+                encoded_mock = MagicMock()
+                M.encoder = MockModule(return_value=encoded_mock)
+                encoded_mock.last_hidden_state = "last_hidden_state"
+                encoded_mock.past_key_values = "past_key_values"
+                encoded_mock.attentions = "attentions"
+                encoded_mock.hidden_states = "hidden_states"
+                M.output_layer = MockModule(side_effect=lambda batch, *args, **kwargs: batch)
+
+                batch = case["batch"]
+                kwargs = case.get("kwargs", {})
+                is_generation = kwargs.get("is_generation", False)
+
+                want = case["want"]
+                got = M(batch=batch, is_generation=is_generation, **kwargs)
+                self.assertNestedDictEqual(want, got)
+
+                M.encoder.assert_called_once_with(batch, **kwargs)
+                M.output_layer.assert_called_once_with(
+                    batch,
+                    "last_hidden_state",
+                    is_generation=is_generation,
+                    dep_graph_el_generation_target=kwargs.get(
+                        "dep_graph_el_generation_target", None
+                    ),
+                )
 
 
 if __name__ == "__main__":
