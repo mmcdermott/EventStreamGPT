@@ -105,8 +105,8 @@ NA_CONFIG_KWARGS = dict(
 )
 
 BASE_BATCH = {
-    "event_mask": torch.BoolTensor([[True, True, True]]),
-    "time_delta": torch.FloatTensor([[0, 2, 5]]),
+    "event_mask": torch.BoolTensor([[True, True, True, True]]),
+    "time_delta": torch.FloatTensor([[0, 2, 5, 3]]),
     "static_indices": torch.LongTensor([[1, 2, 3]]),
     "static_measurement_indices": torch.LongTensor([[1, 2, 3]]),
     "dynamic_values_mask": torch.BoolTensor(
@@ -114,6 +114,7 @@ BASE_BATCH = {
             [
                 [False, False, False, False, False, False],
                 [False, False, False, False, False, False],
+                [False, False, False, True, True, True],
                 [False, False, False, True, True, True],
             ],
         ]
@@ -124,6 +125,7 @@ BASE_BATCH = {
                 [1, 0, 0, 0, 0, 0],
                 [1, 2, 0, 0, 0, 0],
                 [1, 2, 2, 3, 3, 3],
+                [1, 2, 2, 2, 3, 3],
             ],
         ]
     ),
@@ -133,6 +135,7 @@ BASE_BATCH = {
                 [1, 0, 0, 0, 0, 0],
                 [2, 5, 0, 0, 0, 0],
                 [2, 4, 5, 7, 8, 9],
+                [2, 4, 5, 9, 8, 9],
             ],
         ]
     ),
@@ -142,6 +145,7 @@ BASE_BATCH = {
                 [0, 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0],
                 [0, 0, 0, 1.1, -1.1, 0.0],
+                [0, 0, 0, 1.2, -3.1, 0.2],
             ],
         ]
     ),
@@ -169,7 +173,7 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
 
         self.assertEqual(out1, out1_alt)
 
-        batch.event_mask = torch.BoolTensor([[False, False, True]])
+        batch.event_mask = torch.BoolTensor([[False, False, True, True]])
 
         out2 = M(batch)
         with self.assertRaises(AssertionError):
@@ -201,7 +205,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
 
         self.assertEqual(out1, out1_alt)
 
-        batch.event_mask = torch.BoolTensor([[False, False, True]])
+        batch.event_mask = torch.BoolTensor([[False, False, True, False]])
 
         out2 = M(batch)
         with self.assertRaises(AssertionError):
@@ -240,7 +244,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
         # output there, then use that as the starting point for the iterative cache-based computation.
 
-        seq_idx = 0
+        seq_idx = 1
         dep_graph_idx = None
 
         sliced_batch = copy.deepcopy(source_batch_for_slicing)
@@ -254,7 +258,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
             "dynamic_values_mask",
         ):
             orig_val = getattr(sliced_batch, param)
-            sliced_val = orig_val[:, seq_idx].unsqueeze(1)
+            sliced_val = orig_val[:, : (seq_idx + 1)]
             setattr(sliced_batch, param, sliced_val)
 
         sliced_out = M(
@@ -273,7 +277,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         dep_graph_past = new_joint_past["dep_graph_past"]
 
         out_with_caching = [sliced_out]
-        for seq_idx in range(1, batch.sequence_length):
+        for seq_idx in range(2, batch.sequence_length):
             out_with_caching_seq = []
             for dep_graph_idx in [1, 2, 0]:
                 sliced_batch = copy.deepcopy(source_batch_for_slicing)
