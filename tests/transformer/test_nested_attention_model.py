@@ -348,7 +348,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
 
         default_batch = PytorchBatch(
             time_delta=torch.Tensor([[1.0, 2.0, 3.0]]),
-            event_mask=torch.Tensor([[1, 1, 1]]),
+            event_mask=torch.BoolTensor([[True, False, True]]),
             dynamic_indices=torch.LongTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
             dynamic_measurement_indices=torch.LongTensor(
                 [[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]
@@ -357,6 +357,16 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             dynamic_values_mask=torch.BoolTensor(
                 [[[[True, True, False]], [[True, False, True]], [[False, True, True]]]]
             ),
+        )
+
+        unsqueezed_batch_with_time = PytorchBatch(
+            time_delta=torch.Tensor([[3.0]]),
+            time=torch.Tensor([[3.0]]),
+            event_mask=torch.BoolTensor([[True]]),
+            dynamic_indices=torch.LongTensor([[[[6, 7, 8]]]]),
+            dynamic_measurement_indices=torch.LongTensor([[[[7, 8, 9]]]]),
+            dynamic_values=torch.FloatTensor([[[[6, 7, 8]]]]),
+            dynamic_values_mask=torch.BoolTensor([[[[False, True, True]]]]),
         )
 
         cases = [
@@ -382,6 +392,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "past": None,
                 "dep_graph_el_generation_target": 0,
                 "want": {
+                    "dep_graph_el_generation_target": 0,
                     "batch": default_batch,
                     "past": None,
                     "dep_graph_past": None,
@@ -419,7 +430,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "past": {"seq_past": 1, "dep_graph_past": None},
                 "dep_graph_el_generation_target": None,
                 "want": {
-                    "batch": default_batch.last_sequence_element_unsqueezed(),
+                    "batch": unsqueezed_batch_with_time,
                     "past": 1,
                     "dep_graph_past": None,
                     "use_cache": True,
@@ -435,7 +446,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "past": {"seq_past": 1, "dep_graph_past": 2},
                 "dep_graph_el_generation_target": 1,
                 "want": {
-                    "batch": default_batch.last_sequence_element_unsqueezed(),
+                    "batch": unsqueezed_batch_with_time,
                     "past": 1,
                     "dep_graph_past": None,
                     "use_cache": True,
@@ -451,7 +462,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "past": {"seq_past": 1, "dep_graph_past": 2},
                 "dep_graph_el_generation_target": 2,
                 "want": {
-                    "batch": default_batch.last_sequence_element_unsqueezed(),
+                    "batch": unsqueezed_batch_with_time,
                     "past": 1,
                     "dep_graph_past": 2,
                     "use_cache": True,
@@ -487,11 +498,10 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 if should_raise is not None:
                     with self.assertRaises(should_raise):
                         M.prepare_inputs_for_generation(**kwargs)
-                    return
-
-                got = M.prepare_inputs_for_generation(**kwargs)
-                want = case["want"]
-                self.assertNestedDictEqual(want, got)
+                else:
+                    got = M.prepare_inputs_for_generation(**kwargs)
+                    want = case["want"]
+                    self.assertNestedDictEqual(want, got)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
         batch = PytorchBatch(
             event_mask=torch.BoolTensor([[True, True, True], [True, True, False]]),
             time_delta=torch.FloatTensor([[1, 2, 3], [4, 5, 6]]),
+            time=torch.FloatTensor([[0, 1, 3], [0, 4, 9]]),
             static_indices=torch.LongTensor([[1, 2, 3]]),
             static_measurement_indices=torch.LongTensor([[2, 3, 4]]),
             dynamic_indices=torch.LongTensor(
@@ -57,6 +58,7 @@ class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
         want = PytorchBatch(
             event_mask=torch.BoolTensor([[True], [False]]),
             time_delta=torch.FloatTensor([[3], [6]]),
+            time=torch.FloatTensor([[3], [9]]),
             static_indices=torch.LongTensor([[1, 2, 3]]),
             static_measurement_indices=torch.LongTensor([[2, 3, 4]]),
             dynamic_indices=torch.LongTensor([[[[9, 10], [11, 12]]], [[[21, 22], [23, 24]]]]),

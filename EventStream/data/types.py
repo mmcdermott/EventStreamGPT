@@ -83,7 +83,7 @@ class PytorchBatch:
         return dataclasses.asdict(self).values()
 
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
-        return PytorchBatch(
+        kwargs = dict(
             event_mask=self.event_mask[:, -1].unsqueeze(1),
             time_delta=self.time_delta[:, -1].unsqueeze(1),
             static_indices=self.static_indices,
@@ -95,6 +95,11 @@ class PytorchBatch:
             start_time=self.start_time,
             stream_labels=self.stream_labels,
         )
+
+        if self.time is not None:
+            kwargs["time"] = self.time[:, -1].unsqueeze(1)
+
+        return PytorchBatch(**kwargs)
 
 
 class TemporalityType(StrEnum):
