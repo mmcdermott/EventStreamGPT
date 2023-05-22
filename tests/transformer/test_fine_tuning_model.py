@@ -111,7 +111,6 @@ class TestESTForStreamClassification(MLTypeEqualityCheckableMixin, unittest.Test
                     do_full_block_in_dep_graph_attention=None,
                     dep_graph_attention_types=None,
                     dep_graph_window_size=None,
-                    do_add_temporal_position_embeddings_to_data_embeddings=None,
                     num_classes=2,
                     id2label={0: False, 1: True},
                     label2id={False: 0, True: 1},
@@ -158,7 +157,6 @@ class TestESTForStreamClassification(MLTypeEqualityCheckableMixin, unittest.Test
                     do_full_block_in_dep_graph_attention=None,
                     dep_graph_attention_types=None,
                     dep_graph_window_size=None,
-                    do_add_temporal_position_embeddings_to_data_embeddings=None,
                 ),
                 "mock_encoder": HiddenStateNoDepGraphLevel,
                 # event_encoded should be

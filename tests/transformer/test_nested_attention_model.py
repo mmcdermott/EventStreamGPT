@@ -34,7 +34,6 @@ INVALID_CONFIG_KWARGS = dict(
     structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
     dep_graph_window_size=None,
     do_full_block_in_dep_graph_attention=None,
-    do_add_temporal_position_embeddings_to_data_embeddings=None,
     do_full_block_in_seq_attention=None,
 )
 
@@ -180,6 +179,18 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                 "should_raise": ValueError,
             },
             {
+                "msg": "Should error if given an invalid measurement mode.",
+                "is_generation": False,
+                "dep_graph_el_generation_target": None,
+                "should_raise": ValueError,
+                "measurements_per_dep_graph_level": [
+                    [],
+                    ["clf1", ["mr1", "categorical_only"]],
+                    ["clf2", "ur1", ["mr1", "invalid"]],
+                    ["clf3", "mr2", "ur2"],
+                ],
+            },
+            {
                 "msg": "Should work in non-generative mode.",
                 "is_generation": False,
                 "dep_graph_el_generation_target": None,
@@ -286,12 +297,17 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                 M.classification_mode_per_measurement = {
                     m: None for m in classification_measures + multivariate_regression_measures
                 }
-                M.config.measurements_per_dep_graph_level = [
-                    [],
-                    ["clf1", ["mr1", "categorical_only"]],
-                    ["clf2", "ur1", ["mr1", "numerical_only"]],
-                    ["clf3", "mr2", "ur2"],
-                ]
+                if "measurements_per_dep_graph_level" in case:
+                    M.config.measurements_per_dep_graph_level = case[
+                        "measurements_per_dep_graph_level"
+                    ]
+                else:
+                    M.config.measurements_per_dep_graph_level = [
+                        [],
+                        ["clf1", ["mr1", "categorical_only"]],
+                        ["clf2", "ur1", ["mr1", "numerical_only"]],
+                        ["clf3", "mr2", "ur2"],
+                    ]
                 M.config.measurements_per_generative_mode = {
                     DataModality.MULTIVARIATE_REGRESSION: multivariate_regression_measures,
                     DataModality.UNIVARIATE_REGRESSION: univariate_regression_measures,

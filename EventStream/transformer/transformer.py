@@ -642,26 +642,26 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
     def forward(
         self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None
     ) -> torch.Tensor:
-        data_embed = self.data_embedding_layer(batch)
-        data_embed = data_embed.cumsum(dim=2)
+        embed = self.data_embedding_layer(batch)
+        # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len config.hidden_size).
 
-        # `data_embed` is of shape
-        # (batch_size, sequence_length, len(config.measurements_per_dep_graph_level), config.hidden_size)
-        # We assume that the first element of the dependency graph split reflects those components
-        # that should be lumped in with time (e.g., the functional time dependent variables). We perform a
-        # cumsum in this case such that even in the first layer, our final embedding of the dep graph
-        # reflects the entire event.
+        time_embed = self.time_embedding_layer(batch)
+        # `time_embed` is of shape (batch_size, sequence_length, config.hidden_size).
+
+        # In this model, the first entry of the dependency graph *always* contains all the and only the time
+        # dependent measures, so we combine the time_embedding in at this position as well.
+        embed[:, :, 0] += time_embed
+
+        # We perform a cumsum so that even in the first layer, our final embedding of the dep graph reflects
+        # the entire event.
+        embed = embed.cumsum(dim=2)
 
         if dep_graph_el_generation_target is not None and dep_graph_el_generation_target > 0:
             # This is used in generation to take advantage of the cache, where we only want to process a
             # single, new dependency graph element at a time.
-            data_embed = data_embed[:, :, dep_graph_el_generation_target - 1].unsqueeze(2)
+            embed = embed[:, :, dep_graph_el_generation_target - 1].unsqueeze(2)
 
-        time_embed = self.time_embedding_layer(batch)
-        # `time_embed` is of shape (batch_size, sequence_length, config.hidden_size), so we need to
-        # unsqueeze time_embed and combine.
-
-        return self.embedding_dropout(data_embed + time_embed.unsqueeze(2))
+        return self.embedding_dropout(embed)
 
 
 class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedModel):

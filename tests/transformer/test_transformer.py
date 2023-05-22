@@ -14,6 +14,7 @@ from EventStream.transformer.config import (
 )
 from EventStream.transformer.transformer import (
     ConditionallyIndependentPointProcessTransformer,
+    NestedAttentionPointProcessTransformer,
 )
 
 from ..mixins import ConfigComparisonsMixin
@@ -41,13 +42,33 @@ TEST_VOCAB_OFFSETS_BY_DATA_TYPE = {
 }
 TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL = [[], ["event_type"], ["multi_label_col", "regression_col"]]
 
-BASE_CONFIG_KWARGS = dict(
+CI_CONFIG_KWARGS = dict(
     structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
     dep_graph_attention_types=None,
     dep_graph_window_size=None,
     do_full_block_in_dep_graph_attention=None,
     do_full_block_in_seq_attention=None,
-    do_add_temporal_position_embeddings_to_data_embeddings=None,
+    measurements_per_generative_mode=TEST_DATA_TYPES_PER_GEN_MODE,
+    vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_DATA_TYPE,
+    vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_DATA_TYPE,
+    measurements_idxmap=TEST_DATA_TYPES_IDXMAP,
+    vocab_size=10,
+    hidden_size=4,
+    num_hidden_layers=2,
+    head_dim=None,
+    num_attention_heads=2,  # Needs to divide hidden_size.
+    mean_log_inter_time=0,
+    std_log_inter_time=1,
+    use_cache=False,
+    measurements_per_dep_graph_level=None,
+)
+
+NA_CONFIG_KWARGS = dict(
+    structured_event_processing_mode=StructuredEventProcessingMode.NESTED_ATTENTION,
+    dep_graph_attention_types=["global"],
+    dep_graph_window_size=None,
+    do_full_block_in_dep_graph_attention=True,
+    do_full_block_in_seq_attention=True,
     measurements_per_generative_mode=TEST_DATA_TYPES_PER_GEN_MODE,
     vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_DATA_TYPE,
     vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_DATA_TYPE,
@@ -107,9 +128,16 @@ BASE_BATCH = {
 }
 
 
-class TestStructuredTransformer(ConfigComparisonsMixin, unittest.TestCase):
+class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.TestCase):
+    def test_constructs(self):
+        config_valid = StructuredTransformerConfig(**CI_CONFIG_KWARGS)
+        ConditionallyIndependentPointProcessTransformer(config_valid)
+        config_invalid = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+        with self.assertRaises(ValueError):
+            ConditionallyIndependentPointProcessTransformer(config_invalid)
+
     def test_forward_sensitive_to_event_mask_with_batch(self):
-        config = StructuredTransformerConfig(**BASE_CONFIG_KWARGS)
+        config = StructuredTransformerConfig(**CI_CONFIG_KWARGS)
 
         M = ConditionallyIndependentPointProcessTransformer(config).cpu()
         M.eval()  # So layernorm and dropout don't affect anything.
@@ -126,6 +154,42 @@ class TestStructuredTransformer(ConfigComparisonsMixin, unittest.TestCase):
         out2 = M(batch)
         with self.assertRaises(AssertionError):
             self.assertEqual(out1, out2)
+
+    @unittest.skip("TODO: Implement caching.")
+    def test_forward_identical_with_or_without_caching(self):
+        raise NotImplementedError
+
+
+class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
+    def test_constructs(self):
+        config_valid = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+        NestedAttentionPointProcessTransformer(config_valid)
+        config_invalid = StructuredTransformerConfig(**CI_CONFIG_KWARGS)
+        with self.assertRaises(ValueError):
+            NestedAttentionPointProcessTransformer(config_invalid)
+
+    def test_forward_sensitive_to_event_mask_with_batch(self):
+        config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+
+        M = NestedAttentionPointProcessTransformer(config).cpu()
+        M.eval()  # So layernorm and dropout don't affect anything.
+
+        batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+        batch2 = copy.deepcopy(batch)
+        out1 = M(batch)
+        out1_alt = M(batch2)
+
+        self.assertEqual(out1, out1_alt)
+
+        batch.event_mask = torch.BoolTensor([[False, False, True]])
+
+        out2 = M(batch)
+        with self.assertRaises(AssertionError):
+            self.assertEqual(out1, out2)
+
+    @unittest.skip("TODO: Implement caching.")
+    def test_forward_identical_with_or_without_caching(self):
+        raise NotImplementedError
 
 
 if __name__ == "__main__":

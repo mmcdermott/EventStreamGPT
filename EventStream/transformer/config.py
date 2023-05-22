@@ -388,7 +388,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                     * `do_full_block_in_dep_graph_attention`
                     * `dep_graph_attention_types`
                     * `dep_graph_window_size`
-                    * `do_add_temporal_position_embeddings_to_data_embeddings`
         hidden_size (`int`, *optional*, defaults to 256):
             The hidden size of the model. Must be consistent with `head_dim`, if specified.
         head_dim (`int`, *optional*, defaults to 64):
@@ -419,10 +418,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_full_block_in_dep_graph_attention (`Optional[bool]`, *optional*, defaults to True):
             If true, use a full attention block (including layer normalization and MLP layers) for the
             dependency graph processing module. If false, just use a self attention layer.
-        do_add_temporal_position_embeddings_to_data_embeddings
-            (`Optional[bool]`, *optional*, defaults to False):
-            If true, the input layer will add the temporal embeddings to all elements of the data embeddings.
-            This functionally adds temporal position embeddings into the inputs for the first sequence layer.
 
         intermediate_size (`int`, *optional*, defaults to 32):
             Dimension of the "intermediate" (often named feed-forward) layer in encoder.
@@ -501,7 +496,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         layer_norm_epsilon: float = 1e-5,
         do_full_block_in_dep_graph_attention: bool | None = True,
         do_full_block_in_seq_attention: bool | None = False,
-        do_add_temporal_position_embeddings_to_data_embeddings: bool | None = False,
         # Model output configuration
         TTE_generation_layer_type: TimeToEventGenerationHeadType = "exponential",
         TTE_lognormal_generation_num_components: int | None = None,
@@ -597,12 +591,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                     raise ValueError(
                         missing_param_err_tmpl.format("do_full_block_in_dep_graph_attention")
                     )
-                if do_add_temporal_position_embeddings_to_data_embeddings is None:
-                    raise ValueError(
-                        missing_param_err_tmpl.format(
-                            "do_add_temporal_position_embeddings_to_data_embeddings"
-                        )
-                    )
                 if measurements_per_dep_graph_level is None:
                     raise ValueError(
                         missing_param_err_tmpl.format("measurements_per_dep_graph_level")
@@ -660,14 +648,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                         extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size)
                     )
                     dep_graph_window_size = None
-                if do_add_temporal_position_embeddings_to_data_embeddings is not None:
-                    print(
-                        extra_param_err_tmpl.format(
-                            "do_add_temporal_position_embeddings_to_data_embeddings",
-                            do_add_temporal_position_embeddings_to_data_embeddings,
-                        )
-                    )
-                    do_add_temporal_position_embeddings_to_data_embeddings = None
 
             case _:
                 raise ValueError(
@@ -827,9 +807,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.activation_function = activation_function
         self.do_full_block_in_seq_attention = do_full_block_in_seq_attention
         self.do_full_block_in_dep_graph_attention = do_full_block_in_dep_graph_attention
-        self.do_add_temporal_position_embeddings_to_data_embeddings = (
-            do_add_temporal_position_embeddings_to_data_embeddings
-        )
 
         self.use_cache = use_cache
 
