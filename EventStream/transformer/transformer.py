@@ -781,7 +781,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                 case None:
                     if dep_graph_past is not None:
                         raise ValueError(
-                            f"dep_graph_past should be None if gen target is >0; got {dep_graph_past}"
+                            f"dep_graph_past should be None if gen target is None; got {dep_graph_past}"
                         )
                     update_seq_cache = True
                     update_dep_graph_cache = True

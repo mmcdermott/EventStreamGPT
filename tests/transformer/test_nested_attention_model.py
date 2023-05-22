@@ -455,7 +455,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             },
             {
                 "msg": (
-                    "Should strip batch down to last sequence element and return no dep_graph_past if "
+                    "Should strip batch down to last sequence element and return dep_graph_past if "
                     "dep_graph_el_generation_target is <= 1 and dep_graph_past is not None"
                 ),
                 "use_cache": True,
@@ -464,7 +464,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "want": {
                     "batch": unsqueezed_batch_with_time,
                     "past": 1,
-                    "dep_graph_past": None,
+                    "dep_graph_past": 2,
                     "use_cache": True,
                     "dep_graph_el_generation_target": 1,
                 },

@@ -249,11 +249,11 @@ class NAPPTForGenerativeSequenceModeling(
                 batch = batch.last_sequence_element_unsqueezed()
 
                 dep_graph_past = pasts_dict["dep_graph_past"]
-                if dep_graph_el_generation_target is None:
+                if dep_graph_past is not None and dep_graph_el_generation_target is None:
                     raise ValueError(
-                        "Trying to use generate without a dep graph generation target!"
+                        "Trying to use generate with a past without a dep graph generation target!"
                     )
-                elif dep_graph_past is None:
+                elif dep_graph_past is None and dep_graph_el_generation_target is not None:
                     raise ValueError("Trying to target only one dep graph element without past!")
 
             case _:
