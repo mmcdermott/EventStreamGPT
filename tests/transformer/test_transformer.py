@@ -4,6 +4,7 @@ sys.path.append("../..")
 
 import copy
 import unittest
+from typing import Any
 
 import torch
 
@@ -12,12 +13,31 @@ from EventStream.transformer.config import (
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
 )
+from EventStream.transformer.model_output import TransformerOutputWithPast
 from EventStream.transformer.transformer import (
     ConditionallyIndependentPointProcessTransformer,
     NestedAttentionPointProcessTransformer,
+    time_from_deltas,
 )
 
 from ..mixins import ConfigComparisonsMixin
+
+
+def print_debug_info(v: Any) -> str:
+    match v:
+        case None:
+            return "None"
+        case torch.Tensor():
+            return str(v.shape)
+        case dict() as v_dict:
+            els_strs = "\n    ".join(f"{k}: {print_debug_info(v)}" for k, v in v_dict.items())
+            return f"{type(v_dict)} of len {len(v_dict)}\n" f"  Elements:\n" f"    {els_strs}"
+        case (list() | tuple()) as v_list:
+            els_strs = {f"{print_debug_info(v)}" for v in v_list}
+            return f"{type(v_list)} of len {len(v_list)} with elements: {', '.join(els_strs)}"
+        case _:
+            return str(v)
+
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     "single_label_classification": ["event_type"],
@@ -54,7 +74,7 @@ CI_CONFIG_KWARGS = dict(
     measurements_idxmap=TEST_DATA_TYPES_IDXMAP,
     vocab_size=10,
     hidden_size=4,
-    num_hidden_layers=2,
+    num_hidden_layers=5,
     head_dim=None,
     num_attention_heads=2,  # Needs to divide hidden_size.
     mean_log_inter_time=0,
@@ -75,7 +95,7 @@ NA_CONFIG_KWARGS = dict(
     measurements_idxmap=TEST_DATA_TYPES_IDXMAP,
     vocab_size=10,
     hidden_size=4,
-    num_hidden_layers=2,
+    num_hidden_layers=5,
     head_dim=None,
     num_attention_heads=2,  # Needs to divide hidden_size.
     mean_log_inter_time=0,
@@ -187,9 +207,118 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assertEqual(out1, out2)
 
-    @unittest.skip("TODO: Implement caching.")
     def test_forward_identical_with_or_without_caching(self):
-        raise NotImplementedError
+        config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+
+        M = NestedAttentionPointProcessTransformer(config).cpu()
+        M.eval()  # So layernorm and dropout don't affect anything.
+
+        batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+
+        # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
+        # run the model over a partial batch without caching and store the result. Then, we'll run the model
+        # over various elements of that batch, iterating through in sequence, using caching to only ever run
+        # the attention calculation on the last element, and we'll validate that the predictions don't change
+        # in comparison to the run without caching.
+
+        out_no_caching = M(batch, return_dict=True, use_cache=False)
+
+        out_with_caching_full = M(
+            batch,
+            return_dict=True,
+            use_cache=True,
+        )
+        out_with_caching_full["past_key_values"] = None
+        self.assertEqual(out_no_caching, out_with_caching_full)
+
+        source_batch_for_slicing = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+        # We need to add time explicitly here as that will be lost when we slice the batch. This happens
+        # naturally during generation.
+        source_batch_for_slicing.time = time_from_deltas(source_batch_for_slicing.time_delta)
+
+        # We can't actually start an iterative caching process from nothing -- the system isn't designed for
+        # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
+        # output there, then use that as the starting point for the iterative cache-based computation.
+
+        seq_idx = 0
+        dep_graph_idx = None
+
+        sliced_batch = copy.deepcopy(source_batch_for_slicing)
+        for param in (
+            "time",
+            "event_mask",
+            "time_delta",
+            "dynamic_indices",
+            "dynamic_measurement_indices",
+            "dynamic_values",
+            "dynamic_values_mask",
+        ):
+            orig_val = getattr(sliced_batch, param)
+            sliced_val = orig_val[:, seq_idx].unsqueeze(1)
+            setattr(sliced_batch, param, sliced_val)
+
+        sliced_out = M(
+            sliced_batch,
+            return_dict=True,
+            use_cache=True,
+            dep_graph_past=dep_graph_idx,
+            dep_graph_el_generation_target=None,
+            past=None,
+        )
+
+        new_joint_past = sliced_out["past_key_values"]
+        sliced_out["past_key_values"] = None
+
+        past = new_joint_past["seq_past"]
+        dep_graph_past = new_joint_past["dep_graph_past"]
+
+        out_with_caching = [sliced_out]
+        for seq_idx in range(1, batch.sequence_length):
+            out_with_caching_seq = []
+            for dep_graph_idx in [1, 2, 0]:
+                sliced_batch = copy.deepcopy(source_batch_for_slicing)
+                for param in (
+                    "time",
+                    "event_mask",
+                    "time_delta",
+                    "dynamic_indices",
+                    "dynamic_measurement_indices",
+                    "dynamic_values",
+                    "dynamic_values_mask",
+                ):
+                    orig_val = getattr(sliced_batch, param)
+                    sliced_val = orig_val[:, seq_idx].unsqueeze(1)
+                    setattr(sliced_batch, param, sliced_val)
+
+                sliced_out = M(
+                    sliced_batch,
+                    return_dict=True,
+                    use_cache=True,
+                    dep_graph_past=dep_graph_past,
+                    dep_graph_el_generation_target=dep_graph_idx,
+                    past=past,
+                )
+
+                new_joint_past = sliced_out["past_key_values"]
+                sliced_out["past_key_values"] = None
+
+                past = new_joint_past["seq_past"]
+                dep_graph_past = new_joint_past["dep_graph_past"]
+
+                out_with_caching_seq.append(sliced_out)
+
+            joint_seq_out_with_caching = TransformerOutputWithPast(
+                last_hidden_state=torch.cat(
+                    [x.last_hidden_state for x in out_with_caching_seq], dim=2
+                ),
+            )
+            out_with_caching.append(joint_seq_out_with_caching)
+
+        out_with_caching = TransformerOutputWithPast(
+            last_hidden_state=torch.cat([x.last_hidden_state for x in out_with_caching], dim=1),
+        )
+
+        self.assertEqual(out_no_caching, out_with_caching)
 
 
 if __name__ == "__main__":

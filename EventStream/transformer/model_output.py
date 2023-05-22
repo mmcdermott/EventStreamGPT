@@ -141,7 +141,9 @@ class TransformerOutputWithPast(ModelOutput):
     """Transformer Model Outputs, with optional past key values and hidden states."""
 
     last_hidden_state: torch.FloatTensor = None
-    past_key_values: tuple[tuple[torch.FloatTensor]] | None = None
+    past_key_values: tuple[tuple[torch.FloatTensor]] | dict[
+        str, tuple[torch.FloatTensor]
+    ] | None = None
     hidden_states: tuple[torch.FloatTensor] | None = None
     attentions: tuple[torch.FloatTensor] | None = None
 

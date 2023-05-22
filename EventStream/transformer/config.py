@@ -503,7 +503,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         std_log_inter_event_time_min: float | None = None,
         # For decoding
         use_cache: bool = True,
-        do_update_to_contextualized_event: bool = True,
         **kwargs,
     ):
         # Resetting default values to appropriate types
@@ -524,8 +523,6 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
-
-        self.do_update_to_contextualized_event = do_update_to_contextualized_event
 
         if measurement_configs:
             new_meas_configs = {}

@@ -3,23 +3,6 @@ from typing import Any
 import torch
 
 
-class TakeExistingEventEmbedding(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """A pre-built event pooler that just takes the pre-existing event embedding within the
-        passed dependency graph structure, which is assumed to be last within the event sequence.
-
-        Args:
-            X: (`torch.Tensor` of shape (augmented batch size, dependency graph length, embedding dim)):
-                The passed input embeddings corresponding to each element of the dependency graph.
-
-        Returns: X[:, -1, :]
-        """
-        return X[:, -1, :]
-
-
 class StructuredAttention(torch.nn.Module):
     """This module performs a dependency-graph structured attention calculation, in which each
     sequence element is itself composed of objects with internal dependency structures that you want
@@ -34,15 +17,11 @@ class StructuredAttention(torch.nn.Module):
         self,
         seq_module: torch.nn.Module,
         dep_graph_module: torch.nn.Module,
-        event_pooler: torch.nn.Module = TakeExistingEventEmbedding(),
-        do_update_to_contextualized_event: bool = True,
     ):
         super().__init__()
 
-        self.event_pooler = event_pooler
         self.seq_module = seq_module
         self.dep_graph_module = dep_graph_module
-        self.do_update_to_contextualized_event = do_update_to_contextualized_event
 
     def forward(
         self,
@@ -50,12 +29,14 @@ class StructuredAttention(torch.nn.Module):
         seq_mask: torch.Tensor | None = None,
         seq_module_kwargs: dict[str, Any] | None = None,
         dep_graph_module_kwargs: dict[str, Any] | None = None,
+        prepend_graph_with_history_embeddings: bool = True,
+        update_last_graph_el_to_history_embedding: bool = True,
     ) -> tuple[torch.Tensor, dict[str, dict[str, torch.Tensor | None] | None]]:
         """
         Performs a structured attention forward pass, consistent with the internal sub-modules. E.g., given
         the notation defined in the hidden_state arg documentation, this module performs the following steps:
-            1. Input events are summarized into event embeddings:
-                `x_i = self.event_pooler([e_{i, 1}, ..., e_{i, m}, s_i])`
+            1. Input events are summarized into event embeddings via their last entry:
+                `x_i = [e_{i, 1}, ..., e_{i, m}, s_i][:, -1, :] = s_i
             2. These events are contextualized via the history:
                 `h_i = self.seq_module([x_1, ..., x_i], seq_mask, **seq_module_kwargs)`
             3. Output embeddings are produced by processing the historical context and dep. graph structure:
@@ -103,76 +84,103 @@ class StructuredAttention(torch.nn.Module):
         # First, we produce input event embeddings:
         bsz, seq_len, dep_graph_len, hidden_size = hidden_states.size()
 
-        # To pool the per-event data, we need to reshape the data so that the natural "sequence length"
-        # dimension is the dependency graph length.
-        for_per_event_pooling = torch.reshape(
-            hidden_states, (bsz * seq_len, dep_graph_len, hidden_size)
+        compute_contextualized_history_embeddings = (
+            prepend_graph_with_history_embeddings or update_last_graph_el_to_history_embedding
         )
 
-        # However, we don't want to process any padding elements, so we need to filter those out.
-        # To do this, we'll use the seq_mask. It has shape (bsz, seq_len). We'll expand it then re-shape it in
-        # a similar manner as the for_per_event_pooling tensor.
-        if seq_mask is None:
-            per_event_all = self.event_pooler(for_per_event_pooling)
-        else:
-            flat_seq_mask = torch.reshape(seq_mask, (bsz * seq_len,)).bool()
-            for_per_event_pooling_present = for_per_event_pooling[flat_seq_mask, :, :]
-            per_event = self.event_pooler(for_per_event_pooling_present)
-
-            per_event_all = torch.zeros(
-                bsz * seq_len, hidden_size, dtype=per_event.dtype, device=per_event.device
+        if compute_contextualized_history_embeddings:
+            # To pool the per-event data, we need to reshape the data so that the natural "sequence length"
+            # dimension is the dependency graph length.
+            for_per_event_pooling = torch.reshape(
+                hidden_states, (bsz * seq_len, dep_graph_len, hidden_size)
             )
-            per_event_all[flat_seq_mask, :] = per_event
 
-        per_event_all = torch.reshape(per_event_all, (bsz, seq_len, hidden_size))
+            # However, we don't want to process any padding elements, so we need to filter those out.
+            # To do this, we'll use the seq_mask. It has shape (bsz, seq_len). We'll expand it then re-shape
+            # it in a similar manner as the for_per_event_pooling tensor.
+            if seq_mask is None:
+                per_event_all = for_per_event_pooling[:, -1, :]
+            else:
+                flat_seq_mask = torch.reshape(seq_mask, (bsz * seq_len,)).bool()
+                for_per_event_pooling_present = for_per_event_pooling[flat_seq_mask, :, :]
+                per_event = for_per_event_pooling_present[:, -1, :]
 
-        # Next, we need to summarize the sequence of pooled event embeddings.
-        contextualized_events = self.seq_module(
-            per_event_all,
-            attention_mask=seq_mask,
-            **seq_module_kwargs,
-        )
-        # Some modules will return extra outputs (e.g., attention weights, past key values, etc.)
-        if isinstance(contextualized_events, tuple):
-            contextualized_events, seq_module_return_kwargs = contextualized_events
+                per_event_all = torch.zeros(
+                    bsz * seq_len, hidden_size, dtype=per_event.dtype, device=per_event.device
+                )
+                per_event_all[flat_seq_mask, :] = per_event
+
+            per_event_all = torch.reshape(per_event_all, (bsz, seq_len, hidden_size))
+
+            # Next, we need to summarize the sequence of pooled event embeddings.
+            contextualized_events = self.seq_module(
+                per_event_all,
+                attention_mask=seq_mask,
+                **seq_module_kwargs,
+            )
+            # Some modules will return extra outputs (e.g., attention weights, past key values, etc.)
+            if isinstance(contextualized_events, tuple):
+                contextualized_events, seq_module_return_kwargs = contextualized_events
+            else:
+                seq_module_return_kwargs = None
+
+            # contextualized_events is of shape (bsz, seq_len, hidden_size)
+
+            if prepend_graph_with_history_embeddings:
+                # To produce the contextualized view of the _history_ prior to an event i, we pad the start of
+                # this set of contextualized events with a zero vector and drop the last event.
+                contextualized_history = torch.cat(
+                    (
+                        torch.zeros_like(contextualized_events[:, :1, :]),
+                        contextualized_events[:, :-1, :],
+                    ),
+                    dim=1,
+                )
+                # contextualized_history is of shape (batch size, seq len, hidden_size)
+
+                # Finally, we produce output embeddings
+                # e_{i,j}' = self.dep_graph_module(
+                #   [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}, s_{i}], **dep_graph_module_kwargs
+                # ).
+
+                # To do this, we first produce these augmented dependency graph sequences:
+                dep_graph_seq = torch.cat(
+                    (contextualized_history.unsqueeze(2), hidden_states), dim=2
+                )
+                # dep_graph_seq is now of shape (batch size, seq len, dependency graph len + 1, hidden size)
+                static_kv_first = True
+            else:
+                dep_graph_seq = hidden_states
+                static_kv_first = False
+
+            if update_last_graph_el_to_history_embedding:
+                # We also update the per-event embedding s_i to reflect the contextualized version already
+                # produced. This is especially important for any model that uses `use_cache`, as from here we
+                # source the key/value embeddings for the contextualized_history vector for dependency element
+                # generation in the next element of the sequence!
+                dep_graph_seq[:, :, -1, :] = contextualized_events
         else:
+            # Now, we need to reshape these so that the dependency graph axis is again the sequence axis, and
+            # we also need to drop the padding elements of the sequence once more.
+            static_kv_first = False
+            dep_graph_seq = hidden_states
             seq_module_return_kwargs = None
 
-        # contextualized_events is of shape (bsz, seq_len, hidden_size)
+            if seq_mask is not None:
+                flat_seq_mask = torch.reshape(seq_mask, (bsz * seq_len,)).bool()
 
-        # To produce the contextualized view of the _history_ prior to an event i, we pad the start of this
-        # set of contextualized events with a zero vector and drop the last event.
-        contextualized_history = torch.cat(
-            (torch.zeros_like(contextualized_events[:, :1, :]), contextualized_events[:, :-1, :]),
-            dim=1,
-        )
-        # contextualized_history is of shape (batch size, seq len, hidden_size)
-
-        # Finally, we produce output embeddings
-        # e_{i,j}' = self.dep_graph_module(
-        #   [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}, s_{i}], **dep_graph_module_kwargs
-        # ).
-
-        # To do this, we first produce these augmented dependency graph sequences:
-        dep_graph_seq = torch.cat((contextualized_history.unsqueeze(2), hidden_states), dim=2)
-        # dep_graph_seq is now of shape (batch size, seq len, dependency graph len + 1, hidden size)
-
-        # We may also want to update the per-event embedding s_i to reflect the contextualized version already
-        # produced.
-        if self.do_update_to_contextualized_event:
-            dep_graph_seq[:, :, -1, :] = contextualized_events
-
-        # Now, we need to reshape these so that the dependency graph axis is again the sequence axis, and we
-        # also need to drop the padding elements of the sequence once more.
-        dep_graph_seq = torch.reshape(
-            dep_graph_seq, (bsz * seq_len, dep_graph_len + 1, hidden_size)
-        )
+        # Now, we need to reshape these so that the dependency graph axis is again the sequence axis, and
+        # we also need to drop the padding elements of the sequence once more.
+        dep_graph_seq = torch.reshape(dep_graph_seq, (bsz * seq_len, -1, hidden_size))
 
         if seq_mask is not None:
             dep_graph_seq = dep_graph_seq[flat_seq_mask, :, :]
 
         dep_graph_out = self.dep_graph_module(
-            dep_graph_seq, attention_mask=None, **dep_graph_module_kwargs
+            dep_graph_seq,
+            attention_mask=None,
+            static_kv_first=static_kv_first,
+            **dep_graph_module_kwargs,
         )
         # Some modules will return extra outputs (e.g., attention weights, past key values, etc.)
         if isinstance(dep_graph_out, tuple):

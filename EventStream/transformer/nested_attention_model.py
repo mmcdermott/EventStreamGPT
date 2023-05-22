@@ -250,19 +250,11 @@ class NAPPTForGenerativeSequenceModeling(
 
                 dep_graph_past = pasts_dict["dep_graph_past"]
                 if dep_graph_el_generation_target is None:
-                    if dep_graph_past is not None:
-                        raise ValueError(
-                            "Trying to use dep_graph_past without a generation target!"
-                        )
-                elif dep_graph_el_generation_target <= 1:
-                    # We're on a new sequence or dep graph element, so any dep_graph_past that was retained is
-                    # now null and void.
-                    dep_graph_past = None
-                else:
-                    if dep_graph_past is None:
-                        raise ValueError(
-                            "Trying to target only one dep graph element without past!"
-                        )
+                    raise ValueError(
+                        "Trying to use generate without a dep graph generation target!"
+                    )
+                elif dep_graph_past is None:
+                    raise ValueError("Trying to target only one dep graph element without past!")
 
             case _:
                 raise ValueError(f"{past} malformed!")

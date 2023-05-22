@@ -106,7 +106,10 @@ class InnerSelfAttention(nn.Module):
         query = query.to(torch.float32)
         key = key.to(torch.float32)
 
+        # query, key, and value are all of shape (batch, head, seq_length, head_features)
+
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
+        # attn_weights is of shape batch, head, query_seq_length, key_seq_length
 
         query_length, key_length = query.size(-2), key.size(-2)
         causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(
@@ -227,6 +230,7 @@ class InnerAttention(nn.Module):
         head_mask=None,
         use_cache=False,
         output_attentions=False,
+        static_kv_first: bool = False,
     ):
         hidden_states = self.layer_norm(hidden_states)
         return self.attention(
@@ -236,7 +240,7 @@ class InnerAttention(nn.Module):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
-            static_kv_first=(not self.is_seq),
+            static_kv_first=static_kv_first,
         )
 
 
@@ -267,7 +271,6 @@ class InnerBlock(nn.Module):
         self.attn = InnerAttention(config, layer_id, is_seq)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_epsilon)
         self.mlp = InnerMLP(config)
-        self.static_kv_first = not is_seq
 
     def forward(
         self,
@@ -277,12 +280,13 @@ class InnerBlock(nn.Module):
         head_mask=None,
         use_cache=False,
         output_attentions=False,
+        static_kv_first: bool = False,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Note that attention_mask here is still not expanded; we do that internally here to
         account for the different mask shapes used in the structured transformer."""
         # If we have a static kv entry first, we don't want to process it in the rest of the block, so we drop
         # it from the residual.
-        residual = hidden_states if not self.static_kv_first else hidden_states[:, 1:, :]
+        residual = hidden_states if not static_kv_first else hidden_states[:, 1:, :]
 
         attn_outputs = self.attn(
             hidden_states,
@@ -291,6 +295,7 @@ class InnerBlock(nn.Module):
             head_mask=head_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
+            static_kv_first=static_kv_first,
         )
         attn_output, outputs = attn_outputs  # output_attn: a, {present, (attentions)}
 
@@ -325,7 +330,6 @@ class StructuredTransformerBlock(nn.Module):
         self.block = StructuredAttention(
             seq_module=seq_block,
             dep_graph_module=dep_graph_block,
-            do_update_to_contextualized_event=config.do_update_to_contextualized_event,
         )
 
     def forward(
@@ -656,7 +660,7 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
         # the entire event.
         embed = embed.cumsum(dim=2)
 
-        if dep_graph_el_generation_target is not None and dep_graph_el_generation_target > 0:
+        if dep_graph_el_generation_target is not None:
             # This is used in generation to take advantage of the cache, where we only want to process a
             # single, new dependency graph element at a time.
             embed = embed[:, :, dep_graph_el_generation_target - 1].unsqueeze(2)
@@ -716,11 +720,6 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if past is None:
-            past = tuple([None] * len(self.h))
-        if dep_graph_past is None:
-            dep_graph_past = tuple([None] * len(self.h))
-
         if input_embeds is None:
             assert batch is not None
             assert seq_mask is None
@@ -741,7 +740,69 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         hidden_states = input_embeds
 
         presents = {"seq_past": (), "dep_graph_past": ()} if use_cache else None
-        all_self_attentions = () if output_attentions else None
+        if output_attentions:
+            all_self_attentions = {"seq_attentions": (), "dep_graph_attentions": ()}
+        else:
+            all_self_attentions = None
+
+        # Should we update the sequence cache of past key/values?
+        update_seq_cache = False
+        # Should we update the dependency graph cache of past key/values?
+        update_dep_graph_cache = False
+        # Should we re-set the dependency graph cache at the end to just the final element (used when
+        # generating new events, to initialize the dependency graph sequence with an appropriate history
+        # key/value embedding)?
+        re_set_dep_graph_cache = False
+        # Are we generating new dep_graph_elements, and therefore don't need to re-compute contextualized
+        # history / event embeddings?
+        prepend_graph_with_history_embeddings = True
+        update_last_graph_el_to_history_embedding = True
+
+        if use_cache:
+            # We only want to update the dependency graph cache when we're generating new dependency graph
+            # elements. Otherwise, it will be invalid as it is for past sequence elements. Conversely, we only
+            # want to update the sequence cache if we're generating a new sequence element, as otherwise it
+            # will be based on incomplete events and the new elements will be not used besides.
+            match dep_graph_el_generation_target:
+                case int() if dep_graph_el_generation_target > 0:
+                    update_dep_graph_cache = True
+                    if dep_graph_past is None:
+                        raise ValueError("dep_graph_past should not be None if gen target is >0")
+                    prepend_graph_with_history_embeddings = False
+                    update_last_graph_el_to_history_embedding = False
+                case int() if dep_graph_el_generation_target == 0:
+                    update_seq_cache = True
+                    # We need to update it to re-set it to the right target at the end.
+                    update_dep_graph_cache = True
+                    re_set_dep_graph_cache = True
+
+                    prepend_graph_with_history_embeddings = False
+                    update_last_graph_el_to_history_embedding = True
+                case None:
+                    if dep_graph_past is not None:
+                        raise ValueError(
+                            f"dep_graph_past should be None if gen target is >0; got {dep_graph_past}"
+                        )
+                    update_seq_cache = True
+                    update_dep_graph_cache = True
+                    re_set_dep_graph_cache = True
+                    prepend_graph_with_history_embeddings = True
+                    update_last_graph_el_to_history_embedding = True
+                case _:
+                    raise ValueError(
+                        "While use_cache=True, dep_graph generation target must be a non-negative int; got "
+                        f"{dep_graph_el_generation_target}."
+                    )
+
+        compute_contextualized_history_embeddings = (
+            prepend_graph_with_history_embeddings or update_last_graph_el_to_history_embedding
+        )
+
+        if past is None:
+            past = tuple([None] * len(self.h))
+        if dep_graph_past is None:
+            dep_graph_past = tuple([None] * len(self.h))
+
         all_hidden_states = () if output_hidden_states else None
         for i, (block, layer_past, dep_graph_layer_past) in enumerate(
             zip(self.h, past, dep_graph_past)
@@ -756,6 +817,11 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                         "Setting `use_cache=False`..."
                     )
                     use_cache = False
+                    prepend_graph_with_history_embeddings = (True,)
+                    update_last_graph_el_to_history_embedding = (True,)
+                    update_seq_cache = False
+                    update_dep_graph_cache = False
+                    re_set_dep_graph_cache = False
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -769,12 +835,13 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                     dict(
                         layer_past=layer_past,
                         head_mask=head_mask[i],
-                        use_cache=use_cache,
+                        use_cache=False,
                         output_attentions=output_attentions,
                     ),
                     dict(
                         layer_past=dep_graph_layer_past,
-                        use_cache=use_cache,
+                        use_cache=False,
+                        output_attentions=output_attentions,
                     ),
                 )
 
@@ -783,32 +850,41 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                 kwargs = dict(
                     hidden_states=hidden_states,
                     seq_mask=seq_mask,
+                    prepend_graph_with_history_embeddings=prepend_graph_with_history_embeddings,
+                    update_last_graph_el_to_history_embedding=update_last_graph_el_to_history_embedding,
                     seq_module_kwargs=dict(
                         layer_past=layer_past,
                         head_mask=head_mask[i],
-                        use_cache=use_cache,
+                        use_cache=update_seq_cache,
                         output_attentions=output_attentions,
                     ),
                     dep_graph_module_kwargs=dict(
                         layer_past=dep_graph_layer_past,
-                        use_cache=use_cache,
+                        use_cache=update_dep_graph_cache,
+                        output_attentions=output_attentions,
                     ),
                 )
                 outputs = block(**kwargs)
 
             hidden_states, extra_return_info = outputs
-            if use_cache is True:
+
+            if update_seq_cache:
                 presents["seq_past"] = presents["seq_past"] + (
                     extra_return_info["seq_module"]["present_key_value"],
                 )
+            if update_dep_graph_cache:
                 presents["dep_graph_past"] = presents["dep_graph_past"] + (
                     extra_return_info["dep_graph_module"]["present_key_value"],
                 )
 
             if output_attentions:
-                all_self_attentions = all_self_attentions + (
-                    extra_return_info["seq_module"]["attn_weights"],
-                )
+                if compute_contextualized_history_embeddings:
+                    all_self_attentions["seq_attentions"] = all_self_attentions[
+                        "seq_attentions"
+                    ] + (extra_return_info["seq_module"]["attn_weights"],)
+                all_self_attentions["dep_graph_attentions"] = all_self_attentions[
+                    "dep_graph_attentions"
+                ] + (extra_return_info["dep_graph_module"]["attn_weights"],)
 
         hidden_states = self.ln_f(hidden_states)
 
@@ -816,6 +892,17 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         # Add last hidden state
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if use_cache:
+            if not update_seq_cache:
+                presents["seq_past"] = past
+            if re_set_dep_graph_cache:
+                # We need to re-set the dependency graph past to just have a single entry corresponding to the
+                # contextualized history key/value.
+                presents["dep_graph_past"] = tuple(
+                    tuple(e[:, :, -1, ...].unsqueeze(2) for e in kv)
+                    for kv in presents["dep_graph_past"]
+                )
 
         if not return_dict:
             return tuple(
