@@ -15,6 +15,7 @@ import torch
 from polars.testing import assert_frame_equal as assert_pl_frame_equal
 
 from EventStream.data.config import DatasetConfig, MeasurementConfig
+from EventStream.data.types import PytorchBatch
 from EventStream.data.vocabulary import Vocabulary
 from EventStream.transformer.config import StructuredTransformerConfig
 from EventStream.transformer.model_output import (
@@ -334,11 +335,12 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
                     )
 
     def setUp(self):
-        self.addTypeEqualityFunc(StructuredTransformerConfig, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(MeasurementConfig, self.assert_measurement_config_equal)
         self.addTypeEqualityFunc(DatasetConfig, self.assert_type_and_vars_equal)
-        self.addTypeEqualityFunc(TransformerOutputWithPast, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(Vocabulary, self.assert_vocabulary_equal)
+        self.addTypeEqualityFunc(PytorchBatch, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(StructuredTransformerConfig, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(TransformerOutputWithPast, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(GenerativeSequenceModelLabels, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(GenerativeSequenceModelLosses, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(GenerativeSequenceModelOutput, self.assert_type_and_vars_equal)
