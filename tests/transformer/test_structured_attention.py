@@ -6,24 +6,9 @@ import unittest
 
 import torch
 
-from EventStream.transformer.structured_attention import (
-    StructuredAttention,
-    TakeExistingEventEmbedding,
-)
+from EventStream.transformer.structured_attention import StructuredAttention
 
 from ..mixins import MLTypeEqualityCheckableMixin
-
-
-class TestTakeExistingEventEmbedding(MLTypeEqualityCheckableMixin, unittest.TestCase):
-    def test_e2e(self):
-        M = TakeExistingEventEmbedding()
-
-        X = torch.Tensor([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
-
-        got = M(X)
-
-        want = torch.Tensor([[4, 5, 6], [10, 11, 12]])
-        self.assertEqual(got, want)
 
 
 class MockSeqModule(torch.nn.Module):
@@ -81,43 +66,41 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ]
         )
 
-        # TODO(mmd): All wrong!
-
         # Computation Flow:
         # First step: Event pooling
         #  - pooled events: torch.Tensor([
-        #      [[], [12, 12, 12]],
-        #      [[3, 4, 5], [7, 6, 7]],
+        #      [[4, 5, 6], [10, 11, 12]],
+        #      [[2, 3, 3], [3, 2, 2]],
         #    ])
         # Second step: Sequential module
         #  - seq_module output: torch.Tensor([
-        #       [[5**2, 7**2, 9**2], [17**2, 19**2, 21**2]],
-        #       [[3**2, 4**2, 5**2], [10**2, 10**2, 12**2]],
+        #       [[4**2, 5**2, 6**2], [14**2, 16**2, 18**2]],
+        #       [[2**2, 3**2, 3**2], [5**2, 5**2, 5**2]],
         #    ])
         # Third step: Combine the seq_module output and dep graph elements for dep graph pooling.
         # - concatenated seq_module output and dep graph elements: torch.Tensor([
         #     [
-        #       [[0, 0, 0], [1, 2, 3], [5**2, 7**2, 9**2]],
-        #       [[5**2, 7**2, 9**2], [2, 1, 0], [17**2, 19**2, 21**2]],
+        #       [[0, 0, 0], [1, 2, 3], [4**2, 5**2, 6**2]],
+        #       [[4**2, 5**2, 6**2], [2, 1, 0], [14**2, 16**2, 18**2]],
         #     ], [
-        #       [[0, 0, 0], [1, 1, 2], [3**2, 4**2, 5**2]],
-        #       [[3**2, 4**2, 5**2], [4, 4, 5], [10**2, 10**2, 12**2]],
+        #       [[0, 0, 0], [1, 1, 2], [2**2, 3**2, 3**2]],
+        #       [[2**2, 3**2, 3**2], [4, 4, 5], [5**2, 5**2, 5**2]],
         #     ],
         #   ])
         # Fourth step: Dep graph module:
         # - dep graph module output:
         # torch.Tensor([
         #     [
-        #         [[-1, -4, -9], [-26**2, -51**2, -84**2]],
+        #         [[-(1+0)**2, -(2+0)**2, -(3+0)**2], [-(4**2+1)**2, -(5**2+2)**2, -(6**2+3)**2]],
         #         [
-        #             [-(5**2+2)**2, -(7**2+1)**2, -(9**2+0)**2],
-        #             [-(5**2 + 2 + 17**2)**2, -(7**2 + 1 + 19**2)**2, -(9**2 + 0 + 21**2)**2]
+        #             [-(2+4**2)**2, -(1+5**2)**2, -(0+6**2)**2],
+        #             [-(2+4**2+14**2)**2, -(1+5**2+16**2)**2, -(0+6**2+18**2)**2],
         #         ],
         #     ], [
-        #         [[-1, -1, -4], [-10**2, -17**2, -27**2]],
+        #         [[-(1+0)**2, -(1+0)**2, -(2+0)**2], [-(2**2+1)**2, -(3**2+1)**2, -(3**2+2)**2]],
         #         [
-        #             [-13**2, -20**2, -30**2],
-        #             [-(3**2 + 4 + 10**2)**2, -(4**2 + 4 + 10**2)**2, -(5**2 + 5 + 12**2)**2]
+        #             [-(4+2**2)**2, -(4+3**2)**2, -(5+3**2)**2],
+        #             [-(4+2**2+5**2)**2, -(4+3**2+5**2)**2, -(5+3**2+5**2)**2],
         #         ],
         #     ],
         # ])
@@ -125,24 +108,30 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
         want_output = torch.Tensor(
             [
                 [
-                    [[-1, -4, -9], [-(26**2), -(51**2), -(84**2)]],
                     [
-                        [-((5**2 + 2) ** 2), -((7**2 + 1) ** 2), -((9**2 + 0) ** 2)],
+                        [-((1 + 0) ** 2), -((2 + 0) ** 2), -((3 + 0) ** 2)],
+                        [-((4**2 + 1) ** 2), -((5**2 + 2) ** 2), -((6**2 + 3) ** 2)],
+                    ],
+                    [
+                        [-((2 + 4**2) ** 2), -((1 + 5**2) ** 2), -((0 + 6**2) ** 2)],
                         [
-                            -((5**2 + 2 + 17**2) ** 2),
-                            -((7**2 + 1 + 19**2) ** 2),
-                            -((9**2 + 0 + 21**2) ** 2),
+                            -((2 + 4**2 + 14**2) ** 2),
+                            -((1 + 5**2 + 16**2) ** 2),
+                            -((0 + 6**2 + 18**2) ** 2),
                         ],
                     ],
                 ],
                 [
-                    [[-1, -1, -4], [-(10**2), -(17**2), -(27**2)]],
                     [
-                        [-(13**2), -(20**2), -(30**2)],
+                        [-((1 + 0) ** 2), -((1 + 0) ** 2), -((2 + 0) ** 2)],
+                        [-((2**2 + 1) ** 2), -((3**2 + 1) ** 2), -((3**2 + 2) ** 2)],
+                    ],
+                    [
+                        [-((4 + 2**2) ** 2), -((4 + 3**2) ** 2), -((5 + 3**2) ** 2)],
                         [
-                            -((3**2 + 4 + 10**2) ** 2),
-                            -((4**2 + 4 + 10**2) ** 2),
-                            -((5**2 + 5 + 12**2) ** 2),
+                            -((4 + 2**2 + 5**2) ** 2),
+                            -((4 + 3**2 + 5**2) ** 2),
+                            -((5 + 3**2 + 5**2) ** 2),
                         ],
                     ],
                 ],
@@ -156,46 +145,58 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
         # With masking, we'll have:
         # First step: Event pooling
         #  - pooled events: torch.Tensor([
-        #      [[5, 7, 9], MASKED],
-        #      [MASKED, [7, 6, 7]],
+        #      [[4, 5, 6], MASKED],
+        #      [MASKED, [3, 2, 2]],
         #    ])
         # Second step: Sequential module
         #  - seq_module output: torch.Tensor([
-        #       [[25, 49, 81], MASKED],
-        #       [MASKED, [49, 36, 49]],
+        #       [[4**2, 5**2, 6**2], MASKED],
+        #       [MASKED, [3**2, 2**2, 2**2]],
         #    ])
         # Third step: Combine the seq_module output and dep graph elements for dep graph pooling.
-        # If we do update to contextualized event, then we'll have:
         # - concatenated seq_module output and dep graph elements: torch.Tensor([
         #     [
-        #       [[0, 0, 0], [1, 2, 3], [25, 49, 81]],
+        #       [[0, 0, 0], [1, 2, 3], [4**2, 5**2, 6**2]],
         #       MASKED
         #     ], [
         #       MASKED
-        #       [[0, 0, 0], [4, 4, 5], [49, 36, 49]],
+        #       [[0, 0, 0], [4, 4, 5], [3**2, 2**2, 2**2]],
         #     ],
         #   ])
         # Fourth step: Dep graph module:
-        # With update to contextualized event:
-        # - dep graph module output: torch.Tensor([
+        # - dep graph module output:
+        # torch.Tensor([
         #     [
-        #         [[-1, -4, -9], [-26**2, -51**2, -84**2]],
-        #         MASKED
+        #         [[-(1+0)**2, -(2+0)**2, -(3+0)**2], [-(4**2+1)**2, -(5**2+2)**2, -(6**2+3)**2]],
+        #         MASKED,
         #     ], [
         #         MASKED
-        #         [[-16, -16, -25], [-53**2, -40**2, -54**2]],
+        #         [
+        #             [-(4+0)**2, -(4+0)**2, -(5+0)**2],
+        #             [-(4+0+3**2)**2, -(4+0+2**2)**2, -(5+0+2**2)**2],
+        #         ],
         #     ],
         # ])
 
         want_output_with_seq_mask = torch.Tensor(
             [
                 [
-                    [[-1, -4, -9], [-(26**2), -(51**2), -(84**2)]],
+                    [
+                        [-((1 + 0) ** 2), -((2 + 0) ** 2), -((3 + 0) ** 2)],
+                        [-((4**2 + 1) ** 2), -((5**2 + 2) ** 2), -((6**2 + 3) ** 2)],
+                    ],
                     [[0, 0, 0], [0, 0, 0]],
                 ],
                 [
                     [[0, 0, 0], [0, 0, 0]],
-                    [[-16, -16, -25], [-(53**2), -(40**2), -(54**2)]],
+                    [
+                        [-((4 + 0) ** 2), -((4 + 0) ** 2), -((5 + 0) ** 2)],
+                        [
+                            -((4 + 0 + 3**2) ** 2),
+                            -((4 + 0 + 2**2) ** 2),
+                            -((5 + 0 + 2**2) ** 2),
+                        ],
+                    ],
                 ],
             ]
         )
