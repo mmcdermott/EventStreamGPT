@@ -204,6 +204,22 @@ class StructuredAttention(torch.nn.Module):
             )
             dep_graph_all[flat_seq_mask, :, :] = dep_graph_out
 
+            if isinstance(dep_graph_module_return_kwargs, dict) and (
+                "present_key_value" in dep_graph_module_return_kwargs
+            ):
+                present_key_value_tuple = dep_graph_module_return_kwargs["present_key_value"]
+                out_tuple = []
+                for present_key_value in present_key_value_tuple:
+                    present_key_value_all = torch.zeros(
+                        bsz * seq_len,
+                        *present_key_value.shape[1:],
+                        dtype=present_key_value.dtype,
+                        device=present_key_value.device,
+                    )
+                    present_key_value_all[flat_seq_mask, ...] = present_key_value
+                    out_tuple.append(present_key_value_all)
+                dep_graph_module_return_kwargs["present_key_value"] = tuple(out_tuple)
+
         dep_graph_all = torch.reshape(dep_graph_all, (bsz, seq_len, dep_graph_len, hidden_size))
 
         # And, with that, we're done.

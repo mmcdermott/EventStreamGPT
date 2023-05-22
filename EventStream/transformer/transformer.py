@@ -738,6 +738,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
         hidden_states = input_embeds
+        bsz, seq_len, dep_graph_len, hidden_size = hidden_states.shape
 
         presents = {"seq_past": (), "dep_graph_past": ()} if use_cache else None
         if output_attentions:
@@ -767,7 +768,10 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                 case int() if dep_graph_el_generation_target > 0:
                     update_dep_graph_cache = True
                     if dep_graph_past is None:
-                        raise ValueError("dep_graph_past should not be None if gen target is >0")
+                        raise ValueError(
+                            "dep_graph_past should not be None if dep_graph_el_generation_target is "
+                            f"{dep_graph_el_generation_target}."
+                        )
                     prepend_graph_with_history_embeddings = False
                     update_last_graph_el_to_history_embedding = False
                 case int() if dep_graph_el_generation_target == 0:
@@ -899,8 +903,29 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
             if re_set_dep_graph_cache:
                 # We need to re-set the dependency graph past to just have a single entry corresponding to the
                 # contextualized history key/value.
+                def reshape_to_last_dep_graph_el(t: torch.FloatTensor) -> torch.FloatTensor:
+                    # t is of shape (bsz * seq_len, num_heads, dep_graph_len, hidden_size)
+                    # We need to produce (bsz, num_heads, 1, hidden_size)
+
+                    want_shape = (
+                        bsz * seq_len,
+                        self.config.num_attention_heads,
+                        "?",
+                        self.config.head_dim,
+                    )
+                    err_str = f"Shape malformed! Want {want_shape}, Got {t.shape}"
+
+                    torch._assert(t.shape[0] == (bsz * seq_len), err_str)
+                    torch._assert(t.shape[1] == self.config.num_attention_heads, err_str)
+                    torch._assert(t.shape[3] == self.config.head_dim, err_str)
+
+                    t = t.reshape(
+                        bsz, seq_len, self.config.num_attention_heads, -1, self.config.head_dim
+                    )
+                    return t[:, -1, :, -1, :].unsqueeze(2)
+
                 presents["dep_graph_past"] = tuple(
-                    tuple(e[:, :, -1, ...].unsqueeze(2) for e in kv)
+                    tuple(reshape_to_last_dep_graph_el(e) for e in kv)
                     for kv in presents["dep_graph_past"]
                 )
 

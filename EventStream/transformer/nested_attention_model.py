@@ -225,6 +225,8 @@ class NAPPTForGenerativeSequenceModeling(
     ) -> dict[str, Any]:
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
+            if "dep_graph_el_generation_target" in kwargs:
+                kwargs.pop("dep_graph_el_generation_target")
             return {**kwargs, "batch": batch}
 
         dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)
@@ -233,10 +235,7 @@ class NAPPTForGenerativeSequenceModeling(
             case None:
                 dep_graph_past = None
 
-                if (
-                    dep_graph_el_generation_target is not None
-                    and dep_graph_el_generation_target != 0
-                ):
+                if dep_graph_el_generation_target is not None:
                     raise ValueError(
                         f"Can't have dep target {dep_graph_el_generation_target} without past"
                     )

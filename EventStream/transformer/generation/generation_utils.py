@@ -275,6 +275,7 @@ class StructuredGenerationMixin:
             "output_attentions": output_attentions,
             "output_hidden_states": output_hidden_states,
             "return_dict_in_generate": return_dict_in_generate,
+            **model_kwargs,
         }
 
         match self.config.structured_event_processing_mode:
@@ -408,6 +409,7 @@ class StructuredGenerationMixin:
         measurements_to_fill_list = [{"time"}, *self.config.measurements_per_dep_graph_level[1:]]
 
         this_peer_finished = False  # used by synced_gpus only
+        is_first = True
         while True:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -426,6 +428,8 @@ class StructuredGenerationMixin:
             for dep_graph_el_target, measurements_to_fill in enumerate(measurements_to_fill_list):
                 # TODO(mmd): Here -- need to loop over dependency graph elements.
                 # forward pass to get next token
+                if is_first:
+                    dep_graph_el_target = None
                 model_inputs = self.prepare_inputs_for_generation(
                     batch, dep_graph_el_generation_target=dep_graph_el_target, **model_kwargs
                 )
@@ -439,6 +443,7 @@ class StructuredGenerationMixin:
                 model_kwargs = self._update_model_kwargs_for_generation(
                     outputs, model_kwargs, is_encoder_decoder=False
                 )
+                is_first = False
 
                 if synced_gpus and this_peer_finished:
                     continue  # don't waste resources running the code we don't need

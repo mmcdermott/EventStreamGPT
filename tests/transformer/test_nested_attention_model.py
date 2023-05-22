@@ -406,9 +406,9 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "msg": "Should return no past or dep_graph_past and not modify batch if past is None.",
                 "use_cache": True,
                 "past": None,
-                "dep_graph_el_generation_target": 0,
+                "dep_graph_el_generation_target": None,
                 "want": {
-                    "dep_graph_el_generation_target": 0,
+                    "dep_graph_el_generation_target": None,
                     "batch": default_batch,
                     "past": None,
                     "dep_graph_past": None,
