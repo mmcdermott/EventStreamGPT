@@ -3,7 +3,7 @@ import sys
 sys.path.append("../..")
 
 import unittest
-from unittest.mock import call, create_autospec
+from unittest.mock import MagicMock, call
 
 import torch
 
@@ -23,15 +23,23 @@ from EventStream.transformer.nested_attention_model import (
     NestedAttentionGenerativeOutputLayer,
 )
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..mixins import ConfigComparisonsMixin
 
 DEFAULT_VALID_CONFIG_KWARGS = {
     "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION,
     "measurements_per_dep_graph_level": [],
 }
 
+INVALID_CONFIG_KWARGS = dict(
+    structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
+    dep_graph_window_size=None,
+    do_full_block_in_dep_graph_attention=None,
+    do_add_temporal_position_embeddings_to_data_embeddings=None,
+    do_full_block_in_seq_attention=None,
+)
 
-class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
+
+class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.TestCase):
     def test_constructs(self):
         NestedAttentionGenerativeOutputLayer(
             StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
@@ -39,9 +47,7 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
 
         with self.assertRaises(ValueError):
             NestedAttentionGenerativeOutputLayer(
-                StructuredTransformerConfig(
-                    structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
-                )
+                StructuredTransformerConfig(**INVALID_CONFIG_KWARGS)
             )
 
     def test_e2e(self):
@@ -107,20 +113,20 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
         no_TTE_gen_out = {
             "loss": None,
             "losses": GenerativeSequenceModelLosses(
-                classification={},
-                regression={},
+                classification=None,
+                regression=None,
                 time_to_event=None,
             ),
             "preds": GenerativeSequenceModelPredictions(
                 classification=clf_dists_by_measurement,
                 regression=regression_dists,
-                regression_indices=regression_indices,
+                regression_indices=None,
                 time_to_event=None,
             ),
             "labels": GenerativeSequenceModelLabels(
-                classification={},
-                regression={},
-                regression_indices={},
+                classification=None,
+                regression=None,
+                regression_indices=None,
                 time_to_event=None,
             ),
             "event_type_mask_per_measurement": "etmpm",
@@ -131,20 +137,20 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
         TTE_gen_out = {
             "loss": None,
             "losses": GenerativeSequenceModelLosses(
-                classification={},
-                regression={},
+                classification=None,
+                regression=None,
                 time_to_event=None,
             ),
             "preds": GenerativeSequenceModelPredictions(
                 classification={},
                 regression={},
-                regression_indices={},
+                regression_indices=None,
                 time_to_event=TTE_dist,
             ),
             "labels": GenerativeSequenceModelLabels(
-                classification={},
-                regression={},
-                regression_indices={},
+                classification=None,
+                regression=None,
+                regression_indices=None,
                 time_to_event=None,
             ),
             "event_type_mask_per_measurement": "etmpm",
@@ -182,7 +188,7 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                     call(
                         dummy_batch,
                         default_encoded[:, :, 0, :],
-                        {"clf1", ("mr1", "categorical_only")},
+                        {"clf1", "mr1"},
                         event_type_mask_per_measurement="etmpm",
                     ),
                     call(
@@ -209,7 +215,7 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                     call(
                         dummy_batch,
                         default_encoded[:, :, 1, :],
-                        {("mr1", "numerical_only"), "ur1"},
+                        {"mr1", "ur1"},
                         is_generation=False,
                         event_type_mask_per_measurement="etmpm",
                     ),
@@ -239,7 +245,7 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                 "is_generation": True,
                 "dep_graph_el_generation_target": 2,
                 # This doesn't have to be accurate; it isn't used as we mock everything.
-                "encoded": default_encoded[:, :, 0, :],
+                "encoded": default_encoded[:, :, 0, :].unsqueeze(2),
                 "want": no_TTE_gen_out,
                 "classification_calls": [
                     call(
@@ -253,8 +259,8 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                     call(
                         dummy_batch,
                         default_encoded[:, :, 0, :],
-                        {("mr1", "numerical_only"), "ur1"},
-                        is_generation=False,
+                        {"mr1", "ur1"},
+                        is_generation=True,
                         event_type_mask_per_measurement="etmpm",
                     ),
                 ],
@@ -267,9 +273,7 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                 "want": TTE_gen_out,
                 "classification_calls": [],
                 "regression_calls": [],
-                "TTE_calls": [
-                    call(dummy_batch, default_encoded[:, :, -1, :], is_generation=False)
-                ],
+                "TTE_calls": [call(dummy_batch, default_encoded[:, :, -1, :], is_generation=True)],
             },
         ]
 
@@ -282,43 +286,21 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                 M.classification_mode_per_measurement = {
                     m: None for m in classification_measures + multivariate_regression_measures
                 }
-
-                def get_measurements(mode: DataModality) -> list[str]:
-                    match mode:
-                        case DataModality.MULTIVARIATE_REGRESSION:
-                            return multivariate_regression_measures
-                        case DataModality.UNIVARIATE_REGRESSION:
-                            return univariate_regression_measures
-                        case _:
-                            raise NotImplementedError
-
-                M.config.measurements_for = create_autospec(
-                    StructuredTransformerConfig.measurements_for, side_effect=get_measurements
-                )
                 M.config.measurements_per_dep_graph_level = [
                     [],
                     ["clf1", ["mr1", "categorical_only"]],
                     ["clf2", "ur1", ["mr1", "numerical_only"]],
                     ["clf3", "mr2", "ur2"],
                 ]
+                M.config.measurements_per_generative_mode = {
+                    DataModality.MULTIVARIATE_REGRESSION: multivariate_regression_measures,
+                    DataModality.UNIVARIATE_REGRESSION: univariate_regression_measures,
+                }
 
-                M.get_event_type_mask_per_measurement = create_autospec(
-                    NestedAttentionGenerativeOutputLayer.get_event_type_mask_per_measurement,
-                    return_value="etmpm",
-                )
-
-                M.get_classification_outputs = create_autospec(
-                    NestedAttentionGenerativeOutputLayer.get_classification_outputs,
-                    return_value=default_classification_out,
-                )
-                M.get_regression_outputs = create_autospec(
-                    NestedAttentionGenerativeOutputLayer.get_regression_outputs,
-                    return_value=default_regression_out,
-                )
-                M.get_TTE_outputs = create_autospec(
-                    NestedAttentionGenerativeOutputLayer.get_TTE_outputs,
-                    return_value=default_TTE_out,
-                )
+                M.get_event_type_mask_per_measurement = MagicMock(return_value="etmpm")
+                M.get_classification_outputs = MagicMock(return_value=default_classification_out)
+                M.get_regression_outputs = MagicMock(return_value=default_regression_out)
+                M.get_TTE_outputs = MagicMock(return_value=default_TTE_out)
 
                 kwargs = dict(
                     batch=dummy_batch,
@@ -331,39 +313,24 @@ class TestNestedAttentionGenerativeOutputLayer(MLTypeEqualityCheckableMixin, uni
                 if should_raise is not None:
                     with self.assertRaises(should_raise):
                         M(**kwargs)
-                    return
+                else:
+                    got = M(**kwargs)
+                    want = GenerativeSequenceModelOutput(**case["want"])
+                    self.assertEqual(want, got)
 
-                got = M(**kwargs)
-                want = GenerativeSequenceModelOutput(**case["want"])
-                self.assertEqual(want, got)
+                    M.get_event_type_mask_per_measurement.assert_called_once_with(dummy_batch)
 
-                M.config.measurements_for.assert_has_calls(
-                    [
-                        call(DataModality.MULTIVARIATE_REGRESSION),
-                        call(DataModality.UNIVARIATE_REGRESSION),
-                    ],
-                    any_order=True,
-                )
-                self.assertEqual(M.config.measurements_for.call_count, 2)
+                    classification_calls = case.get("classification_calls", [])
+                    self.assertNestedCalledWith(M.get_classification_outputs, classification_calls)
 
-                M.get_event_type_mask_per_measurement.assert_called_once_with(dummy_batch)
+                    regression_calls = case.get("regression_calls", [])
+                    self.assertNestedCalledWith(M.get_regression_outputs, regression_calls)
 
-                classification_calls = case.get("classification_calls", [])
-                M.get_classification_outputs.assert_has_calls(classification_calls)
-                self.assertEqual(
-                    M.get_classification_outputs.call_count, len(classification_calls)
-                )
-
-                regression_calls = case.get("regression_calls", [])
-                M.get_regression_outputs.assert_has_calls(regression_calls)
-                self.assertEqual(M.get_regression_outputs.call_count, len(regression_calls))
-
-                TTE_calls = case.get("TTE_calls", [])
-                M.get_TTE_outputs.assert_has_calls(TTE_calls)
-                self.assertEqual(M.get_TTE_outputs.call_count, len(TTE_calls))
+                    TTE_calls = case.get("TTE_calls", [])
+                    self.assertNestedCalledWith(M.get_TTE_outputs, TTE_calls)
 
 
-class TestNAPPTForGenerativeSequenceModeling(MLTypeEqualityCheckableMixin, unittest.TestCase):
+class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.TestCase):
     def test_constructs(self):
         NAPPTForGenerativeSequenceModeling(
             StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
@@ -371,9 +338,7 @@ class TestNAPPTForGenerativeSequenceModeling(MLTypeEqualityCheckableMixin, unitt
 
         with self.assertRaises(ValueError):
             NAPPTForGenerativeSequenceModeling(
-                StructuredTransformerConfig(
-                    structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
-                )
+                StructuredTransformerConfig(**INVALID_CONFIG_KWARGS)
             )
 
     def test_prepare_inputs_for_generation(self):
@@ -381,7 +346,18 @@ class TestNAPPTForGenerativeSequenceModeling(MLTypeEqualityCheckableMixin, unitt
             StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
         )
 
-        default_batch = PytorchBatch()
+        default_batch = PytorchBatch(
+            time_delta=torch.Tensor([[1.0, 2.0, 3.0]]),
+            event_mask=torch.Tensor([[1, 1, 1]]),
+            dynamic_indices=torch.LongTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
+            dynamic_measurement_indices=torch.LongTensor(
+                [[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]
+            ),
+            dynamic_values=torch.FloatTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
+            dynamic_values_mask=torch.BoolTensor(
+                [[[[True, True, False]], [[True, False, True]], [[False, True, True]]]]
+            ),
+        )
 
         cases = [
             {
@@ -416,6 +392,77 @@ class TestNAPPTForGenerativeSequenceModeling(MLTypeEqualityCheckableMixin, unitt
                 "msg": "Should raise ValueError if past is not a dict or None.",
                 "use_cache": True,
                 "past": "not a dict",
+                "should_raise": ValueError,
+            },
+            {
+                "msg": "Should raise ValueError if past doesn't have the right keys",
+                "use_cache": True,
+                "past": {"wrong key": True},
+                "should_raise": ValueError,
+            },
+            {
+                "msg": (
+                    "Should raise ValueError if dep_graph_el_generation_target is None and dep_graph_past "
+                    "is not None."
+                ),
+                "use_cache": True,
+                "past": {"seq_past": 1, "dep_graph_past": 2},
+                "dep_graph_el_generation_target": None,
+                "should_raise": ValueError,
+            },
+            {
+                "msg": (
+                    "Should strip batch down to last sequence element and return no dep_graph_past if "
+                    "dep_graph_el_generation_target is None and dep_graph_past is None"
+                ),
+                "use_cache": True,
+                "past": {"seq_past": 1, "dep_graph_past": None},
+                "dep_graph_el_generation_target": None,
+                "want": {
+                    "batch": default_batch.last_sequence_element_unsqueezed(),
+                    "past": 1,
+                    "dep_graph_past": None,
+                    "use_cache": True,
+                    "dep_graph_el_generation_target": None,
+                },
+            },
+            {
+                "msg": (
+                    "Should strip batch down to last sequence element and return no dep_graph_past if "
+                    "dep_graph_el_generation_target is <= 1 and dep_graph_past is not None"
+                ),
+                "use_cache": True,
+                "past": {"seq_past": 1, "dep_graph_past": 2},
+                "dep_graph_el_generation_target": 1,
+                "want": {
+                    "batch": default_batch.last_sequence_element_unsqueezed(),
+                    "past": 1,
+                    "dep_graph_past": None,
+                    "use_cache": True,
+                    "dep_graph_el_generation_target": 1,
+                },
+            },
+            {
+                "msg": (
+                    "Should strip batch down to last sequence element and return dep_graph_past if "
+                    "dep_graph_el_generation_target is > 1 and dep_graph_past is not None"
+                ),
+                "use_cache": True,
+                "past": {"seq_past": 1, "dep_graph_past": 2},
+                "dep_graph_el_generation_target": 2,
+                "want": {
+                    "batch": default_batch.last_sequence_element_unsqueezed(),
+                    "past": 1,
+                    "dep_graph_past": 2,
+                    "use_cache": True,
+                    "dep_graph_el_generation_target": 2,
+                },
+            },
+            {
+                "msg": "Should error if dep_graph_el_generation_target is > 1 and dep_graph_past is None",
+                "use_cache": True,
+                "past": {"seq_past": 1, "dep_graph_past": None},
+                "dep_graph_el_generation_target": 2,
                 "should_raise": ValueError,
             },
         ]
