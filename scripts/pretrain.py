@@ -14,7 +14,7 @@ import hydra
 import torch
 from omegaconf import OmegaConf
 
-from EventStream.transformer.lightning_modules.generative_modelling import (
+from EventStream.transformer.lightning_modules.generative_modeling import (
     PretrainConfig,
     train,
 )
