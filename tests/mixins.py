@@ -6,6 +6,7 @@ import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Optional
+from unittest.mock import Mock, _Call
 
 import numpy as np
 import pandas as pd
@@ -14,15 +15,30 @@ import torch
 from polars.testing import assert_frame_equal as assert_pl_frame_equal
 
 from EventStream.data.config import DatasetConfig, MeasurementConfig
+from EventStream.data.types import PytorchBatch
 from EventStream.data.vocabulary import Vocabulary
 from EventStream.transformer.config import StructuredTransformerConfig
-from EventStream.transformer.model_output import TransformerOutputWithPast
+from EventStream.transformer.model_output import (
+    GenerativeSequenceModelLabels,
+    GenerativeSequenceModelLosses,
+    GenerativeSequenceModelOutput,
+    GenerativeSequenceModelPredictions,
+    TransformerOutputWithPast,
+)
 
 ASSERT_FN = Callable[[Any, Any, Optional[str]], None]
 
 
 def round_dict(d: dict[str, float]) -> dict[str, float]:
     return {k: None if v is None else round(v, 5) for k, v in d.items()}
+
+
+class MockModule(Mock, torch.nn.Module):
+    """Useful for mocking sub-modules of a `torch.nn.Module`."""
+
+    def __init__(self, *args, **kwargs):
+        Mock.__init__(self, *args, **kwargs)
+        torch.nn.Module.__init__(self)
 
 
 class MLTypeEqualityCheckableMixin:
@@ -154,6 +170,59 @@ class MLTypeEqualityCheckableMixin:
             m_vars = f"{msg}: {m_vars}"
         self.assertNestedDictEqual(vars(want), vars(got), m_vars)
 
+    def assertNestedCalledWith(self, mock: Mock, want_calls: list[_Call]):
+        self.assertEqual(mock.call_count, len(want_calls))
+        for want, got in zip(want_calls, mock.mock_calls):
+            want_name = ""
+            if len(want) == 2:
+                want_args, want_kwargs = want
+            else:
+                want_name, want_args, want_kwargs = want
+
+            self.assertFalse(
+                getattr(want, "_mock_parent", None)
+                and getattr(got, "_mock_parent", None)
+                and want._mock_parent != got._mock_parent
+            )
+
+            len_got = len(got)
+            self.assertTrue(len_got <= 3)
+            got_name = ""
+            if len_got == 0:
+                got_args, got_kwargs = (), {}
+            elif len_got == 3:
+                got_name, got_args, got_kwargs = got
+            elif len_got == 1:
+                (value,) = got
+                if isinstance(value, tuple):
+                    got_args = value
+                    got_kwargs = {}
+                elif isinstance(value, str):
+                    got_name = value
+                    got_args, got_kwargs = (), {}
+                else:
+                    got_args = ()
+                    got_kwargs = value
+            elif len_got == 2:
+                # could be (name, args) or (name, kwargs) or (args, kwargs)
+                first, second = got
+                if isinstance(first, str):
+                    got_name = first
+                    if isinstance(second, tuple):
+                        got_args, got_kwargs = second, {}
+                    else:
+                        got_args, got_kwargs = (), second
+                else:
+                    got_args, got_kwargs = first, second
+
+            self.assertFalse(want_name and got_name != want_name)
+            self.assertNestedEqual(want_args, got_args)
+            self.assertNestedEqual(want_kwargs, got_kwargs)
+
+    def assert_type_and_vars_equal(self, want: object, got: object, msg: str | None = None):
+        self.assertEqual(type(want), type(got), msg)
+        self.assertNestedDictEqual(vars(want), vars(got), msg, check_like=True)
+
     def setUp(self):
         for val_type, assert_fn in self.EQ_TYPE_CHECKERS.items():
             fn = self._typedAssertEqualFntr(assert_fn)
@@ -165,10 +234,6 @@ class MLTypeEqualityCheckableMixin:
 class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
     """This mixin provides capability to `unittest.TestCase` submodules to compare configuration
     objects for equality."""
-
-    def assert_type_and_vars_equal(self, want: object, got: object, msg: str | None = None):
-        self.assertEqual(type(want), type(got), msg)
-        self.assertNestedDictEqual(vars(want), vars(got), msg, check_like=True)
 
     def assert_vocabulary_equal(self, want: Vocabulary, got: Vocabulary, msg: str | None = None):
         self.assertEqual(type(want), type(got), msg)
@@ -223,7 +288,9 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
                     got_metadata[model_col] = got_metadata[model_col].apply(round_dict)
 
                 self.assertEqual(set(want_idx), set(got_idx), msg)
-                reordered_got = got_metadata.reindex(want_idx).copy()
+                # I don't know why, by the extra copy() is necessary to avoid the reindex sometimes not taking
+                # and the resulting dataframes to not match index orders.
+                reordered_got = got_metadata.copy().reindex(want_idx).copy()
                 try:
                     pd.testing.assert_frame_equal(want_metadata, reordered_got, check_like=True)
                 except Exception as e:
@@ -276,9 +343,16 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
                     )
 
     def setUp(self):
-        self.addTypeEqualityFunc(StructuredTransformerConfig, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(MeasurementConfig, self.assert_measurement_config_equal)
         self.addTypeEqualityFunc(DatasetConfig, self.assert_type_and_vars_equal)
-        self.addTypeEqualityFunc(TransformerOutputWithPast, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(Vocabulary, self.assert_vocabulary_equal)
+        self.addTypeEqualityFunc(PytorchBatch, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(StructuredTransformerConfig, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(TransformerOutputWithPast, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(GenerativeSequenceModelLabels, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(GenerativeSequenceModelLosses, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(GenerativeSequenceModelOutput, self.assert_type_and_vars_equal)
+        self.addTypeEqualityFunc(
+            GenerativeSequenceModelPredictions, self.assert_type_and_vars_equal
+        )
         super().setUp()

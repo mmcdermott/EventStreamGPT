@@ -22,15 +22,15 @@ from torchmetrics.classification import (
     MultilabelAveragePrecision,
 )
 
-from ..data.pytorch_dataset import PytorchDataset
-from ..data.types import PytorchBatch
-from ..utils import task_wrapper
-from .config import StructuredTransformerConfig
-from .model import ESTForGenerativeSequenceModeling
-from .model_output import StreamClassificationModelOutput
-from .stream_classification_lightning import FinetuneConfig
-from .utils import safe_weighted_avg, str_summary
-from .zero_shot_labeler import Labeler
+from ...data.pytorch_dataset import PytorchDataset
+from ...data.types import PytorchBatch
+from ...utils import task_wrapper
+from ..config import StructuredTransformerConfig
+from ..model import ESTForGenerativeSequenceModeling
+from ..model_output import StreamClassificationModelOutput
+from ..stream_classification_lightning import FinetuneConfig
+from ..utils import safe_weighted_avg, str_summary
+from ..zero_shot_labeler import Labeler
 
 
 class ESTForZeroShotClassificationLM(L.LightningModule):
@@ -229,7 +229,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 num_return_sequences=self.num_samples,
                 output_attentions=False,
                 output_hidden_states=False,
-                use_cache=False,
+                use_cache=True,
             ),
             input_seq_len=batch.sequence_length,
         )
@@ -311,8 +311,6 @@ def import_class_from_file(module_path, class_name):
 def zero_shot_evaluation(cfg: FinetuneConfig):
     torch.multiprocessing.set_sharing_strategy("file_system")
 
-    cfg.save_dir.mkdir(parents=True, exist_ok=True)
-
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
     held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
 
@@ -384,6 +382,7 @@ def zero_shot_evaluation(cfg: FinetuneConfig):
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
         print("Saving final metrics...")
+        cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
         with open(cfg.save_dir / "zero_shot_tuning_metrics.json", mode="w") as f:
             json.dump(tuning_metrics, f)

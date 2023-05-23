@@ -10,7 +10,7 @@ except ImportError:
 import hydra
 import torch
 
-from EventStream.transformer.get_embeddings_lightning import (
+from EventStream.transformer.lightning_modules.embedding import (
     FinetuneConfig,
     get_embeddings,
 )

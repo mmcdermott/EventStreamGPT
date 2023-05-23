@@ -43,22 +43,22 @@ class TestPytorchDatasetConfig(unittest.TestCase):
             {
                 "msg": "Shouldn't construct with min_seq_len = -1",
                 "kwargs": {"min_seq_len": -1},
-                "should_raise": AssertionError,
+                "should_raise": ValueError,
             },
             {
                 "msg": "Shouldn't construct with max_seq_len = 0",
                 "kwargs": {"max_seq_len": 0},
-                "should_raise": AssertionError,
+                "should_raise": ValueError,
             },
             {
                 "msg": "Shouldn't construct with min_seq_len > max_seq_len",
                 "kwargs": {"max_seq_len": 10, "min_seq_len": 11},
-                "should_raise": AssertionError,
+                "should_raise": ValueError,
             },
             {
                 "msg": "Shouldn't construct with seq_padding_side=None",
                 "kwargs": {"seq_padding_side": None},
-                "should_raise": AssertionError,
+                "should_raise": ValueError,
             },
         ]
 
@@ -193,7 +193,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
         )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             config.add_missing_mandatory_metadata_cols()
 
     def test_properties(self):
@@ -261,7 +261,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         )
         self.assertEqual(want_metadata, config.measurement_metadata)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             config.add_empty_metadata()
 
         config = MeasurementConfig(
@@ -417,7 +417,7 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             ),
         ]
         for kwargs in invalid_kwargs:
-            with self.assertRaises(AssertionError):
+            with self.assertRaises((ValueError, TypeError)):
                 DatasetConfig(**kwargs)
 
     def test_to_and_from_dict(self):

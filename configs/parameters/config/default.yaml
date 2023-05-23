@@ -26,8 +26,6 @@ seq_attention_types:
 seq_window_size:
   min: 2
   max: 64
-do_add_temporal_position_embeddings_to_data_embeddings:
-  values: [True, False]
 do_full_block_in_seq_attention:
   values: [True, False]
 do_full_block_in_dep_graph_attention:

@@ -22,22 +22,24 @@ from torchmetrics.classification import (
 )
 from transformers import get_polynomial_decay_schedule_with_warmup
 
-from ..data.config import PytorchDatasetConfig
-from ..data.pytorch_dataset import PytorchDataset
-from ..data.types import DataModality, PytorchBatch
-from ..utils import hydra_dataclass, task_wrapper
-from .config import (
+from ...data.config import PytorchDatasetConfig
+from ...data.pytorch_dataset import PytorchDataset
+from ...data.types import DataModality, PytorchBatch
+from ...utils import hydra_dataclass, task_wrapper
+from ..conditionally_independent_model import CIPPTForGenerativeSequenceModeling
+from ..config import (
     Averaging,
     MetricCategories,
     Metrics,
     MetricsConfig,
     OptimizationConfig,
     Split,
+    StructuredEventProcessingMode,
     StructuredTransformerConfig,
 )
-from .model import ESTForGenerativeSequenceModeling
-from .model_output import GenerativeSequenceModelOutput
-from .utils import expand_indexed_regression, str_summary
+from ..model_output import GenerativeSequenceModelOutput
+from ..nested_attention_model import NAPPTForGenerativeSequenceModeling
+from ..utils import expand_indexed_regression, str_summary
 
 
 class ESTForGenerativeSequenceModelingLM(L.LightningModule):
@@ -93,12 +95,20 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         )
         self.build_metrics()
 
+        match config.structured_event_processing_mode:
+            case StructuredEventProcessingMode.NESTED_ATTENTION:
+                model_cls = NAPPTForGenerativeSequenceModeling
+            case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
+                model_cls = CIPPTForGenerativeSequenceModeling
+            case _:
+                raise ValueError(
+                    f"Unsupported structured event processing mode: {config.structured_event_processing_mode}"
+                )
+
         if pretrained_weights_fp is None:
-            self.model = ESTForGenerativeSequenceModeling(config)
+            self.model = model_cls(config)
         else:
-            self.model = ESTForGenerativeSequenceModeling.from_pretrained(
-                pretrained_weights_fp, config=config
-            )
+            self.model = model_cls.from_pretrained(pretrained_weights_fp, config=config)
 
     def save_pretrained(self, model_dir: Path):
         fp = model_dir / "pretrained_weights"
@@ -500,7 +510,9 @@ class PretrainConfig:
             "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
             **{
                 k: v
-                for k, v in StructuredTransformerConfig().to_dict().items()
+                for k, v in StructuredTransformerConfig(measurements_per_dep_graph_level=[])
+                .to_dict()
+                .items()
                 if k not in SKIP_CFG_PARAMS
             },
         }
@@ -562,8 +574,6 @@ def train(cfg: PretrainConfig):
 
     Args: TODO
     """
-    cfg.save_dir.mkdir(parents=True, exist_ok=True)
-
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -575,6 +585,8 @@ def train(cfg: PretrainConfig):
     optimization_config.set_to_dataset(train_pyd)
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
+        cfg.save_dir.mkdir(parents=True, exist_ok=True)
+
         print("Saving config files...")
         config_fp = cfg.save_dir / "config.json"
         if config_fp.exists() and not cfg.do_overwrite:
@@ -632,9 +644,6 @@ def train(cfg: PretrainConfig):
             EarlyStopping(monitor="tuning_loss", mode="min", patience=optimization_config.patience)
         )
 
-    # checkpoints_dir = Path(cfg.trainer_config['default_root_dir'])
-    # checkpoints_dir.mkdir(exist_ok=True, parents=True)
-
     trainer_kwargs = dict(
         **cfg.trainer_config,
         max_epochs=optimization_config.max_epochs,
@@ -652,12 +661,13 @@ def train(cfg: PretrainConfig):
             save_dir=cfg.save_dir,
         )
 
-        if do_log_graph:
-            # Watching the model naturally tracks parameter values and gradients.
-            wandb_logger.watch(LM, log="all", log_graph=True)
+        if os.environ.get("LOCAL_RANK", "0") == "0":
+            if do_log_graph:
+                # Watching the model naturally tracks parameter values and gradients.
+                wandb_logger.watch(LM, log="all", log_graph=True)
 
-        if cfg.wandb_experiment_config_kwargs:
-            wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
+            if cfg.wandb_experiment_config_kwargs:
+                wandb_logger.experiment.config.update(cfg.wandb_experiment_config_kwargs)
 
         trainer_kwargs["logger"] = wandb_logger
 
