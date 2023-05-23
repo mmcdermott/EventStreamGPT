@@ -13,6 +13,7 @@ from typing import Any
 
 import hydra
 import inflect
+import dataclasses 
 from omegaconf import DictConfig, OmegaConf
 
 from EventStream.data.config import (
@@ -303,7 +304,13 @@ def main(cfg: DictConfig):
     cfg.pop("cohort_name")
     DL_chunk_size = cfg.pop("DL_chunk_size", 20000)
 
-    config = DatasetConfig(measurement_configs=measurement_configs, **cfg)
+    valid_config_kwargs = {f.name for f in dataclasses.fields(DatasetConfig)}
+    extra_kwargs = {k: v for k, v in cfg.items() if k not in valid_config_kwargs}
+    config_kwargs = {k: v for k, v in cfg.items() if k in valid_config_kwargs}
+
+    print(f"Omitting {extra_kwargs} from config!")
+
+    config = DatasetConfig(measurement_configs=measurement_configs, **config_kwargs)
 
     if config.save_dir is not None:
         dataset_schema.to_json_file(

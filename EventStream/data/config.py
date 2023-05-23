@@ -375,8 +375,8 @@ class InputDFSchema(JSONableMixin):
                     for in_col, schema_info in schema.items():
                         match schema_info:
                             case str() as out_col, (
-                                InputDataType() | [InputDataType.TIMESTAMP, str()]
-                            ) as dt:
+                                InputDataType() | str() | [InputDataType.TIMESTAMP, str()]
+                            ) as dt if dt in InputDataType.values():
                                 cls.__add_to_schema(
                                     unified_schema, in_col=in_col, dt=dt, out_col=out_col
                                 )

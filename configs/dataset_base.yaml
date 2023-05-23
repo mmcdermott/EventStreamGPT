@@ -16,3 +16,12 @@ min_true_float_frequency: 0.1
 min_unique_numerical_observations: 25
 min_events_per_subject: 20
 agg_by_time_scale: null
+
+
+hydra:
+  job:
+    name: build_${cohort_name}
+  run:
+    dir: ${save_dir}/.logs
+  sweep:
+    dir: ${save_dir}/.logs
