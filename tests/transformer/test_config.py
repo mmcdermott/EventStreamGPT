@@ -234,7 +234,7 @@ DEFAULT_NESTED_ATTENTION_DICT = dict(
     dep_graph_window_size=2,
     do_full_block_in_dep_graph_attention=True,
     do_full_block_in_seq_attention=False,
-    do_add_temporal_position_embeddings_to_data_embeddings=False,
+    measurements_per_dep_graph_level=[],
 )
 
 DEFAULT_CONDITIONALLY_INDEPENDENT_DICT = dict(
@@ -243,7 +243,6 @@ DEFAULT_CONDITIONALLY_INDEPENDENT_DICT = dict(
     dep_graph_window_size=None,
     do_full_block_in_dep_graph_attention=None,
     do_full_block_in_seq_attention=None,
-    do_add_temporal_position_embeddings_to_data_embeddings=None,
 )
 
 DEFAULT_EXPONENTIAL_DICT = dict(
@@ -287,7 +286,7 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
             },
             {
                 "msg": "Should Error when num_hidden_layers is not an int.",
-                "kwargs": {"num_hidden_layers": 4.0},
+                "kwargs": {**DEFAULT_NESTED_ATTENTION_DICT, "num_hidden_layers": 4.0},
                 "should_raise": TypeError,
             },
             {
@@ -305,10 +304,6 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
                     {
                         **DEFAULT_NESTED_ATTENTION_DICT,
                         "do_full_block_in_seq_attention": None,
-                    },
-                    {
-                        **DEFAULT_NESTED_ATTENTION_DICT,
-                        "do_add_temporal_position_embeddings_to_data_embeddings": None,
                     },
                 ],
                 "should_raise": ValueError,

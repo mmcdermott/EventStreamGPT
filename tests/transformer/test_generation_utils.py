@@ -7,7 +7,9 @@ import unittest
 import torch
 
 from EventStream.data.types import PytorchBatch
-from EventStream.transformer.generation_utils import StructuredGenerationMixin
+from EventStream.transformer.generation.generation_utils import (
+    StructuredGenerationMixin,
+)
 
 from ..mixins import MLTypeEqualityCheckableMixin
 
@@ -50,6 +52,7 @@ BASE_BATCH = {
         ]
     ),
     "stream_labels": {"clf": torch.LongTensor([1, 44]), "reg": torch.FloatTensor([2.0, 1.8])},
+    "time": None,
 }
 
 EXPANDED_BATCH_2 = {
@@ -138,6 +141,7 @@ EXPANDED_BATCH_2 = {
         "clf": torch.LongTensor([1, 1, 44, 44]),
         "reg": torch.FloatTensor([2, 2, 1.8, 1.8]),
     },
+    "time": None,
 }
 
 

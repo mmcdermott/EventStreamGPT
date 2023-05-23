@@ -334,8 +334,13 @@ class DataEmbeddingLayer(torch.nn.Module):
 
         categorical_masks = []
         numerical_masks = []
-        for meas_index_group in self.split_by_measurement_indices:
-            assert len(meas_index_group) > 0, f"Empty measurement index group: {meas_index_group}"
+        for i, meas_index_group in enumerate(self.split_by_measurement_indices):
+            if len(meas_index_group) == 0 and i > 0:
+                raise ValueError(
+                    f"Empty measurement index group: {meas_index_group} at index {i}! "
+                    "Only the first (i=0) group can be empty (in cases where there are no "
+                    "FUNCTIONAL_TIME_DEPENDENT measurements)."
+                )
 
             # Create a mask that is True if each data element in the batch is in the measurement group.
             group_categorical_mask = torch.zeros_like(

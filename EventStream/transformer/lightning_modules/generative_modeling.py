@@ -22,22 +22,24 @@ from torchmetrics.classification import (
 )
 from transformers import get_polynomial_decay_schedule_with_warmup
 
-from ..data.config import PytorchDatasetConfig
-from ..data.pytorch_dataset import PytorchDataset
-from ..data.types import DataModality, PytorchBatch
-from ..utils import hydra_dataclass, task_wrapper
-from .config import (
+from ...data.config import PytorchDatasetConfig
+from ...data.pytorch_dataset import PytorchDataset
+from ...data.types import DataModality, PytorchBatch
+from ...utils import hydra_dataclass, task_wrapper
+from ..conditionally_independent_model import CIPPTForGenerativeSequenceModeling
+from ..config import (
     Averaging,
     MetricCategories,
     Metrics,
     MetricsConfig,
     OptimizationConfig,
     Split,
+    StructuredEventProcessingMode,
     StructuredTransformerConfig,
 )
-from .model import ESTForGenerativeSequenceModeling
-from .model_output import GenerativeSequenceModelOutput
-from .utils import expand_indexed_regression, str_summary
+from ..model_output import GenerativeSequenceModelOutput
+from ..nested_attention_model import NAPPTForGenerativeSequenceModeling
+from ..utils import expand_indexed_regression, str_summary
 
 
 class ESTForGenerativeSequenceModelingLM(L.LightningModule):
@@ -93,12 +95,20 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         )
         self.build_metrics()
 
+        match config.structured_event_processing_mode:
+            case StructuredEventProcessingMode.NESTED_ATTENTION:
+                model_cls = NAPPTForGenerativeSequenceModeling
+            case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
+                model_cls = CIPPTForGenerativeSequenceModeling
+            case _:
+                raise ValueError(
+                    f"Unsupported structured event processing mode: {config.structured_event_processing_mode}"
+                )
+
         if pretrained_weights_fp is None:
-            self.model = ESTForGenerativeSequenceModeling(config)
+            self.model = model_cls(config)
         else:
-            self.model = ESTForGenerativeSequenceModeling.from_pretrained(
-                pretrained_weights_fp, config=config
-            )
+            self.model = model_cls.from_pretrained(pretrained_weights_fp, config=config)
 
     def save_pretrained(self, model_dir: Path):
         fp = model_dir / "pretrained_weights"
@@ -500,7 +510,9 @@ class PretrainConfig:
             "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
             **{
                 k: v
-                for k, v in StructuredTransformerConfig().to_dict().items()
+                for k, v in StructuredTransformerConfig(measurements_per_dep_graph_level=[])
+                .to_dict()
+                .items()
                 if k not in SKIP_CFG_PARAMS
             },
         }

@@ -5,11 +5,11 @@ from typing import Any
 import lightning as L
 import torch
 
-from ..data.pytorch_dataset import PytorchDataset
-from .config import StructuredEventProcessingMode, StructuredTransformerConfig
-from .stream_classification_lightning import FinetuneConfig
-from .transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
-from .utils import safe_masked_max, safe_weighted_avg
+from ...data.pytorch_dataset import PytorchDataset
+from ..config import StructuredEventProcessingMode, StructuredTransformerConfig
+from ..stream_classification_lightning import FinetuneConfig
+from ..transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
+from ..utils import safe_masked_max, safe_weighted_avg
 
 
 class EmbeddingsOnlyModel(StructuredTransformerPreTrainedModel):

@@ -388,7 +388,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                     * `do_full_block_in_dep_graph_attention`
                     * `dep_graph_attention_types`
                     * `dep_graph_window_size`
-                    * `do_add_temporal_position_embeddings_to_data_embeddings`
         hidden_size (`int`, *optional*, defaults to 256):
             The hidden size of the model. Must be consistent with `head_dim`, if specified.
         head_dim (`int`, *optional*, defaults to 64):
@@ -419,10 +418,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_full_block_in_dep_graph_attention (`Optional[bool]`, *optional*, defaults to True):
             If true, use a full attention block (including layer normalization and MLP layers) for the
             dependency graph processing module. If false, just use a self attention layer.
-        do_add_temporal_position_embeddings_to_data_embeddings
-            (`Optional[bool]`, *optional*, defaults to False):
-            If true, the input layer will add the temporal embeddings to all elements of the data embeddings.
-            This functionally adds temporal position embeddings into the inputs for the first sequence layer.
 
         intermediate_size (`int`, *optional*, defaults to 32):
             Dimension of the "intermediate" (often named feed-forward) layer in encoder.
@@ -481,7 +476,9 @@ class StructuredTransformerConfig(PretrainedConfig):
         numerical_embedding_weight: float = 0.5,
         do_normalize_by_measurement_index: bool = False,
         # Model configuration
-        structured_event_processing_mode: StructuredEventProcessingMode = "nested_attention",
+        structured_event_processing_mode: StructuredEventProcessingMode = (
+            StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
+        ),
         hidden_size: int | None = None,
         head_dim: int | None = 64,
         num_hidden_layers: int = 2,
@@ -499,7 +496,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         layer_norm_epsilon: float = 1e-5,
         do_full_block_in_dep_graph_attention: bool | None = True,
         do_full_block_in_seq_attention: bool | None = False,
-        do_add_temporal_position_embeddings_to_data_embeddings: bool | None = False,
         # Model output configuration
         TTE_generation_layer_type: TimeToEventGenerationHeadType = "exponential",
         TTE_lognormal_generation_num_components: int | None = None,
@@ -566,6 +562,8 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.categorical_embedding_dim = categorical_embedding_dim
         self.numerical_embedding_dim = numerical_embedding_dim
+        if static_embedding_mode in ("prepend", "concat_all"):
+            raise NotImplementedError(f"{static_embedding_mode} mode is not yet supported.")
         self.static_embedding_mode = static_embedding_mode
         self.static_embedding_weight = static_embedding_weight
         self.dynamic_embedding_weight = dynamic_embedding_weight
@@ -590,12 +588,27 @@ class StructuredTransformerConfig(PretrainedConfig):
                     raise ValueError(
                         missing_param_err_tmpl.format("do_full_block_in_dep_graph_attention")
                     )
-                if do_add_temporal_position_embeddings_to_data_embeddings is None:
+                if measurements_per_dep_graph_level is None:
                     raise ValueError(
-                        missing_param_err_tmpl.format(
-                            "do_add_temporal_position_embeddings_to_data_embeddings"
-                        )
+                        missing_param_err_tmpl.format("measurements_per_dep_graph_level")
                     )
+
+                proc_measurements_per_dep_graph_level = []
+                for group in measurements_per_dep_graph_level:
+                    proc_group = []
+                    for meas_index in group:
+                        match meas_index:
+                            case str():
+                                proc_group.append(meas_index)
+                            case [str() as meas_index, (str() | MeasIndexGroupOptions()) as mode]:
+                                assert mode in MeasIndexGroupOptions.values()
+                                proc_group.append((meas_index, mode))
+                            case _:
+                                raise ValueError(
+                                    f"Invalid `measurements_per_dep_graph_level` entry {meas_index}."
+                                )
+                    proc_measurements_per_dep_graph_level.append(proc_group)
+                measurements_per_dep_graph_level = proc_measurements_per_dep_graph_level
 
             case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
                 if measurements_per_dep_graph_level is not None:
@@ -632,14 +645,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                         extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size)
                     )
                     dep_graph_window_size = None
-                if do_add_temporal_position_embeddings_to_data_embeddings is not None:
-                    print(
-                        extra_param_err_tmpl.format(
-                            "do_add_temporal_position_embeddings_to_data_embeddings",
-                            do_add_temporal_position_embeddings_to_data_embeddings,
-                        )
-                    )
-                    do_add_temporal_position_embeddings_to_data_embeddings = None
 
             case _:
                 raise ValueError(
@@ -647,25 +652,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                     f"enum member ({StructuredEventProcessingMode.values()}). Got "
                     f"{structured_event_processing_mode}."
                 )
-
-        if measurements_per_dep_graph_level is not None:
-            proc_measurements_per_dep_graph_level = []
-            for group in measurements_per_dep_graph_level:
-                proc_group = []
-                for meas_index in group:
-                    match meas_index:
-                        case str():
-                            proc_group.append(meas_index)
-                        case (meas_index, mode) | [meas_index, mode]:
-                            assert type(meas_index) is str
-                            assert mode in MeasIndexGroupOptions.values()
-                            proc_group.append((meas_index, mode))
-                        case _:
-                            raise ValueError(
-                                f"Invalid `measurements_per_dep_graph_level` entry {meas_index}."
-                            )
-                proc_measurements_per_dep_graph_level.append(proc_group)
-            measurements_per_dep_graph_level = proc_measurements_per_dep_graph_level
 
         self.structured_event_processing_mode = structured_event_processing_mode
 
@@ -818,9 +804,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.activation_function = activation_function
         self.do_full_block_in_seq_attention = do_full_block_in_seq_attention
         self.do_full_block_in_dep_graph_attention = do_full_block_in_dep_graph_attention
-        self.do_add_temporal_position_embeddings_to_data_embeddings = (
-            do_add_temporal_position_embeddings_to_data_embeddings
-        )
 
         self.use_cache = use_cache
 
