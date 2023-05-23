@@ -7,13 +7,13 @@ try:
 except ImportError:
     pass  # no need to fail because of missing dev dependency
 
+import dataclasses
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 import hydra
 import inflect
-import dataclasses 
 from omegaconf import DictConfig, OmegaConf
 
 from EventStream.data.config import (
