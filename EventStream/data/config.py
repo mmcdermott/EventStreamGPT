@@ -374,13 +374,21 @@ class InputDFSchema(JSONableMixin):
                 case dict():
                     for in_col, schema_info in schema.items():
                         match schema_info:
-                            case str() as out_col, (
-                                InputDataType() | str() | [InputDataType.TIMESTAMP, str()]
-                            ) as dt if dt in InputDataType.values():
+                            case str() as out_col, str() as dt if dt in InputDataType.values():
                                 cls.__add_to_schema(
                                     unified_schema, in_col=in_col, dt=dt, out_col=out_col
                                 )
-                            case (InputDataType() | [InputDataType(), str()]) as dt:
+                            case str() as out_col, InputDataType() as dt:
+                                cls.__add_to_schema(
+                                    unified_schema, in_col=in_col, dt=dt, out_col=out_col
+                                )
+                            case str() as out_col, [InputDataType.TIMESTAMP, str()] as dt:
+                                cls.__add_to_schema(
+                                    unified_schema, in_col=in_col, dt=dt, out_col=out_col
+                                )
+                            case [InputDataType.TIMESTAMP, str()] as dt:
+                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
+                            case str() | InputDataType() as dt if dt in InputDataType.values():
                                 cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
                             case _:
                                 raise ValueError(f"Schema Unprocessable!\n{schema_info}")
