@@ -309,6 +309,7 @@ def import_class_from_file(module_path, class_name):
 
 @task_wrapper
 def zero_shot_evaluation(cfg: FinetuneConfig):
+    L.seed_everything(cfg.seed)
     torch.multiprocessing.set_sharing_strategy("file_system")
 
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")

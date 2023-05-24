@@ -284,6 +284,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
 @hydra_dataclass
 class FinetuneConfig:
     load_from_model_dir: str | Path = omegaconf.MISSING
+    seed: int = 1
 
     pretrained_weights_fp: Path | None = None
     save_dir: str | None = None
@@ -407,6 +408,7 @@ def train(cfg: FinetuneConfig):
     Args: TODO
     """
 
+    L.seed_everything(cfg.seed)
     torch.multiprocessing.set_sharing_strategy("file_system")
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
