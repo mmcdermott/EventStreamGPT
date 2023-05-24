@@ -240,8 +240,15 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             "timestamp",
             "subject_id",
             "event_id",
-            pl.lit(event_type).cast(pl.Categorical).alias("event_type"),
         ]
+        if event_type.startswith("COL:"):
+            event_type_col = event_type[len("COL:") :]
+            cols_select_exprs.append(
+                pl.col(event_type_col).cast(pl.Categorical).alias("event_type")
+            )
+        else:
+            cols_select_exprs.append(pl.lit(event_type).cast(pl.Categorical).alias("event_type"))
+
         for in_col, (out_col, _) in columns_schema.items():
             cols_select_exprs.append(pl.col(in_col).alias(out_col))
 

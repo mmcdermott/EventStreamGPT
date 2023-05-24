@@ -96,7 +96,8 @@ class DatasetBase(
 
         1. Produces a unified timestamp column representing the minimum of passed timestamps, with the name,
            `'timestamp'`.
-        2. Adds a categorical event type column with value `event_type`.
+        2. Adds a categorical event type column either from column (if `event_type` begins with 'COL:') or
+           with value `event_type`.
         3. Extracts and renames the columns present in `columns_schema`.
         4. Adds an integer `event_id` column.
         4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
