@@ -102,9 +102,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             regression_labels.update(regression_out[2])
             regression_indices.update(regression_out[3])
 
-        # Now we need to walk through the other elements of the dependency graph (omitting the first
-        # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
-        whole_event_encoded = encoded[:, :, -1, :]
         TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(
             batch,
             whole_event_encoded,
