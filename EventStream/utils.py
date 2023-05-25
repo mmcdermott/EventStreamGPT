@@ -5,14 +5,12 @@ import enum
 import functools
 import json
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, TypeVar, Union
 
 import hydra
-import numpy as np
-import pandas as pd
 import polars as pl
 
 PROPORTION = float
@@ -26,15 +24,28 @@ def count_or_proportion(N: int | None, cnt_or_prop: COUNT_OR_PROPORTION) -> int:
     a whole. E.g., the vocabulary should contain only elements that occur with count or proportion
     at least X, where X might be 20 times, or 1%.
     """
-    if type(cnt_or_prop) is int:
-        return cnt_or_prop
-    assert N is not None
-    if type(N) is int:
-        return int(round(cnt_or_prop * N))
-    elif type(N) is pl.Expr:
-        return (N * cnt_or_prop).round(0).cast(int)
-    else:
-        raise TypeError(f"{type(N)} is invalid for `N`")
+
+    match cnt_or_prop:
+        case int() if 0 < cnt_or_prop:
+            return cnt_or_prop
+        case int():
+            raise ValueError(f"{cnt_or_prop} must be positive if it is an integer")
+        case float() if 0 < cnt_or_prop < 1:
+            pass
+        case float():
+            raise ValueError(f"{cnt_or_prop} must be between 0 and 1 if it is a float")
+        case _:
+            raise TypeError(f"{cnt_or_prop} must be a positive integer or a float between 0 or 1")
+
+    match N:
+        case int():
+            return int(round(cnt_or_prop * N))
+        case pl.Expr():
+            return (N * cnt_or_prop).round(0).cast(int)
+        case _:
+            raise TypeError(
+                f"{N} must be an integer or a polars.Expr when cnt_or_prop is a float!"
+            )
 
 
 def lt_count_or_proportion(
@@ -45,35 +56,8 @@ def lt_count_or_proportion(
     return N_obs < count_or_proportion(N_total, cnt_or_prop)
 
 
-def is_monotonically_nonincreasing(a: np.ndarray) -> bool:
-    """Returns True if and only if a is monotonically non-increasing."""
-    return np.all(a[:-1] >= a[1:])
-
-
-def flatten_dict(exp_dict: dict[Sequence[str], Any]) -> dict[str, Any]:
-    """Flattens a dictionary out by key.
-
-    Args:
-        `exp_dict` (`Dict[Sequence[Hashable], Any]`):
-            A dictionary of the form `{[k1, k2, ...]: v}`
-
-    Returns: A dictionary of the form `{k1: v, k2: v, ...}`
-    """
-
-    out = {}
-    for ks, v in exp_dict.items():
-        for k in ks:
-            out[k] = v
-    return out
-
-
-def to_sklearn_np(vals: pd.Series):
-    """Takes a pandas series and returns a view consisting of only non-null numeric types reshaped
-    to a 2D view where the last dimension is 1 (which is needed for scikit-learn)."""
-    vals = vals.dropna()
-    vals = vals[vals.apply(lambda v: pd.api.types.is_numeric_dtype(type(v)))]
-    vals = vals.astype(float)
-    return vals.values.reshape((-1, 1))
+def num_initial_spaces(s: str) -> int:
+    return len(s) - len(s.lstrip(" "))
 
 
 class StrEnum(str, enum.Enum):
@@ -142,14 +126,6 @@ class JSONableMixin:
         json."""
         with open(fp) as f:
             return cls.from_dict(json.load(f))
-
-
-def num_initial_spaces(s: str) -> int:
-    out = 0
-    while s.startswith(" "):
-        out += 1
-        s = s[1:]
-    return out
 
 
 def task_wrapper(task_func: Callable) -> Callable:
