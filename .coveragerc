@@ -12,3 +12,4 @@ exclude_also =
     class .*\bProtocol\):
     @(abc\.)?abstractmethod
     def task_wrapper
+    def params_schema
