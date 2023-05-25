@@ -4,7 +4,6 @@ sys.path.append("../..")
 
 import copy
 import unittest
-from typing import Any
 
 import lightning as L
 import torch
@@ -20,23 +19,6 @@ from EventStream.transformer.nested_attention_model import (
 )
 
 from ...mixins import ConfigComparisonsMixin
-
-
-def print_debug_info(v: Any) -> str:
-    match v:
-        case None:
-            return "None"
-        case torch.Tensor():
-            return str(v.shape)
-        case dict() as v_dict:
-            els_strs = "\n    ".join(f"{k}: {print_debug_info(v)}" for k, v in v_dict.items())
-            return f"{type(v_dict)} of len {len(v_dict)}\n" f"  Elements:\n" f"    {els_strs}"
-        case (list() | tuple()) as v_list:
-            els_strs = {f"{print_debug_info(v)}" for v in v_list}
-            return f"{type(v_list)} of len {len(v_list)} with elements: {', '.join(els_strs)}"
-        case _:
-            return str(v)
-
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     "single_label_classification": ["event_type"],
@@ -140,19 +122,115 @@ BASE_BATCH = {
             ],
         ]
     ),
-    "stream_labels": {},
 }
 
 
 class TestNAPPTGeneration(ConfigComparisonsMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+
+        self.config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+
+        self.M = NAPPTForGenerativeSequenceModeling(self.config).cpu()
+        self.M.eval()  # So layernorm and dropout don't affect anything.
+
+        self.batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+
+    def test_expand_inputs_for_generation(self):
+        want_expanded_batch = PytorchBatch(
+            **{
+                "event_mask": torch.BoolTensor(
+                    [[True, True, True, True], [True, True, True, True]]
+                ),
+                "time_delta": torch.FloatTensor([[0, 2, 5, 3], [0, 2, 5, 3]]),
+                "start_time": torch.FloatTensor([1.0, 1.0]),
+                "static_indices": torch.LongTensor([[1, 2, 3], [1, 2, 3]]),
+                "static_measurement_indices": torch.LongTensor([[1, 2, 3], [1, 2, 3]]),
+                "dynamic_values_mask": torch.BoolTensor(
+                    [
+                        [
+                            [False, False, False, False, False, False],
+                            [False, False, False, False, False, False],
+                            [False, False, False, True, True, True],
+                            [False, False, False, False, True, True],
+                        ],
+                        [
+                            [False, False, False, False, False, False],
+                            [False, False, False, False, False, False],
+                            [False, False, False, True, True, True],
+                            [False, False, False, False, True, True],
+                        ],
+                    ]
+                ),
+                "dynamic_measurement_indices": torch.LongTensor(
+                    [
+                        [
+                            [1, 0, 0, 0, 0, 0],
+                            [1, 2, 0, 0, 0, 0],
+                            [1, 2, 2, 3, 3, 3],
+                            [1, 2, 2, 2, 3, 3],
+                        ],
+                        [
+                            [1, 0, 0, 0, 0, 0],
+                            [1, 2, 0, 0, 0, 0],
+                            [1, 2, 2, 3, 3, 3],
+                            [1, 2, 2, 2, 3, 3],
+                        ],
+                    ]
+                ),
+                "dynamic_indices": torch.LongTensor(
+                    [
+                        [
+                            [1, 0, 0, 0, 0, 0],
+                            [2, 5, 0, 0, 0, 0],
+                            [2, 4, 5, 7, 8, 9],
+                            [2, 4, 5, 5, 8, 9],
+                        ],
+                        [
+                            [1, 0, 0, 0, 0, 0],
+                            [2, 5, 0, 0, 0, 0],
+                            [2, 4, 5, 7, 8, 9],
+                            [2, 4, 5, 5, 8, 9],
+                        ],
+                    ]
+                ),
+                "dynamic_values": torch.Tensor(
+                    [
+                        [
+                            [0, 0, 0, 0, 0, 0],
+                            [0, 0, 0, 0, 0, 0],
+                            [0, 0, 0, 1.1, -1.1, 0.0],
+                            [0, 0, 0, 0, -3.1, 0.2],
+                        ],
+                        [
+                            [0, 0, 0, 0, 0, 0],
+                            [0, 0, 0, 0, 0, 0],
+                            [0, 0, 0, 1.1, -1.1, 0.0],
+                            [0, 0, 0, 0, -3.1, 0.2],
+                        ],
+                    ]
+                ),
+            }
+        )
+
+        self.assertEqual(want_expanded_batch, self.M._expand_inputs_for_generation(self.batch, 2))
+
+        bad_batch = copy.deepcopy(self.batch)
+        bad_batch.dynamic_values = None
+        with self.assertRaises(TypeError):
+            self.M._expand_inputs_for_generation(bad_batch, 2)
+
+    def test_update_model_kwargs_for_generation(self):
+        self.assertEqual(
+            {"past": None},
+            self.M._update_model_kwargs_for_generation({"wrong_key": "present"}, {}),
+        )
+        self.assertEqual(
+            {"past": "present"},
+            self.M._update_model_kwargs_for_generation({"past_key_values": "present"}, {}),
+        )
+
     def test_generation_identical_with_or_without_caching(self):
-        config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
-
-        M = NAPPTForGenerativeSequenceModeling(config).cpu()
-        M.eval()  # So layernorm and dropout don't affect anything.
-
-        batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
-
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
         # over various elements of that batch, iterating through in sequence, using caching to only ever run
@@ -170,15 +248,15 @@ class TestNAPPTGeneration(ConfigComparisonsMixin, unittest.TestCase):
         )
 
         L.seed_everything(1)
-        out_no_caching_1 = M.generate(batch, **generation_kwargs, use_cache=False)
+        out_no_caching_1 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
 
         L.seed_everything(1)
-        out_no_caching_2 = M.generate(batch, **generation_kwargs, use_cache=False)
+        out_no_caching_2 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
 
         self.assertEqual(out_no_caching_1, out_no_caching_2)
 
         L.seed_everything(1)
-        out_with_caching = M.generate(batch, **generation_kwargs, use_cache=True)
+        out_with_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=True)
 
         self.assertEqual(out_no_caching_1, out_with_caching)
 

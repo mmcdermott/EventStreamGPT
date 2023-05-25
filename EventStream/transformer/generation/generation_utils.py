@@ -104,7 +104,7 @@ class StructuredGenerationMixin:
                     }
                 case torch.Tensor():
                     batch[k] = v.index_select(0, expanded_return_idx)
-                case None if k == "time":
+                case None if k in ("time", "stream_labels"):
                     pass
                 case _:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
@@ -117,7 +117,7 @@ class StructuredGenerationMixin:
     ) -> dict[str, Any]:
         # update past
         if "past_key_values" in outputs:
-            model_kwargs["past"] = outputs.past_key_values
+            model_kwargs["past"] = outputs["past_key_values"]
         else:
             model_kwargs["past"] = None
 

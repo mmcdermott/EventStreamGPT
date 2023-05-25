@@ -4,7 +4,6 @@ sys.path.append("../..")
 
 import copy
 import unittest
-from typing import Any
 
 import torch
 
@@ -21,23 +20,6 @@ from EventStream.transformer.transformer import (
 )
 
 from ..mixins import ConfigComparisonsMixin
-
-
-def print_debug_info(v: Any) -> str:
-    match v:
-        case None:
-            return "None"
-        case torch.Tensor():
-            return str(v.shape)
-        case dict() as v_dict:
-            els_strs = "\n    ".join(f"{k}: {print_debug_info(v)}" for k, v in v_dict.items())
-            return f"{type(v_dict)} of len {len(v_dict)}\n" f"  Elements:\n" f"    {els_strs}"
-        case (list() | tuple()) as v_list:
-            els_strs = {f"{print_debug_info(v)}" for v in v_list}
-            return f"{type(v_list)} of len {len(v_list)} with elements: {', '.join(els_strs)}"
-        case _:
-            return str(v)
-
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     "single_label_classification": ["event_type"],
