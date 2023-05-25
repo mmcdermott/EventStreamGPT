@@ -41,8 +41,8 @@ def print_debug_info(v: Any) -> str:
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     "single_label_classification": ["event_type"],
-    "multi_label_classification": ["multi_label_col", "regression_col"],
-    "partially_observed_regression": ["regression_col"],
+    "multi_label_classification": ["multi_label_col"],
+    "multivariate_regression": ["regression_col"],
 }
 TEST_DATA_TYPES_IDXMAP = {
     "event_type": 1,
