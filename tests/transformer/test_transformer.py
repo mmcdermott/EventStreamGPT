@@ -261,7 +261,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("TODO: fix")
+    @unittest.skip("TODO: Fix!")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -323,7 +323,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
             out_iterative_caching_seq = []
             for dep_graph_idx in [1, 2, 0]:
                 sliced_batch = copy.deepcopy(source_batch_for_slicing)
-                sliced_batch = sliced_batch[:, seq_idx - 1 : seq_idx]
+                sliced_batch = sliced_batch[:, seq_idx : seq_idx + 1]
 
                 sliced_out = self.M(
                     sliced_batch,
