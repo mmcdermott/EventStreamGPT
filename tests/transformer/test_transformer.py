@@ -261,7 +261,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("skip")
+    @unittest.skip("TODO: fix")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -272,6 +272,11 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         out_no_caching = self.M(self.batch, return_dict=True, use_cache=False)
 
         out_full_caching = self.M(self.batch, return_dict=True, use_cache=True)
+        full_seq_past_up_to_2 = tuple(
+            tuple(e[:, :, :2, :] for e in ee)
+            for ee in out_full_caching["past_key_values"]["seq_past"]
+        )
+
         out_full_caching["past_key_values"] = None
         self.assertEqual(out_no_caching, out_full_caching)
 
@@ -307,6 +312,8 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
 
         new_joint_past = sliced_out["past_key_values"]
         sliced_out["past_key_values"] = None
+
+        self.assertNestedEqual(full_seq_past_up_to_2, new_joint_past["seq_past"])
 
         past = new_joint_past["seq_past"]
         dep_graph_past = new_joint_past["dep_graph_past"]
