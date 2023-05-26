@@ -256,7 +256,6 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual(out_subj_0.last_hidden_state, out.last_hidden_state[:1])
         self.assertEqual(out_subj_1.last_hidden_state, out.last_hidden_state[1:2])
 
-    @unittest.skip("skip")
     def test_forward_seq_shape_respected(self):
         out = self.M(self.batch)
         out_seq_to_2 = self.M(self.batch[:, :2])

@@ -308,6 +308,13 @@ class InnerBlock(nn.Module):
         # residual connection
         hidden_states = residual + feed_forward_hidden_states
 
+        if attention_mask is not None:
+            hidden_states = torch.where(
+                attention_mask.unsqueeze(-1).expand_as(hidden_states),
+                hidden_states,
+                torch.zeros_like(hidden_states),
+            )
+
         if not use_cache:
             outputs.pop("present_key_value")
         return hidden_states, outputs
@@ -571,12 +578,6 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
 
             hidden_states, extra_return_info = outputs
 
-            if seq_mask is not None:
-                hidden_states = torch.where(
-                    seq_mask.unsqueeze(-1).expand_as(hidden_states),
-                    hidden_states,
-                    torch.zeros_like(hidden_states),
-                )
             if use_cache is True:
                 presents = presents + (extra_return_info["present_key_value"],)
 
@@ -878,12 +879,6 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                 outputs = block(**kwargs)
 
             hidden_states, extra_return_info = outputs
-            if seq_mask is not None:
-                hidden_states = torch.where(
-                    seq_mask.unsqueeze(-1).unsqueeze(-1).expand_as(hidden_states),
-                    hidden_states,
-                    torch.zeros_like(hidden_states),
-                )
 
             if update_seq_cache:
                 presents["seq_past"] = presents["seq_past"] + (
