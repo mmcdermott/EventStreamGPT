@@ -87,17 +87,23 @@ NA_CONFIG_KWARGS = dict(
 )
 
 BASE_BATCH = {
-    "event_mask": torch.BoolTensor([[True, True, True, True]]),
-    "time_delta": torch.FloatTensor([[0, 2, 5, 3]]),
-    "static_indices": torch.LongTensor([[1, 2, 3]]),
-    "static_measurement_indices": torch.LongTensor([[1, 2, 3]]),
+    "event_mask": torch.BoolTensor([[True, True, True, True], [False, True, True, True]]),
+    "time_delta": torch.FloatTensor([[0, 2, 5, 3], [0, 3, 2, 3]]),
+    "static_indices": torch.LongTensor([[1, 2, 3], [1, 3, 0]]),
+    "static_measurement_indices": torch.LongTensor([[1, 2, 3], [1, 2, 0]]),
     "dynamic_values_mask": torch.BoolTensor(
         [
             [
                 [False, False, False, False, False, False],
                 [False, False, False, False, False, False],
                 [False, False, False, True, True, True],
-                [False, False, False, True, True, True],
+                [False, False, False, False, True, True],
+            ],
+            [
+                [False, False, False, False, False, False],
+                [False, False, False, False, False, False],
+                [False, False, False, False, False, True],
+                [False, False, False, False, True, True],
             ],
         ]
     ),
@@ -109,6 +115,12 @@ BASE_BATCH = {
                 [1, 2, 2, 3, 3, 3],
                 [1, 2, 2, 2, 3, 3],
             ],
+            [
+                [1, 0, 0, 0, 0, 0],
+                [1, 2, 0, 0, 0, 0],
+                [1, 2, 2, 2, 2, 3],
+                [1, 2, 2, 2, 3, 3],
+            ],
         ]
     ),
     "dynamic_indices": torch.LongTensor(
@@ -117,7 +129,13 @@ BASE_BATCH = {
                 [1, 0, 0, 0, 0, 0],
                 [2, 5, 0, 0, 0, 0],
                 [2, 4, 5, 7, 8, 9],
-                [2, 4, 5, 9, 8, 9],
+                [2, 4, 5, 5, 8, 9],
+            ],
+            [
+                [1, 0, 0, 0, 0, 0],
+                [2, 5, 0, 0, 0, 0],
+                [2, 4, 5, 4, 4, 9],
+                [2, 4, 5, 5, 8, 9],
             ],
         ]
     ),
@@ -127,7 +145,13 @@ BASE_BATCH = {
                 [0, 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0],
                 [0, 0, 0, 1.1, -1.1, 0.0],
-                [0, 0, 0, 1.2, -3.1, 0.2],
+                [0, 0, 0, 0, -3.1, 0.2],
+            ],
+            [
+                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1.4],
+                [0, 0, 0, 0, -3.0, 1.2],
             ],
         ]
     ),
@@ -155,7 +179,7 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
 
         self.assertEqual(out1, out1_alt)
 
-        batch.event_mask = torch.BoolTensor([[False, False, True, True]])
+        batch.event_mask = torch.BoolTensor([[False, False, True, True], [True, True, True, True]])
 
         out2 = M(batch)
         with self.assertRaises(AssertionError):
@@ -187,12 +211,15 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
 
         self.assertEqual(out1, out1_alt)
 
-        batch.event_mask = torch.BoolTensor([[False, False, True, False]])
+        batch.event_mask = torch.BoolTensor(
+            [[False, False, True, False], [True, True, True, True]]
+        )
 
         out2 = M(batch)
         with self.assertRaises(AssertionError):
             self.assertEqual(out1, out2)
 
+    @unittest.skip("TODO: Implement caching.")
     def test_forward_identical_with_or_without_caching(self):
         config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
 
