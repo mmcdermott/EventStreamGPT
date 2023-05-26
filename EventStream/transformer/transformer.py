@@ -377,7 +377,12 @@ class StructuredTransformerPreTrainedModel(PreTrainedModel):
             module.gradient_checkpointing = value
 
 
-def time_from_deltas(t_deltas: torch.Tensor) -> torch.Tensor:
+def time_from_deltas(batch: PytorchBatch) -> torch.Tensor:
+    t_deltas = batch["time_delta"]
+
+    if batch.event_mask is not None:
+        t_deltas = torch.where(batch.event_mask, t_deltas, torch.zeros_like(t_deltas))
+
     return torch.hstack([torch.zeros_like(t_deltas[:, :1]), t_deltas.cumsum(-1)[:, :-1]])
 
 
@@ -406,11 +411,7 @@ class TemporalPositionEncoding(torch.nn.Module):
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
         """t is the tensor of input timepoints, with shape (batch size, sequence length)"""
-        t = (
-            time_from_deltas(batch["time_delta"])
-            if batch.get("time", None) is None
-            else batch["time"]
-        )
+        t = time_from_deltas(batch) if batch.get("time", None) is None else batch["time"]
         bsz, seq_len = t.shape
         device = t.device
 
@@ -462,7 +463,14 @@ class ConditionallyIndependentPointProcessInputLayer(torch.nn.Module):
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
         data_embed = self.data_embedding_layer(batch)
         time_embed = self.time_embedding_layer(batch)
-        return self.embedding_dropout(data_embed + time_embed)
+        embed = data_embed + time_embed
+
+        if batch.event_mask is not None:
+            embed = torch.where(
+                batch.event_mask.unsqueeze(-1).expand_as(embed), embed, torch.zeros_like(embed)
+            )
+
+        return self.embedding_dropout(embed)
 
 
 class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTrainedModel):
@@ -672,6 +680,13 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
             # This is used in generation to take advantage of the cache, where we only want to process a
             # single, new dependency graph element at a time.
             embed = embed[:, :, dep_graph_el_generation_target - 1].unsqueeze(2)
+
+        if batch.event_mask is not None:
+            embed = torch.where(
+                batch.event_mask.unsqueeze(-1).unsqueeze(-1).expand_as(embed),
+                embed,
+                torch.zeros_like(embed),
+            )
 
         return self.embedding_dropout(embed)
 

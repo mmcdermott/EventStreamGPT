@@ -207,9 +207,75 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("TODO: Implement caching.")
+    @unittest.skip("Need to fix")
     def test_forward_identical_with_or_without_caching(self):
-        raise NotImplementedError
+        # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
+        # run the model over a partial batch without caching and store the result. Then, we'll run the model
+        # over various elements of that batch, iterating through in sequence, using caching to only ever run
+        # the attention calculation on the last element, and we'll validate that the predictions don't change
+        # in comparison to the run without caching.
+
+        out_no_caching = self.M(self.batch, return_dict=True, use_cache=False)
+
+        out_full_caching = self.M(self.batch, return_dict=True, use_cache=True)
+        full_seq_past_up_to_2 = tuple(
+            tuple(e[:, :, :2, :] for e in ee) for ee in out_full_caching["past_key_values"]
+        )
+
+        out_full_caching["past_key_values"] = None
+        self.assertEqual(out_no_caching, out_full_caching)
+
+        source_batch_for_slicing = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+        # We need to add time explicitly here as that will be lost when we slice the batch. This happens
+        # naturally during generation.
+        source_batch_for_slicing.time = time_from_deltas(source_batch_for_slicing)
+
+        # We can't actually start an iterative caching process from nothing -- the system isn't designed for
+        # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
+        # output there, then use that as the starting point for the iterative cache-based computation.
+
+        seq_idx = 1
+
+        sliced_batch = copy.deepcopy(source_batch_for_slicing)
+        sliced_batch = sliced_batch[:, : (seq_idx + 1)]
+
+        sliced_out = self.M(
+            sliced_batch,
+            return_dict=True,
+            use_cache=True,
+            past=None,
+        )
+
+        self.assertEqual(
+            out_no_caching.last_hidden_state[:, :2],
+            sliced_out.last_hidden_state,
+            "The initial slicing shouldn't impact the last hidden state.",
+        )
+
+        past = sliced_out["past_key_values"]
+        self.assertNestedEqual(full_seq_past_up_to_2, past)
+
+        out_iterative_caching = [sliced_out]
+        for seq_idx in range(2, self.batch.sequence_length):
+            sliced_batch = copy.deepcopy(source_batch_for_slicing)
+            sliced_batch = sliced_batch[:, seq_idx : seq_idx + 1]
+
+            sliced_out = self.M(
+                sliced_batch,
+                return_dict=True,
+                use_cache=True,
+                past=past,
+            )
+            past = sliced_out["past_key_values"]
+            out_iterative_caching.append(sliced_out)
+
+        out_iterative_caching = TransformerOutputWithPast(
+            last_hidden_state=torch.cat(
+                [x.last_hidden_state for x in out_iterative_caching], dim=1
+            ),
+        )
+
+        self.assertEqual(out_no_caching, out_iterative_caching)
 
 
 class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
@@ -261,7 +327,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("TODO: Fix!")
+    @unittest.skip("Need to fix")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -283,7 +349,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         source_batch_for_slicing = PytorchBatch(**copy.deepcopy(BASE_BATCH))
         # We need to add time explicitly here as that will be lost when we slice the batch. This happens
         # naturally during generation.
-        source_batch_for_slicing.time = time_from_deltas(source_batch_for_slicing.time_delta)
+        source_batch_for_slicing.time = time_from_deltas(source_batch_for_slicing)
 
         # We can't actually start an iterative caching process from nothing -- the system isn't designed for
         # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's

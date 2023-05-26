@@ -244,7 +244,7 @@ class NAPPTForGenerativeSequenceModeling(
                 past = pasts_dict["seq_past"]
 
                 # only last sequence element in the batch if past is defined in kwargs
-                batch.time = time_from_deltas(batch.time_delta)
+                batch.time = time_from_deltas(batch)
                 batch = batch.last_sequence_element_unsqueezed()
 
                 dep_graph_past = pasts_dict["dep_graph_past"]

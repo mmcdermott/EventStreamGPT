@@ -377,7 +377,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
 
         unsqueezed_batch_with_time = PytorchBatch(
             time_delta=torch.Tensor([[3.0]]),
-            time=torch.Tensor([[3.0]]),
+            time=torch.Tensor([[1.0]]),
             event_mask=torch.BoolTensor([[True]]),
             dynamic_indices=torch.LongTensor([[[[6, 7, 8]]]]),
             dynamic_measurement_indices=torch.LongTensor([[[[7, 8, 9]]]]),

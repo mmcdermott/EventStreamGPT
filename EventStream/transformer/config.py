@@ -562,8 +562,6 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.categorical_embedding_dim = categorical_embedding_dim
         self.numerical_embedding_dim = numerical_embedding_dim
-        if static_embedding_mode in ("prepend", "concat_all"):
-            raise NotImplementedError(f"{static_embedding_mode} mode is not yet supported.")
         self.static_embedding_mode = static_embedding_mode
         self.static_embedding_weight = static_embedding_weight
         self.dynamic_embedding_weight = dynamic_embedding_weight

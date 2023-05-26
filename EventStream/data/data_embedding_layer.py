@@ -25,17 +25,12 @@ MEAS_INDEX_GROUP_T = Union[int, tuple[int, MeasIndexGroupOptions]]
 class StaticEmbeddingMode(StrEnum):
     """The different ways that static embeddings can be combined with the dynamic embeddings.
 
-    `DROP` means that the static embeddings are dropped, and only the dynamic embeddings are used.
-    `CONCAT_ALL` means that the static embeddings are concatenated with the dynamic embeddings per
-    event. `SUM_ALL` means that the static embeddings are summed with the dynamic embeddings per
-    event. `PREPEND` means that the static embeddings are prepended to the sequence of dynamic
-    embeddings.
+    * `DROP` means that the static embeddings are dropped, and only the dynamic embeddings are used.
+    * `SUM_ALL` means that the static embeddings are summed with the dynamic embeddings per event.
     """
 
     DROP = enum.auto()
-    CONCAT_ALL = enum.auto()
     SUM_ALL = enum.auto()
-    PREPEND = enum.auto()
 
     @classmethod
     def values(cls):
@@ -437,6 +432,14 @@ class DataEmbeddingLayer(torch.nn.Module):
         # embedded is of shape (batch_size, sequence_length, out_dim) or of shape
         # (batch_size, sequence_length, num_measurement_buckets, out_dim)
 
+        if batch.event_mask is not None:
+            mask = batch.event_mask
+            while len(mask.shape) < len(embedded.shape):
+                mask = mask.unsqueeze(-1)
+
+            mask = mask.expand_as(embedded)
+            embedded = torch.where(mask, embedded, torch.zeros_like(embedded))
+
         if self.static_embedding_mode == StaticEmbeddingMode.DROP:
             return embedded
 
@@ -458,12 +461,9 @@ class DataEmbeddingLayer(torch.nn.Module):
             # static_embedded is now of shape (batch_size, 1, 1, out_dim)
 
         match self.static_embedding_mode:
-            case StaticEmbeddingMode.CONCAT_ALL:
-                static_embedded_expanded = static_embedded.expand(-1, embedded.shape[1], -1)
-                return torch.cat([embedded, static_embedded_expanded], dim=2)
             case StaticEmbeddingMode.SUM_ALL:
-                return self.dynamic_weight * embedded + self.static_weight * static_embedded
-            case StaticEmbeddingMode.PREPEND:
-                return torch.cat([static_embedded, embedded], dim=1)
+                embedded = self.dynamic_weight * embedded + self.static_weight * static_embedded
+                if batch.event_mask is not None:
+                    return torch.where(mask, embedded, torch.zeros_like(embedded))
             case _:
                 raise ValueError(f"Invalid static embedding mode: {self.static_embedding_mode}")

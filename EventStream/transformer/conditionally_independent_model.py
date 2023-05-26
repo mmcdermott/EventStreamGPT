@@ -168,7 +168,7 @@ class CIPPTForGenerativeSequenceModeling(
         self, batch: PytorchBatch, past=None, **kwargs
     ) -> dict[str, Any]:
         # only last sequence element in the batch if past is defined in kwargs
-        batch.time = time_from_deltas(batch.time_delta)
+        batch.time = time_from_deltas(batch)
 
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
