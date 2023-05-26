@@ -202,7 +202,6 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
         self.assertEqual(out_subj_0.last_hidden_state, out.last_hidden_state[:1])
         self.assertEqual(out_subj_1.last_hidden_state, out.last_hidden_state[1:2])
 
-    @unittest.skip("TODO: Fix test.")
     def test_forward_seq_shape_respected(self):
         out = self.M(self.batch)
         out_seq_to_2 = self.M(self.batch[:, :2])
@@ -257,13 +256,13 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual(out_subj_0.last_hidden_state, out.last_hidden_state[:1])
         self.assertEqual(out_subj_1.last_hidden_state, out.last_hidden_state[1:2])
 
-    @unittest.skip("TODO: Fix test.")
+    @unittest.skip("skip")
     def test_forward_seq_shape_respected(self):
         out = self.M(self.batch)
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("TODO: Fix test.")
+    @unittest.skip("skip")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
