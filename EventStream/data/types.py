@@ -130,23 +130,7 @@ class PytorchBatch:
         return dataclasses.asdict(self).values()
 
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
-        kwargs = dict(
-            event_mask=self.event_mask[:, -1].unsqueeze(1),
-            time_delta=self.time_delta[:, -1].unsqueeze(1),
-            static_indices=self.static_indices,
-            static_measurement_indices=self.static_measurement_indices,
-            dynamic_indices=self.dynamic_indices[:, -1].unsqueeze(1),
-            dynamic_measurement_indices=self.dynamic_measurement_indices[:, -1].unsqueeze(1),
-            dynamic_values=self.dynamic_values[:, -1].unsqueeze(1),
-            dynamic_values_mask=self.dynamic_values_mask[:, -1].unsqueeze(1),
-            start_time=self.start_time,
-            stream_labels=self.stream_labels,
-        )
-
-        if self.time is not None:
-            kwargs["time"] = self.time[:, -1].unsqueeze(1)
-
-        return PytorchBatch(**kwargs)
+        return self[:, -1:]
 
 
 class TemporalityType(StrEnum):

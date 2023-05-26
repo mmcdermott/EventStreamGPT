@@ -251,7 +251,6 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual(out_subj_0.last_hidden_state, out.last_hidden_state[:1])
         self.assertEqual(out_subj_1.last_hidden_state, out.last_hidden_state[1:2])
 
-    @unittest.skip("TODO: Fix Test.")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -278,18 +277,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         dep_graph_idx = None
 
         sliced_batch = copy.deepcopy(source_batch_for_slicing)
-        for param in (
-            "time",
-            "event_mask",
-            "time_delta",
-            "dynamic_indices",
-            "dynamic_measurement_indices",
-            "dynamic_values",
-            "dynamic_values_mask",
-        ):
-            orig_val = getattr(sliced_batch, param)
-            sliced_val = orig_val[:, : (seq_idx + 1)]
-            setattr(sliced_batch, param, sliced_val)
+        sliced_batch = sliced_batch[:, : (seq_idx + 1)]
 
         sliced_out = self.M(
             sliced_batch,
@@ -311,18 +299,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
             out_iterative_caching_seq = []
             for dep_graph_idx in [1, 2, 0]:
                 sliced_batch = copy.deepcopy(source_batch_for_slicing)
-                for param in (
-                    "time",
-                    "event_mask",
-                    "time_delta",
-                    "dynamic_indices",
-                    "dynamic_measurement_indices",
-                    "dynamic_values",
-                    "dynamic_values_mask",
-                ):
-                    orig_val = getattr(sliced_batch, param)
-                    sliced_val = orig_val[:, seq_idx].unsqueeze(1)
-                    setattr(sliced_batch, param, sliced_val)
+                sliced_batch = sliced_batch[:, seq_idx - 1 : seq_idx]
 
                 sliced_out = self.M(
                     sliced_batch,
