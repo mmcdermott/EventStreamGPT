@@ -159,6 +159,15 @@ BASE_BATCH = {
 
 
 class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.config = StructuredTransformerConfig(**CI_CONFIG_KWARGS)
+
+        self.M = ConditionallyIndependentPointProcessTransformer(self.config).cpu()
+        self.M.eval()  # So layernorm and dropout don't affect anything.
+
+        self.batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+
     def test_constructs(self):
         config_valid = StructuredTransformerConfig(**CI_CONFIG_KWARGS)
         ConditionallyIndependentPointProcessTransformer(config_valid)
@@ -167,23 +176,31 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
             ConditionallyIndependentPointProcessTransformer(config_invalid)
 
     def test_forward_sensitive_to_event_mask_with_batch(self):
-        config = StructuredTransformerConfig(**CI_CONFIG_KWARGS)
-
-        M = ConditionallyIndependentPointProcessTransformer(config).cpu()
-        M.eval()  # So layernorm and dropout don't affect anything.
-
-        batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
-        batch2 = copy.deepcopy(batch)
-        out1 = M(batch)
-        out1_alt = M(batch2)
+        batch2 = copy.deepcopy(self.batch)
+        out1 = self.M(self.batch)
+        out1_alt = self.M(batch2)
 
         self.assertEqual(out1, out1_alt)
 
-        batch.event_mask = torch.BoolTensor([[False, False, True, True], [True, True, True, True]])
+        batch2.event_mask = torch.BoolTensor(
+            [[False, False, True, True], [True, True, True, True]]
+        )
 
-        out2 = M(batch)
+        out2 = self.M(batch2)
         with self.assertRaises(AssertionError):
             self.assertEqual(out1, out2)
+
+    def test_forward_batch_shape_respected(self):
+        out = self.M(self.batch)
+
+        batch_subj_0 = self.batch[:1]
+        batch_subj_1 = self.batch[1:2]
+
+        out_subj_0 = self.M(batch_subj_0)
+        out_subj_1 = self.M(batch_subj_1)
+
+        self.assertEqual(out_subj_0.last_hidden_state, out.last_hidden_state[:1])
+        self.assertEqual(out_subj_1.last_hidden_state, out.last_hidden_state[1:2])
 
     @unittest.skip("TODO: Implement caching.")
     def test_forward_identical_with_or_without_caching(self):
@@ -191,6 +208,15 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
 
 
 class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+
+        self.M = NestedAttentionPointProcessTransformer(self.config).cpu()
+        self.M.eval()  # So layernorm and dropout don't affect anything.
+
+        self.batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+
     def test_constructs(self):
         config_valid = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
         NestedAttentionPointProcessTransformer(config_valid)
@@ -199,50 +225,45 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
             NestedAttentionPointProcessTransformer(config_invalid)
 
     def test_forward_sensitive_to_event_mask_with_batch(self):
-        config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
-
-        M = NestedAttentionPointProcessTransformer(config).cpu()
-        M.eval()  # So layernorm and dropout don't affect anything.
-
-        batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
-        batch2 = copy.deepcopy(batch)
-        out1 = M(batch)
-        out1_alt = M(batch2)
+        batch2 = copy.deepcopy(self.batch)
+        out1 = self.M(self.batch)
+        out1_alt = self.M(batch2)
 
         self.assertEqual(out1, out1_alt)
 
-        batch.event_mask = torch.BoolTensor(
-            [[False, False, True, False], [True, True, True, True]]
+        batch2.event_mask = torch.BoolTensor(
+            [[False, False, True, True], [True, True, True, True]]
         )
 
-        out2 = M(batch)
+        out2 = self.M(batch2)
         with self.assertRaises(AssertionError):
             self.assertEqual(out1, out2)
 
-    @unittest.skip("TODO: Implement caching.")
+    def test_forward_batch_shape_respected(self):
+        out = self.M(self.batch)
+
+        batch_subj_0 = self.batch[:1]
+        batch_subj_1 = self.batch[1:2]
+
+        out_subj_0 = self.M(batch_subj_0)
+        out_subj_1 = self.M(batch_subj_1)
+
+        self.assertEqual(out_subj_0.last_hidden_state, out.last_hidden_state[:1])
+        self.assertEqual(out_subj_1.last_hidden_state, out.last_hidden_state[1:2])
+
+    @unittest.skip("TODO: Fix Test.")
     def test_forward_identical_with_or_without_caching(self):
-        config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
-
-        M = NestedAttentionPointProcessTransformer(config).cpu()
-        M.eval()  # So layernorm and dropout don't affect anything.
-
-        batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
-
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
         # over various elements of that batch, iterating through in sequence, using caching to only ever run
         # the attention calculation on the last element, and we'll validate that the predictions don't change
         # in comparison to the run without caching.
 
-        out_no_caching = M(batch, return_dict=True, use_cache=False)
+        out_no_caching = self.M(self.batch, return_dict=True, use_cache=False)
 
-        out_with_caching_full = M(
-            batch,
-            return_dict=True,
-            use_cache=True,
-        )
-        out_with_caching_full["past_key_values"] = None
-        self.assertEqual(out_no_caching, out_with_caching_full)
+        out_full_caching = self.M(self.batch, return_dict=True, use_cache=True)
+        out_full_caching["past_key_values"] = None
+        self.assertEqual(out_no_caching, out_full_caching)
 
         source_batch_for_slicing = PytorchBatch(**copy.deepcopy(BASE_BATCH))
         # We need to add time explicitly here as that will be lost when we slice the batch. This happens
@@ -270,7 +291,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
             sliced_val = orig_val[:, : (seq_idx + 1)]
             setattr(sliced_batch, param, sliced_val)
 
-        sliced_out = M(
+        sliced_out = self.M(
             sliced_batch,
             return_dict=True,
             use_cache=True,
@@ -285,9 +306,9 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         past = new_joint_past["seq_past"]
         dep_graph_past = new_joint_past["dep_graph_past"]
 
-        out_with_caching = [sliced_out]
-        for seq_idx in range(2, batch.sequence_length):
-            out_with_caching_seq = []
+        out_iterative_caching = [sliced_out]
+        for seq_idx in range(2, self.batch.sequence_length):
+            out_iterative_caching_seq = []
             for dep_graph_idx in [1, 2, 0]:
                 sliced_batch = copy.deepcopy(source_batch_for_slicing)
                 for param in (
@@ -303,7 +324,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
                     sliced_val = orig_val[:, seq_idx].unsqueeze(1)
                     setattr(sliced_batch, param, sliced_val)
 
-                sliced_out = M(
+                sliced_out = self.M(
                     sliced_batch,
                     return_dict=True,
                     use_cache=True,
@@ -318,20 +339,22 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
                 past = new_joint_past["seq_past"]
                 dep_graph_past = new_joint_past["dep_graph_past"]
 
-                out_with_caching_seq.append(sliced_out)
+                out_iterative_caching_seq.append(sliced_out)
 
-            joint_seq_out_with_caching = TransformerOutputWithPast(
+            joint_seq_out_iterative_caching = TransformerOutputWithPast(
                 last_hidden_state=torch.cat(
-                    [x.last_hidden_state for x in out_with_caching_seq], dim=2
+                    [x.last_hidden_state for x in out_iterative_caching_seq], dim=2
                 ),
             )
-            out_with_caching.append(joint_seq_out_with_caching)
+            out_iterative_caching.append(joint_seq_out_iterative_caching)
 
-        out_with_caching = TransformerOutputWithPast(
-            last_hidden_state=torch.cat([x.last_hidden_state for x in out_with_caching], dim=1),
+        out_iterative_caching = TransformerOutputWithPast(
+            last_hidden_state=torch.cat(
+                [x.last_hidden_state for x in out_iterative_caching], dim=1
+            ),
         )
 
-        self.assertEqual(out_no_caching, out_with_caching)
+        self.assertEqual(out_no_caching, out_iterative_caching)
 
 
 if __name__ == "__main__":
