@@ -20,7 +20,7 @@ from EventStream.transformer.config import (
     TimeToEventGenerationHeadType,
 )
 
-from ..mixins import ConfigComparisonsMixin
+from ..utils import ConfigComparisonsMixin
 
 
 class TestMetricsConfig(unittest.TestCase):

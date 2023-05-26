@@ -6,7 +6,7 @@ import unittest
 
 from EventStream.data.vocabulary import Vocabulary
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 
 def rounded_obs_freq(v: Vocabulary) -> list[float]:

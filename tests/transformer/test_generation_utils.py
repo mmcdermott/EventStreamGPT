@@ -11,7 +11,7 @@ from EventStream.transformer.generation.generation_utils import (
     StructuredGenerationMixin,
 )
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 BASE_BATCH = {
     "event_mask": torch.BoolTensor([[False, True, True], [True, True, True]]),

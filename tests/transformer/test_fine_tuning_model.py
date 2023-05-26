@@ -13,7 +13,7 @@ from EventStream.transformer.config import (
 )
 from EventStream.transformer.fine_tuning_model import ESTForStreamClassification
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 TEST_MEASUREMENTS_IDXMAP = {
     "event_type": 1,

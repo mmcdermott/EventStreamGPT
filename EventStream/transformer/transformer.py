@@ -124,11 +124,18 @@ class InnerSelfAttention(nn.Module):
 
         if attention_mask is not None:
             # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
+            attn_weights = attn_weights + expand_mask(attention_mask, dtype=query.dtype)
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
         attn_weights = attn_weights.to(value.dtype)
         attn_weights = self.attn_dropout(attn_weights)
+
+        if attention_mask is not None:
+            attn_weights = torch.where(
+                attention_mask.unsqueeze(1).unsqueeze(-1).expand_as(attn_weights),
+                attn_weights,
+                torch.zeros_like(attn_weights),
+            )
 
         # Mask heads if we want to
         if head_mask is not None:
@@ -232,10 +239,9 @@ class InnerAttention(nn.Module):
         output_attentions=False,
         static_kv_first: bool = False,
     ):
-        hidden_states = self.layer_norm(hidden_states)
         return self.attention(
-            hidden_states,
-            attention_mask=expand_mask(attention_mask, dtype=hidden_states.dtype),
+            self.layer_norm(hidden_states),
+            attention_mask=attention_mask,
             layer_past=layer_past,
             head_mask=head_mask,
             use_cache=use_cache,
@@ -284,6 +290,7 @@ class InnerBlock(nn.Module):
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Note that attention_mask here is still not expanded; we do that internally here to
         account for the different mask shapes used in the structured transformer."""
+
         # If we have a static kv entry first, we don't want to process it in the rest of the block, so we drop
         # it from the residual.
         residual = hidden_states if not static_kv_first else hidden_states[:, 1:, :]
@@ -570,6 +577,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
                 outputs = block(**kwargs)
 
             hidden_states, extra_return_info = outputs
+
             if use_cache is True:
                 presents = presents + (extra_return_info["present_key_value"],)
 

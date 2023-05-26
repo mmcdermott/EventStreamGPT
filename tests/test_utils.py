@@ -7,54 +7,41 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import numpy as np
-import pandas as pd
-
 from EventStream.utils import (
     JSONableMixin,
     count_or_proportion,
-    flatten_dict,
-    is_monotonically_nonincreasing,
-    to_sklearn_np,
+    lt_count_or_proportion,
+    num_initial_spaces,
 )
 
-from .mixins import MLTypeEqualityCheckableMixin
+from .utils import MLTypeEqualityCheckableMixin
 
 
 class TestUtilFunctions(MLTypeEqualityCheckableMixin, unittest.TestCase):
     """Tests `EventStreamData.utils`."""
 
     def test_count_or_proportion(self):
-        self.assertEqual(
-            4, count_or_proportion(10, 4), msg="When passed an integer, should return same."
-        )
-        self.assertEqual(
-            3,
-            count_or_proportion(10, 1 / 3),
-            msg="When passed a float, should return the proportion.",
-        )
+        self.assertEqual(4, count_or_proportion(10, 4))
+        self.assertEqual(3, count_or_proportion(10, 1 / 3))
+        with self.assertRaises(TypeError):
+            count_or_proportion(10, "foo")
+        with self.assertRaises(ValueError):
+            count_or_proportion(10, 1.1)
+        with self.assertRaises(ValueError):
+            count_or_proportion(10, -0.1)
+        with self.assertRaises(ValueError):
+            count_or_proportion(10, 0)
+        with self.assertRaises(TypeError):
+            count_or_proportion("foo", 1 / 3)
 
-    def test_is_monotonically_nonincreasing(self):
-        self.assertTrue(is_monotonically_nonincreasing(np.array([1, 0, 0, -1000, -float("inf")])))
-        self.assertFalse(is_monotonically_nonincreasing(np.array([1, 2, 0, -1000, -float("inf")])))
-        self.assertTrue(is_monotonically_nonincreasing(np.array([])))
+    def test_lt_count_or_proportion(self):
+        self.assertFalse(lt_count_or_proportion(10, None, 100))
+        self.assertTrue(lt_count_or_proportion(10, 11, 100))
+        self.assertFalse(lt_count_or_proportion(12, 11, 100))
 
-    def test_flatten_dict(self):
-        self.assertEqual({}, flatten_dict({}))
-        self.assertEqual(
-            {"foo": 3, "bar": 3, "biz": 4}, flatten_dict({("foo", "bar"): 3, ("biz",): 4})
-        )
-
-    def test_to_sklearn_np(self):
-        self.assertEqual(
-            np.array([], dtype=float).reshape(-1, 1), to_sklearn_np(pd.Series([], dtype=float))
-        )
-        self.assertEqual(
-            np.array([[1], [-2], [3], [-4]]), to_sklearn_np(pd.Series([1, -2, 3, -4]))
-        )
-        self.assertEqual(
-            np.array([[1], [2], [3], [4]]), to_sklearn_np(pd.Series([1, np.NaN, "foo", 2, 3, 4]))
-        )
+    def test_num_initial_spaces(self):
+        self.assertEqual(0, num_initial_spaces("foo"))
+        self.assertEqual(3, num_initial_spaces("   \tfoo"))
 
 
 class TestJSONableMixin(unittest.TestCase):

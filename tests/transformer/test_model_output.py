@@ -21,7 +21,7 @@ from EventStream.transformer.model_output import (
     strip_unused_indices,
 )
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 MEASUREMENT_CONFIGS = {
     "static_clf": MeasurementConfig(

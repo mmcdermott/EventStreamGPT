@@ -23,7 +23,7 @@ from EventStream.transformer.nested_attention_model import (
     NestedAttentionGenerativeOutputLayer,
 )
 
-from ..mixins import ConfigComparisonsMixin, MockModule
+from ..utils import ConfigComparisonsMixin, MockModule
 
 DEFAULT_VALID_CONFIG_KWARGS = {
     "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION,

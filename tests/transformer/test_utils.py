@@ -14,7 +14,7 @@ from EventStream.transformer.utils import (
     weighted_loss,
 )
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 
 class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):

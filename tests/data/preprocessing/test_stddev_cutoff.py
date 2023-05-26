@@ -9,7 +9,7 @@ import polars as pl
 
 from EventStream.data.preprocessing.stddev_cutoff import StddevCutoffOutlierDetector
 
-from ...mixins import MLTypeEqualityCheckableMixin
+from ...utils import MLTypeEqualityCheckableMixin
 
 
 class TestStddevCutoffOutlierDetector(MLTypeEqualityCheckableMixin, unittest.TestCase):

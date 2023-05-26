@@ -51,6 +51,9 @@ def main(cfg: DictConfig):
 
     cfg["parameters"] = new_params
 
+    if "cohort_name" in cfg:
+        cfg.pop("cohort_name")
+
     sweep_kwargs = {}
     if "entity" in cfg:
         entity = cfg.pop("entity")

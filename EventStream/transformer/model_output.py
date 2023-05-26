@@ -277,10 +277,23 @@ class GenerativeSequenceModelSamples(ModelOutput):
             dynamic_values.append(torch.nan_to_num(new_values, 0))
             dynamic_measurement_indices.append(new_measurement_indices)
 
-        dynamic_indices = torch.cat(dynamic_indices, 1)
-        dynamic_measurement_indices = torch.cat(dynamic_measurement_indices, 1)
-        dynamic_values = torch.cat(dynamic_values, 1)
-        dynamic_values_mask = torch.cat(dynamic_values_mask, 1)
+        if dynamic_indices:
+            dynamic_indices = torch.cat(dynamic_indices, 1)
+            dynamic_measurement_indices = torch.cat(dynamic_measurement_indices, 1)
+            dynamic_values = torch.cat(dynamic_values, 1)
+            dynamic_values_mask = torch.cat(dynamic_values_mask, 1)
+        else:
+            dynamic_indices = torch.zeros(
+                batch.batch_size,
+                1,
+                len(config.measurements_per_dep_graph_level),
+                0,
+                dtype=torch.long,
+                device=batch.device,
+            )
+            dynamic_measurement_indices = torch.zeros_like(dynamic_indices)
+            dynamic_values = torch.zeros_like(dynamic_indices).float()
+            dynamic_values_mask = torch.zeros_like(dynamic_indices).bool()
 
         return (
             self.time_to_event,
@@ -942,9 +955,9 @@ class GenerativeOutputLayerBase(torch.nn.Module):
 
         self.classification_mode_per_measurement = {}
         for generative_mode, measurements in config.measurements_per_generative_mode.items():
-            if generative_mode in (
-                DataModality.MULTIVARIATE_REGRESSION,
-                DataModality.UNIVARIATE_REGRESSION,
+            if generative_mode not in (
+                DataModality.SINGLE_LABEL_CLASSIFICATION,
+                DataModality.MULTI_LABEL_CLASSIFICATION,
             ):
                 continue
             for measurement in measurements:
@@ -1103,7 +1116,10 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             if measurement not in valid_measurements:
                 continue
 
-            if event_type_mask_per_measurement is not None and measurement != "event_type":
+            if (
+                event_type_mask_per_measurement is not None
+                and measurement in event_type_mask_per_measurement
+            ):
                 event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
             else:
                 event_mask = batch["event_mask"]
@@ -1262,7 +1278,10 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             if measurement not in valid_measurements:
                 continue
 
-            if event_type_mask_per_measurement is not None:
+            if (
+                event_type_mask_per_measurement is not None
+                and measurement in event_type_mask_per_measurement
+            ):
                 event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
             else:
                 event_mask = batch["event_mask"]
@@ -1316,7 +1335,10 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             if measurement not in valid_measurements:
                 continue
 
-            if event_type_mask_per_measurement is not None:
+            if (
+                event_type_mask_per_measurement is not None
+                and measurement in event_type_mask_per_measurement
+            ):
                 event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
             else:
                 event_mask = batch["event_mask"]

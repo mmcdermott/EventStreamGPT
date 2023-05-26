@@ -22,7 +22,7 @@ from EventStream.data.types import (
 )
 from EventStream.data.vocabulary import Vocabulary
 
-from ..mixins import ConfigComparisonsMixin
+from ..utils import ConfigComparisonsMixin
 
 
 class NormalizerMock(Preprocessor):
@@ -1887,7 +1887,21 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
                 E.config.save_dir = save_dir
                 E._save()
 
-                got_E = Dataset._load(save_dir)
+                got_E = Dataset._load(save_dir, do_load_dfs=False)
+
+                self.assertEqual(WANT_MEASUREMENTS_DF, got_E.dynamic_measurements_df)
+                self.assertEqual(WANT_EVENTS_DF, got_E.events_df)
+                self.assertEqual(WANT_SUBJECTS_DF, got_E.subjects_df)
+
+                got_inferred_measurement_configs = got_E.inferred_measurement_configs
+                for v in got_inferred_measurement_configs.values():
+                    v.uncache_measurement_metadata()
+
+                self.assertNestedDictEqual(
+                    WANT_INFERRED_MEASUREMENT_CONFIGS, got_inferred_measurement_configs
+                )
+
+                got_E = Dataset._load(save_dir, do_load_dfs=True)
 
                 self.assertEqual(WANT_MEASUREMENTS_DF, got_E.dynamic_measurements_df)
                 self.assertEqual(WANT_EVENTS_DF, got_E.events_df)

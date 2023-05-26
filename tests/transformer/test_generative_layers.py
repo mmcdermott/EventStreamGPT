@@ -13,7 +13,7 @@ from EventStream.transformer.generative_layers import (
     LogNormalMixtureTTELayer,
 )
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 
 class TestLogNormalMixture(MLTypeEqualityCheckableMixin, unittest.TestCase):

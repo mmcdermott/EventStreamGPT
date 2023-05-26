@@ -504,6 +504,7 @@ SKIP_CFG_PARAMS = {"seq_attention_layers", "dep_graph_attention_layers"}
 @hydra_dataclass
 class PretrainConfig:
     do_overwrite: bool = False
+    seed: int = 1
 
     config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -574,6 +575,10 @@ def train(cfg: PretrainConfig):
 
     Args: TODO
     """
+
+    L.seed_everything(cfg.seed)
+    torch.multiprocessing.set_sharing_strategy("file_system")
+
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -605,8 +610,6 @@ def train(cfg: PretrainConfig):
         cfg.final_validation_metrics_config.to_json_file(
             cfg.save_dir / "final_validation_metrics_config.json", do_overwrite=cfg.do_overwrite
         )
-
-    torch.multiprocessing.set_sharing_strategy("file_system")
 
     # Model
     LM = ESTForGenerativeSequenceModelingLM(

@@ -34,7 +34,6 @@ from ..config import StructuredEventProcessingMode
 from ..model_output import GenerativeSequenceModelPredictions
 from .generation_stopping_criteria import (
     MaxLengthCriteria,
-    MaxTimeCriteria,
     StoppingCriteria,
     StoppingCriteriaList,
 )
@@ -104,7 +103,7 @@ class StructuredGenerationMixin:
                     }
                 case torch.Tensor():
                     batch[k] = v.index_select(0, expanded_return_idx)
-                case None if k == "time":
+                case None if k in ("time", "stream_labels"):
                     pass
                 case _:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
@@ -117,7 +116,7 @@ class StructuredGenerationMixin:
     ) -> dict[str, Any]:
         # update past
         if "past_key_values" in outputs:
-            model_kwargs["past"] = outputs.past_key_values
+            model_kwargs["past"] = outputs["past_key_values"]
         else:
             model_kwargs["past"] = None
 
@@ -132,14 +131,11 @@ class StructuredGenerationMixin:
     def _get_stopping_criteria(
         self,
         max_length: int | None,
-        max_time: float | None,
         stopping_criteria: StoppingCriteriaList | None,
     ) -> StoppingCriteriaList:
         criteria = StoppingCriteriaList()
         if max_length is not None:
             criteria.append(MaxLengthCriteria(max_length=max_length))
-        if max_time is not None:
-            criteria.append(MaxTimeCriteria(max_time=max_time))
         criteria = self._merge_criteria_processor_list(criteria, stopping_criteria)
         return criteria
 
@@ -176,7 +172,6 @@ class StructuredGenerationMixin:
         max_length: int | None = None,
         do_sample: bool | None = True,
         num_return_sequences: int | None = None,
-        max_time: float | None = None,
         max_new_events: int | None = None,
         use_cache: bool | None = None,
         stopping_criteria: StoppingCriteriaList | None = StoppingCriteriaList(),
@@ -261,7 +256,7 @@ class StructuredGenerationMixin:
 
         # 7. prepare stopping criteria
         stopping_criteria = self._get_stopping_criteria(
-            max_length=max_length, max_time=max_time, stopping_criteria=stopping_criteria
+            max_length=max_length, stopping_criteria=stopping_criteria
         )
         # 8. go into different generation modes
 

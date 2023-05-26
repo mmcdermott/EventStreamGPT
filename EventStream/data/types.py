@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import Any
+from typing import Any, Union
 
 import torch
 
@@ -65,8 +65,61 @@ class PytorchBatch:
     def get(self, item: str, default: Any) -> Any:
         return getattr(self, item) if item in self.keys() else default
 
-    def __getitem__(self, item: str) -> torch.Tensor:
-        return dataclasses.asdict(self)[item]
+    def _slice(self, index: tuple[int | slice] | int | slice) -> "PytorchBatch":
+        if not isinstance(index, tuple):
+            index = (index,)
+        if len(index) == 0 or len(index) > 3:
+            raise ValueError(
+                f"Invalid index {index} for PytorchBatch! Must be of length 1, 2, or 3."
+            )
+        if any(not isinstance(i, (int, slice)) for i in index):
+            raise ValueError(
+                f"Invalid index {index} for PytorchBatch! Can only consist of ints and slices."
+            )
+
+        batch_index = index[0]
+        seq_index = slice(None)
+        meas_index = slice(None)
+
+        if len(index) > 1:
+            seq_index = index[1]
+        if len(index) > 2:
+            meas_index = index[2]
+
+        return PytorchBatch(
+            event_mask=self.event_mask[batch_index, seq_index],
+            time_delta=self.time_delta[batch_index, seq_index],
+            static_indices=None
+            if self.static_indices is None
+            else self.static_indices[batch_index],
+            static_measurement_indices=(
+                None
+                if self.static_measurement_indices is None
+                else self.static_measurement_indices[batch_index]
+            ),
+            dynamic_indices=self.dynamic_indices[batch_index, seq_index, meas_index],
+            dynamic_measurement_indices=self.dynamic_measurement_indices[
+                batch_index, seq_index, meas_index
+            ],
+            dynamic_values=self.dynamic_values[batch_index, seq_index, meas_index],
+            dynamic_values_mask=self.dynamic_values_mask[batch_index, seq_index, meas_index],
+            start_time=None if self.start_time is None else self.start_time[batch_index],
+            stream_labels=(
+                None
+                if self.stream_labels is None
+                else {k: v[batch_index] for k, v in self.stream_labels.items()}
+            ),
+            time=None if self.time is None else self.time[batch_index, seq_index],
+        )
+
+    def __getitem__(self, item: str | tuple[int | slice]) -> Union[torch.Tensor, "PytorchBatch"]:
+        match item:
+            case str():
+                return dataclasses.asdict(self)[item]
+            case tuple() | int() | slice():
+                return self._slice(item)
+            case _:
+                raise TypeError(f"Invalid type {type(item)} for {item} for indexing!")
 
     def __setitem__(self, item: str, val: torch.Tensor):
         if not hasattr(self, item):
@@ -83,23 +136,7 @@ class PytorchBatch:
         return dataclasses.asdict(self).values()
 
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
-        kwargs = dict(
-            event_mask=self.event_mask[:, -1].unsqueeze(1),
-            time_delta=self.time_delta[:, -1].unsqueeze(1),
-            static_indices=self.static_indices,
-            static_measurement_indices=self.static_measurement_indices,
-            dynamic_indices=self.dynamic_indices[:, -1].unsqueeze(1),
-            dynamic_measurement_indices=self.dynamic_measurement_indices[:, -1].unsqueeze(1),
-            dynamic_values=self.dynamic_values[:, -1].unsqueeze(1),
-            dynamic_values_mask=self.dynamic_values_mask[:, -1].unsqueeze(1),
-            start_time=self.start_time,
-            stream_labels=self.stream_labels,
-        )
-
-        if self.time is not None:
-            kwargs["time"] = self.time[:, -1].unsqueeze(1)
-
-        return PytorchBatch(**kwargs)
+        return self[:, -1:]
 
 
 class TemporalityType(StrEnum):

@@ -7,4 +7,4 @@ entity:
 do_log_graph:
   value: False
 log_model:
-  value: True
+  value: False
