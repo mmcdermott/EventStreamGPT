@@ -89,8 +89,14 @@ class PytorchBatch:
         return PytorchBatch(
             event_mask=self.event_mask[batch_index, seq_index],
             time_delta=self.time_delta[batch_index, seq_index],
-            static_indices=self.static_indices[batch_index],
-            static_measurement_indices=self.static_measurement_indices[batch_index],
+            static_indices=None
+            if self.static_indices is None
+            else self.static_indices[batch_index],
+            static_measurement_indices=(
+                None
+                if self.static_measurement_indices is None
+                else self.static_measurement_indices[batch_index]
+            ),
             dynamic_indices=self.dynamic_indices[batch_index, seq_index, meas_index],
             dynamic_measurement_indices=self.dynamic_measurement_indices[
                 batch_index, seq_index, meas_index

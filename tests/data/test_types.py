@@ -10,11 +10,9 @@ from EventStream.data.types import PytorchBatch
 
 from ..utils import ConfigComparisonsMixin
 
-BASE_BATCH = dict(
+BATCH_WITHOUT_STATIC = dict(
     event_mask=torch.BoolTensor([[True, True, True], [True, True, False]]),
     time_delta=torch.FloatTensor([[1, 2, 3], [4, 5, 6]]),
-    static_indices=torch.LongTensor([[1, 2, 3], [3, 2, 3]]),
-    static_measurement_indices=torch.LongTensor([[2, 3, 4], [4, 3, 4]]),
     dynamic_indices=torch.LongTensor(
         [
             [[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]]],
@@ -49,8 +47,14 @@ BASE_BATCH = dict(
     ),
 )
 
+BATCH_WITH_STATIC = dict(
+    **BATCH_WITHOUT_STATIC,
+    static_indices=torch.LongTensor([[1, 2, 3], [3, 2, 3]]),
+    static_measurement_indices=torch.LongTensor([[2, 3, 4], [4, 3, 4]]),
+)
+
 BATCH_WITH_EXTRAS = dict(
-    **BASE_BATCH,
+    **BATCH_WITH_STATIC,
     time=torch.FloatTensor([[8, 9, 11], [7, 11, 16]]),
     start_time=torch.FloatTensor([8, 7]),
     stream_labels={"label1": torch.LongTensor([0, 1]), "label2": torch.LongTensor([3.4, 1.1])},
@@ -60,7 +64,7 @@ BATCH_WITH_EXTRAS = dict(
 class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
     def setUp(self):
         super().setUp()
-        self.batch = PytorchBatch(**BASE_BATCH)
+        self.batch = PytorchBatch(**BATCH_WITH_STATIC)
 
     def test_getitem(self):
         cases = [
@@ -74,7 +78,7 @@ class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
             {
                 "msg": "Should return element by name when given string index",
                 "index": "event_mask",
-                "want": BASE_BATCH["event_mask"],
+                "want": self.batch["event_mask"],
             },
             {
                 "msg": "Should error when given a string index that doesn't exist",
@@ -170,6 +174,20 @@ class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
                 ),
             },
             {
+                "msg": "Should slice batch without static when given an tuple",
+                "index": (slice(0, 1), slice(1, 2), 1),
+                "do_include_extras": False,
+                "do_include_static": False,
+                "want": PytorchBatch(
+                    event_mask=torch.BoolTensor([[True]]),
+                    time_delta=torch.FloatTensor([[2]]),
+                    dynamic_indices=torch.LongTensor([[[7, 8]]]),
+                    dynamic_measurement_indices=torch.LongTensor([[[7, 7]]]),
+                    dynamic_values=torch.FloatTensor([[[7.1, 7]]]),
+                    dynamic_values_mask=torch.BoolTensor([[[True, False]]]),
+                ),
+            },
+            {
                 "msg": "Should slice batch, including extras, when given an tuple",
                 "index": (slice(0, 1), slice(1, 2), 1),
                 "do_include_extras": True,
@@ -193,9 +211,13 @@ class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
         ]
 
         for case in cases:
-            do_include_extras = case.get("do_include_extras", False)
             with self.subTest(msg=case["msg"]):
-                batch = PytorchBatch(**BATCH_WITH_EXTRAS) if do_include_extras else self.batch
+                batch = self.batch
+                if not case.get("do_include_static", True):
+                    batch = PytorchBatch(**BATCH_WITHOUT_STATIC)
+                elif case.get("do_include_extras", False):
+                    batch = PytorchBatch(**BATCH_WITH_EXTRAS)
+
                 if case.get("should_raise", None) is not None:
                     with self.assertRaises(case["should_raise"]):
                         batch[case["index"]]
