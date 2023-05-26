@@ -14,7 +14,7 @@ from EventStream.utils import (
     num_initial_spaces,
 )
 
-from .mixins import MLTypeEqualityCheckableMixin
+from .utils import MLTypeEqualityCheckableMixin
 
 
 class TestUtilFunctions(MLTypeEqualityCheckableMixin, unittest.TestCase):

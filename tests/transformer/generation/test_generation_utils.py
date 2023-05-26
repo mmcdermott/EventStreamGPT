@@ -18,7 +18,7 @@ from EventStream.transformer.nested_attention_model import (
     NAPPTForGenerativeSequenceModeling,
 )
 
-from ...mixins import ConfigComparisonsMixin
+from ...utils import ConfigComparisonsMixin
 
 TEST_DATA_TYPES_PER_GEN_MODE = {
     "single_label_classification": ["event_type"],

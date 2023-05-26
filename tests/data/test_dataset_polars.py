@@ -22,7 +22,7 @@ from EventStream.data.types import (
 )
 from EventStream.data.vocabulary import Vocabulary
 
-from ..mixins import ConfigComparisonsMixin
+from ..utils import ConfigComparisonsMixin
 
 
 class NormalizerMock(Preprocessor):

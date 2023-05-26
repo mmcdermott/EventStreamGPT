@@ -9,7 +9,7 @@ import polars as pl
 
 from EventStream.data.preprocessing.standard_scaler import StandardScaler
 
-from ...mixins import MLTypeEqualityCheckableMixin
+from ...utils import MLTypeEqualityCheckableMixin
 
 
 class TestStandardScaler(MLTypeEqualityCheckableMixin, unittest.TestCase):

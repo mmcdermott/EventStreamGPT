@@ -13,7 +13,7 @@ from EventStream.data.data_embedding_layer import (
 )
 from EventStream.data.types import PytorchBatch
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 
 class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):

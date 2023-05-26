@@ -13,7 +13,7 @@ from EventStream.transformer.lightning_modules.generative_modeling import (
     ESTForGenerativeSequenceModelingLM,
 )
 
-from ...mixins import MLTypeEqualityCheckableMixin
+from ...utils import MLTypeEqualityCheckableMixin
 
 TEST_MEASUREMENTS_PER_GEN_MODE = {
     DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type"],

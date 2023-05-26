@@ -15,7 +15,7 @@ from EventStream.data.config import PytorchDatasetConfig, VocabularyConfig
 from EventStream.data.pytorch_dataset import PytorchDataset
 from EventStream.data.types import PytorchBatch
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 MEASUREMENTS_IDXMAP = {
     "event_type": 1,

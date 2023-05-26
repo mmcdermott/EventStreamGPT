@@ -16,7 +16,7 @@ from EventStream.data.time_dependent_functor import AgeFunctor
 from EventStream.data.types import DataModality, TemporalityType
 from EventStream.data.vocabulary import Vocabulary
 
-from ..mixins import ConfigComparisonsMixin
+from ..utils import ConfigComparisonsMixin
 
 
 class TestPytorchDatasetConfig(unittest.TestCase):

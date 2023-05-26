@@ -8,7 +8,7 @@ import torch
 
 from EventStream.transformer.structured_attention import StructuredAttention
 
-from ..mixins import MLTypeEqualityCheckableMixin
+from ..utils import MLTypeEqualityCheckableMixin
 
 
 class MockSeqModule(torch.nn.Module):

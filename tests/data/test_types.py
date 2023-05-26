@@ -8,7 +8,7 @@ import torch
 
 from EventStream.data.types import PytorchBatch
 
-from ..mixins import ConfigComparisonsMixin
+from ..utils import ConfigComparisonsMixin
 
 
 class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
