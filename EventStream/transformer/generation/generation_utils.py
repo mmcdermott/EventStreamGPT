@@ -25,6 +25,7 @@ import warnings
 from dataclasses import dataclass
 from typing import Any
 
+import lightning as L
 import torch
 import torch.distributed as dist
 from transformers.utils import ModelOutput
@@ -180,12 +181,17 @@ class StructuredGenerationMixin:
         output_scores: bool | None = None,
         return_dict_in_generate: bool | None = None,
         synced_gpus: bool | None = False,
+        debug_seed: int | None = None,
         **model_kwargs,
     ) -> SampleDecoderOnlyOutput | PytorchBatch:
         # 1. Set generation parameters if not already defined
         do_sample = do_sample if do_sample is not None else self.config.do_sample
         if not do_sample:
             raise ValueError("Only `do_sample=True` mode is currently supported")
+
+        if debug_seed is not None:
+            print(f"Entering DEBUG mode with seed {debug_seed}")
+            L.seed_everything(debug_seed)
 
         num_return_sequences = (
             num_return_sequences
@@ -270,6 +276,7 @@ class StructuredGenerationMixin:
             "output_attentions": output_attentions,
             "output_hidden_states": output_hidden_states,
             "return_dict_in_generate": return_dict_in_generate,
+            "debug_seed": debug_seed,
             **model_kwargs,
         }
 
@@ -293,6 +300,7 @@ class StructuredGenerationMixin:
         output_scores: bool | None = None,
         return_dict_in_generate: bool | None = None,
         synced_gpus: bool | None = False,
+        debug_seed: int | None = None,
         **model_kwargs,
     ) -> SampleDecoderOnlyOutput | PytorchBatch:
         # init attention / hidden states / scores tuples
@@ -343,7 +351,8 @@ class StructuredGenerationMixin:
                     next_scores += (next_event_preds,)
 
             # Prediction
-            # TODO(mmd): make this only output the appropriate data types
+            if debug_seed is not None:
+                L.seed_everything(debug_seed)
             next_event = next_event_preds.sample(batch.event_mask)
 
             batch = next_event.append_to_batch(batch, self.config)
@@ -388,6 +397,7 @@ class StructuredGenerationMixin:
         output_scores: bool | None = None,
         return_dict_in_generate: bool | None = None,
         synced_gpus: bool | None = False,
+        debug_seed: int | None = None,
         **model_kwargs,
     ) -> SampleDecoderOnlyOutput | PytorchBatch:
         # init attention / hidden states / scores tuples
@@ -421,7 +431,6 @@ class StructuredGenerationMixin:
             next_scores = ()
 
             for dep_graph_el_target, measurements_to_fill in enumerate(measurements_to_fill_list):
-                # TODO(mmd): Here -- need to loop over dependency graph elements.
                 # forward pass to get next token
                 if is_first:
                     dep_graph_el_target = None
@@ -451,7 +460,8 @@ class StructuredGenerationMixin:
                         next_scores += (next_event_preds,)
 
                 # Prediction
-                # TODO(mmd): make this only output the appropriate data types
+                if debug_seed is not None:
+                    L.seed_everything(debug_seed)
                 next_event = next_event_preds.sample(batch.event_mask)
 
                 # update batch for next step

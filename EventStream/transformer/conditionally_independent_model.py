@@ -32,7 +32,7 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             config.structured_event_processing_mode
             != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
         ):
-            raise NotImplementedError(f"{config.structured_event_processing_mode} invalid!")
+            raise ValueError(f"{config.structured_event_processing_mode} invalid!")
 
     def forward(
         self,
@@ -157,7 +157,7 @@ class CIPPTForGenerativeSequenceModeling(
             config.structured_event_processing_mode
             != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
         ):
-            raise NotImplementedError(f"{config.structured_event_processing_mode} invalid!")
+            raise ValueError(f"{config.structured_event_processing_mode} invalid!")
 
         self.encoder = ConditionallyIndependentPointProcessTransformer(config)
         self.output_layer = ConditionallyIndependentGenerativeOutputLayer(config)

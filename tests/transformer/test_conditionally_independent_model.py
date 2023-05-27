@@ -1,0 +1,409 @@
+import sys
+
+sys.path.append("../..")
+
+import unittest
+from unittest.mock import MagicMock, call
+
+import torch
+
+from EventStream.data.types import DataModality, PytorchBatch
+from EventStream.transformer.conditionally_independent_model import (
+    CIPPTForGenerativeSequenceModeling,
+    ConditionallyIndependentGenerativeOutputLayer,
+)
+from EventStream.transformer.config import (
+    StructuredEventProcessingMode,
+    StructuredTransformerConfig,
+)
+from EventStream.transformer.model_output import (
+    GenerativeSequenceModelLabels,
+    GenerativeSequenceModelLosses,
+    GenerativeSequenceModelOutput,
+    GenerativeSequenceModelPredictions,
+)
+from EventStream.transformer.transformer import expand_mask
+
+from ..utils import ConfigComparisonsMixin, MockModule
+
+DEFAULT_VALID_CONFIG_KWARGS = {
+    "structured_event_processing_mode": StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
+    "measurements_per_dep_graph_level": None,
+    "dep_graph_window_size": None,
+    "do_full_block_in_dep_graph_attention": None,
+    "do_full_block_in_seq_attention": None,
+}
+
+INVALID_CONFIG_KWARGS = {
+    "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION,
+    "measurements_per_dep_graph_level": [],
+}
+
+
+class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, unittest.TestCase):
+    def test_constructs(self):
+        ConditionallyIndependentGenerativeOutputLayer(
+            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+        )
+
+        with self.assertRaises(ValueError):
+            ConditionallyIndependentGenerativeOutputLayer(
+                StructuredTransformerConfig(**INVALID_CONFIG_KWARGS)
+            )
+
+    def test_e2e(self):
+        dummy_batch = {
+            "event_mask": "event_mask",
+            "dynamic_values_mask": "dynamic_values_mask",
+        }
+
+        classification_measures = ["clf1", "clf2", "clf3"]
+        clf_losses_by_measurement = {"clf1": 1, "clf2": 2, "clf3": 3}
+        clf_dists_by_measurement = {"clf1": 4, "clf2": 5, "clf3": 6}
+        clf_labels_by_measurement = {"clf1": 7, "clf2": 8, "clf3": 9}
+        default_classification_out = (
+            clf_losses_by_measurement,
+            clf_dists_by_measurement,
+            clf_labels_by_measurement,
+        )
+        full_clf_loss = 6
+
+        multivariate_regression_measures = ["mr1", "mr2"]
+        univariate_regression_measures = ["ur1", "ur2"]
+        regression_loss_values = {"mr1": 1, "mr2": 2, "ur1": 3, "ur2": 4}
+        regression_dists = {"mr1": 5, "mr2": 6, "ur1": 7, "ur2": 8}
+        regression_labels = {"mr1": 9, "mr2": 10, "ur1": 11, "ur2": 12}
+        regression_indices = {"mr1": 13, "mr2": 14, "ur1": 15, "ur2": 16}
+        default_regression_out = (
+            regression_loss_values,
+            regression_dists,
+            regression_labels,
+            regression_indices,
+        )
+        full_regression_loss = 10
+
+        TTE_LL_overall = -1
+        TTE_dist = 2
+        TTE_true = 3
+        default_TTE_out = (TTE_LL_overall, TTE_dist, TTE_true)
+
+        full_out = {
+            "loss": full_clf_loss + full_regression_loss - TTE_LL_overall,
+            "losses": GenerativeSequenceModelLosses(
+                classification=clf_losses_by_measurement,
+                regression=regression_loss_values,
+                time_to_event=-TTE_LL_overall,
+            ),
+            "preds": GenerativeSequenceModelPredictions(
+                classification=clf_dists_by_measurement,
+                regression=regression_dists,
+                regression_indices=regression_indices,
+                time_to_event=TTE_dist,
+            ),
+            "labels": GenerativeSequenceModelLabels(
+                classification=clf_labels_by_measurement,
+                regression=regression_labels,
+                regression_indices=regression_indices,
+                time_to_event=TTE_true,
+            ),
+            "event_type_mask_per_measurement": "etmpm",
+            "event_mask": "event_mask",
+            "dynamic_values_mask": "dynamic_values_mask",
+        }
+
+        gen_out = {
+            "loss": None,
+            "losses": GenerativeSequenceModelLosses(
+                classification=None,
+                regression=None,
+                time_to_event=None,
+            ),
+            "preds": GenerativeSequenceModelPredictions(
+                classification=clf_dists_by_measurement,
+                regression=regression_dists,
+                regression_indices=None,
+                time_to_event=TTE_dist,
+            ),
+            "labels": GenerativeSequenceModelLabels(
+                classification=None,
+                regression=None,
+                regression_indices=None,
+                time_to_event=None,
+            ),
+            "event_type_mask_per_measurement": "etmpm",
+            "event_mask": "event_mask",
+            "dynamic_values_mask": "dynamic_values_mask",
+        }
+
+        # bsz, seq_len, _ = encoded.shape
+        default_encoded = torch.FloatTensor(
+            [
+                [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [0, 0, 0, 0]],
+                [[25, 26, 27, 28], [29, 30, 31, 32], [33, 34, 35, 36], [0, 0, 0, 0]],
+            ]
+        )
+        shifted_encoded = torch.FloatTensor(
+            [
+                [[0, 0, 0, 0], [1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
+                [[0, 0, 0, 0], [25, 26, 27, 28], [29, 30, 31, 32], [33, 34, 35, 36]],
+            ]
+        )
+
+        cases = [
+            {
+                "msg": "Should work in non-generative mode.",
+                "is_generation": False,
+                "want": full_out,
+                "classification_calls": [
+                    call(
+                        dummy_batch,
+                        shifted_encoded,
+                        {"clf1", "mr1", "clf2", "clf3", "mr2"},
+                        event_type_mask_per_measurement="etmpm",
+                    ),
+                ],
+                "regression_calls": [
+                    call(
+                        dummy_batch,
+                        shifted_encoded,
+                        {"mr1", "ur1", "mr2", "ur2"},
+                        is_generation=False,
+                        event_type_mask_per_measurement="etmpm",
+                    ),
+                ],
+                "TTE_calls": [call(dummy_batch, default_encoded, is_generation=False)],
+            },
+            {
+                "msg": "Should work in generative mode.",
+                "is_generation": True,
+                "want": gen_out,
+                "classification_calls": [
+                    call(
+                        dummy_batch,
+                        shifted_encoded,
+                        {"clf1", "mr1", "clf2", "clf3", "mr2"},
+                        event_type_mask_per_measurement="etmpm",
+                    ),
+                ],
+                "regression_calls": [
+                    call(
+                        dummy_batch,
+                        shifted_encoded,
+                        {"mr1", "ur1", "mr2", "ur2"},
+                        is_generation=True,
+                        event_type_mask_per_measurement="etmpm",
+                    ),
+                ],
+                "TTE_calls": [call(dummy_batch, default_encoded, is_generation=True)],
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                M = ConditionallyIndependentGenerativeOutputLayer(
+                    StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+                )
+
+                M.classification_mode_per_measurement = {
+                    m: None for m in classification_measures + multivariate_regression_measures
+                }
+                M.config.measurements_per_generative_mode = {
+                    DataModality.MULTIVARIATE_REGRESSION: multivariate_regression_measures,
+                    DataModality.UNIVARIATE_REGRESSION: univariate_regression_measures,
+                }
+
+                M.get_event_type_mask_per_measurement = MagicMock(return_value="etmpm")
+                M.get_classification_outputs = MagicMock(return_value=default_classification_out)
+                M.get_regression_outputs = MagicMock(return_value=default_regression_out)
+                M.get_TTE_outputs = MagicMock(return_value=default_TTE_out)
+
+                kwargs = dict(
+                    batch=dummy_batch,
+                    encoded=case.get("encoded", default_encoded),
+                    is_generation=case["is_generation"],
+                )
+
+                should_raise = case.get("should_raise", None)
+                if should_raise is not None:
+                    with self.assertRaises(should_raise):
+                        M(**kwargs)
+                else:
+                    got = M(**kwargs)
+                    want = GenerativeSequenceModelOutput(**case["want"])
+                    self.assertEqual(want, got)
+
+                    M.get_event_type_mask_per_measurement.assert_called_once_with(dummy_batch)
+
+                    classification_calls = case.get("classification_calls", [])
+                    self.assertNestedCalledWith(M.get_classification_outputs, classification_calls)
+
+                    regression_calls = case.get("regression_calls", [])
+                    self.assertNestedCalledWith(M.get_regression_outputs, regression_calls)
+
+                    TTE_calls = case.get("TTE_calls", [])
+                    self.assertNestedCalledWith(M.get_TTE_outputs, TTE_calls)
+
+
+class TestCIPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.TestCase):
+    def test_constructs(self):
+        CIPPTForGenerativeSequenceModeling(
+            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+        )
+
+        with self.assertRaises(ValueError):
+            CIPPTForGenerativeSequenceModeling(
+                StructuredTransformerConfig(**INVALID_CONFIG_KWARGS)
+            )
+
+    def test_prepare_inputs_for_generation(self):
+        M = CIPPTForGenerativeSequenceModeling(
+            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+        )
+
+        default_batch = PytorchBatch(
+            time_delta=torch.Tensor([[1.0, 2.0, 3.0]]),
+            event_mask=torch.BoolTensor([[True, False, True]]),
+            dynamic_indices=torch.LongTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
+            dynamic_measurement_indices=torch.LongTensor(
+                [[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]
+            ),
+            dynamic_values=torch.FloatTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
+            dynamic_values_mask=torch.BoolTensor(
+                [[[[True, True, False]], [[True, False, True]], [[False, True, True]]]]
+            ),
+        )
+
+        default_attention_mask = expand_mask(
+            default_batch.event_mask, default_batch.dynamic_values.dtype
+        )
+
+        unsqueezed_batch_with_time = PytorchBatch(
+            time_delta=torch.Tensor([[3.0]]),
+            time=torch.Tensor([[1.0]]),
+            event_mask=torch.BoolTensor([[True]]),
+            dynamic_indices=torch.LongTensor([[[[6, 7, 8]]]]),
+            dynamic_measurement_indices=torch.LongTensor([[[[7, 8, 9]]]]),
+            dynamic_values=torch.FloatTensor([[[[6, 7, 8]]]]),
+            dynamic_values_mask=torch.BoolTensor([[[[False, True, True]]]]),
+        )
+
+        cases = [
+            {
+                "msg": "Should work with use_cache=False.",
+                "want": {"batch": default_batch},
+            },
+            {
+                "msg": "Should return extra kwargs with use_cache=False.",
+                "kwargs": {"test": True},
+                "want": {"batch": default_batch, "test": True},
+            },
+            {
+                "msg": "Should return no past and not modify batch if past is None.",
+                "use_cache": True,
+                "past": None,
+                "want": {
+                    "seq_attention_mask": default_attention_mask,
+                    "batch": default_batch,
+                    "past": None,
+                    "use_cache": True,
+                },
+            },
+            {
+                "msg": "Should raise ValueError if past is not a tuple or None.",
+                "use_cache": True,
+                "past": "not a dict",
+                "should_raise": ValueError,
+            },
+            {
+                "msg": ("Should strip batch down to last sequence element if past is a tuple"),
+                "use_cache": True,
+                "past": (1,),
+                "want": {
+                    "seq_attention_mask": default_attention_mask,
+                    "batch": unsqueezed_batch_with_time,
+                    "past": (1,),
+                    "use_cache": True,
+                },
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                kwargs = dict(
+                    batch=default_batch,
+                    **case.get("kwargs", {}),
+                )
+
+                if "past" in case:
+                    kwargs["past"] = case["past"]
+                if "use_cache" in case:
+                    kwargs["use_cache"] = case["use_cache"]
+
+                should_raise = case.get("should_raise", None)
+                if should_raise is not None:
+                    with self.assertRaises(should_raise):
+                        M.prepare_inputs_for_generation(**kwargs)
+                else:
+                    got = M.prepare_inputs_for_generation(**kwargs)
+                    want = case["want"]
+                    self.assertNestedDictEqual(want, got)
+
+    def test_forward(self):
+        cases = [
+            {
+                "msg": "Should return no extra arguments if not indicated",
+                "batch": {"input": True},
+                "want": {"input": True},
+            },
+            {
+                "msg": "Should return past_key_values if use_cache is indicated",
+                "batch": {"input": True},
+                "want": {"input": True, "past_key_values": "past_key_values"},
+                "kwargs": {"use_cache": True},
+            },
+            {
+                "msg": "Should return attentions if indicated",
+                "batch": {"input": True},
+                "want": {"input": True, "attentions": "attentions"},
+                "kwargs": {"output_attentions": True},
+            },
+            {
+                "msg": "Should return hidden_states if indicated",
+                "batch": {"input": True},
+                "want": {"input": True, "hidden_states": "hidden_states"},
+                "kwargs": {"output_hidden_states": True},
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(msg=case["msg"]):
+                M = CIPPTForGenerativeSequenceModeling(
+                    StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+                )
+
+                encoded_mock = MagicMock()
+                M.encoder = MockModule(return_value=encoded_mock)
+                encoded_mock.last_hidden_state = "last_hidden_state"
+                encoded_mock.past_key_values = "past_key_values"
+                encoded_mock.attentions = "attentions"
+                encoded_mock.hidden_states = "hidden_states"
+                M.output_layer = MockModule(side_effect=lambda batch, *args, **kwargs: batch)
+
+                batch = case["batch"]
+                kwargs = case.get("kwargs", {})
+                is_generation = kwargs.get("is_generation", False)
+
+                want = case["want"]
+                got = M(batch=batch, is_generation=is_generation, **kwargs)
+                self.assertNestedDictEqual(want, got)
+
+                M.encoder.assert_called_once_with(batch, **kwargs)
+                M.output_layer.assert_called_once_with(
+                    batch,
+                    "last_hidden_state",
+                    is_generation=is_generation,
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()
