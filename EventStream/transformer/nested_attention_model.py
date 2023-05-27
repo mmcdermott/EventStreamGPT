@@ -16,6 +16,7 @@ from .model_output import (
 from .transformer import (
     NestedAttentionPointProcessTransformer,
     StructuredTransformerPreTrainedModel,
+    expand_mask,
     time_from_deltas,
 )
 
@@ -230,6 +231,7 @@ class NAPPTForGenerativeSequenceModeling(
             return {**kwargs, "batch": batch}
 
         dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)
+        seq_attention_mask = expand_mask(batch.event_mask, batch.time_delta.dtype)
 
         match past:
             case None:
@@ -263,6 +265,7 @@ class NAPPTForGenerativeSequenceModeling(
             "batch": batch,
             "past": past,
             "dep_graph_past": dep_graph_past,
+            "seq_attention_mask": seq_attention_mask,
         }
 
     def forward(

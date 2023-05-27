@@ -22,6 +22,7 @@ from EventStream.transformer.nested_attention_model import (
     NAPPTForGenerativeSequenceModeling,
     NestedAttentionGenerativeOutputLayer,
 )
+from EventStream.transformer.transformer import expand_mask
 
 from ..utils import ConfigComparisonsMixin, MockModule
 
@@ -375,6 +376,10 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             ),
         )
 
+        default_attention_mask = expand_mask(
+            default_batch.event_mask, default_batch.dynamic_values.dtype
+        )
+
         unsqueezed_batch_with_time = PytorchBatch(
             time_delta=torch.Tensor([[3.0]]),
             time=torch.Tensor([[1.0]]),
@@ -408,6 +413,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "past": None,
                 "dep_graph_el_generation_target": None,
                 "want": {
+                    "seq_attention_mask": default_attention_mask,
                     "dep_graph_el_generation_target": None,
                     "batch": default_batch,
                     "past": None,
@@ -446,6 +452,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 "past": {"seq_past": 1, "dep_graph_past": None},
                 "dep_graph_el_generation_target": None,
                 "want": {
+                    "seq_attention_mask": default_attention_mask,
                     "batch": unsqueezed_batch_with_time,
                     "past": 1,
                     "dep_graph_past": None,
@@ -467,6 +474,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                     "dep_graph_past": 2,
                     "use_cache": True,
                     "dep_graph_el_generation_target": 1,
+                    "seq_attention_mask": default_attention_mask,
                 },
             },
             {
@@ -483,6 +491,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                     "dep_graph_past": 2,
                     "use_cache": True,
                     "dep_graph_el_generation_target": 2,
+                    "seq_attention_mask": default_attention_mask,
                 },
             },
             {

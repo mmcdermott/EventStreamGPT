@@ -15,6 +15,7 @@ from .model_output import (
 from .transformer import (
     ConditionallyIndependentPointProcessTransformer,
     StructuredTransformerPreTrainedModel,
+    expand_mask,
     time_from_deltas,
 )
 
@@ -174,6 +175,8 @@ class CIPPTForGenerativeSequenceModeling(
         if not use_cache:
             return {**kwargs, "batch": batch}
 
+        seq_attention_mask = expand_mask(batch.event_mask, batch.time_delta.dtype)
+
         dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)
         if dep_graph_el_generation_target is not None:
             raise ValueError(
@@ -193,6 +196,7 @@ class CIPPTForGenerativeSequenceModeling(
 
         return {
             **kwargs,
+            "seq_attention_mask": seq_attention_mask,
             "batch": batch,
             "past": past,
         }
