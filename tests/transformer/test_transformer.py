@@ -16,6 +16,7 @@ from EventStream.transformer.model_output import TransformerOutputWithPast
 from EventStream.transformer.transformer import (
     ConditionallyIndependentPointProcessTransformer,
     NestedAttentionPointProcessTransformer,
+    expand_mask,
     time_from_deltas,
 )
 
@@ -207,7 +208,6 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("Need to fix")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -234,6 +234,11 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
         # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
         # output there, then use that as the starting point for the iterative cache-based computation.
 
+        seq_attention_mask = expand_mask(
+            self.batch.event_mask, out_full_caching.last_hidden_state.dtype
+        )
+        M_kwargs = {"return_dict": True, "use_cache": True}
+
         seq_idx = 1
 
         sliced_batch = copy.deepcopy(source_batch_for_slicing)
@@ -241,9 +246,9 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
 
         sliced_out = self.M(
             sliced_batch,
-            return_dict=True,
-            use_cache=True,
             past=None,
+            seq_attention_mask=seq_attention_mask[:, :, :, : (seq_idx + 1)],
+            **M_kwargs,
         )
 
         self.assertEqual(
@@ -262,9 +267,9 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
 
             sliced_out = self.M(
                 sliced_batch,
-                return_dict=True,
-                use_cache=True,
                 past=past,
+                seq_attention_mask=seq_attention_mask[:, :, :, : (seq_idx + 1)],
+                **M_kwargs,
             )
             past = sliced_out["past_key_values"]
             out_iterative_caching.append(sliced_out)
@@ -327,7 +332,6 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         out_seq_to_2 = self.M(self.batch[:, :2])
         self.assertEqual(out_seq_to_2.last_hidden_state, out.last_hidden_state[:, :2])
 
-    @unittest.skip("Need to fix")
     def test_forward_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -355,6 +359,10 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
         # output there, then use that as the starting point for the iterative cache-based computation.
 
+        seq_attention_mask = expand_mask(
+            self.batch.event_mask, out_full_caching.last_hidden_state.dtype
+        )
+
         seq_idx = 1
         dep_graph_idx = None
 
@@ -367,6 +375,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
             use_cache=True,
             dep_graph_past=dep_graph_idx,
             dep_graph_el_generation_target=None,
+            seq_attention_mask=seq_attention_mask[:, :, :, : (seq_idx + 1)],
             past=None,
         )
 
@@ -397,6 +406,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
                     use_cache=True,
                     dep_graph_past=dep_graph_past,
                     dep_graph_el_generation_target=dep_graph_idx,
+                    seq_attention_mask=seq_attention_mask[:, :, :, : (seq_idx + 1)],
                     past=past,
                 )
 

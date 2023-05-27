@@ -124,18 +124,11 @@ class InnerSelfAttention(nn.Module):
 
         if attention_mask is not None:
             # Apply the attention mask
-            attn_weights = attn_weights + expand_mask(attention_mask, dtype=query.dtype)
+            attn_weights = attn_weights + attention_mask
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
         attn_weights = attn_weights.to(value.dtype)
         attn_weights = self.attn_dropout(attn_weights)
-
-        if attention_mask is not None:
-            attn_weights = torch.where(
-                attention_mask.unsqueeze(1).unsqueeze(-1).expand_as(attn_weights),
-                attn_weights,
-                torch.zeros_like(attn_weights),
-            )
 
         # Mask heads if we want to
         if head_mask is not None:
@@ -501,7 +494,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
         batch: PytorchBatch | None = None,
         input_embeds: torch.Tensor | None = None,
         past: tuple[torch.FloatTensor] | None = None,
-        seq_mask: torch.Tensor | None = None,
+        seq_attention_mask: torch.Tensor | None = None,
         head_mask: torch.Tensor | None = None,
         use_cache: bool | None = None,
         output_attentions: bool | None = None,
@@ -524,12 +517,17 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
 
         if input_embeds is None:
             assert batch is not None
-            assert seq_mask is None
 
             input_embeds = self.input_layer(batch)
-            seq_mask = batch["event_mask"]
         else:
             assert batch is None, "Can't specify both input_embeds and batch."
+
+        if (
+            seq_attention_mask is None
+            and batch is not None
+            and batch.get("event_mask", None) is not None
+        ):
+            seq_attention_mask = expand_mask(batch["event_mask"], input_embeds.dtype)
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -565,7 +563,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
                 # and cleaner, in my opinion.
                 args = (
                     hidden_states,
-                    seq_mask,
+                    seq_attention_mask,
                     layer_past,
                     head_mask[i],
                     use_cache,
@@ -576,7 +574,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
             else:
                 kwargs = dict(
                     hidden_states=hidden_states,
-                    attention_mask=seq_mask,
+                    attention_mask=seq_attention_mask,
                     layer_past=layer_past,
                     head_mask=head_mask[i],
                     use_cache=use_cache,
@@ -585,6 +583,13 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
                 outputs = block(**kwargs)
 
             hidden_states, extra_return_info = outputs
+
+            if batch is not None and batch.event_mask is not None:
+                hidden_states = torch.where(
+                    batch.event_mask.unsqueeze(-1).expand_as(hidden_states),
+                    hidden_states,
+                    torch.zeros_like(hidden_states),
+                )
 
             if use_cache is True:
                 presents = presents + (extra_return_info["present_key_value"],)
@@ -723,7 +728,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         batch: PytorchBatch | None = None,
         input_embeds: torch.Tensor | None = None,
         past: tuple[torch.FloatTensor] | None = None,
-        seq_mask: torch.Tensor | None = None,
+        seq_attention_mask: torch.Tensor | None = None,
         head_mask: torch.Tensor | None = None,
         use_cache: bool | None = None,
         output_attentions: bool | None = None,
@@ -745,14 +750,21 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
 
         if input_embeds is None:
             assert batch is not None
-            assert seq_mask is None
 
             input_embeds = self.input_layer(
                 batch, dep_graph_el_generation_target=dep_graph_el_generation_target
             )
-            seq_mask = batch["event_mask"]
+            event_mask = batch["event_mask"]
         else:
             assert batch is None, "Can't specify both input_embeds and batch."
+            event_mask = None
+
+        if (
+            seq_attention_mask is None
+            and batch is not None
+            and batch.get("event_mask", None) is not None
+        ):
+            seq_attention_mask = expand_mask(batch["event_mask"], input_embeds.dtype)
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -858,7 +870,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
 
                 args = (
                     hidden_states,
-                    seq_mask,
+                    seq_attention_mask,
                     dict(
                         layer_past=layer_past,
                         head_mask=head_mask[i],
@@ -876,7 +888,8 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
             else:
                 kwargs = dict(
                     hidden_states=hidden_states,
-                    seq_mask=seq_mask,
+                    seq_attention_mask=seq_attention_mask,
+                    event_mask=event_mask,
                     prepend_graph_with_history_embeddings=prepend_graph_with_history_embeddings,
                     update_last_graph_el_to_history_embedding=update_last_graph_el_to_history_embedding,
                     seq_module_kwargs=dict(

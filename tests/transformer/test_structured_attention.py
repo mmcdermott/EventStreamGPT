@@ -138,9 +138,8 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ]
         )
 
-        # We can also use seq or dep graph masks. A seq_mask would have shape (batch_size, num_events)
-        # and a dep graph mask would have shape (batch_size, num_events, dep_graph_len).
-        seq_mask = torch.Tensor([[1, 0], [0, 1]])
+        # We can also use seq or dep graph masks. A event_mask would have shape (batch_size, num_events)
+        event_mask = torch.BoolTensor([[True, False], [False, True]])
 
         # With masking, we'll have:
         # First step: Event pooling
@@ -178,7 +177,7 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
         #     ],
         # ])
 
-        want_output_with_seq_mask = torch.Tensor(
+        want_output_with_event_mask = torch.Tensor(
             [
                 [
                     [
@@ -247,9 +246,9 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
             },
             {
                 "msg": "With seq masked, should return the correct value.",
-                "seq_mask": seq_mask,
+                "event_mask": event_mask,
                 "want": (
-                    want_output_with_seq_mask,
+                    want_output_with_event_mask,
                     {"seq_module": None, "dep_graph_module": None},
                 ),
             },
@@ -275,7 +274,7 @@ class TestStructuredAttention(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
                 got = self.M(
                     hidden_states,
-                    seq_mask=case.get("seq_mask", None),
+                    event_mask=case.get("event_mask", None),
                     seq_module_kwargs=case.get("seq_module_kwargs", None),
                     dep_graph_module_kwargs=case.get("dep_graph_module_kwargs", None),
                 )
