@@ -472,6 +472,77 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     else:
                         M._sample_nested_attention.assert_not_called()
 
+    def test_sample_conditionally_independent(self):
+        cases = [
+            {
+                "msg": "Should generate for the appropriate number of events.",
+                "want_n_events": 3,
+            },
+            {
+                "msg": "Should use debug seed if specified.",
+                "want_n_events": 2,
+                "want_debug_seed": 4,
+                "kwargs": {"debug_seed": 4},
+            },
+        ]
+
+        for i, case in enumerate(cases):
+            with patch("EventStream.transformer.generation.generation_utils.L") as L, self.subTest(
+                f"Sub-test {i}: {case['msg']}"
+            ):
+
+                class MockMixin(StructuredGenerationMixin, MagicMock):
+                    def __init__(self, *args, **kwargs):
+                        StructuredGenerationMixin.__init__(self)
+                        MagicMock.__init__(self, *args, **kwargs)
+
+                L_seed_mock = L.seed_everything
+
+                model_outputs = [MagicMock() for _ in range(10)]
+                M = MockMixin(side_effect=model_outputs)
+                M.config = Mock()
+                M.prepare_inputs_for_generation = Mock(return_value={"prepare": True})
+
+                batch = MagicMock()
+
+                want_n_events = case.get("want_num_events_generated", 1)
+                stopping_criteria = Mock(side_effect=[False] * (want_n_events - 1) + [True])
+
+                sample_kwargs = {
+                    "batch": batch,
+                    "return_dict_in_generate": False,
+                    "stopping_criteria": stopping_criteria,
+                    **case.get("kwargs", {}),
+                }
+
+                if case.get("should_raise", None) is not None:
+                    with self.assertRaises(case["should_raise"]):
+                        M._sample_conditionally_independent(**sample_kwargs)
+                else:
+                    got = M._sample_conditionally_independent(**sample_kwargs)
+
+                    for output in model_outputs[:want_n_events]:
+                        output.preds.slice.assert_called_once_with((slice(None), -1))
+
+                        pred = output.preds.slice.return_value
+                        pred.sample.assert_called_once_with(batch.event_mask)
+
+                        sample = pred.sample.return_value
+                        sample.append_to_batch.assert_called_once_with(batch, M.config)
+
+                        batch = sample.append_to_batch.return_value
+                        sample.update_last_event_data.assert_called_once_with(batch, M.config)
+
+                        batch = sample.update_last_event_data.return_value
+
+                    debug_seed = case.get("want_debug_seed", None)
+                    if debug_seed is not None:
+                        self.assertNestedCalledWith(
+                            L_seed_mock, [call(debug_seed) for _ in range(want_n_events)]
+                        )
+
+                    self.assertEqual(got, batch)
+
 
 if __name__ == "__main__":
     unittest.main()
