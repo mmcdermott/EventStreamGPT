@@ -283,14 +283,19 @@ class GenerativeSequenceModelSamples(ModelOutput):
             dynamic_values = torch.cat(dynamic_values, 1)
             dynamic_values_mask = torch.cat(dynamic_values_mask, 1)
         else:
-            dynamic_indices = torch.zeros(
-                batch.batch_size,
-                1,
-                len(config.measurements_per_dep_graph_level),
-                0,
-                dtype=torch.long,
-                device=batch.device,
-            )
+            if config.measurements_per_dep_graph_level is None:
+                dynamic_indices = torch.zeros(
+                    batch.batch_size, 1, 0, dtype=torch.long, device=batch.device
+                )
+            else:
+                dynamic_indices = torch.zeros(
+                    batch.batch_size,
+                    1,
+                    len(config.measurements_per_dep_graph_level),
+                    0,
+                    dtype=torch.long,
+                    device=batch.device,
+                )
             dynamic_measurement_indices = torch.zeros_like(dynamic_indices)
             dynamic_values = torch.zeros_like(dynamic_indices).float()
             dynamic_values_mask = torch.zeros_like(dynamic_indices).bool()
@@ -723,7 +728,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
-        measurements_to_fill: set[MEAS_INDEX_GROUP_T] | None,
+        measurements_to_fill: set[MEAS_INDEX_GROUP_T] | None = None,
     ) -> PytorchBatch:
         """This function updates the last batch element from self."""
 

@@ -2,12 +2,14 @@ import sys
 
 sys.path.append("../..")
 
+import copy
 import unittest
 from unittest.mock import MagicMock, call
 
 import torch
 
-from EventStream.data.types import DataModality, PytorchBatch
+from EventStream.data.config import MeasurementConfig
+from EventStream.data.types import DataModality, PytorchBatch, TemporalityType
 from EventStream.transformer.config import (
     StructuredEventProcessingMode,
     StructuredTransformerConfig,
@@ -26,29 +28,147 @@ from EventStream.transformer.transformer import expand_mask
 
 from ..utils import ConfigComparisonsMixin, MockModule
 
-DEFAULT_VALID_CONFIG_KWARGS = {
-    "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION,
-    "measurements_per_dep_graph_level": [],
+TEST_DATA_TYPES_PER_GEN_MODE = {
+    "single_label_classification": ["event_type"],
+    "multi_label_classification": ["multi_label_col", "regression_col"],
+    "multivariate_regression": ["regression_col"],
 }
+TEST_DATA_TYPES_IDXMAP = {
+    "event_type": 1,
+    "multi_label_col": 2,
+    "regression_col": 3,
+}
+# These are all including the 'UNK' tokens. So, e.g., there are 2 real options for 'event_type'.
+TEST_VOCAB_SIZES_BY_DATA_TYPE = {
+    "event_type": 2,
+    "multi_label_col": 3,
+    "regression_col": 4,
+}
+TEST_VOCAB_OFFSETS_BY_DATA_TYPE = {
+    "event_type": 1,
+    "multi_label_col": 3,
+    "regression_col": 6,
+}
+TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL = [[], ["event_type"], ["multi_label_col", "regression_col"]]
 
-INVALID_CONFIG_KWARGS = dict(
+NA_CONFIG_KWARGS = dict(
+    structured_event_processing_mode=StructuredEventProcessingMode.NESTED_ATTENTION,
+    dep_graph_attention_types=["global"],
+    dep_graph_window_size=None,
+    do_full_block_in_dep_graph_attention=True,
+    do_full_block_in_seq_attention=True,
+    measurements_per_generative_mode=TEST_DATA_TYPES_PER_GEN_MODE,
+    vocab_sizes_by_measurement=TEST_VOCAB_SIZES_BY_DATA_TYPE,
+    vocab_offsets_by_measurement=TEST_VOCAB_OFFSETS_BY_DATA_TYPE,
+    measurements_idxmap=TEST_DATA_TYPES_IDXMAP,
+    vocab_size=10,
+    hidden_size=4,
+    num_hidden_layers=5,
+    head_dim=None,
+    num_attention_heads=2,  # Needs to divide hidden_size.
+    mean_log_inter_time=0,
+    std_log_inter_time=1,
+    use_cache=False,
+    measurements_per_dep_graph_level=TEST_MEASUREMENTS_PER_DEP_GRAPH_LEVEL,
+    measurement_configs={
+        "multi_label_col": MeasurementConfig(
+            modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+            temporality=TemporalityType.DYNAMIC,
+        ),
+        "regression_col": MeasurementConfig(
+            modality=DataModality.MULTIVARIATE_REGRESSION,
+            temporality=TemporalityType.DYNAMIC,
+            values_column="regression_val",
+        ),
+    },
+)
+
+CI_CONFIG_KWARGS = dict(
     structured_event_processing_mode=StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
     dep_graph_window_size=None,
     do_full_block_in_dep_graph_attention=None,
     do_full_block_in_seq_attention=None,
 )
 
+BASE_BATCH = {
+    "event_mask": torch.BoolTensor([[True, True, True, True], [False, True, True, True]]),
+    "time_delta": torch.FloatTensor([[0, 2, 5, 3], [0, 3, 2, 3]]),
+    "start_time": torch.FloatTensor([1.0, 1412.0]),
+    "static_indices": torch.LongTensor([[1, 2, 3], [1, 3, 0]]),
+    "static_measurement_indices": torch.LongTensor([[1, 2, 3], [1, 3, 0]]),
+    "dynamic_values_mask": torch.BoolTensor(
+        [
+            [
+                [False, False, False, False, False, False],
+                [False, False, False, False, False, False],
+                [False, False, False, True, True, True],
+                [False, False, False, False, True, True],
+            ],
+            [
+                [False, False, False, False, False, False],
+                [False, False, False, False, False, False],
+                [False, False, False, False, False, True],
+                [False, False, False, False, True, True],
+            ],
+        ]
+    ),
+    "dynamic_measurement_indices": torch.LongTensor(
+        [
+            [
+                [1, 0, 0, 0, 0, 0],
+                [1, 2, 0, 0, 0, 0],
+                [1, 2, 2, 3, 3, 3],
+                [1, 2, 2, 2, 3, 3],
+            ],
+            [
+                [1, 0, 0, 0, 0, 0],
+                [1, 2, 0, 0, 0, 0],
+                [1, 2, 2, 2, 2, 3],
+                [1, 2, 2, 2, 3, 3],
+            ],
+        ]
+    ),
+    "dynamic_indices": torch.LongTensor(
+        [
+            [
+                [1, 0, 0, 0, 0, 0],
+                [2, 5, 0, 0, 0, 0],
+                [2, 4, 5, 7, 8, 9],
+                [2, 4, 5, 5, 8, 9],
+            ],
+            [
+                [1, 0, 0, 0, 0, 0],
+                [2, 5, 0, 0, 0, 0],
+                [2, 4, 5, 4, 4, 9],
+                [2, 4, 5, 5, 8, 9],
+            ],
+        ]
+    ),
+    "dynamic_values": torch.Tensor(
+        [
+            [
+                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 1.1, -1.1, 0.0],
+                [0, 0, 0, 0, -3.1, 0.2],
+            ],
+            [
+                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1.4],
+                [0, 0, 0, 0, -3.0, 1.2],
+            ],
+        ]
+    ),
+}
+
 
 class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.TestCase):
     def test_constructs(self):
-        NestedAttentionGenerativeOutputLayer(
-            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
-        )
+        NestedAttentionGenerativeOutputLayer(StructuredTransformerConfig(**NA_CONFIG_KWARGS))
 
         with self.assertRaises(ValueError):
-            NestedAttentionGenerativeOutputLayer(
-                StructuredTransformerConfig(**INVALID_CONFIG_KWARGS)
-            )
+            NestedAttentionGenerativeOutputLayer(StructuredTransformerConfig(**CI_CONFIG_KWARGS))
 
     def test_e2e(self):
         dummy_batch = {
@@ -292,7 +412,7 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
         for case in cases:
             with self.subTest(msg=case["msg"]):
                 M = NestedAttentionGenerativeOutputLayer(
-                    StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
+                    StructuredTransformerConfig(**NA_CONFIG_KWARGS)
                 )
 
                 M.classification_mode_per_measurement = {
@@ -348,21 +468,21 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
 
 
 class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.TestCase):
-    def test_constructs(self):
-        NAPPTForGenerativeSequenceModeling(
-            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
-        )
+    def setUp(self):
+        super().setUp()
 
+        self.config = StructuredTransformerConfig(**NA_CONFIG_KWARGS)
+
+        self.M = NAPPTForGenerativeSequenceModeling(self.config).cpu()
+        self.M.eval()  # So layernorm and dropout don't affect anything.
+
+        self.batch = PytorchBatch(**copy.deepcopy(BASE_BATCH))
+
+    def test_constructs(self):
         with self.assertRaises(ValueError):
-            NAPPTForGenerativeSequenceModeling(
-                StructuredTransformerConfig(**INVALID_CONFIG_KWARGS)
-            )
+            NAPPTForGenerativeSequenceModeling(StructuredTransformerConfig(**CI_CONFIG_KWARGS))
 
     def test_prepare_inputs_for_generation(self):
-        M = NAPPTForGenerativeSequenceModeling(
-            StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
-        )
-
         default_batch = PytorchBatch(
             time_delta=torch.Tensor([[1.0, 2.0, 3.0]]),
             event_mask=torch.BoolTensor([[True, False, True]]),
@@ -522,9 +642,9 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 should_raise = case.get("should_raise", None)
                 if should_raise is not None:
                     with self.assertRaises(should_raise):
-                        M.prepare_inputs_for_generation(**kwargs)
+                        self.M.prepare_inputs_for_generation(**kwargs)
                 else:
-                    got = M.prepare_inputs_for_generation(**kwargs)
+                    got = self.M.prepare_inputs_for_generation(**kwargs)
                     want = case["want"]
                     self.assertNestedDictEqual(want, got)
 
@@ -557,28 +677,24 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
 
         for case in cases:
             with self.subTest(msg=case["msg"]):
-                M = NAPPTForGenerativeSequenceModeling(
-                    StructuredTransformerConfig(**DEFAULT_VALID_CONFIG_KWARGS)
-                )
-
                 encoded_mock = MagicMock()
-                M.encoder = MockModule(return_value=encoded_mock)
+                self.M.encoder = MockModule(return_value=encoded_mock)
                 encoded_mock.last_hidden_state = "last_hidden_state"
                 encoded_mock.past_key_values = "past_key_values"
                 encoded_mock.attentions = "attentions"
                 encoded_mock.hidden_states = "hidden_states"
-                M.output_layer = MockModule(side_effect=lambda batch, *args, **kwargs: batch)
+                self.M.output_layer = MockModule(side_effect=lambda batch, *args, **kwargs: batch)
 
                 batch = case["batch"]
                 kwargs = case.get("kwargs", {})
                 is_generation = kwargs.get("is_generation", False)
 
                 want = case["want"]
-                got = M(batch=batch, is_generation=is_generation, **kwargs)
+                got = self.M(batch=batch, is_generation=is_generation, **kwargs)
                 self.assertNestedDictEqual(want, got)
 
-                M.encoder.assert_called_once_with(batch, **kwargs)
-                M.output_layer.assert_called_once_with(
+                self.M.encoder.assert_called_once_with(batch, **kwargs)
+                self.M.output_layer.assert_called_once_with(
                     batch,
                     "last_hidden_state",
                     is_generation=is_generation,
@@ -586,6 +702,35 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                         "dep_graph_el_generation_target", None
                     ),
                 )
+
+    @unittest.skip
+    def test_generation_identical_with_or_without_caching(self):
+        # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
+        # run the model over a partial batch without caching and store the result. Then, we'll run the model
+        # over various elements of that batch, iterating through in sequence, using caching to only ever run
+        # the attention calculation on the last element, and we'll validate that the predictions don't change
+        # in comparison to the run without caching.
+
+        generation_kwargs = dict(
+            max_new_events=5,
+            num_return_sequences=2,
+            do_sample=True,
+            return_dict_in_generate=False,
+            output_scores=False,
+            output_attentions=False,
+            output_hidden_states=False,
+            debug_seed=1,
+        )
+
+        out_no_caching_1 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
+
+        out_no_caching_2 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
+
+        self.assertEqual(out_no_caching_1, out_no_caching_2)
+
+        out_with_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=True)
+
+        self.assertEqual(out_no_caching_1, out_with_caching)
 
 
 if __name__ == "__main__":
