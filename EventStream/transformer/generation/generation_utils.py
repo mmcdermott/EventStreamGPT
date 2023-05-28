@@ -303,8 +303,6 @@ class StructuredGenerationMixin:
                 if this_peer_finished_flag.item() == 0.0:
                     break
 
-            next_scores = ()
-
             # forward pass to get next token
             model_inputs = self.prepare_inputs_for_generation(batch, **model_kwargs)
             outputs = self(
@@ -323,11 +321,6 @@ class StructuredGenerationMixin:
 
             next_event_preds = outputs.preds.slice((slice(None), -1))
 
-            if return_dict_in_generate:
-                # We use the `scores` convention here as it is in the standard huggingface config.
-                if output_scores:
-                    next_scores += (next_event_preds,)
-
             # Prediction
             if debug_seed is not None:
                 L.seed_everything(debug_seed)
@@ -339,7 +332,7 @@ class StructuredGenerationMixin:
             if return_dict_in_generate:
                 # We use the `scores` convention here as it is in the standard huggingface config.
                 if output_scores:
-                    scores += (next_scores,)
+                    scores += (next_event_preds,)
                 if output_attentions:
                     decoder_attentions += (outputs.attentions,)
                 if output_hidden_states:
