@@ -399,7 +399,6 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             ) as torch_any_mock, self.subTest(f"Sub-test {i}: {case['msg']}"):
                 M = StructuredGenerationMixin()
                 M.config = Mock()
-                M.prepare_inputs_for_generation = Mock(return_value={"prepare": True})
 
                 input_seq_length = case.get("input_seq_length", 5)
                 batch = MagicMock()
@@ -493,23 +492,47 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
 
                     self.assertEqual(got, batch)
 
-        # class MockMixin(StructuredGenerationMixin, MagicMock):
-        #    def __init__(self, *args, **kwargs):
-        #        StructuredGenerationMixin.__init__(self)
-        #        MagicMock.__init__(self, *args, **kwargs)
+    def test_conditionally_independent_sample_event(self):
+        class MockMixin(StructuredGenerationMixin, MagicMock):
+            def __init__(self, *args, **kwargs):
+                StructuredGenerationMixin.__init__(self)
+                MagicMock.__init__(self, *args, **kwargs)
 
-        # output.preds.slice.assert_called_once_with((slice(None), -1))
+        M = MockMixin()
+        M.prepare_inputs_for_generation = Mock(return_value={"prepared": True})
+        M._update_model_kwargs_for_generation = Mock()
 
-        # pred = output.preds.slice.return_value
-        # pred.sample.assert_called_once_with(batch.event_mask)
+        batch = MagicMock()
+        debug_seed = 1234
+        model_kwargs = {"foo": "bar"}
 
-        # sample = pred.sample.return_value
-        # sample.append_to_batch.assert_called_once_with(batch, M.config)
+        got = M._conditionally_independent_sample_event(
+            batch, 0, debug_seed=debug_seed, **model_kwargs
+        )
 
-        # batch = sample.append_to_batch.return_value
-        # sample.update_last_event_data.assert_called_once_with(batch, M.config)
+        M.prepare_inputs_for_generation.assert_called_once_with(batch, **model_kwargs)
+        M.assert_called_once_with(prepared=True, return_dict=True, is_generation=True)
 
-        # batch = sample.update_last_event_data.return_value
+        output = M.return_value
+
+        M._update_model_kwargs_for_generation.assert_called_once_with(output, model_kwargs)
+        out_kwargs = M._update_model_kwargs_for_generation.return_value
+
+        output.preds.slice.assert_called_once_with((slice(None), -1))
+        pred = output.preds.slice.return_value
+
+        pred.sample.assert_called_once_with(batch.event_mask, seed=debug_seed)
+        sample = pred.sample.return_value
+
+        sample.append_to_batch.assert_called_once_with(batch, M.config)
+        batch = sample.append_to_batch.return_value
+
+        sample.update_last_event_data.assert_called_once_with(batch, M.config)
+        batch = sample.update_last_event_data.return_value
+
+        self.assertNestedEqual(
+            (batch, pred, output.attentions, output.hidden_states, out_kwargs), got
+        )
 
 
 if __name__ == "__main__":

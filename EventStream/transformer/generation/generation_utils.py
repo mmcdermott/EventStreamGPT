@@ -109,7 +109,7 @@ class StructuredGenerationMixin:
 
     @staticmethod
     def _update_model_kwargs_for_generation(
-        outputs: ModelOutput, model_kwargs: dict[str, Any], is_encoder_decoder: bool = False
+        outputs: ModelOutput, model_kwargs: dict[str, Any]
     ) -> dict[str, Any]:
         # update past
         if "past_key_values" in outputs:
@@ -345,9 +345,7 @@ class StructuredGenerationMixin:
             return_dict=True,
             is_generation=True,
         )
-        model_kwargs = self._update_model_kwargs_for_generation(
-            outputs, model_kwargs, is_encoder_decoder=False
-        )
+        model_kwargs = self._update_model_kwargs_for_generation(outputs, model_kwargs)
 
         next_event_preds = outputs.preds.slice((slice(None), -1))
 
@@ -394,9 +392,7 @@ class StructuredGenerationMixin:
                 return_dict=True,
                 is_generation=True,
             )
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs, model_kwargs, is_encoder_decoder=False
-            )
+            model_kwargs = self._update_model_kwargs_for_generation(outputs, model_kwargs)
 
             next_event_preds = outputs.preds.slice((slice(None), -1))
             scores += (next_event_preds,)
