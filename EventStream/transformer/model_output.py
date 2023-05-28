@@ -739,6 +739,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     measurements_to_fill.append(m)
             measurements_to_fill = set(measurements_to_fill)
 
+        if not measurements_to_fill:
+            return batch
+
         if "time" in measurements_to_fill:
             raise ValueError("You shouldn't ever be trying to fill the 'time' aspect of a batch!")
 
