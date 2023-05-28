@@ -154,8 +154,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_indices.update(regression_out[3])
 
         if do_TTE:
-            # Now we need to walk through the other elements of the dependency graph (omitting the first
-            # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
             whole_event_encoded = encoded[:, :, -1, :]
             TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(
                 batch,

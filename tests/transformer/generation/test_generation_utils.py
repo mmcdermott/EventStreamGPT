@@ -534,6 +534,167 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             (batch, pred, output.attentions, output.hidden_states, out_kwargs), got
         )
 
+    def test_nested_attention_sample_event_first_event(self):
+        class MockMixin(StructuredGenerationMixin, MagicMock):
+            def __init__(self, *args, **kwargs):
+                StructuredGenerationMixin.__init__(self)
+                MagicMock.__init__(self, *args, **kwargs)
+
+        model_outputs = [MagicMock() for _ in range(100)]
+        M = MockMixin(side_effect=model_outputs)
+        M.config.measurements_per_dep_graph_level = [[], ["foo", "bar"], ["baz"]]
+
+        M.prepare_inputs_for_generation = Mock(
+            side_effect=[{f"prepared_{i}": True} for i in range(10)]
+        )
+        M._update_model_kwargs_for_generation = Mock(
+            side_effect=[{"updated_{i}": True} for _ in range(10)]
+        )
+
+        batch = MagicMock()
+        debug_seed = 1234
+        model_kwargs = {"foo": "bar"}
+
+        got = M._nested_attention_sample_event(batch, 0, debug_seed=debug_seed, **model_kwargs)
+
+        want_measurements_to_fill = [{"time"}, ["foo", "bar"], ["baz"]]
+
+        prepare_inputs_calls = []
+        self_calls = []
+        update_kwargs_calls = []
+
+        scores = []
+        attentions = []
+        hidden_states = []
+
+        for i, m_to_fill in enumerate(want_measurements_to_fill):
+            if i == 0:
+                dep_graph_el_generation_target = None
+            else:
+                dep_graph_el_generation_target = i
+
+            prepare_inputs_calls.append(
+                call(
+                    batch,
+                    dep_graph_el_generation_target=dep_graph_el_generation_target,
+                    **model_kwargs,
+                )
+            )
+            self_calls.append(
+                call(**{f"prepared_{i}": True}, return_dict=True, is_generation=True)
+            )
+            output = model_outputs[i]
+            update_kwargs_calls.append(call(output, model_kwargs))
+            model_kwargs = {"updated_{i}": True}
+
+            output.preds.slice.assert_called_once_with((slice(None), -1))
+            pred = output.preds.slice.return_value
+
+            scores.append(pred)
+            attentions.append(output.attentions)
+            hidden_states.append(output.hidden_states)
+
+            pred.sample.assert_called_once_with(batch.event_mask, seed=debug_seed)
+            sample = pred.sample.return_value
+
+            if i == 0:
+                sample.append_to_batch.assert_called_once_with(batch, M.config)
+                sample.update_last_event_data.assert_not_called()
+                batch = sample.append_to_batch.return_value
+            else:
+                sample.append_to_batch.assert_not_called()
+                sample.update_last_event_data.assert_called_once_with(
+                    batch,
+                    M.config,
+                    measurements_to_fill=m_to_fill,
+                )
+                batch = sample.update_last_event_data.return_value
+
+        self.assertNestedCalledWith(M.prepare_inputs_for_generation, prepare_inputs_calls)
+        M.assert_has_calls(self_calls, any_order=True)
+        self.assertNestedCalledWith(M._update_model_kwargs_for_generation, update_kwargs_calls)
+
+        scores = tuple(scores)
+        attentions = tuple(attentions)
+        hidden_states = tuple(hidden_states)
+        self.assertNestedEqual((batch, scores, attentions, hidden_states, model_kwargs), got)
+
+    def test_nested_attention_sample_event_non_first_event(self):
+        class MockMixin(StructuredGenerationMixin, MagicMock):
+            def __init__(self, *args, **kwargs):
+                StructuredGenerationMixin.__init__(self)
+                MagicMock.__init__(self, *args, **kwargs)
+
+        model_outputs = [MagicMock() for _ in range(100)]
+        M = MockMixin(side_effect=model_outputs)
+        M.config.measurements_per_dep_graph_level = [[], ["foo", "bar"], ["baz"]]
+
+        M.prepare_inputs_for_generation = Mock(
+            side_effect=[{f"prepared_{i}": True} for i in range(10)]
+        )
+        M._update_model_kwargs_for_generation = Mock(
+            side_effect=[{"updated_{i}": True} for _ in range(10)]
+        )
+
+        batch = MagicMock()
+        debug_seed = 1234
+        model_kwargs = {"foo": "bar"}
+
+        got = M._nested_attention_sample_event(batch, 3, debug_seed=debug_seed, **model_kwargs)
+
+        want_measurements_to_fill = [{"time"}, ["foo", "bar"], ["baz"]]
+
+        prepare_inputs_calls = []
+        self_calls = []
+        update_kwargs_calls = []
+
+        scores = []
+        attentions = []
+        hidden_states = []
+
+        for i, m_to_fill in enumerate(want_measurements_to_fill):
+            prepare_inputs_calls.append(
+                call(batch, dep_graph_el_generation_target=i, **model_kwargs)
+            )
+            self_calls.append(
+                call(**{f"prepared_{i}": True}, return_dict=True, is_generation=True)
+            )
+            output = model_outputs[i]
+            update_kwargs_calls.append(call(output, model_kwargs))
+            model_kwargs = {"updated_{i}": True}
+
+            output.preds.slice.assert_called_once_with((slice(None), -1))
+            pred = output.preds.slice.return_value
+
+            scores.append(pred)
+            attentions.append(output.attentions)
+            hidden_states.append(output.hidden_states)
+
+            pred.sample.assert_called_once_with(batch.event_mask, seed=debug_seed)
+            sample = pred.sample.return_value
+
+            if i == 0:
+                sample.append_to_batch.assert_called_once_with(batch, M.config)
+                sample.update_last_event_data.assert_not_called()
+                batch = sample.append_to_batch.return_value
+            else:
+                sample.append_to_batch.assert_not_called()
+                sample.update_last_event_data.assert_called_once_with(
+                    batch,
+                    M.config,
+                    measurements_to_fill=m_to_fill,
+                )
+                batch = sample.update_last_event_data.return_value
+
+        self.assertNestedCalledWith(M.prepare_inputs_for_generation, prepare_inputs_calls)
+        M.assert_has_calls(self_calls, any_order=True)
+        self.assertNestedCalledWith(M._update_model_kwargs_for_generation, update_kwargs_calls)
+
+        scores = tuple(scores)
+        attentions = tuple(attentions)
+        hidden_states = tuple(hidden_states)
+        self.assertNestedEqual((batch, scores, attentions, hidden_states, model_kwargs), got)
+
 
 if __name__ == "__main__":
     unittest.main()

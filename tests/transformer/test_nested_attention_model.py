@@ -716,12 +716,6 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 )
 
     def test_generation_seed_dependent(self):
-        # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
-        # run the model over a partial batch without caching and store the result. Then, we'll run the model
-        # over various elements of that batch, iterating through in sequence, using caching to only ever run
-        # the attention calculation on the last element, and we'll validate that the predictions don't change
-        # in comparison to the run without caching.
-
         generation_kwargs = dict(
             max_new_events=5,
             num_return_sequences=2,
@@ -752,12 +746,6 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             self.assertEqual(out_1_seed_1, out_1_seed_2)
 
     def test_generation_shapes(self):
-        # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
-        # run the model over a partial batch without caching and store the result. Then, we'll run the model
-        # over various elements of that batch, iterating through in sequence, using caching to only ever run
-        # the attention calculation on the last element, and we'll validate that the predictions don't change
-        # in comparison to the run without caching.
-
         num_return_sequences = 2
         max_new_events = 5
         generation_kwargs = dict(
@@ -790,7 +778,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             out.time_delta *= 0
             self.assertEqual(self.batch[i], out[i * num_return_sequences, :input_seq_length])
 
-    @unittest.skip
+    @unittest.skip("TODO: fix test.")
     def test_generation_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
