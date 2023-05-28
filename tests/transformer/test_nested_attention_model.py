@@ -751,6 +751,45 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
         with self.assertRaises(AssertionError):
             self.assertEqual(out_1_seed_1, out_1_seed_2)
 
+    def test_generation_shapes(self):
+        # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
+        # run the model over a partial batch without caching and store the result. Then, we'll run the model
+        # over various elements of that batch, iterating through in sequence, using caching to only ever run
+        # the attention calculation on the last element, and we'll validate that the predictions don't change
+        # in comparison to the run without caching.
+
+        num_return_sequences = 2
+        max_new_events = 5
+        generation_kwargs = dict(
+            max_new_events=max_new_events,
+            num_return_sequences=num_return_sequences,
+            do_sample=True,
+            return_dict_in_generate=False,
+            output_scores=False,
+            output_attentions=False,
+            output_hidden_states=False,
+        )
+
+        input_seq_length = self.batch.sequence_length
+        input_batch_size = self.batch.batch_size
+        input_n_data_elements = self.batch.n_data_elements
+
+        out = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
+        self.assertEqual(input_batch_size * num_return_sequences, out.batch_size)
+        self.assertEqual(input_seq_length + max_new_events, out.sequence_length)
+        self.assertTrue(out.n_data_elements >= input_n_data_elements)
+
+        for i in range(input_batch_size):
+            want_time_delta = self.batch[i].time_delta
+            got_time_delta = out[i * num_return_sequences, :input_seq_length].time_delta
+
+            self.assertEqual(want_time_delta[:-1], got_time_delta[:-1])
+
+        for i in range(input_batch_size):
+            self.batch[i].time_delta *= 0
+            out.time_delta *= 0
+            self.assertEqual(self.batch[i], out[i * num_return_sequences, :input_seq_length])
+
     @unittest.skip
     def test_generation_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll

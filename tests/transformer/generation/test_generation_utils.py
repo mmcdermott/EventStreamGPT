@@ -300,7 +300,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             "output_scores": "config",
             "output_attentions": "config",
             "output_hidden_states": "config",
-            "return_dict_in_generate": "config",
+            "return_dict_in_generate": False,
             "max_length": 10,
             "max_seq_len": 20,
             "structured_event_processing_mode": StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT,
@@ -324,16 +324,13 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     "output_scores": "kwargs",
                     "output_attentions": "kwargs",
                     "output_hidden_states": "kwargs",
-                    "return_dict_in_generate": "kwargs",
                     "max_length": 15,
                 },
                 "want_max_length": 15,
                 "want_expand_size": "kwargs",
                 "want_model_kwargs": {
-                    "output_scores": "kwargs",
                     "output_attentions": "kwargs",
                     "output_hidden_states": "kwargs",
-                    "return_dict_in_generate": "kwargs",
                     "use_cache": None,
                 },
                 "want_call_sample_CI": True,
@@ -344,10 +341,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     "output_attentions": "kwargs",
                 },
                 "want_model_kwargs": {
-                    "output_scores": "config",
                     "output_attentions": "kwargs",
                     "output_hidden_states": "config",
-                    "return_dict_in_generate": "config",
                     "use_cache": None,
                 },
                 "want_call_sample_CI": True,
@@ -356,10 +351,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                 "msg": "Should reflect use_cache passed by kwargs",
                 "kwargs": {"use_cache": True},
                 "want_model_kwargs": {
-                    "output_scores": "config",
                     "output_attentions": "config",
                     "output_hidden_states": "config",
-                    "return_dict_in_generate": "config",
                     "use_cache": True,
                 },
                 "want_call_sample_CI": True,
@@ -375,10 +368,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     "structured_event_processing_mode": StructuredEventProcessingMode.NESTED_ATTENTION
                 },
                 "want_model_kwargs": {
-                    "output_scores": "config",
                     "output_attentions": "config",
                     "output_hidden_states": "config",
-                    "return_dict_in_generate": "config",
                     "use_cache": None,
                 },
                 "want_call_sample_NA": True,
@@ -394,10 +385,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                 "input_seq_length": 5,
                 "want_max_length": 16,
                 "want_model_kwargs": {
-                    "output_scores": "config",
                     "output_attentions": "config",
                     "output_hidden_states": "config",
-                    "return_dict_in_generate": "config",
                     "use_cache": None,
                 },
                 "want_call_sample_CI": True,
@@ -410,20 +399,37 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             ) as torch_any_mock, self.subTest(f"Sub-test {i}: {case['msg']}"):
                 M = StructuredGenerationMixin()
                 M.config = Mock()
+                M.prepare_inputs_for_generation = Mock(return_value={"prepare": True})
 
+                input_seq_length = case.get("input_seq_length", 5)
                 batch = MagicMock()
-                batch_seq_length = PropertyMock(return_value=case.get("input_seq_length", 5))
+                batch_seq_length = PropertyMock(return_value=input_seq_length)
                 type(batch).sequence_length = batch_seq_length
+
+                max_length = case.get("want_max_length", default_config_params["max_length"])
+                want_n_events = max_length - input_seq_length
 
                 config_params = copy.deepcopy(default_config_params)
                 config_params.update(case.get("config_params", {}))
                 for key, val in config_params.items():
                     setattr(M.config, key, val)
 
-                M._sample_conditionally_independent = Mock()
-                M._sample_nested_attention = Mock()
-                M._expand_inputs_for_generation = Mock()
-                M._get_stopping_criteria = Mock()
+                CI_sample_mocks = [
+                    (MagicMock(), MagicMock(), MagicMock(), MagicMock(), {"CI_event": i})
+                    for i in range(100)
+                ]
+                M._conditionally_independent_sample_event = Mock(side_effect=CI_sample_mocks)
+
+                NA_sample_mocks = [
+                    (MagicMock(), MagicMock(), MagicMock(), MagicMock(), {"NA_event": i})
+                    for i in range(100)
+                ]
+                M._nested_attention_sample_event = Mock(side_effect=NA_sample_mocks)
+
+                M._expand_inputs_for_generation = MagicMock()
+
+                stopping_criteria = Mock(side_effect=[False] * (want_n_events - 1) + [True])
+                M._get_stopping_criteria = Mock(return_value=stopping_criteria)
 
                 torch_any_mock.return_value = False
 
@@ -434,18 +440,16 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     with self.assertRaises(case["should_raise"]):
                         M.generate(batch, **kwargs)
                 else:
-                    M.generate(batch, **kwargs)
+                    got = M.generate(batch, **kwargs)
 
                     torch_any_mock.assert_called_once_with(~batch["event_mask"][:, -1])
 
                     batch_seq_length.assert_called_once_with()
 
-                    max_length = case.get("want_max_length", default_config_params["max_length"])
                     stopping_criteria_default = case.get("want_stopping_criteria", [])
                     M._get_stopping_criteria.assert_called_once_with(
                         max_length=max_length, stopping_criteria=stopping_criteria_default
                     )
-                    stopping_criteria = M._get_stopping_criteria.return_value
 
                     num_return_sequences = case.get(
                         "want_expand_size", config_params.get("num_return_sequences", None)
@@ -455,93 +459,57 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     )
                     batch = M._expand_inputs_for_generation.return_value
 
-                    want_kwargs = {
-                        "batch": batch,
-                        "debug_seed": None,
-                        "stopping_criteria": stopping_criteria,
-                        **case.get("want_model_kwargs", {}),
-                    }
-
-                    if case.get("want_call_sample_CI", False):
-                        M._sample_conditionally_independent.assert_called_once_with(**want_kwargs)
-                    else:
-                        M._sample_conditionally_independent.assert_not_called()
-
-                    if case.get("want_call_sample_NA", False):
-                        M._sample_nested_attention.assert_called_once_with(**want_kwargs)
-                    else:
-                        M._sample_nested_attention.assert_not_called()
-
-    def test_sample_conditionally_independent(self):
-        cases = [
-            {
-                "msg": "Should generate for the appropriate number of events.",
-                "want_n_events": 3,
-            },
-            {
-                "msg": "Should use debug seed if specified.",
-                "want_n_events": 2,
-                "want_debug_seed": 4,
-                "kwargs": {"debug_seed": 4},
-            },
-        ]
-
-        for i, case in enumerate(cases):
-            with patch("EventStream.transformer.generation.generation_utils.L") as L, self.subTest(
-                f"Sub-test {i}: {case['msg']}"
-            ):
-
-                class MockMixin(StructuredGenerationMixin, MagicMock):
-                    def __init__(self, *args, **kwargs):
-                        StructuredGenerationMixin.__init__(self)
-                        MagicMock.__init__(self, *args, **kwargs)
-
-                L_seed_mock = L.seed_everything
-
-                model_outputs = [MagicMock() for _ in range(10)]
-                M = MockMixin(side_effect=model_outputs)
-                M.config = Mock()
-                M.prepare_inputs_for_generation = Mock(return_value={"prepare": True})
-
-                batch = MagicMock()
-
-                want_n_events = case.get("want_num_events_generated", 1)
-                stopping_criteria = Mock(side_effect=[False] * (want_n_events - 1) + [True])
-
-                sample_kwargs = {
-                    "batch": batch,
-                    "return_dict_in_generate": False,
-                    "stopping_criteria": stopping_criteria,
-                    **case.get("kwargs", {}),
-                }
-
-                if case.get("should_raise", None) is not None:
-                    with self.assertRaises(case["should_raise"]):
-                        M._sample_conditionally_independent(**sample_kwargs)
-                else:
-                    got = M._sample_conditionally_independent(**sample_kwargs)
-
-                    for output in model_outputs[:want_n_events]:
-                        output.preds.slice.assert_called_once_with((slice(None), -1))
-
-                        pred = output.preds.slice.return_value
-                        pred.sample.assert_called_once_with(batch.event_mask)
-
-                        sample = pred.sample.return_value
-                        sample.append_to_batch.assert_called_once_with(batch, M.config)
-
-                        batch = sample.append_to_batch.return_value
-                        sample.update_last_event_data.assert_called_once_with(batch, M.config)
-
-                        batch = sample.update_last_event_data.return_value
-
-                    debug_seed = case.get("want_debug_seed", None)
-                    if debug_seed is not None:
-                        self.assertNestedCalledWith(
-                            L_seed_mock, [call(debug_seed) for _ in range(want_n_events)]
+                    model_kwargs = case.get("want_model_kwargs", {})
+                    debug_seed = case.get("debug_seed", None)
+                    want_sample_calls = []
+                    for event in range(want_n_events):
+                        want_sample_calls.append(
+                            call(batch, event, debug_seed=debug_seed, **model_kwargs)
                         )
 
+                        if case.get("want_call_sample_CI", False):
+                            sample = CI_sample_mocks[event]
+                        elif case.get("want_call_sample_NA", False):
+                            sample = NA_sample_mocks[event]
+                        else:
+                            raise ValueError()
+
+                        batch = sample[0]
+                        model_kwargs = sample[4]
+
+                    if case.get("want_call_sample_CI", False):
+                        self.assertNestedCalledWith(
+                            M._conditionally_independent_sample_event, want_sample_calls
+                        )
+                    else:
+                        M._conditionally_independent_sample_event.assert_not_called()
+
+                    if case.get("want_call_sample_NA", False):
+                        self.assertNestedCalledWith(
+                            M._nested_attention_sample_event, want_sample_calls
+                        )
+                    else:
+                        M._nested_attention_sample_event.assert_not_called()
+
                     self.assertEqual(got, batch)
+
+        # class MockMixin(StructuredGenerationMixin, MagicMock):
+        #    def __init__(self, *args, **kwargs):
+        #        StructuredGenerationMixin.__init__(self)
+        #        MagicMock.__init__(self, *args, **kwargs)
+
+        # output.preds.slice.assert_called_once_with((slice(None), -1))
+
+        # pred = output.preds.slice.return_value
+        # pred.sample.assert_called_once_with(batch.event_mask)
+
+        # sample = pred.sample.return_value
+        # sample.append_to_batch.assert_called_once_with(batch, M.config)
+
+        # batch = sample.append_to_batch.return_value
+        # sample.update_last_event_data.assert_called_once_with(batch, M.config)
+
+        # batch = sample.update_last_event_data.return_value
 
 
 if __name__ == "__main__":

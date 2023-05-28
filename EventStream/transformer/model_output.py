@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass
 from typing import Any, Union
 
+import lightning as L
 import torch
 from mixins import SeedableMixin
 from transformers.utils import ModelOutput
@@ -859,8 +860,15 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, Seed
         )
 
     @SeedableMixin.WithSeed
-    def sample(self, event_mask: torch.BoolTensor) -> GenerativeSequenceModelSamples:
+    def sample(
+        self,
+        event_mask: torch.BoolTensor,
+        seed: int | None = None,
+    ) -> GenerativeSequenceModelSamples:
         """Returns a sample from the nested distributions."""
+
+        if seed is not None:
+            L.seed_everything(seed)
 
         return GenerativeSequenceModelSamples(
             event_mask=event_mask[:, -1].detach(),
