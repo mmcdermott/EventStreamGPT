@@ -33,11 +33,7 @@ from transformers.utils import ModelOutput
 from ...data.types import PytorchBatch
 from ..config import StructuredEventProcessingMode
 from ..model_output import GenerativeSequenceModelPredictions
-from .generation_stopping_criteria import (
-    MaxLengthCriteria,
-    StoppingCriteria,
-    StoppingCriteriaList,
-)
+from .generation_stopping_criteria import MaxLengthCriteria, StoppingCriteriaList
 
 logger = logging.getLogger(__name__)
 
@@ -147,22 +143,6 @@ class StructuredGenerationMixin:
     ) -> StoppingCriteriaList:
         if len(custom_list) == 0:
             return default_list
-        for default in default_list:
-            for custom in custom_list:
-                if type(custom) is type(default):
-                    object_type = (
-                        "stopping criteria"
-                        if isinstance(custom, StoppingCriteria)
-                        else "outputs processor"
-                    )
-                    raise ValueError(
-                        f"A custom {object_type} of type {type(custom)} with values {custom} was passed to"
-                        f" `generate`, but it was created with the values {default}. {default} has been"
-                        " created by passing the corresponding arguments to generate or by the model's config"
-                        f" default values. If you just want to change the default values of {object_type}"
-                        " consider passing them as arguments to `generate` instead of using a custom"
-                        f" {object_type}."
-                    )
         default_list.extend(custom_list)
         return default_list
 
@@ -215,8 +195,6 @@ class StructuredGenerationMixin:
         )
 
         # 3. Define other model kwargs
-        model_kwargs["output_attentions"] = output_attentions
-        model_kwargs["output_hidden_states"] = output_hidden_states
         model_kwargs["use_cache"] = use_cache
 
         # decoder-only models should use left-padding for generation
