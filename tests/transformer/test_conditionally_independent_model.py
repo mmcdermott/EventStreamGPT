@@ -329,7 +329,7 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                 "classification_calls": [
                     call(
                         dummy_batch,
-                        shifted_encoded,
+                        default_encoded,
                         {"clf1", "mr1", "clf2", "clf3", "mr2"},
                         event_type_mask_per_measurement="etmpm",
                     ),
@@ -337,7 +337,7 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                 "regression_calls": [
                     call(
                         dummy_batch,
-                        shifted_encoded,
+                        default_encoded,
                         {"mr1", "ur1", "mr2", "ur2"},
                         is_generation=True,
                         event_type_mask_per_measurement="etmpm",
@@ -624,7 +624,6 @@ class TestCIPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
         with self.assertRaises(AssertionError):
             self.assertEqual(out_1_seed_1, out_1_seed_2)
 
-    @unittest.skip("TODO: Fix test!")
     def test_generation_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model

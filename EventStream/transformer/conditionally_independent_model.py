@@ -61,23 +61,23 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
         bsz, seq_len, _ = encoded.shape
         whole_event_encoded = encoded
 
-        # In this case, the whole_event_encoded representation actually is used to predict the next
-        # event's contents, so we need to shift it to be in the right form for predicting things. In
-        # particular, we prepend a vector of zeros to be used to predict the contents of the first event
-        # (excluding the TTE of the first event which is guaranteed to be zero) and we _don't_ predict the
-        # contents of the event after the end of this sequence (as we have no way to judge them). This
-        # plan may bite us during generation, but it preserves the API between the structured and
-        # non-structured versions, where the latter doesn't have any way at all to generate the contents
-        # of the next event after the end of the sequence, as it needs a timepoint embedding to process
-        # that prediction task.
+        # In this case, the whole_event_encoded representation actually is used to predict the next event's
+        # contents, so it is what we want if we are in generative mode, but if we are not in generative mode
+        # then to make it align with the labels we need to shift it to be in the right form. In particular, we
+        # prepend a vector of zeros to be used to predict the contents of the first event (excluding the TTE
+        # of the first event which is guaranteed to be zero) and we _don't_ predict the contents of the event
+        # after the end of this sequence (as we have no way to judge them).
 
-        for_event_contents_prediction = torch.cat(
-            (
-                torch.zeros_like(whole_event_encoded[:, 0, :]).unsqueeze(1),
-                whole_event_encoded[:, :-1, :],
-            ),
-            dim=1,
-        )
+        if is_generation:
+            for_event_contents_prediction = whole_event_encoded
+        else:
+            for_event_contents_prediction = torch.cat(
+                (
+                    torch.zeros_like(whole_event_encoded[:, 0, :]).unsqueeze(1),
+                    whole_event_encoded[:, :-1, :],
+                ),
+                dim=1,
+            )
 
         classification_out = self.get_classification_outputs(
             batch,

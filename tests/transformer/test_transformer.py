@@ -271,6 +271,22 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
                 seq_attention_mask=seq_attention_mask[:, :, :, : (seq_idx + 1)],
                 **M_kwargs,
             )
+
+            # sliced_batch = copy.deepcopy(source_batch_for_slicing)
+            # sliced_batch = sliced_batch[:, : (seq_idx + 1)]
+            # seq_attention_mask = expand_mask(
+            #    sliced_batch.event_mask, out_full_caching.last_hidden_state.dtype
+            # )
+
+            # sliced_batch = sliced_batch.last_sequence_element_unsqueezed()
+
+            # sliced_out = self.M(
+            #    sliced_batch,
+            #    past=past,
+            #    seq_attention_mask=seq_attention_mask,
+            #    **M_kwargs,
+            # )
+
             past = sliced_out["past_key_values"]
             out_iterative_caching.append(sliced_out)
 
