@@ -778,7 +778,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             out.time_delta *= 0
             self.assertEqual(self.batch[i], out[i * num_return_sequences, :input_seq_length])
 
-    @unittest.skip("TODO: fix test.")
+    @unittest.skip("TODO: Fix Cache!")
     def test_generation_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model

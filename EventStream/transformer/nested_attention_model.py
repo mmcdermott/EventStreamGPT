@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import torch
@@ -69,6 +70,8 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
             + self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
+        if is_generation:
+            warnings.warn("Event type mask per measurement is likely WRONG in generative case!")
         event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
 
         bsz, seq_len, dep_graph_len, _ = encoded.shape
