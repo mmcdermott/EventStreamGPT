@@ -847,18 +847,6 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, Seed
     regression_indices: dict[str, torch.LongTensor] | None = None
     time_to_event: torch.distributions.Distribution | None = None
 
-    def mode(self, event_mask: torch.BoolTensor) -> GenerativeSequenceModelSamples:
-        """Returns a mode (not guaranteed to be unique or maximal) of each of the contained
-        distributions."""
-
-        return GenerativeSequenceModelSamples(
-            event_mask=event_mask[:, -1].detach(),
-            classification={k: v.mode for k, v in self.classification.items()},
-            regression={k: v.mode for k, v in self.regression.items()},
-            regression_indices=self.regression_indices,
-            time_to_event=self.time_to_event.mode,
-        )
-
     def sample(
         self,
         event_mask: torch.BoolTensor,
