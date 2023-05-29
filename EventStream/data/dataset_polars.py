@@ -666,34 +666,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return df.filter(pl.all(filter_exprs))
 
     @TimeableMixin.TimeAs
-    def _get_valid_event_types(self) -> dict[str, list[str]]:
-        measures = []
-        for measure, config in self.config.measurement_configs.items():
-            if (
-                (config.is_dropped)
-                or (config.temporality != TemporalityType.DYNAMIC)
-                or (config.present_in_event_types is not None)
-                or (measure not in self.dynamic_measurements_df.columns)
-            ):
-                continue
-            measures.append(measure)
-
-        if not measures:
-            return {}
-
-        event_type_cnts = (
-            self._filter_measurements_df(split="train")
-            .join(self.train_events_df.select("event_id", "event_type"), on="event_id")
-            .groupby("event_type")
-            .agg(*[pl.col(c).drop_nulls().count() for c in measures])
-        )
-
-        out = {}
-        for measure in measures:
-            out[measure] = event_type_cnts.filter(pl.col(measure) > 0)["event_type"].to_list()
-        return out
-
-    @TimeableMixin.TimeAs
     def add_time_dependent_measurements(self):
         exprs = []
         join_cols = set()

@@ -47,34 +47,6 @@ def get_event_types(
     return torch.where(event_type_mask, dynamic_indices - event_type_vocab_offset, 0).sum(-1)
 
 
-# TODO(mmd): Move to batch class?
-def get_event_type_mask_per_measurement(
-    dynamic_measurement_indices: torch.LongTensor,
-    dynamic_indices: torch.LongTensor,
-    config: StructuredTransformerConfig,
-) -> dict[str, torch.BoolTensor | None]:
-    if config.event_types_per_measurement is None:
-        return None
-
-    event_type_indices = get_event_types(
-        dynamic_measurement_indices,
-        dynamic_indices,
-        config.measurements_idxmap["event_type"],
-        config.vocab_offsets_by_measurement["event_type"],
-    )
-
-    out_masks = {}
-    for measurement, valid_event_types in config.event_types_per_measurement.items():
-        valid_event_types = config.event_types_per_measurement[measurement]
-        valid_event_type_indices = {config.event_types_idxmap[et] for et in valid_event_types}
-
-        # We only want to predict for events that are of the correct type.
-        out_masks[measurement] = torch.any(
-            torch.stack([(event_type_indices == i) for i in valid_event_type_indices], 0), dim=0
-        )
-    return out_masks
-
-
 def strip_unused_indices(dynamic_indices, *other_tensors):
     is_present = dynamic_indices != 0
 
@@ -313,9 +285,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         dynamic_values = []
         dynamic_values_mask = []
 
-        def add_single_label_classification(
-            measurement: str, mask: torch.BoolTensor | None = None
-        ):
+        def add_single_label_classification(measurement: str):
             if measurement not in config.vocab_offsets_by_measurement:
                 raise ValueError(f"Missing {measurement}")
 
@@ -341,22 +311,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 indices
             )
 
-            if mask is not None:
-                try:
-                    indices = torch.where(mask, indices, 0)
-                    measurement_indices = torch.where(mask, measurement_indices, 0)
-                except RuntimeError:
-                    print(measurement)
-                    print(indices.shape)
-                    print(indices)
-                    print(mask.shape)
-                    print(mask)
-                    raise
-
             dynamic_indices.append(indices.unsqueeze(-1))
             dynamic_measurement_indices.append(measurement_indices.unsqueeze(-1))
 
-        def add_multi_label_classification(measurement: str, mask: torch.BoolTensor | None = None):
+        def add_multi_label_classification(measurement: str):
             if measurement not in config.vocab_offsets_by_measurement:
                 raise ValueError(f"Missing {measurement}")
 
@@ -385,15 +343,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 torch.where(indices != 0, torch.ones_like(indices), torch.zeros_like(indices))
             )
 
-            if mask is not None:
-                mask = mask.unsqueeze(-1).expand_as(indices)
-                indices = torch.where(mask, indices, 0)
-                measurement_indices = torch.where(mask, measurement_indices, 0)
-
             dynamic_indices.append(indices)
             dynamic_measurement_indices.append(measurement_indices)
 
-        def add_univariate_regression(measurement: str, mask: torch.BoolTensor | None = None):
+        def add_univariate_regression(measurement: str):
             if measurement not in self.regression:
                 raise ValueError(f"Attempting to generate improper measurement {measurement}!")
 
@@ -401,15 +354,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
             if len(preds.squeeze(-1).shape) != 1:
                 raise ValueError(f"For {measurement}, expect 1D preds, got {preds.shape}!")
 
-            if mask is not None:
-                preds = torch.where(mask, preds, 0)
-
             dynamic_values_mask.append(~torch.isnan(preds.unsqueeze(-1)))
             dynamic_values.append(torch.nan_to_num(preds.unsqueeze(-1), nan=0))
 
-        def add_multivariate_regression(
-            measurement: str, indices: torch.LongTensor, mask: torch.BoolTensor | None = None
-        ):
+        def add_multivariate_regression(measurement: str, indices: torch.LongTensor):
             if measurement not in self.regression:
                 raise ValueError(f"Attempting to generate improper measurement {measurement}!")
 
@@ -439,10 +387,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
             vocab_offset = config.vocab_offsets_by_measurement[measurement]
             try:
-                if mask is None:
-                    mask = indices >= vocab_offset
-                else:
-                    mask = mask & (indices >= vocab_offset)
+                mask = indices >= vocab_offset
                 idx_gather_T = torch.where(mask, indices - vocab_offset, 0).long()
 
                 values = regressed_values.gather(-1, idx_gather_T)
@@ -453,18 +398,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 print(f"Indices:\n{indices}")
                 raise
 
-            if mask is not None:
-                values = torch.where(mask, values, 0)
-                values_mask = torch.where(mask, values_mask, False)
+            values = torch.where(mask, values, 0)
+            values_mask = torch.where(mask, values_mask, False)
 
             dynamic_values.append(values)
             dynamic_values_mask.append(values_mask)
-
-        event_type_mask_kwargs = {
-            "dynamic_measurement_indices": batch.dynamic_measurement_indices[:, -1],
-            "dynamic_indices": batch.dynamic_indices[:, -1],
-            "config": config,
-        }
 
         if "event_type" in measurements_to_build:
             add_single_label_classification("event_type")
@@ -472,13 +410,6 @@ class GenerativeSequenceModelSamples(ModelOutput):
             # Event type has no value associated with it.
             dynamic_values.append((0 * dynamic_indices[-1]).float())
             dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())
-
-            event_type_mask_kwargs["dynamic_measurement_indices"] = dynamic_measurement_indices[-1]
-            event_type_mask_kwargs["dynamic_indices"] = dynamic_indices[-1]
-
-        event_type_mask_per_measurement = get_event_type_mask_per_measurement(
-            **event_type_mask_kwargs
-        )
 
         for m in measurements_to_build:
             if type(m) in (list, tuple):
@@ -493,22 +424,20 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 cfg = config.measurement_configs[m]
                 modality = cfg.modality
 
-            event_type_mask = event_type_mask_per_measurement.get(m, None)
-
             match (modality, group_mode):
                 case (DataModality.SINGLE_LABEL_CLASSIFICATION, None):
-                    add_single_label_classification(m, mask=event_type_mask)
+                    add_single_label_classification(m)
                     dynamic_values.append((0 * dynamic_indices[-1]).float())
                     dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())
                 case (DataModality.MULTI_LABEL_CLASSIFICATION, None):
                     assert group_mode is None
 
-                    add_multi_label_classification(m, mask=event_type_mask)
+                    add_multi_label_classification(m)
 
                     dynamic_values.append((0 * dynamic_indices[-1]).float())
                     dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())
                 case (DataModality.UNIVARIATE_REGRESSION, None):
-                    add_univariate_regression(m, mask=event_type_mask)
+                    add_univariate_regression(m)
                     indices = config.vocab_offsets_by_measurement[m] + torch.zeros_like(
                         dynamic_values[-1]
                     )
@@ -520,17 +449,13 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     DataModality.MULTIVARIATE_REGRESSION,
                     None | MeasIndexGroupOptions.CATEGORICAL_AND_NUMERICAL,
                 ):
-                    add_multi_label_classification(m, mask=event_type_mask)
-                    if event_type_mask is not None:
-                        etm = event_type_mask.unsqueeze(-1).expand_as(dynamic_indices[-1])
-                    else:
-                        etm = None
-                    add_multivariate_regression(m, indices=dynamic_indices[-1], mask=etm)
+                    add_multi_label_classification(m)
+                    add_multivariate_regression(m, indices=dynamic_indices[-1])
                 case (
                     DataModality.MULTIVARIATE_REGRESSION,
                     MeasIndexGroupOptions.CATEGORICAL_ONLY,
                 ):
-                    add_multi_label_classification(m, mask=event_type_mask)
+                    add_multi_label_classification(m)
                     dynamic_values.append((0 * dynamic_indices[-1]).float())
                     dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())
                 case (DataModality.MULTIVARIATE_REGRESSION, MeasIndexGroupOptions.NUMERICAL_ONLY):
@@ -542,22 +467,10 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     indices = strip_unused_indices(indices)
                     measurement_indices = meas_index * torch.ones_like(indices)
 
-                    if event_type_mask is not None:
-                        event_type_mask = event_type_mask.unsqueeze(-1).expand_as(indices)
-                        try:
-                            indices = torch.where(event_type_mask, indices, 0)
-                            measurement_indices = torch.where(
-                                event_type_mask, measurement_indices, 0
-                            )
-                        except RuntimeError:
-                            print(indices.shape)
-                            print(event_type_mask.shape)
-                            raise
-
                     dynamic_indices.append(indices)
                     dynamic_measurement_indices.append(measurement_indices)
 
-                    add_multivariate_regression(m, indices=indices, mask=event_type_mask)
+                    add_multivariate_regression(m, indices=indices)
                 case _:
                     raise ValueError(f"{modality}, {group_mode} invalid!")
 
@@ -875,7 +788,6 @@ class GenerativeSequenceModelOutput(ModelOutput):
     losses: GenerativeSequenceModelLosses | None = None
     preds: GenerativeSequenceModelPredictions | None = None
     labels: GenerativeSequenceModelLabels | None = None
-    event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None
     event_mask: torch.BoolTensor | None = None
     dynamic_values_mask: torch.BoolTensor | None = None
 
@@ -1035,7 +947,6 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         batch: PytorchBatch,
         encoded: torch.FloatTensor,
         valid_measurements: set[str],
-        event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None,
     ) -> tuple[
         dict[str, torch.FloatTensor],
         dict[str, torch.FloatTensor],
@@ -1055,12 +966,6 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             `valid_measurements` (`Set[str]`):
                 The classification measurements in the batch that should be predicted from this input
                 `encoded`.
-            `event_type_mask_per_measurement` (`Optional[Dict[str, torch.BoolTensor]]`, defaults to None):
-                A dictionary from measurement to a tensor of shape `[batch_size, sequence_length]` such that
-                `event_type_mask_per_measurement[measurement][i][j]` is `True` if the event at batch index `i`
-                and sequence index `j` is of a type that should be used to form predictions for the
-                measurement `measurement`. If `None`, then all events are used to form predictions for all
-                measurements.
 
         Returns:
             `classification_losses_by_measurement` (`Dict[str, torch.FloatTensor]`):
@@ -1107,13 +1012,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             if measurement not in valid_measurements:
                 continue
 
-            if (
-                event_type_mask_per_measurement is not None
-                and measurement in event_type_mask_per_measurement
-            ):
-                event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
-            else:
-                event_mask = batch["event_mask"]
+            event_mask = batch["event_mask"]
 
             measurement_idx = self.config.measurements_idxmap[measurement]
             vocab_start = self.config.vocab_offsets_by_measurement[measurement]
@@ -1204,7 +1103,6 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         encoded: torch.FloatTensor,
         valid_measurements: set[str],
         is_generation: bool = False,
-        event_type_mask_per_measurement: dict[str, torch.BoolTensor] | None = None,
     ) -> tuple[
         dict[str, torch.FloatTensor],
         dict[str, torch.distributions.Distribution],
@@ -1224,12 +1122,6 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                 position `j`.
             `valid_measurements` (`Set[str]`):
                 The regression measurements in the batch that should be predicted from this input `encoded`.
-            `event_type_mask_per_measurement` (`Optional[Dict[str, torch.BoolTensor]]`, defaults to None):
-                A dictionary from measurement to a tensor of shape `[batch_size, sequence_length]` such that
-                `event_type_mask_per_measurement[measurement][i][j]` is `True` if the event at batch index `i`
-                and sequence index `j` is of a type that should be used to form predictions for the
-                measurement `measurement`. If `None`, then all events are used to form predictions for all
-                measurements.
 
         Returns:
             `regression_loss_values` (`Dict[str, torch.FloatTensor]`):
@@ -1269,13 +1161,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             if measurement not in valid_measurements:
                 continue
 
-            if (
-                event_type_mask_per_measurement is not None
-                and measurement in event_type_mask_per_measurement
-            ):
-                event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
-            else:
-                event_mask = batch["event_mask"]
+            event_mask = batch["event_mask"]
 
             measurement_idx = self.config.measurements_idxmap[measurement]
             vocab_start = self.config.vocab_offsets_by_measurement[measurement]
@@ -1326,13 +1212,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             if measurement not in valid_measurements:
                 continue
 
-            if (
-                event_type_mask_per_measurement is not None
-                and measurement in event_type_mask_per_measurement
-            ):
-                event_mask = event_type_mask_per_measurement[measurement] & batch["event_mask"]
-            else:
-                event_mask = batch["event_mask"]
+            event_mask = batch["event_mask"]
 
             measurement_idx = self.config.measurements_idxmap[measurement]
 
@@ -1385,11 +1265,4 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             regression_dists,
             None if is_generation else regression_labels,
             None if is_generation else regression_indices,
-        )
-
-    def get_event_type_mask_per_measurement(
-        self, batch: PytorchBatch
-    ) -> dict[str, torch.BoolTensor | None]:
-        return get_event_type_mask_per_measurement(
-            batch.dynamic_measurement_indices, batch.dynamic_indices, self.config
         )

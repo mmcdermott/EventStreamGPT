@@ -1,4 +1,3 @@
-import warnings
 from typing import Any
 
 import torch
@@ -70,17 +69,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
             + self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
-        if is_generation:
-            if self.config.measurements_per_dep_graph_level[1] != ["event_type"]:
-                event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
-            else:
-                warnings.warn(
-                    "Event type mask per measurement is likely WRONG in generative case!"
-                )
-                event_type_mask_per_measurement = None
-        else:
-            event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
-
         bsz, seq_len, dep_graph_len, _ = encoded.shape
 
         if dep_graph_el_generation_target is not None:
@@ -143,7 +131,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     batch,
                     dep_graph_level_encoded,
                     classification_measurements_in_level,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement,
                 )
                 classification_dists_by_measurement.update(classification_out[1])
                 if not is_generation:
@@ -155,7 +142,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     dep_graph_level_encoded,
                     regression_measurements_in_level,
                     is_generation=is_generation,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement,
                 )
                 regression_dists.update(regression_out[1])
                 if not is_generation:
@@ -201,7 +187,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_indices=regression_indices,
                     time_to_event=None if is_generation else TTE_true,
                 ),
-                "event_type_mask_per_measurement": event_type_mask_per_measurement,
                 "event_mask": batch["event_mask"],
                 "dynamic_values_mask": batch["dynamic_values_mask"],
             }

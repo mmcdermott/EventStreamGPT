@@ -122,13 +122,11 @@ TEST_CONFIG = DatasetConfig(
         "dynamic_preset_vocab": MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-            present_in_event_types=["DPV"],
             vocabulary=Vocabulary(["bar", "foo"], [1, 2]),
         ),
         "dynamic_dropped_insufficient_occurrences": MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-            present_in_event_types=["DDIC"],
         ),
         "static": MeasurementConfig(
             temporality=TemporalityType.STATIC,
@@ -157,7 +155,6 @@ TEST_CONFIG = DatasetConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTIVARIATE_REGRESSION,
             values_column="mrbo_vals",
-            present_in_event_types=["MVR"],
             _measurement_metadata=pd.DataFrame(
                 {
                     "drop_lower_bound": [-1.1, -10.1, None],
@@ -176,7 +173,6 @@ TEST_CONFIG = DatasetConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTIVARIATE_REGRESSION,
             values_column="pvt_vals",
-            present_in_event_types=["MVR"],
             _measurement_metadata=pd.DataFrame(
                 {
                     "value_type": [
@@ -197,7 +193,6 @@ TEST_CONFIG = DatasetConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTIVARIATE_REGRESSION,
             values_column="mrnp_vals",
-            present_in_event_types=["MVR"],
         ),
     },
 )
@@ -616,7 +611,6 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         name="dynamic_preset_vocab",
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-        present_in_event_types=["DPV"],
         vocabulary=Vocabulary(["UNK", "foo", "bar"], [0, 2 / 3, 1 / 3]),
         observation_frequency=1,
     ),
@@ -624,7 +618,6 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         name="dynamic_dropped_insufficient_occurrences",
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.DROPPED,
-        present_in_event_types=["DDIC"],
         observation_frequency=0.5,
     ),
     "static": MeasurementConfig(
@@ -700,7 +693,6 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="mrbo_vals",
-        present_in_event_types=["MVR"],
         _measurement_metadata=pd.DataFrame(
             {
                 "drop_lower_bound": [-1.1, -10.1, None],
@@ -737,7 +729,6 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="pvt_vals",
-        present_in_event_types=["MVR"],
         _measurement_metadata=pd.DataFrame(
             {
                 "value_type": [
@@ -791,7 +782,6 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="mrnp_vals",
-        present_in_event_types=["MVR"],
         observation_frequency=1,
         vocabulary=Vocabulary(
             [

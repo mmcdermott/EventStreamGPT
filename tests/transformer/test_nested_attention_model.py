@@ -237,7 +237,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                 regression_indices=regression_indices,
                 time_to_event=TTE_true,
             ),
-            "event_type_mask_per_measurement": "etmpm",
             "event_mask": "event_mask",
             "dynamic_values_mask": "dynamic_values_mask",
         }
@@ -261,7 +260,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                 regression_indices=None,
                 time_to_event=None,
             ),
-            "event_type_mask_per_measurement": "etmpm",
             "event_mask": "event_mask",
             "dynamic_values_mask": "dynamic_values_mask",
         }
@@ -285,7 +283,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                 regression_indices=None,
                 time_to_event=None,
             ),
-            "event_type_mask_per_measurement": "etmpm",
             "event_mask": "event_mask",
             "dynamic_values_mask": "dynamic_values_mask",
         }
@@ -333,19 +330,16 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                         dummy_batch,
                         default_encoded[:, :, 0, :],
                         {"clf1", "mr1"},
-                        event_type_mask_per_measurement="etmpm",
                     ),
                     call(
                         dummy_batch,
                         default_encoded[:, :, 1, :],
                         {"clf2"},
-                        event_type_mask_per_measurement="etmpm",
                     ),
                     call(
                         dummy_batch,
                         default_encoded[:, :, 2, :],
                         {"clf3", "mr2"},
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "regression_calls": [
@@ -354,21 +348,18 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                         default_encoded[:, :, 0, :],
                         set(),
                         is_generation=False,
-                        event_type_mask_per_measurement="etmpm",
                     ),
                     call(
                         dummy_batch,
                         default_encoded[:, :, 1, :],
                         {"mr1", "ur1"},
                         is_generation=False,
-                        event_type_mask_per_measurement="etmpm",
                     ),
                     call(
                         dummy_batch,
                         default_encoded[:, :, 2, :],
                         {"mr2", "ur2"},
                         is_generation=False,
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "TTE_calls": [
@@ -396,7 +387,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                         dummy_batch,
                         default_encoded[:, :, 0, :],
                         {"clf2"},
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "regression_calls": [
@@ -405,7 +395,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                         default_encoded[:, :, 0, :],
                         {"mr1", "ur1"},
                         is_generation=True,
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "TTE_calls": [],
@@ -446,7 +435,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                     DataModality.UNIVARIATE_REGRESSION: univariate_regression_measures,
                 }
 
-                M.get_event_type_mask_per_measurement = MagicMock(return_value="etmpm")
                 M.get_classification_outputs = MagicMock(return_value=default_classification_out)
                 M.get_regression_outputs = MagicMock(return_value=default_regression_out)
                 M.get_TTE_outputs = MagicMock(return_value=default_TTE_out)
@@ -466,8 +454,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                     got = M(**kwargs)
                     want = GenerativeSequenceModelOutput(**case["want"])
                     self.assertEqual(want, got)
-
-                    M.get_event_type_mask_per_measurement.assert_called_once_with(dummy_batch)
 
                     classification_calls = case.get("classification_calls", [])
                     self.assertNestedCalledWith(M.get_classification_outputs, classification_calls)

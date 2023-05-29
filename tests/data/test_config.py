@@ -280,7 +280,6 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
     def test_to_and_from_dict(self):
         default_dict = {
             "name": None,
-            "present_in_event_types": None,
             "modality": DataModality.SINGLE_LABEL_CLASSIFICATION,
             "temporality": TemporalityType.DYNAMIC,
             "vocabulary": None,

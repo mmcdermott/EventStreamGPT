@@ -716,13 +716,9 @@ class DatasetBase(
                 source_attr = "dynamic_measurements_df"
                 source_id = "measurement_id"
                 if do_only_train:
-                    source_df = self._filter_measurements_df(
-                        event_types=config.present_in_event_types, split="train"
-                    )
+                    source_df = self._filter_measurements_df(split="train")
                 else:
-                    source_df = self._filter_measurements_df(
-                        event_types=config.present_in_event_types
-                    )
+                    source_df = self.dynamic_measurements_df
 
             case TemporalityType.STATIC:
                 source_attr = "subjects_df"
@@ -739,11 +735,6 @@ class DatasetBase(
         return source_attr, source_id, source_df
 
     @TimeableMixin.TimeAs
-    @abc.abstractmethod
-    def _get_valid_event_types(self) -> dict[str, list[str]]:
-        raise NotImplementedError("This method must be implemented by a subclass.")
-
-    @TimeableMixin.TimeAs
     def fit_measurements(self):
         """Fits preprocessing models, variables, and vocabularies over all metadata, including both
         numerical and categorical columns, over the training split.
@@ -752,21 +743,12 @@ class DatasetBase(
         """
         self._is_fit = False
 
-        # Get valid event types per measure
-        event_types_obs_per_measure = self._get_valid_event_types()
-
         for measure, config in self.config.measurement_configs.items():
             if config.is_dropped:
                 continue
 
             self.inferred_measurement_configs[measure] = copy.deepcopy(config)
             config = self.inferred_measurement_configs[measure]
-
-            # Add inferred event type limitations:
-            if (config.temporality == TemporalityType.DYNAMIC) and (
-                config.present_in_event_types is None
-            ):
-                config.present_in_event_types = event_types_obs_per_measure.get(measure, None)
 
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
@@ -993,7 +975,6 @@ class DatasetBase(
 
     @property
     def vocabulary_config(self) -> VocabularyConfig:
-        event_types_per_measurement = {}
         measurements_per_generative_mode = defaultdict(list)
         measurements_per_generative_mode[DataModality.SINGLE_LABEL_CLASSIFICATION].append(
             "event_type"
@@ -1006,11 +987,6 @@ class DatasetBase(
             if cfg.modality == DataModality.MULTIVARIATE_REGRESSION:
                 measurements_per_generative_mode[DataModality.MULTI_LABEL_CLASSIFICATION].append(m)
 
-            if cfg.present_in_event_types is None:
-                event_types_per_measurement[m] = self.event_types
-            else:
-                event_types_per_measurement[m] = list(cfg.present_in_event_types)
-
         return VocabularyConfig(
             vocab_sizes_by_measurement={
                 m: len(idxmap) for m, idxmap in self.measurement_idxmaps.items()
@@ -1019,7 +995,6 @@ class DatasetBase(
             measurements_idxmap=self.unified_measurements_idxmap,
             event_types_idxmap=self.unified_vocabulary_idxmap["event_type"],
             measurements_per_generative_mode=dict(measurements_per_generative_mode),
-            event_types_per_measurement=event_types_per_measurement,
         )
 
     @property
