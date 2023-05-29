@@ -91,22 +91,8 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
     index = torch.zeros(dynamic_indices.shape[0], is_present.sum(-1).max(), device=device).long()
     mask = torch.zeros(dynamic_indices.shape[0], is_present.sum(-1).max(), device=device).bool()
 
-    try:
-        index.index_put_((present_rows, present_cols), present_indices[:, 1])
-        mask.index_put_(
-            (present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool()
-        )
-    except IndexError as e:
-        print(dynamic_indices)
-        print(index)
-        print(present_indices)
-        print(present_rows)
-        print(present_row_change)
-        print(col_counts)
-        print(col_counts * present_row_change)
-        print((col_counts * present_row_change).cummax(0)[0])
-        print(present_cols)
-        raise e
+    index.index_put_((present_rows, present_cols), present_indices[:, 1])
+    mask.index_put_((present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool())
 
     def idx_fn(T: torch.Tensor) -> torch.Tensor:
         return torch.where(
@@ -400,17 +386,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
             )
 
             if mask is not None:
-                try:
-                    mask = mask.unsqueeze(-1).expand_as(indices)
-                    indices = torch.where(mask, indices, 0)
-                    measurement_indices = torch.where(mask, measurement_indices, 0)
-                except RuntimeError:
-                    print(measurement)
-                    print(indices.shape)
-                    print(indices)
-                    print(mask.shape)
-                    print(mask)
-                    raise
+                mask = mask.unsqueeze(-1).expand_as(indices)
+                indices = torch.where(mask, indices, 0)
+                measurement_indices = torch.where(mask, measurement_indices, 0)
 
             dynamic_indices.append(indices)
             dynamic_measurement_indices.append(measurement_indices)
@@ -424,15 +402,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 raise ValueError(f"For {measurement}, expect 1D preds, got {preds.shape}!")
 
             if mask is not None:
-                try:
-                    preds = torch.where(mask, preds, 0)
-                except RuntimeError:
-                    print(measurement)
-                    print(preds.shape)
-                    print(preds)
-                    print(mask.shape)
-                    print(mask)
-                    raise
+                preds = torch.where(mask, preds, 0)
 
             dynamic_values_mask.append(~torch.isnan(preds.unsqueeze(-1)))
             dynamic_values.append(torch.nan_to_num(preds.unsqueeze(-1), nan=0))
