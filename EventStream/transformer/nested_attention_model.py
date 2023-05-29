@@ -71,8 +71,15 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
         )
 
         if is_generation:
-            warnings.warn("Event type mask per measurement is likely WRONG in generative case!")
-        event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
+            if self.config.measurements_per_dep_graph_level[1] != ["event_type"]:
+                event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
+            else:
+                warnings.warn(
+                    "Event type mask per measurement is likely WRONG in generative case!"
+                )
+                event_type_mask_per_measurement = None
+        else:
+            event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
 
         bsz, seq_len, dep_graph_len, _ = encoded.shape
 

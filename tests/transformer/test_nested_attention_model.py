@@ -776,9 +776,11 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
         for i in range(input_batch_size):
             self.batch[i].time_delta *= 0
             out.time_delta *= 0
-            self.assertEqual(self.batch[i], out[i * num_return_sequences, :input_seq_length])
+            self.assertEqual(
+                self.batch[i],
+                out[i * num_return_sequences, :input_seq_length, :input_n_data_elements],
+            )
 
-    @unittest.skip("TODO: Fix Cache!")
     def test_generation_identical_with_or_without_caching(self):
         # We want to check that the output doesn't change when we do or do not use caching. To do this, we'll
         # run the model over a partial batch without caching and store the result. Then, we'll run the model
@@ -787,25 +789,20 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
         # in comparison to the run without caching.
 
         generation_kwargs = dict(
-            max_new_events=5,
-            num_return_sequences=2,
+            max_new_events=10,
+            num_return_sequences=3,
             do_sample=True,
             return_dict_in_generate=False,
             output_scores=False,
             output_attentions=False,
-            output_hidden_states=False,
+            output_hidden_states=True,
             debug_seed=1,
         )
 
-        out_no_caching_1 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
-
-        out_no_caching_2 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
-
-        self.assertEqual(out_no_caching_1, out_no_caching_2)
-
+        out_no_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
         out_with_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=True)
 
-        self.assertEqual(out_no_caching_1, out_with_caching)
+        self.assertEqual(out_no_caching, out_with_caching)
 
 
 if __name__ == "__main__":

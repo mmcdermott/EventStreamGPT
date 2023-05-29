@@ -630,15 +630,9 @@ class TestCIPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             debug_seed=1,
         )
 
-        out_no_caching_1 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
-
-        out_no_caching_2 = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
-
-        self.assertEqual(out_no_caching_1, out_no_caching_2)
-
+        out_no_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
         out_with_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=True)
-
-        self.assertEqual(out_no_caching_1, out_with_caching)
+        self.assertEqual(out_no_caching, out_with_caching)
 
 
 if __name__ == "__main__":

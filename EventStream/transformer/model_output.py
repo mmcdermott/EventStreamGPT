@@ -859,7 +859,6 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, Seed
             time_to_event=self.time_to_event.mode,
         )
 
-    @SeedableMixin.WithSeed
     def sample(
         self,
         event_mask: torch.BoolTensor,
@@ -867,16 +866,34 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, Seed
     ) -> GenerativeSequenceModelSamples:
         """Returns a sample from the nested distributions."""
 
-        if seed is not None:
-            L.seed_everything(seed)
+        out_samples = {
+            "event_mask": event_mask[:, -1].detach(),
+            "regression_indices": self.regression_indices,
+        }
 
-        return GenerativeSequenceModelSamples(
-            event_mask=event_mask[:, -1].detach(),
-            classification={k: v.sample() for k, v in self.classification.items()},
-            regression={k: v.sample() for k, v in self.regression.items()},
-            regression_indices=self.regression_indices,
-            time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
-        )
+        for key in ("classification", "regression", "time_to_event"):
+            val = getattr(self, key)
+
+            if key == "time_to_event":
+                if seed is not None:
+                    L.seed_everything(seed)
+                out_samples[key] = val.sample() if val is not None else None
+            else:
+                out_samples[key] = {}
+                for k, v in val.items():
+                    if seed is not None:
+                        L.seed_everything(seed)
+                    out_samples[key][k] = v.sample()
+
+        return GenerativeSequenceModelSamples(**out_samples)
+
+        # return GenerativeSequenceModelSamples(
+        #    event_mask=event_mask[:, -1].detach(),
+        #    classification={k: v.sample() for k, v in self.classification.items()},
+        #    regression={k: v.sample() for k, v in self.regression.items()},
+        #    regression_indices=self.regression_indices,
+        #    time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
+        # )
 
 
 @dataclass

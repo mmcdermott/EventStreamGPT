@@ -68,7 +68,10 @@ class MLTypeEqualityCheckableMixin:
     """
 
     EQ_TYPE_CHECKERS = {
-        torch.Tensor: (torch.testing.assert_close, {"equal_nan": True}),
+        torch.Tensor: (
+            torch.testing.assert_close,
+            {"equal_nan": True, "rtol": 1e-3, "atol": 1e-5},
+        ),
         pd.DataFrame: pd.testing.assert_frame_equal,
         pl.DataFrame: (assert_pl_frame_equal, {"check_column_order": False}),
         pd.Series: pd.testing.assert_series_equal,

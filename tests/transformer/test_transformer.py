@@ -411,11 +411,11 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
 
         out_iterative_caching = [sliced_out]
         for seq_idx in range(2, self.batch.sequence_length):
+            sliced_batch = copy.deepcopy(source_batch_for_slicing)
+            sliced_batch = sliced_batch[:, seq_idx : seq_idx + 1]
+
             out_iterative_caching_seq = []
             for dep_graph_idx in [1, 2, 0]:
-                sliced_batch = copy.deepcopy(source_batch_for_slicing)
-                sliced_batch = sliced_batch[:, seq_idx : seq_idx + 1]
-
                 sliced_out = self.M(
                     sliced_batch,
                     return_dict=True,

@@ -38,6 +38,22 @@ from .generation_stopping_criteria import MaxLengthCriteria, StoppingCriteriaLis
 logger = logging.getLogger(__name__)
 
 
+def print_debug_info(v: Any) -> str:
+    match v:
+        case None:
+            return "None"
+        case torch.Tensor():
+            return str(v.shape)
+        case dict() as v_dict:
+            els_strs = "\n    ".join(f"{k}: {print_debug_info(v)}" for k, v in v_dict.items())
+            return f"{type(v_dict)} of len {len(v_dict)}\n" f"  Elements:\n" f"    {els_strs}"
+        case (list() | tuple()) as v_list:
+            els_strs = {f"{print_debug_info(v)}" for v in v_list}
+            return f"{type(v_list)} of len {len(v_list)} with elements: {', '.join(els_strs)}"
+        case _:
+            return str(v)
+
+
 @dataclass
 class SampleDecoderOnlyOutput(ModelOutput):
     """Base class for outputs of decoder-only generation models using sampling.
@@ -392,6 +408,7 @@ class StructuredGenerationMixin:
                 return_dict=True,
                 is_generation=True,
             )
+
             model_kwargs = self._update_model_kwargs_for_generation(outputs, model_kwargs)
 
             next_event_preds = outputs.preds.slice((slice(None), -1))
@@ -411,4 +428,5 @@ class StructuredGenerationMixin:
                     self.config,
                     measurements_to_fill=measurements_to_fill,
                 )
+
         return batch, scores, attentions, hidden_states, model_kwargs
