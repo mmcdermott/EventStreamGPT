@@ -618,10 +618,12 @@ class TestCIPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             output_scores=False,
             output_attentions=False,
             output_hidden_states=False,
-            debug_seed=1,
         )
 
+        L.seed_everything(1)
         out_no_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
+
+        L.seed_everything(1)
         out_with_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=True)
         self.assertEqual(out_no_caching, out_with_caching)
 

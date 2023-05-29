@@ -1,7 +1,6 @@
 from dataclasses import asdict, dataclass
 from typing import Any, Union
 
-import lightning as L
 import torch
 from mixins import SeedableMixin
 from transformers.utils import ModelOutput
@@ -733,38 +732,16 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, Seed
     def sample(
         self,
         event_mask: torch.BoolTensor,
-        seed: int | None = None,
     ) -> GenerativeSequenceModelSamples:
         """Returns a sample from the nested distributions."""
 
-        out_samples = {
-            "event_mask": event_mask[:, -1].detach(),
-            "regression_indices": self.regression_indices,
-        }
-
-        for key in ("classification", "regression", "time_to_event"):
-            val = getattr(self, key)
-
-            if key == "time_to_event":
-                if seed is not None:
-                    L.seed_everything(seed)
-                out_samples[key] = val.sample() if val is not None else None
-            else:
-                out_samples[key] = {}
-                for k, v in val.items():
-                    if seed is not None:
-                        L.seed_everything(seed)
-                    out_samples[key][k] = v.sample()
-
-        return GenerativeSequenceModelSamples(**out_samples)
-
-        # return GenerativeSequenceModelSamples(
-        #    event_mask=event_mask[:, -1].detach(),
-        #    classification={k: v.sample() for k, v in self.classification.items()},
-        #    regression={k: v.sample() for k, v in self.regression.items()},
-        #    regression_indices=self.regression_indices,
-        #    time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
-        # )
+        return GenerativeSequenceModelSamples(
+            event_mask=event_mask[:, -1].detach(),
+            classification={k: v.sample() for k, v in self.classification.items()},
+            regression={k: v.sample() for k, v in self.regression.items()},
+            regression_indices=self.regression_indices,
+            time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
+        )
 
 
 @dataclass

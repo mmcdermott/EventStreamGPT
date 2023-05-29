@@ -25,7 +25,6 @@ import warnings
 from dataclasses import dataclass
 from typing import Any
 
-import lightning as L
 import torch
 import torch.distributed as dist
 from transformers.utils import ModelOutput
@@ -177,17 +176,12 @@ class StructuredGenerationMixin:
         output_scores: bool | None = None,
         return_dict_in_generate: bool | None = None,
         synced_gpus: bool | None = False,
-        debug_seed: int | None = None,
         **model_kwargs,
     ) -> SampleDecoderOnlyOutput | PytorchBatch:
         # 1. Set generation parameters if not already defined
         do_sample = do_sample if do_sample is not None else self.config.do_sample
         if not do_sample:
             raise ValueError("Only `do_sample=True` mode is currently supported")
-
-        if debug_seed is not None:
-            print(f"Entering DEBUG mode with seed {debug_seed}")
-            L.seed_everything(debug_seed)
 
         num_return_sequences = (
             num_return_sequences
@@ -306,7 +300,6 @@ class StructuredGenerationMixin:
             batch, scores, attentions, hidden_states, model_kwargs = sample_fn(
                 batch,
                 generated_event_index,
-                debug_seed=debug_seed,
                 **model_kwargs,
             )
 
@@ -346,7 +339,6 @@ class StructuredGenerationMixin:
         self,
         batch: PytorchBatch,
         generated_event_index: int,
-        debug_seed: int | None = None,
         **model_kwargs,
     ) -> tuple[
         PytorchBatch,
@@ -366,7 +358,7 @@ class StructuredGenerationMixin:
         next_event_preds = outputs.preds.slice((slice(None), -1))
 
         # Prediction
-        next_event = next_event_preds.sample(batch.event_mask, seed=debug_seed)
+        next_event = next_event_preds.sample(batch.event_mask)
 
         batch = next_event.append_to_batch(batch, self.config)
         batch = next_event.update_last_event_data(batch, self.config)
@@ -377,7 +369,6 @@ class StructuredGenerationMixin:
         self,
         batch: PytorchBatch,
         generated_event_index: int,
-        debug_seed: int | None = None,
         **model_kwargs,
     ) -> tuple[
         PytorchBatch,
@@ -417,7 +408,7 @@ class StructuredGenerationMixin:
             hidden_states += (outputs.hidden_states,)
 
             # Prediction
-            next_event = next_event_preds.sample(batch.event_mask, seed=debug_seed)
+            next_event = next_event_preds.sample(batch.event_mask)
 
             # update batch for next step
             if measurements_to_fill == {"time"}:

@@ -71,18 +71,19 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
 
         bsz, seq_len, dep_graph_len, _ = encoded.shape
 
-        if dep_graph_el_generation_target is not None:
-            if dep_graph_el_generation_target != 0:
-                if dep_graph_len != 1:
-                    raise ValueError(
-                        f"dep_graph_len ({dep_graph_len}) must be 1 if dep_graph_el_generation_target "
-                        f"is >0 ({dep_graph_el_generation_target})!"
-                    )
-                dep_graph_loop = range(1, 2)
-                do_TTE = False
-            else:
+        if is_generation:
+            if dep_graph_el_generation_target is None or dep_graph_el_generation_target == 0:
                 dep_graph_loop = None
                 do_TTE = True
+            else:
+                if dep_graph_len == 1:
+                    # This case can trigger when use_cache is True.
+                    dep_graph_loop = range(1, 2)
+                else:
+                    dep_graph_loop = range(
+                        dep_graph_el_generation_target, dep_graph_el_generation_target + 1
+                    )
+                do_TTE = False
         else:
             dep_graph_loop = range(1, dep_graph_len)
             do_TTE = True
@@ -219,8 +220,6 @@ class NAPPTForGenerativeSequenceModeling(
     ) -> dict[str, Any]:
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
-            if "dep_graph_el_generation_target" in kwargs:
-                kwargs.pop("dep_graph_el_generation_target")
             return {**kwargs, "batch": batch}
 
         dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)

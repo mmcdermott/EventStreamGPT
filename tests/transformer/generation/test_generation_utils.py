@@ -459,12 +459,9 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     batch = M._expand_inputs_for_generation.return_value
 
                     model_kwargs = case.get("want_model_kwargs", {})
-                    debug_seed = case.get("debug_seed", None)
                     want_sample_calls = []
                     for event in range(want_n_events):
-                        want_sample_calls.append(
-                            call(batch, event, debug_seed=debug_seed, **model_kwargs)
-                        )
+                        want_sample_calls.append(call(batch, event, **model_kwargs))
 
                         if case.get("want_call_sample_CI", False):
                             sample = CI_sample_mocks[event]
@@ -503,12 +500,9 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         M._update_model_kwargs_for_generation = Mock()
 
         batch = MagicMock()
-        debug_seed = 1234
         model_kwargs = {"foo": "bar"}
 
-        got = M._conditionally_independent_sample_event(
-            batch, 0, debug_seed=debug_seed, **model_kwargs
-        )
+        got = M._conditionally_independent_sample_event(batch, 0, **model_kwargs)
 
         M.prepare_inputs_for_generation.assert_called_once_with(batch, **model_kwargs)
         M.assert_called_once_with(prepared=True, return_dict=True, is_generation=True)
@@ -521,7 +515,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         output.preds.slice.assert_called_once_with((slice(None), -1))
         pred = output.preds.slice.return_value
 
-        pred.sample.assert_called_once_with(batch.event_mask, seed=debug_seed)
+        pred.sample.assert_called_once_with(batch.event_mask)
         sample = pred.sample.return_value
 
         sample.append_to_batch.assert_called_once_with(batch, M.config)
@@ -552,10 +546,9 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         )
 
         batch = MagicMock()
-        debug_seed = 1234
         model_kwargs = {"foo": "bar"}
 
-        got = M._nested_attention_sample_event(batch, 0, debug_seed=debug_seed, **model_kwargs)
+        got = M._nested_attention_sample_event(batch, 0, **model_kwargs)
 
         want_measurements_to_fill = [{"time"}, ["foo", "bar"], ["baz"]]
 
@@ -594,7 +587,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             attentions.append(output.attentions)
             hidden_states.append(output.hidden_states)
 
-            pred.sample.assert_called_once_with(batch.event_mask, seed=debug_seed)
+            pred.sample.assert_called_once_with(batch.event_mask)
             sample = pred.sample.return_value
 
             if i == 0:
@@ -637,10 +630,9 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         )
 
         batch = MagicMock()
-        debug_seed = 1234
         model_kwargs = {"foo": "bar"}
 
-        got = M._nested_attention_sample_event(batch, 3, debug_seed=debug_seed, **model_kwargs)
+        got = M._nested_attention_sample_event(batch, 3, **model_kwargs)
 
         want_measurements_to_fill = [{"time"}, ["foo", "bar"], ["baz"]]
 
@@ -670,7 +662,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             attentions.append(output.attentions)
             hidden_states.append(output.hidden_states)
 
-            pred.sample.assert_called_once_with(batch.event_mask, seed=debug_seed)
+            pred.sample.assert_called_once_with(batch.event_mask)
             sample = pred.sample.return_value
 
             if i == 0:

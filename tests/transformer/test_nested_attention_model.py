@@ -367,15 +367,6 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                 ],
             },
             {
-                "msg": (
-                    "Should error in generative mode with dep_graph_el_generation_target > 0 if encoded "
-                    "isn't filtered to only the appropriate dep_graph_el_generation_target elements."
-                ),
-                "is_generation": True,
-                "dep_graph_el_generation_target": 1,
-                "should_raise": ValueError,
-            },
-            {
                 "msg": "Should work in generative mode with dep_graph_el_generation_target > 0.",
                 "is_generation": True,
                 "dep_graph_el_generation_target": 2,
@@ -775,17 +766,19 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
         # in comparison to the run without caching.
 
         generation_kwargs = dict(
-            max_new_events=10,
+            max_new_events=15,
             num_return_sequences=3,
             do_sample=True,
             return_dict_in_generate=False,
             output_scores=False,
             output_attentions=False,
             output_hidden_states=True,
-            debug_seed=1,
         )
 
+        L.seed_everything(1)
         out_no_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=False)
+
+        L.seed_everything(1)
         out_with_caching = self.M.generate(self.batch, **generation_kwargs, use_cache=True)
 
         self.assertEqual(out_no_caching, out_with_caching)
