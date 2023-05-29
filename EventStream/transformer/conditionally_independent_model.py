@@ -15,6 +15,7 @@ from .model_output import (
 from .transformer import (
     ConditionallyIndependentPointProcessTransformer,
     StructuredTransformerPreTrainedModel,
+    expand_mask,
     time_from_deltas,
 )
 
@@ -31,7 +32,7 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             config.structured_event_processing_mode
             != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
         ):
-            raise NotImplementedError(f"{config.structured_event_processing_mode} invalid!")
+            raise ValueError(f"{config.structured_event_processing_mode} invalid!")
 
     def forward(
         self,
@@ -54,35 +55,32 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             + self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
-        event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
-
         # encoded is of shape: (batch size, sequence length, config.hidden_size)
         bsz, seq_len, _ = encoded.shape
         whole_event_encoded = encoded
 
-        # In this case, the whole_event_encoded representation actually is used to predict the next
-        # event's contents, so we need to shift it to be in the right form for predicting things. In
-        # particular, we prepend a vector of zeros to be used to predict the contents of the first event
-        # (excluding the TTE of the first event which is guaranteed to be zero) and we _don't_ predict the
-        # contents of the event after the end of this sequence (as we have no way to judge them). This
-        # plan may bite us during generation, but it preserves the API between the structured and
-        # non-structured versions, where the latter doesn't have any way at all to generate the contents
-        # of the next event after the end of the sequence, as it needs a timepoint embedding to process
-        # that prediction task.
+        # In this case, the whole_event_encoded representation actually is used to predict the next event's
+        # contents, so it is what we want if we are in generative mode, but if we are not in generative mode
+        # then to make it align with the labels we need to shift it to be in the right form. In particular, we
+        # prepend a vector of zeros to be used to predict the contents of the first event (excluding the TTE
+        # of the first event which is guaranteed to be zero) and we _don't_ predict the contents of the event
+        # after the end of this sequence (as we have no way to judge them).
 
-        for_event_contents_prediction = torch.cat(
-            (
-                torch.zeros_like(whole_event_encoded[:, 0, :]).unsqueeze(1),
-                whole_event_encoded[:, :-1, :],
-            ),
-            dim=1,
-        )
+        if is_generation:
+            for_event_contents_prediction = whole_event_encoded
+        else:
+            for_event_contents_prediction = torch.cat(
+                (
+                    torch.zeros_like(whole_event_encoded[:, 0, :]).unsqueeze(1),
+                    whole_event_encoded[:, :-1, :],
+                ),
+                dim=1,
+            )
 
         classification_out = self.get_classification_outputs(
             batch,
             for_event_contents_prediction,
             classification_measurements,
-            event_type_mask_per_measurement=event_type_mask_per_measurement,
         )
         classification_dists_by_measurement.update(classification_out[1])
         if not is_generation:
@@ -94,7 +92,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             for_event_contents_prediction,
             regression_measurements,
             is_generation=is_generation,
-            event_type_mask_per_measurement=event_type_mask_per_measurement,
         )
         regression_dists.update(regression_out[1])
         if not is_generation:
@@ -136,7 +133,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_indices=regression_indices,
                     time_to_event=None if is_generation else TTE_true,
                 ),
-                "event_type_mask_per_measurement": event_type_mask_per_measurement,
                 "event_mask": batch["event_mask"],
                 "dynamic_values_mask": batch["dynamic_values_mask"],
             }
@@ -156,7 +152,7 @@ class CIPPTForGenerativeSequenceModeling(
             config.structured_event_processing_mode
             != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
         ):
-            raise NotImplementedError(f"{config.structured_event_processing_mode} invalid!")
+            raise ValueError(f"{config.structured_event_processing_mode} invalid!")
 
         self.encoder = ConditionallyIndependentPointProcessTransformer(config)
         self.output_layer = ConditionallyIndependentGenerativeOutputLayer(config)
@@ -168,11 +164,13 @@ class CIPPTForGenerativeSequenceModeling(
         self, batch: PytorchBatch, past=None, **kwargs
     ) -> dict[str, Any]:
         # only last sequence element in the batch if past is defined in kwargs
-        batch.time = time_from_deltas(batch.time_delta)
+        batch.time = time_from_deltas(batch)
 
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
             return {**kwargs, "batch": batch}
+
+        seq_attention_mask = expand_mask(batch.event_mask, batch.time_delta.dtype)
 
         dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)
         if dep_graph_el_generation_target is not None:
@@ -193,6 +191,7 @@ class CIPPTForGenerativeSequenceModeling(
 
         return {
             **kwargs,
+            "seq_attention_mask": seq_attention_mask,
             "batch": batch,
             "past": past,
         }

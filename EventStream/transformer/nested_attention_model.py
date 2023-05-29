@@ -16,6 +16,7 @@ from .model_output import (
 from .transformer import (
     NestedAttentionPointProcessTransformer,
     StructuredTransformerPreTrainedModel,
+    expand_mask,
     time_from_deltas,
 )
 
@@ -68,22 +69,21 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
             + self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
-        event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
-
         bsz, seq_len, dep_graph_len, _ = encoded.shape
 
-        if dep_graph_el_generation_target is not None:
-            if dep_graph_el_generation_target != 0:
-                if dep_graph_len != 1:
-                    raise ValueError(
-                        f"dep_graph_len ({dep_graph_len}) must be 1 if dep_graph_el_generation_target "
-                        f"is >0 ({dep_graph_el_generation_target})!"
-                    )
-                dep_graph_loop = range(1, 2)
-                do_TTE = False
-            else:
+        if is_generation:
+            if dep_graph_el_generation_target is None or dep_graph_el_generation_target == 0:
                 dep_graph_loop = None
                 do_TTE = True
+            else:
+                if dep_graph_len == 1:
+                    # This case can trigger when use_cache is True.
+                    dep_graph_loop = range(1, 2)
+                else:
+                    dep_graph_loop = range(
+                        dep_graph_el_generation_target, dep_graph_el_generation_target + 1
+                    )
+                do_TTE = False
         else:
             dep_graph_loop = range(1, dep_graph_len)
             do_TTE = True
@@ -132,7 +132,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     batch,
                     dep_graph_level_encoded,
                     classification_measurements_in_level,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement,
                 )
                 classification_dists_by_measurement.update(classification_out[1])
                 if not is_generation:
@@ -144,7 +143,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     dep_graph_level_encoded,
                     regression_measurements_in_level,
                     is_generation=is_generation,
-                    event_type_mask_per_measurement=event_type_mask_per_measurement,
                 )
                 regression_dists.update(regression_out[1])
                 if not is_generation:
@@ -153,8 +151,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_indices.update(regression_out[3])
 
         if do_TTE:
-            # Now we need to walk through the other elements of the dependency graph (omitting the first
-            # `whole_event_encoded` is of shape (batch size, sequence length, hidden size)
             whole_event_encoded = encoded[:, :, -1, :]
             TTE_LL_overall, TTE_dist, TTE_true = self.get_TTE_outputs(
                 batch,
@@ -192,7 +188,6 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_indices=regression_indices,
                     time_to_event=None if is_generation else TTE_true,
                 ),
-                "event_type_mask_per_measurement": event_type_mask_per_measurement,
                 "event_mask": batch["event_mask"],
                 "dynamic_values_mask": batch["dynamic_values_mask"],
             }
@@ -225,11 +220,10 @@ class NAPPTForGenerativeSequenceModeling(
     ) -> dict[str, Any]:
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
-            if "dep_graph_el_generation_target" in kwargs:
-                kwargs.pop("dep_graph_el_generation_target")
             return {**kwargs, "batch": batch}
 
         dep_graph_el_generation_target = kwargs.get("dep_graph_el_generation_target", None)
+        seq_attention_mask = expand_mask(batch.event_mask, batch.time_delta.dtype)
 
         match past:
             case None:
@@ -244,7 +238,7 @@ class NAPPTForGenerativeSequenceModeling(
                 past = pasts_dict["seq_past"]
 
                 # only last sequence element in the batch if past is defined in kwargs
-                batch.time = time_from_deltas(batch.time_delta)
+                batch.time = time_from_deltas(batch)
                 batch = batch.last_sequence_element_unsqueezed()
 
                 dep_graph_past = pasts_dict["dep_graph_past"]
@@ -263,6 +257,7 @@ class NAPPTForGenerativeSequenceModeling(
             "batch": batch,
             "past": past,
             "dep_graph_past": dep_graph_past,
+            "seq_attention_mask": seq_attention_mask,
         }
 
     def forward(

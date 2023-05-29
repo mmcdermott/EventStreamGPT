@@ -344,14 +344,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
 
         # Per data type
         for measurement, metrics_dict in self.metrics.items():
-            if (results["event_type_mask_per_measurement"] is None) or (
-                measurement not in results["event_type_mask_per_measurement"]
-            ):
-                mask = results["event_mask"]
-            else:
-                mask = (
-                    results["event_mask"] & results["event_type_mask_per_measurement"][measurement]
-                )
+            mask = results["event_mask"]
 
             if not mask.any():
                 continue

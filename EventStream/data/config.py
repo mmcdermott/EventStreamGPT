@@ -409,7 +409,6 @@ class VocabularyConfig(JSONableMixin):
     vocab_offsets_by_measurement: dict[str, int] | None = None
     measurements_idxmap: dict[str, dict[Hashable, int]] | None = None
     measurements_per_generative_mode: dict[DataModality, list[str]] | None = None
-    event_types_per_measurement: dict[str, list[str]] | None = None
     event_types_idxmap: dict[str, int] | None = None
 
     @property
@@ -563,11 +562,6 @@ class MeasurementConfig(JSONableMixin):
             The fraction of valid instances in which this measure is observed. Is set dynamically during
             pre-procesisng, and not specified at construction.
 
-        # Specific to dynamic measures
-        `present_in_event_types` (`Optional[List[str]]`, defaults to `None`):
-            Within which event types this column can be present.
-            If `None`, this column can be present in *all* event types.
-
         # Specific to time-dependent measures
         `functor` (`Optional[TimeDependentFunctor]`, defaults to `None`):
             The functor used to compute the value of a known-time-depedency measure (e.g., Age). Must be None
@@ -616,9 +610,6 @@ class MeasurementConfig(JSONableMixin):
     modality: DataModality | None = None
     observation_frequency: float | None = None
 
-    # Specific to dynamic measures
-    present_in_event_types: list[str] | None = None
-
     # Specific to time-dependent measures
     functor: TimeDependentFunctor | None = None
 
@@ -636,11 +627,6 @@ class MeasurementConfig(JSONableMixin):
         """Checks the internal state of `self` and ensures internal consistency and validity."""
         match self.temporality:
             case TemporalityType.STATIC:
-                if self.present_in_event_types is not None:
-                    raise ValueError(
-                        f"present_in_event_types should be None for {self.temporality} measurements! Got "
-                        f"{self.present_in_event_types}"
-                    )
                 if self.functor is not None:
                     raise ValueError(
                         f"functor should be None for {self.temporality} measurements! Got {self.functor}"
@@ -655,15 +641,16 @@ class MeasurementConfig(JSONableMixin):
                     raise ValueError(
                         f"functor should be None for {self.temporality} measurements! Got {self.functor}"
                     )
+                if self.modality == DataModality.SINGLE_LABEL_CLASSIFICATION:
+                    raise ValueError(
+                        f"{self.modality} on {self.temporality} measurements is not currently supported, as "
+                        "event aggregation can turn single-label tasks into multi-label tasks in a manner "
+                        "that is not currently automatically detected or compensated for."
+                    )
 
             case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
                 if self.functor is None:
                     raise ValueError(f"functor must be set for {self.temporality} measurements!")
-                if self.present_in_event_types is not None:
-                    raise ValueError(
-                        f"present_in_event_types should be None for {self.temporality} measurements! Got "
-                        f"{self.present_in_event_types}"
-                    )
 
                 if self.modality is None:
                     self.modality = self.functor.OUTPUT_MODALITY

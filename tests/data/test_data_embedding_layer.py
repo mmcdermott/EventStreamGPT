@@ -813,7 +813,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                         [
                             [0, 1 / 2, 1 / 2, 1],
-                            [0, 0, 1 / 2, 1 / 2],
+                            [0, 0, 0, 0],
                         ],
                     ]
                 ),
@@ -838,51 +838,6 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                         [
                             [0, 2 / 3, 1 / 3, 1],
-                            [0, 0, 1 / 3, 1 / 3],
-                        ],
-                    ]
-                ),
-            },
-            {
-                "msg": (
-                    "`DataEmbeddingLayer` should produce the correct embedding for a batch of data when "
-                    "static_embedding_mode = StaticEmbeddingMode.CONCAT_ALL."
-                ),
-                "params": {
-                    **valid_params,
-                    "static_embedding_mode": StaticEmbeddingMode.CONCAT_ALL,
-                },
-                "batch": default_batch,
-                "want": torch.Tensor(
-                    [
-                        [
-                            [0, 1, -1, 1, 0, 1, 0, 0],
-                            [0, 0, 0.5, 1, 0, 1, 0, 0],
-                        ],
-                        [
-                            [0, 1, 0, 1, 0, 0, 1, 1],
-                            [0, 0, 0, 0, 0, 0, 1, 1],
-                        ],
-                    ]
-                ),
-            },
-            {
-                "msg": (
-                    "`DataEmbeddingLayer` should produce the correct embedding for a batch of data when "
-                    "static_embedding_mode = StaticEmbeddingMode.PREPEND."
-                ),
-                "params": {**valid_params, "static_embedding_mode": StaticEmbeddingMode.PREPEND},
-                "batch": default_batch,
-                "want": torch.Tensor(
-                    [
-                        [
-                            [0, 1, 0, 0],
-                            [0, 1, -1, 1],
-                            [0, 0, 0.5, 1],
-                        ],
-                        [
-                            [0, 0, 1, 1],
-                            [0, 1, 0, 1],
                             [0, 0, 0, 0],
                         ],
                     ]

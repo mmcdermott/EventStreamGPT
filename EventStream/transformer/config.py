@@ -332,8 +332,6 @@ class StructuredTransformerConfig(PretrainedConfig):
             A map per data type of the integer index corresponding to each vocabulary element.
         measurements_per_generative_mode (`Dict[DataModality, List[str]]`):
             Which measurements (by str name) are generated in which mode.
-        event_types_per_measurement (`Dict[str, List[str]]`, *optional*, defaults to None):
-            Which measurements (by str name) are associated with each event type (by str name).
         event_types_idxmap (`Dict[str, int]`, *optional*, defaults to None):
             A map of the integer index corresponding to each event type.
         measurements_per_dep_graph_level (`List[List[MEAS_INDEX_GROUP_T]]`, *optional*, defaults to None):
@@ -462,7 +460,6 @@ class StructuredTransformerConfig(PretrainedConfig):
         measurement_configs: dict[str, MeasurementConfig] | None = None,
         measurements_idxmap: dict[str, dict[Hashable, int]] | None = None,
         measurements_per_generative_mode: dict[DataModality, list[str]] | None = None,
-        event_types_per_measurement: dict[str, list[str]] | None = None,
         event_types_idxmap: dict[str, int] | None = None,
         measurements_per_dep_graph_level: list[list[MEAS_INDEX_GROUP_T]] | None = None,
         max_seq_len: int = 256,
@@ -514,14 +511,11 @@ class StructuredTransformerConfig(PretrainedConfig):
             measurements_idxmap = {}
         if measurements_per_generative_mode is None:
             measurements_per_generative_mode = {}
-        if event_types_per_measurement is None:
-            event_types_per_measurement = {}
         if event_types_idxmap is None:
             event_types_idxmap = {}
         if measurement_configs is None:
             measurement_configs = {}
 
-        self.event_types_per_measurement = event_types_per_measurement
         self.event_types_idxmap = event_types_idxmap
 
         if measurement_configs:
@@ -562,8 +556,6 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.categorical_embedding_dim = categorical_embedding_dim
         self.numerical_embedding_dim = numerical_embedding_dim
-        if static_embedding_mode in ("prepend", "concat_all"):
-            raise NotImplementedError(f"{static_embedding_mode} mode is not yet supported.")
         self.static_embedding_mode = static_embedding_mode
         self.static_embedding_weight = static_embedding_weight
         self.dynamic_embedding_weight = dynamic_embedding_weight
@@ -870,7 +862,6 @@ class StructuredTransformerConfig(PretrainedConfig):
                     f"{in_generative_mode - in_dep}"
                 )
 
-        self.event_types_per_measurement = dataset.vocabulary_config.event_types_per_measurement
         self.event_types_idxmap = dataset.vocabulary_config.event_types_idxmap
 
         self.vocab_offsets_by_measurement = dataset.vocabulary_config.vocab_offsets_by_measurement

@@ -26,7 +26,8 @@ class StructuredAttention(torch.nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        seq_mask: torch.Tensor | None = None,
+        seq_attention_mask: torch.Tensor | None = None,
+        event_mask: torch.Tensor | None = None,
         seq_module_kwargs: dict[str, Any] | None = None,
         dep_graph_module_kwargs: dict[str, Any] | None = None,
         prepend_graph_with_history_embeddings: bool = True,
@@ -96,26 +97,26 @@ class StructuredAttention(torch.nn.Module):
             )
 
             # However, we don't want to process any padding elements, so we need to filter those out.
-            # To do this, we'll use the seq_mask. It has shape (bsz, seq_len). We'll expand it then re-shape
+            # To do this, we'll use the event_mask. It has shape (bsz, seq_len). We'll expand it then re-shape
             # it in a similar manner as the for_per_event_pooling tensor.
-            if seq_mask is None:
+            if event_mask is None:
                 per_event_all = for_per_event_pooling[:, -1, :]
             else:
-                flat_seq_mask = torch.reshape(seq_mask, (bsz * seq_len,)).bool()
-                for_per_event_pooling_present = for_per_event_pooling[flat_seq_mask, :, :]
+                flat_event_mask = torch.reshape(event_mask, (bsz * seq_len,)).bool()
+                for_per_event_pooling_present = for_per_event_pooling[flat_event_mask, :, :]
                 per_event = for_per_event_pooling_present[:, -1, :]
 
                 per_event_all = torch.zeros(
                     bsz * seq_len, hidden_size, dtype=per_event.dtype, device=per_event.device
                 )
-                per_event_all[flat_seq_mask, :] = per_event
+                per_event_all[flat_event_mask, :] = per_event
 
             per_event_all = torch.reshape(per_event_all, (bsz, seq_len, hidden_size))
 
             # Next, we need to summarize the sequence of pooled event embeddings.
             contextualized_events = self.seq_module(
                 per_event_all,
-                attention_mask=seq_mask,
+                attention_mask=seq_attention_mask,
                 **seq_module_kwargs,
             )
             # Some modules will return extra outputs (e.g., attention weights, past key values, etc.)
@@ -123,6 +124,13 @@ class StructuredAttention(torch.nn.Module):
                 contextualized_events, seq_module_return_kwargs = contextualized_events
             else:
                 seq_module_return_kwargs = None
+
+            if event_mask is not None:
+                contextualized_events = torch.where(
+                    event_mask.unsqueeze(-1).expand_as(contextualized_events),
+                    contextualized_events,
+                    torch.zeros_like(contextualized_events),
+                )
 
             # contextualized_events is of shape (bsz, seq_len, hidden_size)
 
@@ -166,15 +174,15 @@ class StructuredAttention(torch.nn.Module):
             dep_graph_seq = hidden_states
             seq_module_return_kwargs = None
 
-            if seq_mask is not None:
-                flat_seq_mask = torch.reshape(seq_mask, (bsz * seq_len,)).bool()
+            if event_mask is not None:
+                flat_event_mask = torch.reshape(event_mask, (bsz * seq_len,)).bool()
 
         # Now, we need to reshape these so that the dependency graph axis is again the sequence axis, and
         # we also need to drop the padding elements of the sequence once more.
         dep_graph_seq = torch.reshape(dep_graph_seq, (bsz * seq_len, -1, hidden_size))
 
-        if seq_mask is not None:
-            dep_graph_seq = dep_graph_seq[flat_seq_mask, :, :]
+        if event_mask is not None:
+            dep_graph_seq = dep_graph_seq[flat_event_mask, :, :]
 
         dep_graph_out = self.dep_graph_module(
             dep_graph_seq,
@@ -192,7 +200,7 @@ class StructuredAttention(torch.nn.Module):
         # the history embedding from the output.
 
         # Now we need to re-shape it back to the original, respecting the dropped sequence elements.
-        if seq_mask is None:
+        if event_mask is None:
             dep_graph_all = dep_graph_out
         else:
             dep_graph_all = torch.zeros(
@@ -202,7 +210,7 @@ class StructuredAttention(torch.nn.Module):
                 dtype=dep_graph_out.dtype,
                 device=dep_graph_out.device,
             )
-            dep_graph_all[flat_seq_mask, :, :] = dep_graph_out
+            dep_graph_all[flat_event_mask, :, :] = dep_graph_out
 
             if isinstance(dep_graph_module_return_kwargs, dict) and (
                 "present_key_value" in dep_graph_module_return_kwargs
@@ -216,7 +224,7 @@ class StructuredAttention(torch.nn.Module):
                         dtype=present_key_value.dtype,
                         device=present_key_value.device,
                     )
-                    present_key_value_all[flat_seq_mask, ...] = present_key_value
+                    present_key_value_all[flat_event_mask, ...] = present_key_value
                     out_tuple.append(present_key_value_all)
                 dep_graph_module_return_kwargs["present_key_value"] = tuple(out_tuple)
 
