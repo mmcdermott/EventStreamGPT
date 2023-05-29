@@ -52,14 +52,6 @@ MEASUREMENT_CONFIGS = {
             obs_frequencies=[0.1, 0.3, 0.22, 0.2, 0.18],
         ),
     ),
-    "dynamic_single_label_clf": MeasurementConfig(
-        temporality=TemporalityType.DYNAMIC,
-        modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-        vocabulary=Vocabulary(
-            vocabulary=["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
-            obs_frequencies=[0.1, 0.5, 0.4],
-        ),
-    ),
     "dynamic_multi_label_clf": MeasurementConfig(
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
@@ -110,15 +102,8 @@ MEASUREMENT_CONFIGS = {
     ),
 }
 
-EVENT_TYPES_PER_MEASUREMENT = {
-    "dynamic_single_label_clf": ["event_B"],
-    "dynamic_multi_label_clf": ["event_B"],
-    "dynamic_univariate_reg": ["event_B"],
-    "dynamic_multivariate_reg": ["event_B"],
-}
-
 MEASUREMENTS_PER_GEN_MODE = {
-    DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type", "dynamic_single_label_clf"],
+    DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type"],
     DataModality.MULTI_LABEL_CLASSIFICATION: [
         "dynamic_multi_label_clf",
         "dynamic_multivariate_reg",
@@ -132,7 +117,7 @@ MEASUREMENTS_IDXMAP = {
     "unused": 3,
     "age": 4,
     "tod": 5,
-    "dynamic_single_label_clf": 6,
+    "UNUSED": 6,
     "dynamic_multi_label_clf": 7,
     "dynamic_univariate_reg": 8,
     "dynamic_multivariate_reg": 9,
@@ -144,7 +129,6 @@ VOCAB_SIZES_BY_MEASUREMENT = {
     "unused": 1,
     "age": 1,
     "tod": 5,
-    "dynamic_single_label_clf": 3,
     "dynamic_multi_label_clf": 4,
     "dynamic_univariate_reg": 1,
     "dynamic_multivariate_reg": 3,
@@ -155,7 +139,6 @@ VOCAB_OFFSETS_BY_MEASUREMENT = {
     "unused": 6,
     "age": 7,
     "tod": 8,
-    "dynamic_single_label_clf": 13,
     "dynamic_multi_label_clf": 16,
     "dynamic_univariate_reg": 20,
     "dynamic_multivariate_reg": 21,
@@ -170,7 +153,6 @@ UNIFIED_VOCABULARY = {
     "static_clf": ["UNK", "static_clf_1", "static_clf_2"],
     "age": None,
     "tod": ["UNK", "EARLY_AM", "LATE_PM", "AM", "PM"],
-    "dynamic_single_label_clf": ["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
     "dynamic_multi_label_clf": [
         "UNK",
         "dynamic_multi_label_1",
@@ -189,11 +171,6 @@ UNIFIED_IDXMAP = {
     "static_clf": {"UNK": 3, "static_clf_1": 4, "static_clf_2": 5},
     "age": {None: 7},
     "tod": {"UNK": 8, "EARLY_AM": 9, "LATE_PM": 10, "AM": 11, "PM": 12},
-    "dynamic_single_label_clf": {
-        "UNK": 13,
-        "dynamic_single_label_1": 14,
-        "dynamic_single_label_2": 15,
-    },
     "dynamic_multi_label_clf": {
         "UNK": 16,
         "dynamic_multi_label_1": 17,
@@ -294,8 +271,8 @@ BASE_BATCH = {
                     MEASUREMENTS_IDXMAP["age"],
                     MEASUREMENTS_IDXMAP["tod"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
-                    MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                    0,
                 ],
             ],
             [
@@ -343,8 +320,8 @@ BASE_BATCH = {
                     UNIFIED_IDXMAP["age"][None],
                     UNIFIED_IDXMAP["tod"]["AM"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_1"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                    0,
                 ],
             ],
             [
@@ -452,8 +429,8 @@ WANT_APPENDED_BATCH = {
                     MEASUREMENTS_IDXMAP["age"],
                     MEASUREMENTS_IDXMAP["tod"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
-                    MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                    0,
                 ],
                 [MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"], 0, 0, 0, 0],
             ],
@@ -503,8 +480,8 @@ WANT_APPENDED_BATCH = {
                     UNIFIED_IDXMAP["age"][None],
                     UNIFIED_IDXMAP["tod"]["AM"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_1"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                    0,
                 ],
                 [UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["AM"], 0, 0, 0, 0],
             ],
@@ -578,7 +555,6 @@ WANT_APPENDED_BATCH = {
 #     "static_clf": ["UNK", "static_clf_1", "static_clf_2"],
 #     "age": None,
 #     "tod": ["UNK", "EARLY_AM", "LATE_PM", "AM", "PM"],
-#     "dynamic_single_label_clf": ["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
 #     "dynamic_multi_label_clf": [
 #         "UNK",
 #         "dynamic_multi_label_1",
@@ -594,7 +570,6 @@ WANT_APPENDED_BATCH = {
 # }
 CLASSIFICATION = {
     "event_type": torch.LongTensor([1, 1]),
-    "dynamic_single_label_clf": torch.LongTensor([2, 1]),
     "dynamic_multi_label_clf": torch.LongTensor(
         [
             [0, 0, 0, 0],
@@ -622,7 +597,6 @@ WANT_UPDATED_DATA = [
     (
         [
             "event_type",
-            "dynamic_single_label_clf",
             ("dynamic_multivariate_reg", "categorical_only"),
         ],
         {
@@ -632,15 +606,15 @@ WANT_UPDATED_DATA = [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                        0,
                         0,
                     ],
                     [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                        0,
                         0,
                         0,
                     ],
@@ -652,15 +626,15 @@ WANT_UPDATED_DATA = [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
                         UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                        0,
                         0,
                     ],
                     [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["EARLY_AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
+                        0,
                         0,
                         0,
                     ],
@@ -693,7 +667,6 @@ WANT_UPDATED_DATA = [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
                         MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
                         0,
@@ -702,7 +675,6 @@ WANT_UPDATED_DATA = [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
                         MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
@@ -715,7 +687,6 @@ WANT_UPDATED_DATA = [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
                         UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
                         UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
                         0,
@@ -724,7 +695,6 @@ WANT_UPDATED_DATA = [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["EARLY_AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
                         UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
                         UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_1"],
                         UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_3"],
@@ -737,14 +707,12 @@ WANT_UPDATED_DATA = [
                         NEW_EVENT_AGES[0],
                         0,
                         0,
-                        0,
                         0.8,
                         0.5,
                         0,
                     ],
                     [
                         NEW_EVENT_AGES[1],
-                        0,
                         0,
                         0,
                         0.2,
@@ -755,8 +723,8 @@ WANT_UPDATED_DATA = [
             ),
             "dynamic_values_mask": torch.BoolTensor(
                 [
-                    [True, False, False, False, True, True, False],
-                    [True, False, False, False, True, False, False],
+                    [True, False, False, True, True, False],
+                    [True, False, False, True, False, False],
                 ]
             ),
         },
@@ -775,7 +743,6 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
             vocab_sizes_by_measurement=VOCAB_SIZES_BY_MEASUREMENT,
             measurements_idxmap=MEASUREMENTS_IDXMAP,
             measurement_configs=MEASUREMENT_CONFIGS,
-            event_types_per_measurement=EVENT_TYPES_PER_MEASUREMENT,
             event_types_idxmap=EVENT_TYPES_IDXMAP,
         )
         self.samp = GenerativeSequenceModelSamples(
@@ -956,63 +923,6 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
         """Tests that the Model Output Layer constructs given default configuration options."""
         config = StructuredTransformerConfig(**BASE_CONFIG_KWARGS)
         GenerativeOutputLayerBase(config)
-
-    def test_get_event_type_mask_per_measurement(self):
-        config = StructuredTransformerConfig(
-            **{
-                **BASE_CONFIG_KWARGS,
-                "event_types_per_measurement": {
-                    "event_type": ["event_A", "event_B"],
-                    "multi_label_col": ["event_A"],
-                    "regression_col": ["event_B"],
-                },
-            }
-        )
-        batch = PytorchBatch(
-            **{
-                **BASE_BATCH_OUTPUT_LAYER_BASE_TEST,
-                "dynamic_measurement_indices": torch.LongTensor(
-                    [
-                        [
-                            [1, 0, 0, 0, 0, 0],
-                            [1, 2, 0, 0, 0, 0],
-                            [1, 2, 2, 3, 3, 3],
-                        ],
-                    ]
-                ),
-                "dynamic_indices": torch.LongTensor(
-                    [
-                        [
-                            [1, 0, 0, 0, 0, 0],
-                            [2, 5, 0, 0, 0, 0],
-                            [2, 4, 5, 7, 8, 9],
-                        ],
-                    ]
-                ),
-                "event_mask": torch.BoolTensor([[True, True, True]]),
-            }
-        )
-
-        layer = GenerativeOutputLayerBase(config)
-
-        # Recall these are our measurement types
-        # TEST_MEASUREMENTS_IDXMAP = {
-        #     'event_type': 1,
-        #     'multi_label_col': 2,
-        #     'regression_col': 3,
-        # }
-        # And that we have two options for event types:
-        # TEST_EVENT_TYPES_IDXMAP = {
-        #     'event_A': 0,
-        #     'event_B': 1,
-        # }
-        want_masks = {
-            "event_type": torch.BoolTensor([[True, True, True]]),
-            "multi_label_col": torch.BoolTensor([[True, False, False]]),
-            "regression_col": torch.BoolTensor([[False, True, True]]),
-        }
-
-        self.assertNestedDictEqual(want_masks, layer.get_event_type_mask_per_measurement(batch))
 
     def test_get_classification_outputs(self):
         cases = [
@@ -1198,183 +1108,6 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     #   -math.log(1/(1 + math.exp(-6)))
                     # ) = 1.9362804209313096
                     "regression_col": torch.tensor(3.883021699569808),
-                },
-            },
-            {
-                "message": (
-                    "Model should only compute losses over measurement-specific event types when computing "
-                    "losses."
-                ),
-                # Recall these are our measurement types
-                # TEST_MEASUREMENTS_IDXMAP = {
-                #     'event_type': 1,
-                #     'multi_label_col': 2,
-                #     'regression_col': 3,
-                # }
-                # And that we have two options for event types:
-                # TEST_EVENT_TYPES_IDXMAP = {
-                #     'event_A': 0,
-                #     'event_B': 1,
-                # }
-                "config_kwargs": {
-                    "event_types_per_measurement": {
-                        "event_type": ["event_A", "event_B"],
-                        "multi_label_col": ["event_A"],
-                        "regression_col": ["event_B"],
-                    },
-                },
-                "include_event_types_mask": True,
-                "batch": {
-                    **BASE_BATCH_OUTPUT_LAYER_BASE_TEST,
-                    "dynamic_measurement_indices": torch.LongTensor(
-                        [
-                            [
-                                [1, 0, 0, 0, 0, 0],
-                                [1, 2, 0, 0, 0, 0],
-                                [1, 2, 2, 3, 3, 3],
-                            ],
-                        ]
-                    ),
-                    "dynamic_indices": torch.LongTensor(
-                        [
-                            [
-                                [1, 0, 0, 0, 0, 0],
-                                [2, 5, 0, 0, 0, 0],
-                                [2, 4, 5, 7, 8, 9],
-                            ],
-                        ]
-                    ),
-                    "event_mask": torch.BoolTensor([[True, True, True]]),
-                },
-                "encoded": torch.Tensor(
-                    [
-                        [
-                            [0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-                            [0.0, 1.0, 3.0, 5.0, 7.0, 9.0, 2.0, 4.0, 6.0, 0.0],
-                            [0.0, 2.0, 5.0, 8.0, 1.0, 4.0, 7.0, 0.0, 3.0, 6.0],
-                        ],
-                    ]
-                ),
-                "valid_measurements": {"event_type", "multi_label_col", "regression_col"},
-                "want_dists": {
-                    # All dists are of shape batch X seq X vocab size.
-                    "event_type": torch.distributions.Categorical(
-                        logits=torch.FloatTensor(
-                            [
-                                [
-                                    [0.0, 1.0],
-                                    [1.0, 3.0],
-                                    [2.0, 5.0],
-                                ]
-                            ]
-                        )
-                    ),
-                    "multi_label_col": torch.distributions.Bernoulli(
-                        logits=torch.FloatTensor(
-                            [
-                                [
-                                    [2.0, 3.0, 4.0],
-                                    [5.0, 7.0, 9.0],
-                                    [8.0, 1.0, 4.0],
-                                ]
-                            ]
-                        )
-                    ),
-                    "regression_col": torch.distributions.Bernoulli(
-                        logits=torch.FloatTensor(
-                            [
-                                [
-                                    [5.0, 6.0, 7.0, 8.0],
-                                    [2.0, 4.0, 6.0, 0.0],
-                                    [7.0, 0.0, 3.0, 6.0],
-                                ]
-                            ]
-                        )
-                    ),
-                },
-                "want_labels": {
-                    # Labels ignore event_mask, and only respect data mask and dynamic_measurement_indices, so
-                    # these are unchanged from the prior test.
-                    "event_type": torch.LongTensor(
-                        [
-                            [0, 1, 1],
-                        ]
-                    ),
-                    "multi_label_col": torch.FloatTensor(
-                        [
-                            [
-                                [0, 0, 0],
-                                [0, 0, 1],
-                                [0, 1, 1],
-                            ]
-                        ]
-                    ),
-                    "regression_col": torch.FloatTensor(
-                        [
-                            [
-                                [0, 0, 0, 0],
-                                [0, 0, 0, 0],
-                                [0, 1, 1, 1],
-                            ]
-                        ]
-                    ),
-                },
-                # Losses should be modified to ignore the components of the events not valid for that
-                # measurement type.
-                "want_losses": {
-                    # (logits, labels):
-                    #   ([0.0, 1.0], 0), ([1.0, 3.0], 1) [MASKED], ([2.0, 5.0], 1).
-                    # NLL =
-                    # 1/3 * (
-                    #    -math.log(math.exp(0)/(math.exp(0) + math.exp(1))) +
-                    #    -math.log(math.exp(3)/(math.exp(1) + math.exp(3))) +
-                    #    -math.log(math.exp(5)/(math.exp(2) + math.exp(5)))
-                    # ) = 0.49625901671164574
-                    "event_type": torch.tensor(0.49625901671164574),
-                    # (logits, labels):
-                    #   ([2, 3, 4], [0, 0, 0]),
-                    #   WRONG_EVENT_TYPE ([5, 7, 9], [0, 0, 1]),
-                    #   WRONG_EVENT_TYPE ([8, 1, 4], [0, 1, 1])
-                    # NLL =
-                    # 1 * (
-                    #   1/3 * (
-                    #     -math.log(1 - 1/(1 + math.exp(-2)))
-                    #     -math.log(1 - 1/(1 + math.exp(-3)))
-                    #     -math.log(1 - 1/(1 + math.exp(-4)))
-                    #   ) + 0 * ( # WRONG EVENT TYPE
-                    #     -math.log(1 - 1/(1 + math.exp(-5)))
-                    #     -math.log(1 - 1/(1 + math.exp(-7)))
-                    #     -math.log(1/(1 + math.exp(-9)))
-                    #   ) + 0 * ( # WRONG EVENT TYPE
-                    #     -math.log(1 - 1/(1 + math.exp(-8)))
-                    #     -math.log(1/(1 + math.exp(-1)))
-                    #     -math.log(1/(1 + math.exp(-4)))
-                    #   )
-                    # ) = 3.064555096844842
-                    "multi_label_col": torch.tensor(3.064555096844842),
-                    # (logits, labels):
-                    #   WRONG EVENT TYPE([5, 6, 7, 8], [0, 0, 0, 0]),
-                    #   ([2, 4, 6, 0], [0, 0, 0, 0]),
-                    #   ([7, 0, 3, 6], [0, 1, 1, 1])
-                    # NLL =
-                    # 1/2 * (
-                    #   0 * ( # WRONG EVENT TYPE
-                    #     -math.log(1 - 1/(1 + math.exp(-5)))
-                    #     -math.log(1 - 1/(1 + math.exp(-6)))
-                    #     -math.log(1 - 1/(1 + math.exp(-7)))
-                    #     -math.log(1 - 1/(1 + math.exp(-8)))
-                    #   ) + 1/4 * (
-                    #     -math.log(1 - 1/(1 + math.exp(-2)))
-                    #     -math.log(1 - 1/(1 + math.exp(-4)))
-                    #     -math.log(1 - 1/(1 + math.exp(-6)))
-                    #     -math.log(1 - 1/(1 + math.exp(-0)))
-                    #   ) + 1/4 * (
-                    #     -math.log(1 - 1/(1 + math.exp(-7)))
-                    #     -math.log(1/(1 + math.exp(-0)))
-                    #     -math.log(1/(1 + math.exp(-3)))
-                    #     -math.log(1/(1 + math.exp(-6)))
-                    #   ) = 2.573227811047968
-                    "regression_col": torch.tensor(2.573227811047968),
                 },
             },
             {
@@ -1683,22 +1416,11 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     torch.zeros_like(layer.ClassificationLayer.bias)
                 )
 
-                if C.get("include_event_types_mask", False):
-                    event_type_mask_per_measurement = layer.get_event_type_mask_per_measurement(
-                        C["batch"]
-                    )
-                    got_losses, got_dists, got_labels = layer.get_classification_outputs(
-                        batch=C["batch"],
-                        encoded=C["encoded"],
-                        valid_measurements=C["valid_measurements"],
-                        event_type_mask_per_measurement=event_type_mask_per_measurement,
-                    )
-                else:
-                    got_losses, got_dists, got_labels = layer.get_classification_outputs(
-                        batch=C["batch"],
-                        encoded=C["encoded"],
-                        valid_measurements=C["valid_measurements"],
-                    )
+                got_losses, got_dists, got_labels = layer.get_classification_outputs(
+                    batch=C["batch"],
+                    encoded=C["encoded"],
+                    valid_measurements=C["valid_measurements"],
+                )
 
                 self.assertNestedDictEqual(C["want_labels"], got_labels)
                 self.assertNestedDictEqual(C["want_dists"], got_dists)
@@ -2008,146 +1730,6 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                             [
                                 [0, 0, 0, 0, 0, 0],
                                 [0, 0, 0, 0, 0, 0],
-                                [0, 0, 0, 1, 2, 3],
-                            ]
-                        ]
-                    ),
-                },
-            },
-            {
-                # This test is a little wonky as it is including events in cases where they aren't actually
-                # supposed to be possible to measure, but it is still good to validate the functionality is
-                # working.
-                "message": "Model should only include losses over valid event types.",
-                "batch": {
-                    **BASE_BATCH_OUTPUT_LAYER_BASE_TEST,
-                    # Replicated here for clarity
-                    "dynamic_measurement_indices": torch.LongTensor(
-                        [
-                            [
-                                [1, 0, 0, 0, 0, 0],
-                                [1, 2, 3, 3, 0, 0],
-                                [1, 2, 2, 3, 3, 3],
-                            ]
-                        ]
-                    ),
-                    "dynamic_indices": torch.LongTensor(
-                        [
-                            [
-                                [1, 0, 0, 0, 0, 0],
-                                [1, 5, 8, 9, 0, 0],
-                                [2, 4, 5, 7, 8, 9],
-                            ]
-                        ]
-                    ),
-                    "dynamic_values_mask": torch.BoolTensor(
-                        [
-                            [
-                                [False, False, False, False, False, False],
-                                [False, False, True, True, False, False],
-                                [False, False, False, True, True, True],
-                            ]
-                        ]
-                    ),
-                    "dynamic_values": torch.Tensor(
-                        [
-                            [
-                                [0, 0, 0, 0, 0, 0],
-                                [0, 0, 1.1, -1.1, 0, 0],
-                                [0, 0, 0, 1.1, -1.1, 0.0],
-                            ]
-                        ]
-                    ),
-                },
-                # Recall these are our measurement types
-                # TEST_MEASUREMENTS_IDXMAP = {
-                #     'event_type': 1,
-                #     'multi_label_col': 2,
-                #     'regression_col': 3,
-                # }
-                # And that we have two options for event types:
-                # TEST_EVENT_TYPES_IDXMAP = {
-                #     'event_A': 0,
-                #     'event_B': 1,
-                # }
-                "config_kwargs": {
-                    "event_types_per_measurement": {
-                        "event_type": ["event_A", "event_B"],
-                        "multi_label_col": ["event_A"],
-                        "regression_col": ["event_B"],
-                    },
-                },
-                "include_event_types_mask": True,
-                "valid_measurements": {"regression_col"},
-                "encoded": torch.Tensor(
-                    [
-                        [
-                            [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
-                            [1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0],
-                            [2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
-                        ],
-                    ]
-                ),
-                # `rate` is given by torch.nn.elu(layer.proj @ encoded):
-                "want_dists": {
-                    # The parameters are a little weird here, because of how the layer works and because we
-                    # use 0 as an index to indicate "not present" for masked data elements. This, plus the
-                    # gather operation, means that the output parameters will have the parameters for the
-                    # first regression target (index zero) at all masked positions, which causes the odd
-                    # structure here. The only parameters that really matter are in the unmasked data
-                    # positions, which are the last three of the last batch element.
-                    # Further, recall that scale is elu(proj(encoded)) + 1, so there will be a plus one
-                    # modifier here too.
-                    "regression_col": torch.distributions.Normal(
-                        loc=torch.FloatTensor(
-                            [
-                                [
-                                    [0, 0, 0, 0, 0, 0],
-                                    [1, 1, 9, 13, 1, 1],
-                                    [2, 2, 2, 6, 10, 14],
-                                ]
-                            ]
-                        ),
-                        scale=torch.FloatTensor(
-                            [
-                                [
-                                    [2, 2, 2, 2, 2, 2],
-                                    [4, 4, 12, 16, 4, 4],
-                                    [5, 5, 5, 9, 13, 17],
-                                ]
-                            ]
-                        ),
-                    ),
-                },
-                "want_labels": {
-                    "regression_col": torch.FloatTensor(
-                        [
-                            [
-                                [0, 0, 0, 0, 0, 0],
-                                [0, 0, 1.1, -1.1, 0, 0],
-                                [0, 0, 0, 1.1, -1.1, 0.0],
-                            ]
-                        ]
-                    ),
-                },
-                "want_losses": {
-                    # The average NLL over present, valid typed events per patient, then over patients, is
-                    # given as follows (we only process the final event as the former is the wrong type):
-                    # 1/1 * (
-                    #   1/3 * (
-                    #     -math.log(1/(9*math.sqrt(2*math.pi)) * math.exp((-1/2) * ((1.1 - 6)/9)**2))
-                    #     -math.log(1/(13*math.sqrt(2*math.pi)) * math.exp((-1/2) * ((-1.1 - 10)/13)**2))
-                    #     -math.log(1/(17*math.sqrt(2*math.pi)) * math.exp((-1/2) * ((0 - 14)/17)**2))
-                    #   )
-                    # ) = 3.734679909416965
-                    "regression_col": torch.tensor(3.734679909416965),
-                },
-                "want_indices": {
-                    "regression_col": torch.LongTensor(
-                        [
-                            [
-                                [0, 0, 0, 0, 0, 0],
-                                [0, 0, 2, 3, 0, 0],
                                 [0, 0, 0, 1, 2, 3],
                             ]
                         ]
@@ -2525,22 +2107,11 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     torch.zeros_like(layer.regression_layers["regression_col"].proj.bias)
                 )
 
-                if C.get("include_event_types_mask", False):
-                    event_type_mask_per_measurement = layer.get_event_type_mask_per_measurement(
-                        C["batch"]
-                    )
-                    got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
-                        batch=C["batch"],
-                        encoded=C["encoded"],
-                        valid_measurements=C["valid_measurements"],
-                        event_type_mask_per_measurement=event_type_mask_per_measurement,
-                    )
-                else:
-                    got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
-                        batch=C["batch"],
-                        encoded=C["encoded"],
-                        valid_measurements=C["valid_measurements"],
-                    )
+                got_losses, got_dists, got_labels, got_indices = layer.get_regression_outputs(
+                    batch=C["batch"],
+                    encoded=C["encoded"],
+                    valid_measurements=C["valid_measurements"],
+                )
 
                 self.assertNestedDictEqual(C["want_labels"], got_labels, "Labels differ")
                 self.assertNestedDictEqual(C["want_dists"], got_dists, "Distributions differ")

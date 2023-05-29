@@ -1,4 +1,3 @@
-import warnings
 from typing import Any
 
 import torch
@@ -56,10 +55,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             + self.config.measurements_for(DataModality.UNIVARIATE_REGRESSION)
         )
 
-        if is_generation:
-            warnings.warn("Event type mask per measurement is likely WRONG in generative case!")
-        event_type_mask_per_measurement = self.get_event_type_mask_per_measurement(batch)
-
         # encoded is of shape: (batch size, sequence length, config.hidden_size)
         bsz, seq_len, _ = encoded.shape
         whole_event_encoded = encoded
@@ -86,7 +81,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             batch,
             for_event_contents_prediction,
             classification_measurements,
-            event_type_mask_per_measurement=event_type_mask_per_measurement,
         )
         classification_dists_by_measurement.update(classification_out[1])
         if not is_generation:
@@ -98,7 +92,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
             for_event_contents_prediction,
             regression_measurements,
             is_generation=is_generation,
-            event_type_mask_per_measurement=event_type_mask_per_measurement,
         )
         regression_dists.update(regression_out[1])
         if not is_generation:
@@ -140,7 +133,6 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_indices=regression_indices,
                     time_to_event=None if is_generation else TTE_true,
                 ),
-                "event_type_mask_per_measurement": event_type_mask_per_measurement,
                 "event_mask": batch["event_mask"],
                 "dynamic_values_mask": batch["dynamic_values_mask"],
             }

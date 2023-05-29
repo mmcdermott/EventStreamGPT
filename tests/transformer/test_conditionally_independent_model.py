@@ -255,7 +255,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                 regression_indices=regression_indices,
                 time_to_event=TTE_true,
             ),
-            "event_type_mask_per_measurement": "etmpm",
             "event_mask": "event_mask",
             "dynamic_values_mask": "dynamic_values_mask",
         }
@@ -279,7 +278,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                 regression_indices=None,
                 time_to_event=None,
             ),
-            "event_type_mask_per_measurement": "etmpm",
             "event_mask": "event_mask",
             "dynamic_values_mask": "dynamic_values_mask",
         }
@@ -308,7 +306,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                         dummy_batch,
                         shifted_encoded,
                         {"clf1", "mr1", "clf2", "clf3", "mr2"},
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "regression_calls": [
@@ -317,7 +314,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                         shifted_encoded,
                         {"mr1", "ur1", "mr2", "ur2"},
                         is_generation=False,
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "TTE_calls": [call(dummy_batch, default_encoded, is_generation=False)],
@@ -331,7 +327,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                         dummy_batch,
                         default_encoded,
                         {"clf1", "mr1", "clf2", "clf3", "mr2"},
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "regression_calls": [
@@ -340,7 +335,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                         default_encoded,
                         {"mr1", "ur1", "mr2", "ur2"},
                         is_generation=True,
-                        event_type_mask_per_measurement="etmpm",
                     ),
                 ],
                 "TTE_calls": [call(dummy_batch, default_encoded, is_generation=True)],
@@ -361,7 +355,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                     DataModality.UNIVARIATE_REGRESSION: univariate_regression_measures,
                 }
 
-                M.get_event_type_mask_per_measurement = MagicMock(return_value="etmpm")
                 M.get_classification_outputs = MagicMock(return_value=default_classification_out)
                 M.get_regression_outputs = MagicMock(return_value=default_regression_out)
                 M.get_TTE_outputs = MagicMock(return_value=default_TTE_out)
@@ -380,8 +373,6 @@ class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, 
                     got = M(**kwargs)
                     want = GenerativeSequenceModelOutput(**case["want"])
                     self.assertEqual(want, got)
-
-                    M.get_event_type_mask_per_measurement.assert_called_once_with(dummy_batch)
 
                     classification_calls = case.get("classification_calls", [])
                     self.assertNestedCalledWith(M.get_classification_outputs, classification_calls)
