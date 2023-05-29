@@ -113,10 +113,6 @@ class ESDMock(DatasetBase[dict, dict]):
     def build_DL_cached_representation(self):
         self.functions_called["build_DL_cached_representation"].append(())
 
-    def _get_valid_event_types(self) -> dict[str, list[str]]:
-        self.functions_called["_get_valid_event_types"].append(())
-        return {}
-
     def denormalize(self, events_df: dict, col: str) -> dict:
         self.functions_called["denormalize"].append((events_df, col))
         return events_df
@@ -323,7 +319,6 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     def test_get_source_df(self):
         dynamic = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
-            present_in_event_types=["a"],
             modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
         )
         static = MeasurementConfig(
@@ -340,7 +335,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         cases = [
             {
                 "msg": (
-                    "Should filter to the appropriate event types and split and return the measurements df "
+                    "Should filter to the appropriate split and return the measurements df "
                     "when passed a dynamic measurement."
                 ),
                 "config": dynamic,
@@ -350,23 +345,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "want_id": "measurement_id",
                 "want_fn": "_filter_col_inclusion",
                 "want_fn_arg": [
-                    (self.events_df, {"event_type": ["a"], "subject_id": [1, 2, 3]}),
-                    (self.dynamic_measurements_df, {"event_id": [1, 2]}),
-                ],
-            },
-            {
-                "msg": (
-                    "Should filter to the appropriate event types only and return the measurements df "
-                    "when passed a dynamic measurement and do_only_train = False"
-                ),
-                "config": dynamic,
-                "do_only_train": False,
-                "want_attr": "dynamic_measurements_df",
-                "want_df": self.dynamic_measurements_df,
-                "want_id": "measurement_id",
-                "want_fn": "_filter_col_inclusion",
-                "want_fn_arg": [
-                    (self.events_df, {"event_type": ["a"]}),
+                    (self.events_df, {"subject_id": [1, 2, 3]}),
                     (self.dynamic_measurements_df, {"event_id": [1, 2]}),
                 ],
             },
@@ -575,7 +554,6 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 ("retained", partial_retained_config_init, mock_source_df),
                 ("numeric", partial_numeric_config_init, mock_source_df),
             ],
-            "_get_valid_event_types": [()],
         }
         self.assertNestedDictEqual(want_functions_called, self.E.functions_called)
 

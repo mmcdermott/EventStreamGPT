@@ -612,7 +612,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         vocabulary=Vocabulary(["UNK", "foo", "bar"], [0, 2 / 3, 1 / 3]),
-        observation_frequency=1,
+        observation_frequency=9 / 21,
     ),
     "dynamic_dropped_insufficient_occurrences": MeasurementConfig(
         name="dynamic_dropped_insufficient_occurrences",
