@@ -76,7 +76,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         valid_kwargs = [
             dict(
                 temporality=TemporalityType.DYNAMIC,
-                modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+                modality=DataModality.MULTI_LABEL_CLASSIFICATION,
             ),
             dict(
                 temporality=TemporalityType.STATIC,
@@ -103,6 +103,10 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             MeasurementConfig(**kwargs)
 
         invalid_kwargs = [
+            dict(
+                temporality=TemporalityType.DYNAMIC,
+                modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+            ),
             dict(
                 temporality=TemporalityType.STATIC,
                 modality=DataModality.MULTIVARIATE_REGRESSION,
@@ -190,7 +194,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
 
         config = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
-            modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+            modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         )
 
         with self.assertRaises(ValueError):
@@ -280,7 +284,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
     def test_to_and_from_dict(self):
         default_dict = {
             "name": None,
-            "modality": DataModality.SINGLE_LABEL_CLASSIFICATION,
+            "modality": DataModality.MULTI_LABEL_CLASSIFICATION,
             "temporality": TemporalityType.DYNAMIC,
             "vocabulary": None,
             "observation_frequency": None,
@@ -302,7 +306,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 "msg": "Should work when all params are None.",
                 "config": MeasurementConfig(
                     temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+                    modality=DataModality.MULTI_LABEL_CLASSIFICATION,
                 ),
                 "want_dict": {**default_dict},
             },

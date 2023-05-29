@@ -319,7 +319,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
     def test_get_source_df(self):
         dynamic = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
-            modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+            modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         )
         static = MeasurementConfig(
             temporality=TemporalityType.STATIC, modality="single_label_classification"
@@ -442,7 +442,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
 
         base_measurement_config_kwargs = {
             "temporality": TemporalityType.DYNAMIC,
-            "modality": DataModality.SINGLE_LABEL_CLASSIFICATION,
+            "modality": DataModality.MULTI_LABEL_CLASSIFICATION,
         }
 
         retained_config = MeasurementConfig(**base_measurement_config_kwargs)

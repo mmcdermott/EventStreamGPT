@@ -52,14 +52,6 @@ MEASUREMENT_CONFIGS = {
             obs_frequencies=[0.1, 0.3, 0.22, 0.2, 0.18],
         ),
     ),
-    "dynamic_single_label_clf": MeasurementConfig(
-        temporality=TemporalityType.DYNAMIC,
-        modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-        vocabulary=Vocabulary(
-            vocabulary=["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
-            obs_frequencies=[0.1, 0.5, 0.4],
-        ),
-    ),
     "dynamic_multi_label_clf": MeasurementConfig(
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
@@ -111,7 +103,7 @@ MEASUREMENT_CONFIGS = {
 }
 
 MEASUREMENTS_PER_GEN_MODE = {
-    DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type", "dynamic_single_label_clf"],
+    DataModality.SINGLE_LABEL_CLASSIFICATION: ["event_type"],
     DataModality.MULTI_LABEL_CLASSIFICATION: [
         "dynamic_multi_label_clf",
         "dynamic_multivariate_reg",
@@ -125,7 +117,7 @@ MEASUREMENTS_IDXMAP = {
     "unused": 3,
     "age": 4,
     "tod": 5,
-    "dynamic_single_label_clf": 6,
+    "UNUSED": 6,
     "dynamic_multi_label_clf": 7,
     "dynamic_univariate_reg": 8,
     "dynamic_multivariate_reg": 9,
@@ -137,7 +129,6 @@ VOCAB_SIZES_BY_MEASUREMENT = {
     "unused": 1,
     "age": 1,
     "tod": 5,
-    "dynamic_single_label_clf": 3,
     "dynamic_multi_label_clf": 4,
     "dynamic_univariate_reg": 1,
     "dynamic_multivariate_reg": 3,
@@ -148,7 +139,6 @@ VOCAB_OFFSETS_BY_MEASUREMENT = {
     "unused": 6,
     "age": 7,
     "tod": 8,
-    "dynamic_single_label_clf": 13,
     "dynamic_multi_label_clf": 16,
     "dynamic_univariate_reg": 20,
     "dynamic_multivariate_reg": 21,
@@ -163,7 +153,6 @@ UNIFIED_VOCABULARY = {
     "static_clf": ["UNK", "static_clf_1", "static_clf_2"],
     "age": None,
     "tod": ["UNK", "EARLY_AM", "LATE_PM", "AM", "PM"],
-    "dynamic_single_label_clf": ["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
     "dynamic_multi_label_clf": [
         "UNK",
         "dynamic_multi_label_1",
@@ -182,11 +171,6 @@ UNIFIED_IDXMAP = {
     "static_clf": {"UNK": 3, "static_clf_1": 4, "static_clf_2": 5},
     "age": {None: 7},
     "tod": {"UNK": 8, "EARLY_AM": 9, "LATE_PM": 10, "AM": 11, "PM": 12},
-    "dynamic_single_label_clf": {
-        "UNK": 13,
-        "dynamic_single_label_1": 14,
-        "dynamic_single_label_2": 15,
-    },
     "dynamic_multi_label_clf": {
         "UNK": 16,
         "dynamic_multi_label_1": 17,
@@ -287,8 +271,8 @@ BASE_BATCH = {
                     MEASUREMENTS_IDXMAP["age"],
                     MEASUREMENTS_IDXMAP["tod"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
-                    MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                    0,
                 ],
             ],
             [
@@ -336,8 +320,8 @@ BASE_BATCH = {
                     UNIFIED_IDXMAP["age"][None],
                     UNIFIED_IDXMAP["tod"]["AM"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_1"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                    0,
                 ],
             ],
             [
@@ -445,8 +429,8 @@ WANT_APPENDED_BATCH = {
                     MEASUREMENTS_IDXMAP["age"],
                     MEASUREMENTS_IDXMAP["tod"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
-                    MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                     MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                    0,
                 ],
                 [MEASUREMENTS_IDXMAP["age"], MEASUREMENTS_IDXMAP["tod"], 0, 0, 0, 0],
             ],
@@ -496,8 +480,8 @@ WANT_APPENDED_BATCH = {
                     UNIFIED_IDXMAP["age"][None],
                     UNIFIED_IDXMAP["tod"]["AM"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_1"],
-                    UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
                     UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                    0,
                 ],
                 [UNIFIED_IDXMAP["age"][None], UNIFIED_IDXMAP["tod"]["AM"], 0, 0, 0, 0],
             ],
@@ -571,7 +555,6 @@ WANT_APPENDED_BATCH = {
 #     "static_clf": ["UNK", "static_clf_1", "static_clf_2"],
 #     "age": None,
 #     "tod": ["UNK", "EARLY_AM", "LATE_PM", "AM", "PM"],
-#     "dynamic_single_label_clf": ["UNK", "dynamic_single_label_1", "dynamic_single_label_2"],
 #     "dynamic_multi_label_clf": [
 #         "UNK",
 #         "dynamic_multi_label_1",
@@ -587,7 +570,6 @@ WANT_APPENDED_BATCH = {
 # }
 CLASSIFICATION = {
     "event_type": torch.LongTensor([1, 1]),
-    "dynamic_single_label_clf": torch.LongTensor([2, 1]),
     "dynamic_multi_label_clf": torch.LongTensor(
         [
             [0, 0, 0, 0],
@@ -615,7 +597,6 @@ WANT_UPDATED_DATA = [
     (
         [
             "event_type",
-            "dynamic_single_label_clf",
             ("dynamic_multivariate_reg", "categorical_only"),
         ],
         {
@@ -625,15 +606,15 @@ WANT_UPDATED_DATA = [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
+                        0,
                         0,
                     ],
                     [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
+                        0,
                         0,
                         0,
                     ],
@@ -645,15 +626,15 @@ WANT_UPDATED_DATA = [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
                         UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
+                        0,
                         0,
                     ],
                     [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["EARLY_AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
+                        0,
                         0,
                         0,
                     ],
@@ -686,7 +667,6 @@ WANT_UPDATED_DATA = [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
                         MEASUREMENTS_IDXMAP["dynamic_multivariate_reg"],
                         0,
@@ -695,7 +675,6 @@ WANT_UPDATED_DATA = [
                         MEASUREMENTS_IDXMAP["age"],
                         MEASUREMENTS_IDXMAP["tod"],
                         MEASUREMENTS_IDXMAP["event_type"],
-                        MEASUREMENTS_IDXMAP["dynamic_single_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_univariate_reg"],
                         MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
                         MEASUREMENTS_IDXMAP["dynamic_multi_label_clf"],
@@ -708,7 +687,6 @@ WANT_UPDATED_DATA = [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_2"],
                         UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
                         UNIFIED_IDXMAP["dynamic_multivariate_reg"]["dynamic_multivariate_reg_2"],
                         0,
@@ -717,7 +695,6 @@ WANT_UPDATED_DATA = [
                         UNIFIED_IDXMAP["age"][None],
                         UNIFIED_IDXMAP["tod"]["EARLY_AM"],
                         UNIFIED_IDXMAP["event_type"]["event_B"],
-                        UNIFIED_IDXMAP["dynamic_single_label_clf"]["dynamic_single_label_1"],
                         UNIFIED_IDXMAP["dynamic_univariate_reg"][None],
                         UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_1"],
                         UNIFIED_IDXMAP["dynamic_multi_label_clf"]["dynamic_multi_label_3"],
@@ -730,14 +707,12 @@ WANT_UPDATED_DATA = [
                         NEW_EVENT_AGES[0],
                         0,
                         0,
-                        0,
                         0.8,
                         0.5,
                         0,
                     ],
                     [
                         NEW_EVENT_AGES[1],
-                        0,
                         0,
                         0,
                         0.2,
@@ -748,8 +723,8 @@ WANT_UPDATED_DATA = [
             ),
             "dynamic_values_mask": torch.BoolTensor(
                 [
-                    [True, False, False, False, True, True, False],
-                    [True, False, False, False, True, False, False],
+                    [True, False, False, True, True, False],
+                    [True, False, False, True, False, False],
                 ]
             ),
         },

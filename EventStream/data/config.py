@@ -641,6 +641,12 @@ class MeasurementConfig(JSONableMixin):
                     raise ValueError(
                         f"functor should be None for {self.temporality} measurements! Got {self.functor}"
                     )
+                if self.modality == DataModality.SINGLE_LABEL_CLASSIFICATION:
+                    raise ValueError(
+                        f"{self.modality} on {self.temporality} measurements is not currently supported, as "
+                        "event aggregation can turn single-label tasks into multi-label tasks in a manner "
+                        "that is not currently automatically detected or compensated for."
+                    )
 
             case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
                 if self.functor is None:

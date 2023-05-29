@@ -104,7 +104,7 @@ MeasurementConfig.FUNCTORS["AgeFunctorMock"] = AgeFunctorMock
 MeasurementConfig.FUNCTORS["TimeOfDayFunctorMock"] = TimeOfDayFunctorMock
 
 TEST_CONFIG = DatasetConfig(
-    min_valid_column_observations=0.5,
+    min_valid_column_observations=1 / 9,
     min_valid_vocab_element_observations=2,
     min_true_float_frequency=1 / 2,
     min_unique_numerical_observations=0.99,
@@ -117,7 +117,7 @@ TEST_CONFIG = DatasetConfig(
         ),
         "not_present_dropped": MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
-            modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+            modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         ),
         "dynamic_preset_vocab": MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
@@ -126,7 +126,7 @@ TEST_CONFIG = DatasetConfig(
         ),
         "dynamic_dropped_insufficient_occurrences": MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
-            modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
+            modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         ),
         "static": MeasurementConfig(
             temporality=TemporalityType.STATIC,
@@ -612,13 +612,13 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         vocabulary=Vocabulary(["UNK", "foo", "bar"], [0, 2 / 3, 1 / 3]),
-        observation_frequency=9 / 21,
+        observation_frequency=5 / 9,
     ),
     "dynamic_dropped_insufficient_occurrences": MeasurementConfig(
         name="dynamic_dropped_insufficient_occurrences",
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.DROPPED,
-        observation_frequency=0.5,
+        observation_frequency=1 / 9,
     ),
     "static": MeasurementConfig(
         name="static",
@@ -721,7 +721,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
                 ["mrbo1", "mrbo2", "mrbo3"], name="multivariate_regression_bounded_outliers"
             ),
         ),
-        observation_frequency=1,
+        observation_frequency=2 / 9,
         vocabulary=Vocabulary(["UNK", "mrbo1", "mrbo2", "mrbo3"], [0, 1, 1, 1]),
     ),
     "multivariate_regression_preset_value_type": MeasurementConfig(
@@ -761,7 +761,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
                 name="multivariate_regression_preset_value_type",
             ),
         ),
-        observation_frequency=1,
+        observation_frequency=2 / 9,
         vocabulary=Vocabulary(
             [
                 "UNK",
@@ -782,7 +782,7 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="mrnp_vals",
-        observation_frequency=1,
+        observation_frequency=2 / 9,
         vocabulary=Vocabulary(
             [
                 "UNK",
