@@ -2,7 +2,6 @@ from dataclasses import asdict, dataclass
 from typing import Any, Union
 
 import torch
-from mixins import SeedableMixin
 from transformers.utils import ModelOutput
 
 from ..data.data_embedding_layer import MeasIndexGroupOptions
@@ -721,7 +720,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
 
 @dataclass
-class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin, SeedableMixin):
+class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
     """Predictions for the GenerativeSequenceModel head, split by task type."""
 
     classification: dict[str, CATEGORICAL_DIST_T] | None = None
