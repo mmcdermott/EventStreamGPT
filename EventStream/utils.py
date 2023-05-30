@@ -1,3 +1,6 @@
+"""Utility functions for the EventStream library."""
+
+
 from __future__ import annotations
 
 import dataclasses
@@ -340,18 +343,8 @@ class JSONableMixin:
 def task_wrapper(task_func: Callable) -> Callable:
     """Optional decorator that controls the failure behavior when executing the task function.
 
-    It ensures that weights and biases finish tracking any runs that were running, even in the case of an
-    exception, to avoid multi-run failures due to weights and biases errors.
-
-    Example:
-    ```
-    @utils.task_wrapper
-    def train(cfg: DictConfig) -> Tuple[dict, dict]:
-
-        ...
-
-        return metric_dict, object_dict
-    ```
+    It ensures that weights and biases finish tracking any runs that were running, even in the case
+    of an exception, to avoid multi-run failures due to weights and biases errors.
     """
 
     @functools.wraps(task_func)
@@ -377,21 +370,24 @@ def task_wrapper(task_func: Callable) -> Callable:
 
 
 def hydra_dataclass(dataclass: Any) -> Any:
-    """Decorator that allows you to use a dataclass as a hydra config by adding it to the hydra
-    store.
+    """Decorator that allows you to use a dataclass as a hydra config via the `ConfigStore`
 
-    Example:
-    ```
-    @hydra_dataclass
-    class MyConfig:
-        foo: int = 1
-        bar: str = "baz"
+    Adds the decorated dataclass to the
+    [Hydra ConfigStore](https://hydra.cc/docs/tutorials/structured_config/config_store/)
+    as a
+    [StructuredConfig object](https://hydra.cc/docs/tutorials/structured_config/intro/). The name of the
+    stored config in the ConfigStore is the snake case version of the CamelCase class name.
 
-    # Name of the config is the snake case version of the (CamelCase) class name
-    @hydra.main(config_name="my_config")
-    def main(cfg: MyConfig) -> None:
-        print(cfg.foo, cfg.bar)
-    ```
+    Examples:
+        >>> @hydra_dataclass
+        ... class MyConfig:
+        ...     foo: int = 1
+        ...     bar: str = "baz"
+        >>> @hydra.main(config_name="my_config") # snake case of "MyConfig"
+        ... def main(cfg: MyConfig) -> None:
+        ...     print(cfg.foo, cfg.bar)
+        >>> main()
+        1, baz
     """
 
     dataclass = dataclasses.dataclass(dataclass)
