@@ -1,7 +1,6 @@
 # Event-stream Transformer
 
-Contains utilities for building transformer (in particular generative point-processes) models over
-`EventStreamDataset`s.
+Contains utilities for building transformer (in particular generative point-processes) models.
 
 TODO(mmd): Update documentation here.
 

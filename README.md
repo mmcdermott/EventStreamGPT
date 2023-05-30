@@ -11,36 +11,29 @@
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamML/pulls)
 [![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamML.svg)](https://github.com/mmcdermott/EventStreamML/graphs/contributors)
 
-EventStream is a codebase for managing and modeling event stream datasets, which consist of sequences of continuous-time events containing various categorical or continuous measurements. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: EventStreamData, for handling event stream datasets in raw form and with Pytorch for modeling, and EventStreamTransformer, which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, and Lightning wrappers for training these models.
+EventStream is a codebase for managing and modeling \`\`event stream'' datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
 
 ## Installation
 
-Installation can be done via conda with the `env.yml` file:
-
-```
-conda env create -n ${ENV_NAME} -f env.yml
-
-```
-
-The `env.yml` file contains all the necessary dependencies for the system.
+Installation of the requisite packages can be done via conda with the `env.yml` file: `conda env create -n ${ENV_NAME} -f env.yml`
 
 ## Overview
 
 This codebase contains utilities for working with event stream datasets, meaning datasets where any given sample consists of a sequence of continuous-time events. Each event can consist of various categorical or continuous measurements of various structures.
 
-### EventStreamData
+### [`data`](data)
 
 Event stream datasets are represented via a dataframe of events (containing event times, types, and subject ids), subjects (containing subject ids and per-subject static measurements), and per-event dynamic measurements (containing event ids, types, subject ids, and arbitrary metadata columns). Many dynamic measurements can belong to a single event. This class can also take in a functional specification for measurements that can be computed in a fixed manner dependent only on event time and per-subject static data.
 
-An EventStreamDataset can automatically pre-process train-set metadata, learning categorical vocabularies, handling numerical data type conversion, rule-based outlier removal, and training of outlier detection and normalization models.
+A `EventStream.data.Dataset` can automatically pre-process train-set metadata, learning categorical vocabularies, handling numerical data type conversion, rule-based outlier removal, and training of outlier detection and normalization models.
 
-It can also be processed into an EventStreamPytorchDataset, which represents these data via batches.
+It can also be processed into an `EventStream.data.PytorchDataset`, which represents these data via batches.
 
-Please see the EventStreamData `README.md` file for more information.
+Please see the [`data/README.md`](data/README.md) file for more information.
 
-### EventStreamTransformer
+### [`transformer`](transformer)
 
-Functionally, there are three areas of differences between a traditional sequence transformer and an EventStreamTransformer: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
+Functionally, there are three areas of differences between a traditional GPT model and an `EventStream.transformer` model: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
 
 ## Scripts
 
@@ -51,7 +44,7 @@ overrides and local configuration options in `yaml` files.
 ### Pre-training
 
 The script endpoint to launch a pre-training run, with the built in transformer model class here, is in
-[.../scripts/pretrain.py](scripts/pretrain.py). To run this script, simply call it and override its parameters
+[scripts/pretrain.py](scripts/pretrain.py). To run this script, simply call it and override its parameters
 via hydra:
 
 ```bash
@@ -123,7 +116,7 @@ class PretrainConfig:
 #### Hyperparameter Tuning
 
 To launch a weights and biases hyperparameter sweep, you can use the
-[.../scripts/launch_wandb_hp_sweep.py](scripts/launch_wandb_hp_sweep.py) file.
+[scripts/launch_wandb_hp_sweep.py](scripts/launch_wandb_hp_sweep.py) file.
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/launch_wandb_hp_sweep.py \
