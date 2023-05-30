@@ -213,6 +213,10 @@ JSONABLE_INSTANCE_T = TypeVar("JSONABLE_INSTANCE_T", bound="JSONableMixin")
 class JSONableMixin:
     """A simple mixin to enable saving/loading of data container classes to json files.
 
+    This mixin allows easy conversion between python objects and JSON format, facilitating
+    their storage and retrieval. Subclasses must implement a `to_dict` method that
+    defines how the object should be converted to a dictionary.
+
     Todo:
         TODO(mattmcdermott8@gmail.com): Investigate removing in favor of
         [OmegaConf](https://omegaconf.readthedocs.io/en/latest/index.html) throughout. See
@@ -221,26 +225,97 @@ class JSONableMixin:
 
     @classmethod
     def from_dict(cls: type[JSONABLE_INSTANCE_T], as_dict: dict) -> JSONABLE_INSTANCE_T:
-        """Returns a calling-class version of the data presented in `as_dict`.
+        """Converts a dictionary representation of an object into the calling class.
 
         By default, this method simply calls the calling class constructor with the arguments in `as_dict` as
         keyword arguments. Can be overwritten by subclasses for more complex use cases.
 
         Arguments:
-            as_dict: The data with which to instantiate the calling class.
+            as_dict: A dictionary representation of an object.
 
         Returns:
-            An instance of the calling class instantiated with the passed data.
+            An instance of the calling class.
+
+        Examples:
+            >>> class MyData(JSONableMixin):
+            ...     def __init__(self, name):
+            ...         self.name = name
+            >>> MyData.from_dict({'name': 'Test'})
+            MyData(name='Test')
         """
         return cls(**as_dict)
 
     def to_dict(self) -> dict[str, Any]:
+        """Converts the object into a dictionary.
+
+        If the calling object is a `dataclasses.dataclass`, then this method just calls `dataclasses.asdict`.
+        Otherwise, this method needs to be implemented by the subclasses.
+
+        Returns:
+            A dictionary representation of the object.
+
+        Raises:
+            NotImplementedError: If this method is not implemented by the subclass.
+
+        Examples:
+            >>> @dataclasses.dataclass
+            ... class MyData(JSONableMixin):
+            ...     name: str
+            >>> MyData('Test').to_dict()
+            {'name': 'Test'}
+            >>> class MyData(JSONableMixin):
+            ...     def __init__(self, name: str):
+            ...         self.name = name
+            ...     def to_dict(self) -> dict[str, str]:
+            ...         return {"name": self.name}
+            >>> MyData('Test2').to_dict()
+            {'name': 'Test2'}
+            >>> class MyData(JSONableMixin):
+            ...     def __init__(self, name: str):
+            ...         self.name = name
+            >>> MyData('Test2').to_dict()
+            Traceback (most recent call last):
+                ...
+            NotImplementedError: This must be overwritten in non-dataclass derived classes!
+        """
         if dataclasses.is_dataclass(self):
             return dataclasses.asdict(self)
         raise NotImplementedError("This must be overwritten in non-dataclass derived classes!")
 
     def to_json_file(self, fp: Path, do_overwrite: bool = False):
-        """Writes configuration object to a json file as a plain dictionary."""
+        """Writes the object to a json file.
+
+        Serializes the object as JSON and writes it to a file.
+
+        Args:
+            fp: The file path to write the JSON data.
+            do_overwrite: If True, overwrites an existing file at the specified path. Defaults to False.
+
+        Raises:
+            FileExistsError: If the file already exists and do_overwrite is set to False.
+
+        Examples:
+            >>> import dataclasses
+            >>> import tempfile
+            >>> from pathlib import Path
+            >>> @dataclasses.dataclass
+            ... class MyData(JSONableMixin):
+            ...     name: str
+            >>> data = MyData('Test')
+            >>> with tempfile.TemporaryDirectory() as tmp_dir:
+            ... fp = Path(tmp_dir) / 'test.json'
+            ... data.to_json_file(fp, do_overwrite=False)
+            ... with open(fp, mode='r') as f:
+            ...     f.read()
+            {'name': 'Test'}
+            >>> with tempfile.TemporaryDirectory() as tmp_dir:
+            ... fp = Path(tmp_dir) / 'test.json'
+            ... fp.touch()
+            ... data.to_json_file(fp, do_overwrite=False)
+            Traceback (most recent call last):
+                ...
+            FileExistsError: ... exists and do_overwrite = False
+        """
         if (not do_overwrite) and fp.exists():
             raise FileExistsError(f"{fp} exists and do_overwrite = {do_overwrite}")
         with open(fp, mode="w") as f:
@@ -248,8 +323,16 @@ class JSONableMixin:
 
     @classmethod
     def from_json_file(cls: type[JSONABLE_INSTANCE_T], fp: Path) -> JSONABLE_INSTANCE_T:
-        """Build configuration object from contents of `fp` interpreted as a dictionary stored in
-        json."""
+        """Loads the object from a json file.
+
+        Reads a JSON file and converts it into an object of the calling class.
+
+        Args:
+            fp: The file path to read the JSON data.
+
+        Returns:
+            An instance of the calling class.
+        """
         with open(fp) as f:
             return cls.from_dict(json.load(f))
 
@@ -257,11 +340,8 @@ class JSONableMixin:
 def task_wrapper(task_func: Callable) -> Callable:
     """Optional decorator that controls the failure behavior when executing the task function.
 
-    This wrapper can be used to:
-    - make sure loggers are closed even if the task function raises an exception (prevents multirun failure)
-    - save the exception to a `.log` file
-    - mark the run as failed with a dedicated file in the `logs/` folder (so we can find and rerun it later)
-    - etc. (adjust depending on your needs)
+    It ensures that weights and biases finish tracking any runs that were running, even in the case of an
+    exception, to avoid multi-run failures due to weights and biases errors.
 
     Example:
     ```

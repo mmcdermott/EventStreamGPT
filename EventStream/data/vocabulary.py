@@ -22,8 +22,18 @@ NESTED_VOCAB_SEQUENCE = Union[VOCAB_ELEMENT, Sequence["NESTED_VOCAB_SEQUENCE"]]
 
 @dataclasses.dataclass
 class Vocabulary(Generic[VOCAB_ELEMENT]):
-    """Stores a vocabulary of observed elements of a type `VOCAB_ELEMENT`, alongside their relative
-    frequencies."""
+    """Stores a vocabulary of observed elements of type `VOCAB_ELEMENT` ordered by frequency.
+
+    This class represents a vocabulary of observed elements of specifiable type `VOCAB_ELEMENT`. All
+    vocabularies include an "unknown" option, codified as the string `'UNK'`. Upon construction, the
+    vocabulary is sorted in order of decreasing frequency. The vocabulary can also be described for a
+    text-based visual representation of the contained elements and their relative frequency distribution.
+
+    Attributes:
+        vocabulary: The vocabulary, stored as a plain list, beginning with 'UNK' and subsequently proceeding
+            in order of most frequently observed to least frequently observed.
+        obs_frequencies: The observed frequencies of elements of the vocabulary, stored as a plain list.
+    """
 
     # The vocabulary, beginning with 'UNK' and subsequently proceeding in order of most frequently observed to
     # least frequently observed.
