@@ -1245,7 +1245,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         transform_expr = []
         if config.modality == DataModality.MULTIVARIATE_REGRESSION:
             transform_expr.append(
-                pl.when(~pl.col(measure).is_in(list(config.vocabulary.vocab_set)))
+                pl.when(~pl.col(measure).is_in(config.vocabulary.vocabulary))
                 .then(np.NaN)
                 .otherwise(pl.col(config.values_column))
                 .alias(config.values_column)
@@ -1259,7 +1259,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         transform_expr.append(
             pl.when(vocab_el_col.is_null())
             .then(None)
-            .when(~vocab_el_col.is_in(list(config.vocabulary.vocab_set)))
+            .when(~vocab_el_col.is_in(config.vocabulary.vocabulary))
             .then("UNK")
             .otherwise(vocab_el_col)
             .cast(pl.Categorical)

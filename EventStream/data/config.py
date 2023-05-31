@@ -1,3 +1,5 @@
+"""Various configuration classes for EventStream data objects."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -25,10 +27,13 @@ from .time_dependent_functor import AgeFunctor, TimeDependentFunctor, TimeOfDayF
 from .types import DataModality, InputDataType, InputDFType, TemporalityType
 from .vocabulary import Vocabulary
 
+# Represents the type for a column name in a dataframe.
 DF_COL = Union[str, Sequence[str]]
 
+# Represents the type of an input column during pre-processing.
 INPUT_COL_T = Union[InputDataType, tuple[InputDataType, str]]
 
+# A unified type for a schema of an input dataframe.
 DF_SCHEMA = Union[
     # For cases where you specify a list of columns of a constant type.
     tuple[list[DF_COL], INPUT_COL_T],
@@ -45,6 +50,26 @@ DF_SCHEMA = Union[
 
 @dataclasses.dataclass
 class DatasetSchema(JSONableMixin):
+    """Represents the schema of an input dataset, including static and dynamic data sources.
+
+    Contains the information necessary for extracting and pulling input dataset elements during a
+    pre-processing pipeline. Inputs can be represented in either structured (typed) or plain (dictionary)
+    form. There can only be one static schema currently, but arbitrarily many dynamic measurement schemas.
+    During pre-processing the model will read all these dynamic input datasets and combine their outputs into
+    the appropriate format. This can be written to or read from JSON files via the `JSONableMixin` base class
+    methods.
+
+    Attributes:
+        static: The schema for the input dataset containing static (per-subject) information.
+        dynamic: A list of schemas for all dynamic dataset schemas.
+
+    Raises:
+        ValueError: If the static schema is `None` or if there is not a subject ID column specified in the
+            static schema.
+        TypeError: If the passed "static" schema is not typed as a static schema, or if any dynamic schema is
+            typed as a static schema.
+    """
+
     static: dict[str, Any] | InputDFSchema | None = None
     dynamic: list[InputDFSchema | dict[str, Any]] = dataclasses.field(default_factory=list)
 
