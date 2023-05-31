@@ -1,5 +1,2 @@
-# Overview
-
-```{literalinclude} ../README.md
-:language: markdown
+```{include} ../README.md
 ```
