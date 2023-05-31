@@ -11,7 +11,7 @@
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamML/pulls)
 [![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamML.svg)](https://github.com/mmcdermott/EventStreamML/graphs/contributors)
 
-EventStream is a codebase for managing and modeling \`\`event stream'' datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
+EventStream is a codebase for managing and modeling "event stream" datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](EventStream/data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](EventStream/transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
 
 ## Installation
 
@@ -21,7 +21,7 @@ Installation of the requisite packages can be done via conda with the `env.yml` 
 
 This codebase contains utilities for working with event stream datasets, meaning datasets where any given sample consists of a sequence of continuous-time events. Each event can consist of various categorical or continuous measurements of various structures.
 
-### [`data`](data)
+### [`data`](EventStream/data)
 
 Event stream datasets are represented via a dataframe of events (containing event times, types, and subject ids), subjects (containing subject ids and per-subject static measurements), and per-event dynamic measurements (containing event ids, types, subject ids, and arbitrary metadata columns). Many dynamic measurements can belong to a single event. This class can also take in a functional specification for measurements that can be computed in a fixed manner dependent only on event time and per-subject static data.
 
@@ -29,9 +29,9 @@ A `EventStream.data.Dataset` can automatically pre-process train-set metadata, l
 
 It can also be processed into an `EventStream.data.PytorchDataset`, which represents these data via batches.
 
-Please see the [`data/README.md`](data/README.md) file for more information.
+Please see the [`data/README.md`](EventStream/data/README.md) file for more information.
 
-### [`transformer`](transformer)
+### [`transformer`](EventStream/transformer)
 
 Functionally, there are three areas of differences between a traditional GPT model and an `EventStream.transformer` model: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
 
