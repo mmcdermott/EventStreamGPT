@@ -7,15 +7,25 @@ import torch
 
 from ...data.pytorch_dataset import PytorchDataset
 from ..config import StructuredEventProcessingMode, StructuredTransformerConfig
-from ..stream_classification_lightning import FinetuneConfig
-from ..transformer import StructuredTransformer, StructuredTransformerPreTrainedModel
+from ..transformer import (
+    ConditionallyIndependentPointProcessTransformer,
+    NestedAttentionPointProcessTransformer,
+    StructuredTransformerPreTrainedModel,
+)
 from ..utils import safe_masked_max, safe_weighted_avg
+from .fine_tuning import FinetuneConfig
 
 
 class EmbeddingsOnlyModel(StructuredTransformerPreTrainedModel):
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__(config)
-        self.encoder = StructuredTransformer(config)
+        if (
+            self.config.structured_event_processing_mode
+            == StructuredEventProcessingMode.NESTED_ATTENTION
+        ):
+            self.encoder = NestedAttentionPointProcessTransformer(config=config)
+        else:
+            self.encoder = ConditionallyIndependentPointProcessTransformer(config)
 
     def forward(self, *args, **kwargs):
         return self.encoder(*args, **kwargs)

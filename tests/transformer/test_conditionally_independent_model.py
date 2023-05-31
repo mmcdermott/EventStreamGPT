@@ -566,12 +566,16 @@ class TestCIPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             want_time_delta = self.batch[i].time_delta
             got_time_delta = out[i * num_return_sequences, :input_seq_length].time_delta
 
-            self.assertEqual(want_time_delta[:-1], got_time_delta[:-1])
+            self.assertEqual(want_time_delta[:-1], got_time_delta[:-1], "Time deltas differ!")
 
         for i in range(input_batch_size):
             self.batch[i].time_delta *= 0
             out.time_delta *= 0
-            self.assertEqual(self.batch[i], out[i * num_return_sequences, :input_seq_length])
+            self.assertEqual(
+                self.batch[i],
+                out[i * num_return_sequences, :input_seq_length, :input_n_data_elements],
+                "Values differ!",
+            )
 
     def test_generation_seed_dependent(self):
         generation_kwargs = dict(

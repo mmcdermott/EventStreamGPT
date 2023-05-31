@@ -25,12 +25,13 @@ from torchmetrics.classification import (
 from ...data.pytorch_dataset import PytorchDataset
 from ...data.types import PytorchBatch
 from ...utils import task_wrapper
-from ..config import StructuredTransformerConfig
-from ..model import ESTForGenerativeSequenceModeling
+from ..conditionally_independent_model import CIPPTForGenerativeSequenceModeling
+from ..config import StructuredEventProcessingMode, StructuredTransformerConfig
 from ..model_output import StreamClassificationModelOutput
-from ..stream_classification_lightning import FinetuneConfig
+from ..nested_attention_model import NAPPTForGenerativeSequenceModeling
 from ..utils import safe_weighted_avg, str_summary
 from ..zero_shot_labeler import Labeler
+from .fine_tuning import FinetuneConfig
 
 
 class ESTForZeroShotClassificationLM(L.LightningModule):
@@ -77,8 +78,15 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
 
         if pretrained_weights_fp is None:
             raise ValueError("pretrained_weights_fp must be specified")
+        elif (
+            self.config.structured_event_processing_mode
+            == StructuredEventProcessingMode.NESTED_ATTENTION
+        ):
+            self.model = NAPPTForGenerativeSequenceModeling.from_pretrained(
+                pretrained_weights_fp, config=config
+            )
         else:
-            self.model = ESTForGenerativeSequenceModeling.from_pretrained(
+            self.model = CIPPTForGenerativeSequenceModeling.from_pretrained(
                 pretrained_weights_fp, config=config
             )
 

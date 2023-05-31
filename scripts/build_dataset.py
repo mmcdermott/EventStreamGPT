@@ -174,13 +174,15 @@ def main(cfg: DictConfig):
                     f"and input_df {source_schema['input_df']} at once!"
                 )
             match source_schema["query"]:
-                case str() as query_str:
+                case str() | list() as query:
                     if not connection_uri:
                         raise ValueError(
                             "If providing a query string, must provide a connection_uri!"
                         )
+                    if type(query) is list:
+                        query = tuple(query)
                     input_schema_kwargs["input_df"] = Query(
-                        query=query_str, connection_uri=connection_uri
+                        query=query, connection_uri=connection_uri
                     )
                 case dict() as query_kwargs:
                     if "connection_uri" not in query_kwargs:

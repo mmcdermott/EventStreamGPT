@@ -353,7 +353,9 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                 if task_type in self.CLASSIFICATION and self.metrics_config.do_log(
                     split, MetricCategories.CLASSIFICATION
                 ):
-                    preds = results["preds"]["classification"][measurement].logits
+                    # For now, we ignore the is_observed distribution (the first element of the below tuple).
+                    _, sample_dist = results["preds"]["classification"][measurement]
+                    preds = sample_dist.logits
                     labels = results["labels"]["classification"][measurement]
 
                     # We need to filter these down to just those corresponding to observed events. Note that
@@ -423,7 +425,8 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                     # Like above, the assumption here is that preds and labels correspond to predictions for
                     # and labels of the events at their indexed position; not for the subsequent event. So we
                     # don't need to shift `results['event_mask']` here to account for that.
-                    dist = results["preds"]["regression"][measurement]
+                    # We ignore the is observed distribution here.
+                    _, dist = results["preds"]["regression"][measurement]
                     preds = dist.sample()[mask]
                     labels = results["labels"]["regression"][measurement][mask]
 

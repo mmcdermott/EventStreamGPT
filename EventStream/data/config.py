@@ -1,3 +1,5 @@
+"""Various configuration classes for EventStream data objects."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -25,10 +27,13 @@ from .time_dependent_functor import AgeFunctor, TimeDependentFunctor, TimeOfDayF
 from .types import DataModality, InputDataType, InputDFType, TemporalityType
 from .vocabulary import Vocabulary
 
+# Represents the type for a column name in a dataframe.
 DF_COL = Union[str, Sequence[str]]
 
+# Represents the type of an input column during pre-processing.
 INPUT_COL_T = Union[InputDataType, tuple[InputDataType, str]]
 
+# A unified type for a schema of an input dataframe.
 DF_SCHEMA = Union[
     # For cases where you specify a list of columns of a constant type.
     tuple[list[DF_COL], INPUT_COL_T],
@@ -45,6 +50,26 @@ DF_SCHEMA = Union[
 
 @dataclasses.dataclass
 class DatasetSchema(JSONableMixin):
+    """Represents the schema of an input dataset, including static and dynamic data sources.
+
+    Contains the information necessary for extracting and pulling input dataset elements during a
+    pre-processing pipeline. Inputs can be represented in either structured (typed) or plain (dictionary)
+    form. There can only be one static schema currently, but arbitrarily many dynamic measurement schemas.
+    During pre-processing the model will read all these dynamic input datasets and combine their outputs into
+    the appropriate format. This can be written to or read from JSON files via the `JSONableMixin` base class
+    methods.
+
+    Attributes:
+        static: The schema for the input dataset containing static (per-subject) information.
+        dynamic: A list of schemas for all dynamic dataset schemas.
+
+    Raises:
+        ValueError: If the static schema is `None` or if there is not a subject ID column specified in the
+            static schema.
+        TypeError: If the passed "static" schema is not typed as a static schema, or if any dynamic schema is
+            typed as a static schema.
+    """
+
     static: dict[str, Any] | InputDFSchema | None = None
     dynamic: list[InputDFSchema | dict[str, Any]] = dataclasses.field(default_factory=list)
 
@@ -88,6 +113,75 @@ class DatasetSchema(JSONableMixin):
 
 @dataclasses.dataclass
 class InputDFSchema(JSONableMixin):
+    """The schema for one input DataFrame.
+
+    Dataclass that defines the schema for an input DataFrame. It verifies the provided attributes
+    during the post-initialization stage, and raises exceptions if mandatory attributes are missing or
+    if any inconsistencies are found. It stores sufficient data to extract subject IDs;
+    produce event or range timestamps; extract, rename, and convert columns; and filter data.
+
+    Attributes:
+        input_df: DataFrame input. This can take on many types, including an actual dataframe, a query to a
+            database, or a path to a dataframe stored on disk. Mandatory attribute.
+        type: Type of the input data. Possible values are InputDFType.STATIC, InputDFType.EVENT,
+            or InputDFType.RANGE. Mandatory attribute.
+        event_type: What categorical event_type should be assigned to events sourced from this input
+            dataframe? For events, must be only a single string, or for ranges can either be a single string
+            or a tuple of strings indicating event type names for start, start == stop, and stop events. If
+            the string starts with "COL:" then the remaining portion of the string will be interpreted as a
+            column name in the input from which the event type should be read. Otherwise it will be
+            intrepreted as a literal event_type category name.
+        subject_id_col: The name of the column containing the subject ID.
+        ts_col: Column name containing timestamp for events.
+        start_ts_col: Column name containing start timestamp for ranges.
+        end_ts_col: Column name containing end timestamp for ranges.
+        ts_format: String format of the timestamp in ts_col.
+        start_ts_format: String format of the timestamp in start_ts_col.
+        end_ts_format: String format of the timestamp in end_ts_col.
+        data_schema: Schema of the input data.
+        start_data_schema: Schema of the start data in a range. If unspecified for a range, will fall back on
+            data_schema.
+        end_data_schema: Schema of the end data in a range. If unspecified for a range, will fall back on
+            data_schema.
+        must_have: List of mandatory columns or filters to apply, as a mapping from column name to filter to
+            apply. The filter can either be `True`, in which case the column simply must have a non-null
+            value, or a list of options, in which case the column must take on one of those values for the row
+            to be included.
+
+    Raises:
+        ValueError: If mandatory attributes (input_df, type) are not provided, or if inconsistencies
+            are found in the attributes based on the input data type.
+        TypeError: If attributes are of the wrong type.
+
+    Examples:
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Must set subject_id_col for static source!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
+        ...     subject_id_col='subj_id',
+        ... )
+        >>> S.is_static
+        True
+        >>> S.columns_to_load
+        []
+        >>> S.unified_schema
+        {}
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.parquet",
+        ...     type=InputDFType.RANGE,
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory range parameter event_type!
+        >>>
+    """
+
     input_df: Any | None = None
 
     type: InputDFType | None = None
@@ -109,6 +203,7 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def is_static(self):
+        """Returns True if and only if the input data type is static."""
         return self.type == InputDFType.STATIC
 
     def __post_init__(self):
@@ -235,6 +330,15 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def columns_to_load(self) -> list[tuple[str, InputDataType]]:
+        """Computes the columns to be loaded based on the input data type and schema.
+
+        Returns:
+            A list of tuples of column names and desired types for the columns to be loaded from the input
+            dataframe.
+
+        Raises:
+            ValueError: If any of the column definitions are invalid or repeated.
+        """
         columns_to_load = {}
 
         match self.type:
@@ -282,6 +386,14 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def unified_schema(self) -> dict[str, tuple[str, InputDataType]]:
+        """Computes the unified schema based on the input data type and data schema.
+
+        Returns:
+            A unified schema mapping from output column names to input column names and types.
+
+        Raises:
+            ValueError: If the type attribute of the calling object is invalid.
+        """
         match self.type:
             case InputDFType.EVENT | InputDFType.STATIC:
                 return self.unified_event_schema
@@ -405,6 +517,24 @@ class InputDFSchema(JSONableMixin):
 
 @dataclasses.dataclass
 class VocabularyConfig(JSONableMixin):
+    """Dataclass that describes the vocabulary of a dataset, for initializing model parameters.
+
+    This does not configure a vocabulary, but rather describes the vocabulary learned during dataset
+    pre-processing for an entire dataset. This description includes the sizes of all per-measurement
+    vocabularies (where measurements without a vocabulary, such as univariate regression measurements) are
+    omitted as their vocabularies have size 1, vocabulary offsets per measurement, which detail how the
+    various vocabularies are stuck together to form a unified vocabulary, the indices of each global
+    measurement type, the generative modes used by each measurement, and the event type indices.
+
+    Attributes:
+        vocab_sizes_by_measurement: A dictionary mapping measurements to their respective vocabulary sizes.
+        vocab_offsets_by_measurement: A dictionary mapping measurements to their respective vocabulary
+            offsets.
+        measurements_idxmap: A dictionary mapping measurements to their integer indices.
+        measurements_per_generative_mode: A dictionary mapping data modality to a list of measurements.
+        event_types_idxmap: A dictionary mapping event types to their respective indices.
+    """
+
     vocab_sizes_by_measurement: dict[str, int] | None = None
     vocab_offsets_by_measurement: dict[str, int] | None = None
     measurements_idxmap: dict[str, dict[Hashable, int]] | None = None
@@ -413,6 +543,21 @@ class VocabularyConfig(JSONableMixin):
 
     @property
     def total_vocab_size(self) -> int:
+        """Returns the total vocab size of the vocabulary described here.
+
+        The total vocabulary size is the sum of (1) all the individual measurement vocabularies' sizes, (2)
+        any offset the global vocabulary has from 0, to account for padding indices, and (3) any measurements
+        who have length-1 vocabularies (which are not included in `vocab_sizes_by_measurement`) as is
+        reflected by elements in the vocab offsets dictionary that aren't in the vocab sizes dictionary.
+
+        Examples:
+            >>> config = VocabularyConfig(
+            ...     vocab_sizes_by_measurement={"measurement1": 10, "measurement2": 3},
+            ...     vocab_offsets_by_measurement={"measurement1": 5, "measurement2": 15, "measurement3": 18}
+            ... )
+            >>> config.total_vocab_size
+            19
+        """
         return (
             sum(self.vocab_sizes_by_measurement.values())
             + min(self.vocab_offsets_by_measurement.values())
@@ -421,11 +566,34 @@ class VocabularyConfig(JSONableMixin):
 
 
 class SeqPaddingSide(StrEnum):
+    """Enumeration for the side of sequence padding during PyTorch Batch construction.
+
+    As a `StrEnum`, all values are equivalent to their lowercase string forms (e.g., RIGHT == 'right').
+
+    Values:
+        RIGHT: Pad on the right side (at the end of the sequence). This is the default during normal training.
+        LEFT: Pad on the left side (at the beginning of the sequence). This is the default during generation.
+    """
+
     RIGHT = enum.auto()
     LEFT = enum.auto()
 
 
 class SubsequenceSamplingStrategy(StrEnum):
+    """Enumeration for subsequence sampling strategies.
+
+    When the maximum allowed sequence length for a PyTorchDataset is shorter than the sequence length of a
+    subject's data, this enumeration dictates how we sample a subsequence to include. As a `StrEnum`, all
+    values are equivalent to their lowercase string forms (e.g., RIGHT == 'right').
+
+    Values:
+        TO_END: Sample subsequences of the maximum length up to the end of the permitted window. This is the
+            default during fine-tuning and with task dataframes.
+        FROM_START: Sample subsequences of the maximum length from the start of the permitted window.
+        RANDOM: Sample subsequences of the maximum length randomly within the permitted window. This is the
+            default during pre-training.
+    """
+
     TO_END = enum.auto()
     FROM_START = enum.auto()
     RANDOM = enum.auto()
@@ -433,19 +601,55 @@ class SubsequenceSamplingStrategy(StrEnum):
 
 @hydra_dataclass
 class PytorchDatasetConfig(JSONableMixin):
-    """Configuration options for building a PyTorch dataset from an `Dataset`.
+    """Configuration options for building a PyTorch dataset from a `Dataset`.
 
-    Args:
-        `max_seq_len` (`int`):
-            Captures the maximum sequence length the pytorch dataset should output in any individual item.
-            Note that batche are _not_ universally normalized to have this sequence length --- it is a
-            maximum, so individual batches can have shorter sequence lengths in practice.
-        `min_seq_len` (`int`):
-            Only include subjects with at least this many events in the raw data.
-        `seq_padding_side` (`str`, defaults to `'right'`):
-            Whether to pad smaller sequences on the right (default) or the left (used for generation).
-        `do_produce_static_data` (`bool`):
-            Whether or not to produce static data when processing the dataset.
+    This is the main configuration object for a `PytorchDataset`. The `PytorchDataset` class specializes the
+    representation of the data in a base `Dataset` class for sequential deep learning. This dataclass is also
+    an acceptable [Hydra Structured Config](https://hydra.cc/docs/tutorials/structured_config/intro/) object
+    with the name "pytorch_dataset_config".
+
+    Attributes:
+        save_dir: Directory where the base dataset, including the deep learning representation outputs, is
+            saved.
+        max_seq_len: Maximum sequence length the dataset should output in any individual item.
+        min_seq_len: Minimum sequence length required to include a subject in the dataset.
+        seq_padding_side: Whether to pad smaller sequences on the right or the left.
+        subsequence_sampling_strategy: Strategy for sampling subsequences when an individual item's total
+            sequence length in the raw data exceeds the maximum allowed sequence length.
+        train_subset_size: If the training data should be subsampled randomly, this specifies the size of the
+            training subset. If `None` or "FULL", then the full training data is used.
+        train_subset_seed: If the training data should be subsampled randomly, this specifies the seed for
+            that random subsampling. Should be None if train_subset_size is None or "FULL".
+        task_df_name: If the raw dataset should be limited to a task dataframe view, this specifies the name
+            of the task dataframe, and indirectly the path on disk from where that task dataframe will be
+            read (save_dir / "task_dfs" / f"{task_df_name}.parquet").
+        do_include_start_time_min: Whether or not to include the start time of the individual's sequence in
+            minutes since the epoch (1/1/1970) in the output data. This is necessary during generation, and
+            not used anywhere else currently.
+
+    Raises:
+        ValueError: If 'seq_padding_side' is not a valid value; If 'min_seq_len' is not a non-negative
+            integer; If 'max_seq_len' is not an integer greater or equal to 'min_seq_len'; If
+            'train_subset_seed' is not None when 'train_subset_size' is None or 'FULL'; If 'train_subset_size'
+            is negative when it's an integer; If 'train_subset_size' is not within (0, 1) when it's a float.
+        TypeError: If 'train_subset_size' is of unrecognized type.
+
+    Examples:
+        >>> config = PytorchDatasetConfig(
+        ...     save_dir='./dataset',
+        ...     max_seq_len=256,
+        ...     min_seq_len=2,
+        ...     seq_padding_side=SeqPaddingSide.RIGHT,
+        ...     subsequence_sampling_strategy=SubsequenceSamplingStrategy.RANDOM,
+        ...     train_subset_size="FULL",
+        ...     train_subset_seed=None,
+        ...     task_df_name=None,
+        ...     do_include_start_time_min=False
+        ... )
+        >>> config_dict = config.to_dict()
+        >>> new_config = PytorchDatasetConfig.from_dict(config_dict)
+        >>> config == new_config
+        True
     """
 
     save_dir: Path = omegaconf.MISSING
