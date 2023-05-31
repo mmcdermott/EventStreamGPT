@@ -113,6 +113,47 @@ class DatasetSchema(JSONableMixin):
 
 @dataclasses.dataclass
 class InputDFSchema(JSONableMixin):
+    """The schema for one input DataFrame.
+
+    Dataclass that defines the schema for an input DataFrame. It verifies the provided attributes
+    during the post-initialization stage, and raises exceptions if mandatory attributes are missing or
+    if any inconsistencies are found. It stores sufficient data to extract subject IDs;
+    produce event or range timestamps; extract, rename, and convert columns; and filter data.
+
+    Attributes:
+        input_df: DataFrame input. This can take on many types, including an actual dataframe, a query to a
+            database, or a path to a dataframe stored on disk. Mandatory attribute.
+        type: Type of the input data. Possible values are InputDFType.STATIC, InputDFType.EVENT,
+            or InputDFType.RANGE. Mandatory attribute.
+        event_type: What categorical event_type should be assigned to events sourced from this input
+            dataframe? For events, must be only a single string, or for ranges can either be a single string
+            or a tuple of strings indicating event type names for start, start == stop, and stop events. If
+            the string starts with "COL:" then the remaining portion of the string will be interpreted as a
+            column name in the input from which the event type should be read. Otherwise it will be
+            intrepreted as a literal event_type category name.
+        subject_id_col: The name of the column containing the subject ID.
+        ts_col: Column name containing timestamp for events.
+        start_ts_col: Column name containing start timestamp for ranges.
+        end_ts_col: Column name containing end timestamp for ranges.
+        ts_format: String format of the timestamp in ts_col.
+        start_ts_format: String format of the timestamp in start_ts_col.
+        end_ts_format: String format of the timestamp in end_ts_col.
+        data_schema: Schema of the input data.
+        start_data_schema: Schema of the start data in a range. If unspecified for a range, will fall back on
+            data_schema.
+        end_data_schema: Schema of the end data in a range. If unspecified for a range, will fall back on
+            data_schema.
+        must_have: List of mandatory columns or filters to apply, as a mapping from column name to filter to
+            apply. The filter can either be `True`, in which case the column simply must have a non-null
+            value, or a list of options, in which case the column must take on one of those values for the row
+            to be included.
+
+    Raises:
+        ValueError: If mandatory attributes (input_df, type) are not provided, or if inconsistencies
+            are found in the attributes based on the input data type.
+        TypeError: If attributes are of the wrong type.
+    """
+
     input_df: Any | None = None
 
     type: InputDFType | None = None
@@ -134,6 +175,7 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def is_static(self):
+        """Returns True if and only if the input data type is static."""
         return self.type == InputDFType.STATIC
 
     def __post_init__(self):
@@ -260,6 +302,15 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def columns_to_load(self) -> list[tuple[str, InputDataType]]:
+        """Computes the columns to be loaded based on the input data type and schema.
+
+        Returns:
+            A list of tuples of column names and desired types for the columns to be loaded from the input
+            dataframe.
+
+        Raises:
+            ValueError: If any of the column definitions are invalid or repeated.
+        """
         columns_to_load = {}
 
         match self.type:
@@ -307,6 +358,14 @@ class InputDFSchema(JSONableMixin):
 
     @property
     def unified_schema(self) -> dict[str, tuple[str, InputDataType]]:
+        """Computes the unified schema based on the input data type and data schema.
+
+        Returns:
+            A unified schema mapping from output column names to input column names and types.
+
+        Raises:
+            ValueError: If the type attribute of the calling object is invalid.
+        """
         match self.type:
             case InputDFType.EVENT | InputDFType.STATIC:
                 return self.unified_event_schema
