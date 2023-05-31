@@ -59,7 +59,7 @@ def count_or_proportion(N: WHOLE | None, cnt_or_prop: COUNT_OR_PROPORTION) -> in
         Traceback (most recent call last):
             ...
         TypeError: a must be a positive integer or a float between 0 or 1
-        >>> count_or_proportion("a", 10)
+        >>> count_or_proportion("a", 0.2)
         Traceback (most recent call last):
             ...
         TypeError: a must be an integer or a polars.Expr when cnt_or_prop is a float!
@@ -243,8 +243,9 @@ class JSONableMixin:
             >>> class MyData(JSONableMixin):
             ...     def __init__(self, name):
             ...         self.name = name
-            >>> MyData.from_dict({'name': 'Test'})
-            MyData(name='Test')
+            >>> my_data = MyData.from_dict({'name': 'Test'})
+            >>> my_data.name
+            'Test'
         """
         return cls(**as_dict)
 
@@ -306,15 +307,15 @@ class JSONableMixin:
             ...     name: str
             >>> data = MyData('Test')
             >>> with tempfile.TemporaryDirectory() as tmp_dir:
-            ... fp = Path(tmp_dir) / 'test.json'
-            ... data.to_json_file(fp, do_overwrite=False)
-            ... with open(fp, mode='r') as f:
-            ...     f.read()
-            {'name': 'Test'}
+            ...     fp = Path(tmp_dir) / 'test.json'
+            ...     data.to_json_file(fp, do_overwrite=False)
+            ...     with open(fp, mode='r') as f:
+            ...         f.read()
+            '{"name": "Test"}'
             >>> with tempfile.TemporaryDirectory() as tmp_dir:
-            ... fp = Path(tmp_dir) / 'test.json'
-            ... fp.touch()
-            ... data.to_json_file(fp, do_overwrite=False)
+            ...     fp = Path(tmp_dir) / 'test.json'
+            ...     fp.touch()
+            ...     data.to_json_file(fp, do_overwrite=False)
             Traceback (most recent call last):
                 ...
             FileExistsError: ... exists and do_overwrite = False
@@ -377,17 +378,6 @@ def hydra_dataclass(dataclass: Any) -> Any:
     as a
     [StructuredConfig object](https://hydra.cc/docs/tutorials/structured_config/intro/). The name of the
     stored config in the ConfigStore is the snake case version of the CamelCase class name.
-
-    Examples:
-        >>> @hydra_dataclass
-        ... class MyConfig:
-        ...     foo: int = 1
-        ...     bar: str = "baz"
-        >>> @hydra.main(config_name="my_config") # snake case of "MyConfig"
-        ... def main(cfg: MyConfig) -> None:
-        ...     print(cfg.foo, cfg.bar)
-        >>> main()
-        1, baz
     """
 
     dataclass = dataclasses.dataclass(dataclass)

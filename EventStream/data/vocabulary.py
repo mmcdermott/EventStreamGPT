@@ -61,7 +61,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         Traceback (most recent call last):
             ...
         ValueError: Vocabulary has duplicates. len(self.vocabulary) = 2, but len(set(self.vocabulary)) = 1.
-        >>> vocab = Vocabulary(vocabulary=['apple', 1], obs_frequences=[1, 2])
+        >>> vocab = Vocabulary(vocabulary=['apple', 1], obs_frequencies=[1, 2])
         Traceback (most recent call last):
             ...
         ValueError: Integer elements in the vocabulary are not supported.
@@ -266,15 +266,15 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             >>> vocab.describe(n_head=2, n_tail=1, wrap_lines=False)
             4 elements, 20.0% UNKs
             Frequencies: █▆▁
-            Examples:
-              (33.3%) banana
-              (40.0%) apple
+            Elements:
+              (40.0%) banana
+              (30.0%) apple
               (10.0%) pear
             >>> vocab.describe(n_head=1, n_tail=0, wrap_lines=False)
             4 elements, 20.0% UNKs
             Frequencies: █▆▁
             Examples:
-              (33.3%) banana
+              (40.0%) banana
               ...
         """
 

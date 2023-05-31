@@ -39,7 +39,7 @@ jobs:
 
       - name: Run pytest
         run: |
-          pytest -v
+          pytest -v --doctest-modules
 
   # upload code coverage report
   code-coverage:
@@ -65,7 +65,7 @@ jobs:
           pip install sh
 
       - name: Run tests and collect coverage
-        run: pytest --cov EventStream # NEEDS TO BE UPDATED WHEN CHANGING THE NAME OF "src" FOLDER
+        run: pytest --doctest-modules --cov EventStream # NEEDS TO BE UPDATED WHEN CHANGING THE NAME OF "src" FOLDER
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

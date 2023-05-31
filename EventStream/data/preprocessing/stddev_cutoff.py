@@ -23,11 +23,11 @@ class StddevCutoffOutlierDetector(Preprocessor):
         >>> import polars as pl
         >>> S = StddevCutoffOutlierDetector(stddev_cutoff=1.0)
         >>> df = pl.DataFrame({"a": [1, 2, 3, 4, 5]})
-        >>> params = S.fit(pl.col("a")).alias("params")
+        >>> params = S.fit_from_polars(pl.col("a")).alias("params")
         >>> df.select(params)["params"].to_list()
         [{'thresh_large_': 4.58113883008419, 'thresh_small_': 1.4188611699158102}]
         >>> outliers = S.predict_from_polars(pl.col("a"), params).alias("a_outliers")
-        >>> df.select(norm)["a_outliers"].to_list()
+        >>> df.select(outliers)["a_outliers"].to_list()
         [True, False, False, False, True]
     """
 

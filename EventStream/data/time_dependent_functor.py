@@ -114,6 +114,9 @@ class TimeDependentFunctor(abc.ABC):
 class AgeFunctor(TimeDependentFunctor):
     """Functor that returns the age of the subject when the event occurred.
 
+    Note that as years are not a fixed unit of time, this measurement is returned in the average number of
+    fixed-length years (where a fixed-length year is of length 365.25 days).
+
     Attributes:
         OUTPUT_MODALITY: `DataModality.UNIVARIATE_REGRESSION`
         dob_col: Column name containing the subject's date of birth.
@@ -128,7 +131,7 @@ class AgeFunctor(TimeDependentFunctor):
         ... })
         >>> age_expr = functor.pl_expr().alias("age")
         >>> print(df.select(age_expr).get_column("age").to_list())
-        [30.0, 25.0, 20.0]
+        [29.998631074606433, 26.001368925393567, 22.001368925393567]
     """
 
     OUTPUT_MODALITY: DataModality = DataModality.UNIVARIATE_REGRESSION
