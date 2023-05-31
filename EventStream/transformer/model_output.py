@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Union
+from typing import Any
 
 import torch
 from transformers.utils import ModelOutput
@@ -26,7 +26,9 @@ from .utils import (
     weighted_loss,
 )
 
-CATEGORICAL_DIST_T = Union[torch.distributions.Bernoulli, torch.distributions.Categorical]
+BERNOULLI_DIST_T = torch.distributions.Bernoulli
+CATEGORICAL_DIST_T = torch.distributions.Categorical
+REGRESSION_DIST_T = torch.distributions.Normal
 
 
 def get_event_types(
@@ -78,14 +80,17 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
 class NestedIndexableMixin:
     @staticmethod
     def _recursive_slice(val: Any, idx: INDEX_SELECT_T):
-        if val is None:
-            return val
-        elif isinstance(val, dict):
-            return {k: NestedIndexableMixin._recursive_slice(v, idx) for k, v in val.items()}
-        elif isinstance(val, torch.distributions.Distribution):
-            return idx_distribution(val, idx)
-        else:
-            return val[idx]
+        match val:
+            case None:
+                return None
+            case dict():
+                return {k: NestedIndexableMixin._recursive_slice(v, idx) for k, v in val.items()}
+            case tuple():
+                return tuple(NestedIndexableMixin._recursive_slice(v, idx) for v in val)
+            case torch.distributions.Distribution():
+                return idx_distribution(val, idx)
+            case _:
+                return val[idx]
 
     def slice(self, idx: INDEX_SELECT_T):
         """Allows for performing joint index selection option on the nested elements."""
@@ -436,10 +441,13 @@ class GenerativeSequenceModelSamples(ModelOutput):
                     dynamic_values_mask.append((0 * dynamic_indices[-1]).bool())
                 case (DataModality.UNIVARIATE_REGRESSION, None):
                     add_univariate_regression(m)
-                    indices = config.vocab_offsets_by_measurement[m] + torch.zeros_like(
-                        dynamic_values[-1]
+
+                    indices = (
+                        config.vocab_offsets_by_measurement[m] * dynamic_values_mask[-1].long()
                     )
-                    measurement_indices = config.measurements_idxmap[m] * torch.ones_like(indices)
+                    measurement_indices = (
+                        config.measurements_idxmap[m] * dynamic_values_mask[-1].long()
+                    )
 
                     dynamic_indices.append(indices)
                     dynamic_measurement_indices.append(measurement_indices)
@@ -723,7 +731,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
 class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
     """Predictions for the GenerativeSequenceModel head, split by task type."""
 
-    classification: dict[str, CATEGORICAL_DIST_T] | None = None
+    classification: dict[
+        str, tuple[None, BERNOULLI_DIST_T] | tuple[BERNOULLI_DIST_T, CATEGORICAL_DIST_T]
+    ] | None = None
     regression: dict[str, torch.distributions.Distribution] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
     time_to_event: torch.distributions.Distribution | None = None
@@ -734,10 +744,53 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
     ) -> GenerativeSequenceModelSamples:
         """Returns a sample from the nested distributions."""
 
+        match self.classification:
+            case None:
+                sampled_classification = None
+            case dict():
+                sampled_classification = {}
+                for k, v in self.classification.items():
+                    match v:
+                        case [None, BERNOULLI_DIST_T() as joint_dist]:
+                            sampled_classification[k] = joint_dist.sample()
+                        case [
+                            BERNOULLI_DIST_T() as is_obs_dist,
+                            CATEGORICAL_DIST_T() as samp_dist,
+                        ]:
+                            is_obs = is_obs_dist.sample() == 1
+                            samp = samp_dist.sample()
+                            sampled_classification[k] = torch.where(
+                                is_obs, samp, torch.zeros_like(samp)
+                            )
+                        case _:
+                            raise ValueError(f"Don't know how to sample classification dist {v}!")
+            case _:
+                raise ValueError(f"self.classification is malformed! Got\n{self.classification}")
+
+        match self.regression:
+            case None:
+                sampled_regression = None
+            case dict():
+                sampled_regression = {}
+                for k, v in self.regression.items():
+                    match v:
+                        case [None, REGRESSION_DIST_T() as joint_dist]:
+                            sampled_regression[k] = joint_dist.sample()
+                        case [BERNOULLI_DIST_T() as is_obs_dist, REGRESSION_DIST_T() as samp_dist]:
+                            is_obs = is_obs_dist.sample() == 1
+                            samp = samp_dist.sample()
+                            is_obs = is_obs.unsqueeze(-1).expand_as(samp)
+                            nans = float("nan") * torch.ones_like(samp)
+                            sampled_regression[k] = torch.where(is_obs, samp, nans)
+                        case _:
+                            raise ValueError(f"Don't know how to sample regression dist {v}!")
+            case _:
+                raise ValueError(f"self.regression is malformed! Got\n{self.regression}")
+
         return GenerativeSequenceModelSamples(
             event_mask=event_mask[:, -1].detach(),
-            classification={k: v.sample() for k, v in self.classification.items()},
-            regression={k: v.sample() for k, v in self.regression.items()},
+            classification=sampled_classification,
+            regression=sampled_regression,
             regression_indices=self.regression_indices,
             time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
         )
@@ -809,7 +862,10 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                     f"({TimeToEventGenerationHeadType.values()}). got {config.TTE_generation_layer_type}."
                 )
 
+        self.IsObservedLayer = torch.nn.Linear(config.hidden_size, len(config.measurements_idxmap))
         self.ClassificationLayer = torch.nn.Linear(config.hidden_size, config.vocab_size)
+
+        self.is_observed_criteria = torch.nn.BCEWithLogitsLoss(reduction="none")
 
         self.classification_criteria = {}
         for measurement in config.measurements_for(DataModality.SINGLE_LABEL_CLASSIFICATION):
@@ -925,7 +981,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         valid_measurements: set[str],
     ) -> tuple[
         dict[str, torch.FloatTensor],
-        dict[str, torch.FloatTensor],
+        dict[str, tuple[None, BERNOULLI_DIST_T] | tuple[BERNOULLI_DIST_T, CATEGORICAL_DIST_T]],
         dict[str, torch.LongTensor | torch.FloatTensor],
     ]:
         """Produces classification predictions and losses for the model.
@@ -959,7 +1015,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                     2. NLL is macro-averaged across events which had a label for that task per sequence.
                        Sequences without any events with that label receive a loss of zero.
                     3. NLL is macro-averaged across batch elements.
-            `classification_dists_by_measurement` (`Dict[str, torch.FloatTensor]`):
+            `classification_dists_by_measurement`:
                 A dictionary from `measurement` to classification distributions of shape
                 `[batch_size X sequence_length X vocabulary_size]` or `[batch_size X sequence_length]`
                 reflecting the probabilities for each event for that measurement. Returns scores for all
@@ -978,6 +1034,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             return {}, {}, {}
 
         # Classification of what elements are going to occur:
+        is_observed_score = self.IsObservedLayer(encoded)
         classification_scores = self.ClassificationLayer(encoded)
 
         classification_losses_by_measurement = {}
@@ -1001,6 +1058,9 @@ class GenerativeOutputLayerBase(torch.nn.Module):
 
             scores = classification_scores[:, :, vocab_start:vocab_end]
             # scores is of shape [batch X seq X vocab_end-vocab_start]
+            # We subtract 1 here as the measurement_idx of 0 is withheld for missing data.
+            is_obs_score = is_observed_score[:, :, measurement_idx - 1]
+            # is_obs_score is of shape [batch X seq]
 
             # We don't need to shift here, as given this is a structured model, we'll always rely on elements
             # of the dependency graph that don't include these inputs to predict them (e.g., predict the
@@ -1012,6 +1072,8 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                 # As there is only one index of this type for this setting,
                 # we can directly multiply by the mask and sum
                 events_with_label = tensor_idx.any(dim=-1)
+                is_obs_loss = self.is_observed_criteria(is_obs_score, events_with_label.float())
+
                 labels = (
                     (dynamic_indices.long() * tensor_idx.long()).sum(dim=-1) - vocab_start
                 ) * events_with_label.long()
@@ -1035,6 +1097,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
 
                 event_mask = event_mask & events_with_label
 
+                is_obs_dist = torch.distributions.Bernoulli(logits=is_obs_score)
                 dists = torch.distributions.Categorical(logits=scores)
 
             elif classification_mode == DataModality.MULTI_LABEL_CLASSIFICATION:
@@ -1057,15 +1120,21 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                 loss_per_label = self.classification_criteria[measurement](scores, labels)
                 loss_per_event = loss_per_label.mean(dim=-1)
 
+                # Multi-label doesn't use a separate is-observed path, as it handles that natively.
+                is_obs_loss = None
+                is_obs_dist = None
+
                 dists = torch.distributions.Bernoulli(logits=scores)
 
             else:
                 raise ValueError(f"Classification mode {classification_mode} Invalid!")
 
+            if is_obs_loss is not None:
+                loss_per_event = loss_per_event + is_obs_loss
             loss_overall = weighted_loss(loss_per_event, event_mask)
 
             classification_losses_by_measurement[measurement] = loss_overall
-            classification_dists_by_measurement[measurement] = dists
+            classification_dists_by_measurement[measurement] = (is_obs_dist, dists)
             classification_labels_by_measurement[measurement] = labels
         return (
             classification_losses_by_measurement,
@@ -1129,6 +1198,8 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         if not valid_measurements:
             return {}, {}, {}, {}
 
+        is_observed_score = self.IsObservedLayer(encoded)
+
         regression_loss_values = {}
         regression_dists = {}
         regression_labels = {}
@@ -1180,7 +1251,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                 loss_overall = weighted_loss(loss_per_event, events_with_label)
 
             regression_loss_values[measurement] = loss_overall
-            regression_dists[measurement] = regr_dist
+            regression_dists[measurement] = (None, regr_dist)
             regression_labels[measurement] = values_observed_or_zero
             regression_indices[measurement] = indices_measured_or_zero
 
@@ -1192,23 +1263,26 @@ class GenerativeOutputLayerBase(torch.nn.Module):
 
             measurement_idx = self.config.measurements_idxmap[measurement]
 
-            # TODO(mmd): If we wanted, we could have `indices_measured_or_zero` reflect just the former part
-            # of this `&`, and thus have predictions on all indices, even for those we don't observe values
-            # for, but for now this functionality is not required, so we standardize them.
-            tensor_idx = (batch["dynamic_measurement_indices"] == measurement_idx) & batch[
-                "dynamic_values_mask"
-            ]
+            # We subtract 1 here as the measurement_idx of 0 is withheld for missing data.
+            is_obs_score = is_observed_score[:, :, measurement_idx - 1]
+            # is_obs_score is of shape [batch X seq]
+
+            tensor_idx = batch["dynamic_measurement_indices"] == measurement_idx
+            is_obs_loss = self.is_observed_criteria(is_obs_score, tensor_idx.any(dim=-1).float())
 
             # As there is only one index of this type for this setting,
             # we can directly multiply by the mask and sum
-            events_with_label = tensor_idx.any(dim=-1)
+            tensor_with_labels_idx = tensor_idx & batch["dynamic_values_mask"]
+            events_with_label = tensor_with_labels_idx.any(dim=-1)
+
             event_mask = event_mask & events_with_label
 
+            is_obs_dist = torch.distributions.Bernoulli(logits=is_obs_score)
             regr_dist = self.regression_layers[measurement](X=encoded)
 
             values_observed_or_zero = (
                 torch.where(
-                    tensor_idx,
+                    tensor_with_labels_idx,
                     batch["dynamic_values"],
                     torch.zeros_like(batch["dynamic_values"]),
                 )
@@ -1228,11 +1302,11 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             else:
                 loss_per_event = -regr_dist.log_prob(values_observed_or_zero).squeeze(-1)
 
-                events_with_label = event_mask & tensor_idx.any(dim=-1)
-                loss_overall = weighted_loss(loss_per_event, events_with_label)
+                events_with_label = event_mask
+                loss_overall = weighted_loss(loss_per_event + is_obs_loss, events_with_label)
 
             regression_loss_values[measurement] = loss_overall
-            regression_dists[measurement] = regr_dist
+            regression_dists[measurement] = (is_obs_dist, regr_dist)
             regression_labels[measurement] = values_observed_or_zero
             regression_indices[measurement] = None
 

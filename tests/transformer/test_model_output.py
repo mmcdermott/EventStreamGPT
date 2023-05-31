@@ -933,46 +933,57 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     [
                         [
                             [0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-                            [0.0, 1.0, 3.0, 5.0, 7.0, 9.0, 2.0, 4.0, 6.0, 0.0],
-                            [0.0, 2.0, 5.0, 8.0, 1.0, 4.0, 7.0, 0.0, 3.0, 6.0],
+                            [-1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 2.0, 4.0, 6.0, 0.0],
+                            [-2.0, 2.0, 5.0, 8.0, 1.0, 4.0, 7.0, 0.0, 3.0, 6.0],
                         ],
                     ]
                 ),
                 "valid_measurements": {"event_type", "multi_label_col", "regression_col"},
                 "want_dists": {
                     # All dists are of shape batch X seq X vocab size.
-                    "event_type": torch.distributions.Categorical(
-                        logits=torch.FloatTensor(
-                            [
+                    "event_type": (
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor([[0.0, -1.0, -2.0]])
+                        ),
+                        torch.distributions.Categorical(
+                            logits=torch.FloatTensor(
                                 [
-                                    [0.0, 1.0],
-                                    [1.0, 3.0],
-                                    [2.0, 5.0],
+                                    [
+                                        [0.0, 1.0],
+                                        [1.0, 3.0],
+                                        [2.0, 5.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
-                    "multi_label_col": torch.distributions.Bernoulli(
-                        logits=torch.FloatTensor(
-                            [
+                    "multi_label_col": (
+                        None,
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor(
                                 [
-                                    [2.0, 3.0, 4.0],
-                                    [5.0, 7.0, 9.0],
-                                    [8.0, 1.0, 4.0],
+                                    [
+                                        [2.0, 3.0, 4.0],
+                                        [5.0, 7.0, 9.0],
+                                        [8.0, 1.0, 4.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
-                    "regression_col": torch.distributions.Bernoulli(
-                        logits=torch.FloatTensor(
-                            [
+                    "regression_col": (
+                        None,
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor(
                                 [
-                                    [5.0, 6.0, 7.0, 8.0],
-                                    [2.0, 4.0, 6.0, 0.0],
-                                    [7.0, 0.0, 3.0, 6.0],
+                                    [
+                                        [5.0, 6.0, 7.0, 8.0],
+                                        [2.0, 4.0, 6.0, 0.0],
+                                        [7.0, 0.0, 3.0, 6.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
                 },
                 "want_labels": {
@@ -1009,6 +1020,14 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 },
                 # Losses should be given as follows.
                 "want_losses": {
+                    # event_type is fully observed, but has is_observed logits (0, -1, -2)
+                    # We want to compute the NLL of this setting, which should then be averaged across events.
+                    # So we want:
+                    # 1/3 * (
+                    #     -math.log(1/(1 + math.exp(0)))
+                    #     -math.log(1/(1 + math.exp(1)))
+                    #     -math.log(1/(1 + math.exp(2)))
+                    # ) = 1.3777789597070467
                     # event_type has 3 pairs of (logit, label) across each event:
                     #   ([0.0, 1.0], 0), ([1.0, 3.0], 1), ([2.0, 5.0], 1).
                     # We want to compute the NLL of this setting, which should then be averaged across
@@ -1018,15 +1037,13 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     #    -math.log(math.exp(3)/(math.exp(1) + math.exp(3))) +
                     #    -math.log(math.exp(5)/(math.exp(2) + math.exp(5)))
                     #  )
-                    "event_type": torch.tensor(0.49625901671164574),
+                    "event_type": torch.tensor(1.8740379764186925),
                     # multi_label_col is has no positive labels for the first event (as it is actually not
                     # reported there), then has logits and labels for the last two events. Our code currently
                     # tasks the model with predicting on all events, including the first, just with all
                     # negative labels, as in theory the multi-label events that aren't observed there are
                     # valid instances of the labels not being present.
                     #
-                    # TODO(mmd): Is this right for the multi-label? Or should it be not measured for the first
-                    # event?
                     # (logits, labels):
                     #  ([2, 3, 4], [0, 0, 0]), ([5, 7, 9], [0, 0, 1]), ([8, 1, 4], [0, 1, 1])
                     # We want to compute the NLL of this setting, which should then be averaged first across
@@ -1120,46 +1137,57 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     [
                         [
                             [0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-                            [0.0, 1.0, 3.0, 5.0, 7.0, 9.0, 2.0, 4.0, 6.0, 0.0],
-                            [0.0, 2.0, 5.0, 8.0, 1.0, 4.0, 7.0, 0.0, 3.0, 6.0],
+                            [-1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 2.0, 4.0, 6.0, 0.0],
+                            [-2.0, 2.0, 5.0, 8.0, 1.0, 4.0, 7.0, 0.0, 3.0, 6.0],
                         ],
                     ]
                 ),
                 "valid_measurements": {"event_type", "multi_label_col", "regression_col"},
                 "want_dists": {
                     # All dists are of shape batch X seq X vocab size.
-                    "event_type": torch.distributions.Categorical(
-                        logits=torch.FloatTensor(
-                            [
+                    "event_type": (
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor([[0.0, -1.0, -2.0]])
+                        ),
+                        torch.distributions.Categorical(
+                            logits=torch.FloatTensor(
                                 [
-                                    [0.0, 1.0],
-                                    [1.0, 3.0],
-                                    [2.0, 5.0],
+                                    [
+                                        [0.0, 1.0],
+                                        [1.0, 3.0],
+                                        [2.0, 5.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
-                    "multi_label_col": torch.distributions.Bernoulli(
-                        logits=torch.FloatTensor(
-                            [
+                    "multi_label_col": (
+                        None,
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor(
                                 [
-                                    [2.0, 3.0, 4.0],
-                                    [5.0, 7.0, 9.0],
-                                    [8.0, 1.0, 4.0],
+                                    [
+                                        [2.0, 3.0, 4.0],
+                                        [5.0, 7.0, 9.0],
+                                        [8.0, 1.0, 4.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
-                    "regression_col": torch.distributions.Bernoulli(
-                        logits=torch.FloatTensor(
-                            [
+                    "regression_col": (
+                        None,
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor(
                                 [
-                                    [5.0, 6.0, 7.0, 8.0],
-                                    [2.0, 4.0, 6.0, 0.0],
-                                    [7.0, 0.0, 3.0, 6.0],
+                                    [
+                                        [5.0, 6.0, 7.0, 8.0],
+                                        [2.0, 4.0, 6.0, 0.0],
+                                        [7.0, 0.0, 3.0, 6.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
                 },
                 "want_labels": {
@@ -1191,6 +1219,14 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 },
                 # Losses should be modified to ignore the components of the first event.
                 "want_losses": {
+                    # event_type is fully observed, but has is_observed logits (0, -1, -2)
+                    # We want to compute the NLL of this setting, which should then be averaged across events.
+                    # So we want:
+                    # 1/2 * (
+                    #     -math.log(1/(1 + math.exp(0)))
+                    #     MASKED
+                    #     -math.log(1/(1 + math.exp(2)))
+                    # ) = 1.410037595801459
                     # (logits, labels):
                     #   ([0.0, 1.0], 0), ([1.0, 3.0], 1) [MASKED], ([2.0, 5.0], 1).
                     # NLL =
@@ -1199,7 +1235,7 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     #   0*(-math.log(math.exp(3)/(math.exp(1) + math.exp(3)))) + # MASKED EVENT
                     #   -math.log(math.exp(5)/(math.exp(2) + math.exp(5)))
                     # ) = 0.6809245195459824
-                    "event_type": torch.tensor(0.6809245195459824),
+                    "event_type": torch.tensor(2.0909621153474416),
                     # (logits, labels):
                     #   ([2, 3, 4], [0, 0, 0]),
                     #   MASKED ([5, 7, 9], [0, 0, 1]),
@@ -1258,87 +1294,35 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                         ],
                     ]
                 ),
-                "valid_measurements": {"event_type"},
+                "valid_measurements": {"multi_label_col"},
                 "want_dists": {
-                    "event_type": torch.distributions.Categorical(
-                        logits=torch.FloatTensor(
-                            [
+                    "multi_label_col": (
+                        None,
+                        torch.distributions.Bernoulli(
+                            logits=torch.FloatTensor(
                                 [
-                                    [0.0, 1.0],
-                                    [1.0, 3.0],
-                                    [2.0, 5.0],
+                                    [
+                                        [2.0, 3.0, 4.0],
+                                        [5.0, 7.0, 9.0],
+                                        [8.0, 1.0, 4.0],
+                                    ]
                                 ]
+                            )
+                        ),
+                    ),
+                },
+                "want_labels": {
+                    "multi_label_col": torch.FloatTensor(
+                        [
+                            [
+                                [0, 0, 0],
+                                [0, 0, 1],
+                                [0, 1, 1],
                             ]
-                        )
-                    ),
-                },
-                "want_labels": {"event_type": torch.LongTensor([[0, 1, 1]])},
-                "want_losses": {
-                    # (logits, label): ([0.0, 1.0], 0), ([1.0, 3.0], 1), ([2.0, 5.0], 1)
-                    # NLL = 1/3 * (
-                    #   -math.log(math.exp(0)/(math.exp(0) + math.exp(1))) +
-                    #   -math.log(math.exp(3)/(math.exp(1) + math.exp(3))) +
-                    #   -math.log(math.exp(5)/(math.exp(2) + math.exp(5)))
-                    # )
-                    "event_type": torch.tensor(0.49625901671164574),
-                },
-            },
-            {
-                "message": "Model should skip events for single label classification tasks with no label.",
-                "batch": {
-                    **BASE_BATCH_OUTPUT_LAYER_BASE_TEST,
-                    "dynamic_measurement_indices": torch.LongTensor(
-                        [
-                            [
-                                [0, 0, 0, 0, 0, 0],
-                                [1, 2, 0, 0, 0, 0],
-                                [1, 2, 2, 3, 3, 3],
-                            ],
-                        ]
-                    ),
-                    "dynamic_indices": torch.LongTensor(
-                        [
-                            [
-                                [0, 0, 0, 0, 0, 0],
-                                [2, 5, 0, 0, 0, 0],
-                                [2, 4, 5, 7, 8, 9],
-                            ],
                         ]
                     ),
                 },
-                "encoded": torch.Tensor(
-                    [
-                        [
-                            [0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-                            [0.0, 1.0, 3.0, 5.0, 7.0, 9.0, 2.0, 4.0, 6.0, 0.0],
-                            [0.0, 2.0, 5.0, 8.0, 1.0, 4.0, 7.0, 0.0, 3.0, 6.0],
-                        ],
-                    ]
-                ),
-                "valid_measurements": {"event_type"},
-                "want_dists": {
-                    "event_type": torch.distributions.Categorical(
-                        logits=torch.FloatTensor(
-                            [
-                                [
-                                    [0.0, 1.0],
-                                    [1.0, 3.0],
-                                    [2.0, 5.0],
-                                ]
-                            ]
-                        )
-                    ),
-                },
-                "want_labels": {"event_type": torch.LongTensor([[0, 1, 1]])},
-                "want_losses": {
-                    # event_type has 2 pairs of (logit, label) across only the last two events (the first
-                    # event is not measured): ([1.0, 3.0], 1), ([2.0, 5.0], 1).
-                    # NLL = 1/2 * (
-                    #   -math.log(math.exp(3)/(math.exp(1) + math.exp(3)))
-                    #   -math.log(math.exp(5)/(math.exp(2) + math.exp(5)))
-                    # ) = 0.08775768130835727
-                    "event_type": torch.tensor(0.08775768130835727),
-                },
+                "want_losses": {"multi_label_col": torch.tensor(3.2814624309539795)},
             },
             {
                 "message": "Model should give a loss of 0 when no events have a single label task observed.",
@@ -1374,16 +1358,19 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 ),
                 "valid_measurements": {"event_type"},
                 "want_dists": {
-                    "event_type": torch.distributions.Categorical(
-                        logits=torch.FloatTensor(
-                            [
+                    "event_type": (
+                        torch.distributions.Bernoulli(logits=torch.FloatTensor([[0, 0, 0]])),
+                        torch.distributions.Categorical(
+                            logits=torch.FloatTensor(
                                 [
-                                    [0.0, 1.0],
-                                    [1.0, 3.0],
-                                    [2.0, 5.0],
+                                    [
+                                        [0.0, 1.0],
+                                        [1.0, 3.0],
+                                        [2.0, 5.0],
+                                    ]
                                 ]
-                            ]
-                        )
+                            )
+                        ),
                     ),
                 },
                 "want_labels": {"event_type": torch.LongTensor([[0, 0, 0]])},
@@ -1409,8 +1396,19 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 # size, but the model assumes there is one extra universally unused vocab element up front, so
                 # we need to adjust that.
                 config.vocab_size = 10
+                n_measurements = 3
+                assert len(config.measurements_idxmap) == n_measurements
+
+                is_obs_weight = torch.eye(n_measurements)
+                is_obs_weight = torch.nn.functional.pad(
+                    is_obs_weight, (0, config.hidden_size - n_measurements, 0, 0)
+                )
 
                 layer = GenerativeOutputLayerBase(config)
+                layer.IsObservedLayer.weight = torch.nn.Parameter(is_obs_weight)
+                layer.IsObservedLayer.bias = torch.nn.Parameter(
+                    torch.zeros_like(layer.IsObservedLayer.bias)
+                )
                 layer.ClassificationLayer.weight = torch.nn.Parameter(torch.eye(10))
                 layer.ClassificationLayer.bias = torch.nn.Parameter(
                     torch.zeros_like(layer.ClassificationLayer.bias)
@@ -1422,9 +1420,9 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     valid_measurements=C["valid_measurements"],
                 )
 
-                self.assertNestedDictEqual(C["want_labels"], got_labels)
-                self.assertNestedDictEqual(C["want_dists"], got_dists)
-                self.assertNestedDictEqual(C["want_losses"], got_losses)
+                self.assertNestedDictEqual(C["want_labels"], got_labels, "Labels differ!")
+                self.assertNestedDictEqual(C["want_dists"], got_dists, "Distributions differ!")
+                self.assertNestedDictEqual(C["want_losses"], got_losses, "Losses differ!")
 
     def test_get_TTE_outputs(self):
         shared_config_kwargs = {
@@ -1680,24 +1678,27 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                     # positions, which are the last three of the last batch element.
                     # Further, recall that scale is elu(proj(encoded)) + 1, so there will be a plus one
                     # modifier here too.
-                    "regression_col": torch.distributions.Normal(
-                        loc=torch.FloatTensor(
-                            [
+                    "regression_col": (
+                        None,
+                        torch.distributions.Normal(
+                            loc=torch.FloatTensor(
                                 [
-                                    [0, 0, 0, 0, 0, 0],
-                                    [1, 1, 1, 1, 1, 1],
-                                    [2, 2, 2, 6, 10, 14],
+                                    [
+                                        [0, 0, 0, 0, 0, 0],
+                                        [1, 1, 1, 1, 1, 1],
+                                        [2, 2, 2, 6, 10, 14],
+                                    ]
                                 ]
-                            ]
-                        ),
-                        scale=torch.FloatTensor(
-                            [
+                            ),
+                            scale=torch.FloatTensor(
                                 [
-                                    [2, 2, 2, 2, 2, 2],
-                                    [4, 4, 4, 4, 4, 4],
-                                    [5, 5, 5, 9, 13, 17],
+                                    [
+                                        [2, 2, 2, 2, 2, 2],
+                                        [4, 4, 4, 4, 4, 4],
+                                        [5, 5, 5, 9, 13, 17],
+                                    ]
                                 ]
-                            ]
+                            ),
                         ),
                     ),
                 },
@@ -1790,24 +1791,27 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 ),
                 # `rate` is given by torch.nn.elu(layer.proj @ encoded):
                 "want_dists": {
-                    "regression_col": torch.distributions.Normal(
-                        loc=torch.FloatTensor(
-                            [
+                    "regression_col": (
+                        None,
+                        torch.distributions.Normal(
+                            loc=torch.FloatTensor(
                                 [
-                                    [0, 2, 6, 0, 0, 0],
-                                    [1, 1, 5, 9, 5, 1],
-                                    [2, 6, 6, 6, 10, 14],
+                                    [
+                                        [0, 2, 6, 0, 0, 0],
+                                        [1, 1, 5, 9, 5, 1],
+                                        [2, 6, 6, 6, 10, 14],
+                                    ]
                                 ]
-                            ]
-                        ),
-                        scale=torch.FloatTensor(
-                            [
+                            ),
+                            scale=torch.FloatTensor(
                                 [
-                                    [2, 4, 8, 2, 2, 2],
-                                    [4, 4, 8, 12, 8, 4],
-                                    [5, 9, 9, 9, 13, 17],
+                                    [
+                                        [2, 4, 8, 2, 2, 2],
+                                        [4, 4, 8, 12, 8, 4],
+                                        [5, 9, 9, 9, 13, 17],
+                                    ]
                                 ]
-                            ]
+                            ),
                         ),
                     ),
                 },
@@ -1911,24 +1915,27 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 ),
                 # `rate` is given by torch.nn.elu(layer.proj @ encoded):
                 "want_dists": {
-                    "regression_col": torch.distributions.Normal(
-                        loc=torch.FloatTensor(
-                            [
+                    "regression_col": (
+                        None,
+                        torch.distributions.Normal(
+                            loc=torch.FloatTensor(
                                 [
-                                    [0, 2, 6, 0, 0, 0],
-                                    [1, 1, 5, 9, 5, 1],
-                                    [2, 2, 2, 2, 2, 2],
+                                    [
+                                        [0, 2, 6, 0, 0, 0],
+                                        [1, 1, 5, 9, 5, 1],
+                                        [2, 2, 2, 2, 2, 2],
+                                    ]
                                 ]
-                            ]
-                        ),
-                        scale=torch.FloatTensor(
-                            [
+                            ),
+                            scale=torch.FloatTensor(
                                 [
-                                    [2, 4, 8, 2, 2, 2],
-                                    [4, 4, 8, 12, 8, 4],
-                                    [5, 5, 5, 5, 5, 5],
+                                    [
+                                        [2, 4, 8, 2, 2, 2],
+                                        [4, 4, 8, 12, 8, 4],
+                                        [5, 5, 5, 5, 5, 5],
+                                    ]
                                 ]
-                            ]
+                            ),
                         ),
                     ),
                 },
@@ -2026,24 +2033,27 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 ),
                 # `rate` is given by torch.nn.elu(layer.proj @ encoded):
                 "want_dists": {
-                    "regression_col": torch.distributions.Normal(
-                        loc=torch.FloatTensor(
-                            [
+                    "regression_col": (
+                        None,
+                        torch.distributions.Normal(
+                            loc=torch.FloatTensor(
                                 [
-                                    [0, 0, 0, 0, 0, 0],
-                                    [1, 1, 1, 1, 1, 1],
-                                    [2, 2, 2, 6, 10, 2],
+                                    [
+                                        [0, 0, 0, 0, 0, 0],
+                                        [1, 1, 1, 1, 1, 1],
+                                        [2, 2, 2, 6, 10, 2],
+                                    ]
                                 ]
-                            ]
-                        ),
-                        scale=torch.FloatTensor(
-                            [
+                            ),
+                            scale=torch.FloatTensor(
                                 [
-                                    [2, 2, 2, 2, 2, 2],
-                                    [4, 4, 4, 4, 4, 4],
-                                    [5, 5, 5, 9, 13, 5],
+                                    [
+                                        [2, 2, 2, 2, 2, 2],
+                                        [4, 4, 4, 4, 4, 4],
+                                        [5, 5, 5, 9, 13, 5],
+                                    ]
                                 ]
-                            ]
+                            ),
                         ),
                     ),
                 },
