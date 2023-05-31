@@ -152,6 +152,34 @@ class InputDFSchema(JSONableMixin):
         ValueError: If mandatory attributes (input_df, type) are not provided, or if inconsistencies
             are found in the attributes based on the input data type.
         TypeError: If attributes are of the wrong type.
+
+    Examples:
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Must set subject_id_col for static source!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
+        ...     subject_id_col='subj_id',
+        ... )
+        >>> S.is_static
+        True
+        >>> S.columns_to_load
+        []
+        >>> S.unified_schema
+        {}
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.parquet",
+        ...     type=InputDFType.RANGE,
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory range parameter event_type!
+        >>>
     """
 
     input_df: Any | None = None
