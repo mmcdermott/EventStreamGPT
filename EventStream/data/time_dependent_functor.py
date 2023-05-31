@@ -1,3 +1,11 @@
+"""Defines the interface for specifying functional time dependent measurements.
+
+`EventStream.data.types.DataModality.FUNCTIONAL_TIME_DEPENDENT` measurements are specified by an analytical
+function that depends only on the time of the event and per-subject static data. This module defines the
+interface for specifying such functions, through the abstract base class `TimeDependentFunctor`.
+The `AgeFunctor` and `TimeOfDayFunctor` classes are examples of such functions.
+"""
+
 from __future__ import annotations
 
 import abc
@@ -13,10 +21,26 @@ from .vocabulary import Vocabulary
 
 
 class TimeDependentFunctor(abc.ABC):
-    """An abstract base class defining the interface necessary for specifying time-dependent
-    functions."""
+    """Abstract base class for specifying functional time dependent measurements.
 
-    OUTPUT_MODALITY = DataModality.DROPPED
+    A functional time dependent measurement is specified by an analytical function that depends only on the
+    time of the event and a subject's static data. It must be specified in functional form so that we can
+    appropriately produce these measurements dynamically during generation. These functions must be computable
+    in two ways:
+      1. Via a `polars` expression that can be evaluated on a `polars.DataFrame` containing the static data
+         and a `timestamp` column.
+      2. Via a `torch` function that takes as input the prior timepoint's indices, values, and time, the time
+         delta and time of the new event, and the vocabulary config and measurement metadata of a dataset, and
+         returns the new indices and values of the output measurement.
+    In addition, such functions must also be convertible to and from plain dictionaries, which must store the
+    name of their class, for serializability. This is an abstract base class, and subclasses must overwrite
+    the `pl_expr` and `update_from_prior_timepoint` functions to be valid.
+
+    Attributes:
+        OUTPUT_MODALITY: The `DataModality` of the output of the function.
+    """
+
+    OUTPUT_MODALITY: DataModality = DataModality.DROPPED
 
     def __init__(self, **fn_params):
         # Default to_dict/from_dict will only work if functions store all __init__ input params as class
