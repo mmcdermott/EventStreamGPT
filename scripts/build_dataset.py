@@ -179,7 +179,8 @@ def main(cfg: DictConfig):
                         raise ValueError(
                             "If providing a query string, must provide a connection_uri!"
                         )
-                    if type(query) is list: query = tuple(query)
+                    if type(query) is list:
+                        query = tuple(query)
                     input_schema_kwargs["input_df"] = Query(
                         query=query, connection_uri=connection_uri
                     )
