@@ -9,30 +9,120 @@ INDEX_SELECT_T = Union[VALID_INDEX_T, Sequence[VALID_INDEX_T]]
 
 
 def str_summary(T: torch.Tensor):
+    """Returns a string summary of a tensor for debugging purposes.
+
+    Args:
+        T: The tensor to summarize.
+
+    Returns:
+        A string summary of the tensor, documenting the tensor's shape, dtype, and the range of values it
+        contains.
+
+    Examples:
+        >>> import torch
+        >>> T = torch.FloatTensor([[[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]]])
+        >>> str_summary(T)
+        'shape: (1, 2, 5), type: torch.float32, range: 1-10'
+        >>> T = torch.LongTensor([[2, 3, -4, 5], [6, 7, 9, -10]])
+        >>> str_summary(T)
+        'shape: (2, 4), type: torch.int64, range: -10-9'
+    """
     return f"shape: {tuple(T.shape)}, type: {T.dtype}, range: {T.min():n}-{T.max():n}"
 
 
 def expand_indexed_regression(X: torch.Tensor, idx: torch.Tensor, vocab_size: int):
-    """Expands values `X` with indices `idx` into a dense representation."""
+    """Expands sparse values `X` with indices `idx` into a dense representation.
+
+    Args:
+        X: A tensor of shape [..., # of observed values] containing observed values. Shape must match that of
+            `idx`.
+        idx: A tensor of shape [..., # of observed values] containing indices of observed values. Each index
+            must be in the range [0, `vocab_size`). Shape must match that of `X`.
+        vocab_size: The size of the vocabulary to expand into. Indices in `idx` are indexes into this
+            vocabulary.
+
+    Returns:
+        A dense tensor of shape [..., `vocab_size`], such that the value at index `idx[i]` in the last
+        dimension is `X[i]` for all `i` and the value at all other indices is 0.
+
+    Examples:
+        >>> import torch
+        >>> X = torch.FloatTensor([[1, 2, 3], [4, 5, 6]])
+        >>> idx = torch.LongTensor([[0, 1, 2], [1, 3, 0]])
+        >>> vocab_size = 5
+        >>> expand_indexed_regression(X, idx, vocab_size)
+        tensor([[1., 2., 3., 0., 0.],
+                [6., 4., 0., 5., 0.]])
+    """
     expanded = torch.zeros(*idx.shape[:-1], vocab_size, device=X.device, dtype=X.dtype)
     return expanded.scatter(-1, idx, X)
 
 
-def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns the max of the last dimension of `X` considering only positions where `mask` is
-    `True`, except in the case where `mask` is uniformly `False`, in which case the output returned
-    is zero.
+def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
+    """Returns a safe max over the last dimension of `X` respecting the mask `mask`.
 
-    `mask` must have the same shape as `X` up to the last dimension, which should be omitted. E.g.,
-    if `X` has shape `[41, 8, 23]`, `mask` can either have shape `[41, 8]`.
+    This function takes the max over all elements of the last dimension of `X` where `mask` is True. `mask`
+    can take one of two forms:
+        * An element-wise mask, in which case it must have the same shape as `X`.
+        * A column-wise mask, in which case it must have the same shape as `X` _excluding the second to last
+            dimension, which should be omitted_, This case is used when you wish to, for example, take the
+            maximum of the hidden states of a network over the sequence length, while respecting an event
+            mask.
+    If `mask` is uniformly False for a row, the output is zero.
+
+    Args:
+        X: A tensor of shape [..., # of rows, # of columns] containing elements to take the max over.
+        mask: A Boolean tensor either of shape [..., # of rows, # of columns] or [..., # of columns]
+            containing a mask indicating which elements can be considered for the max.
+
+    Returns:
+        A tensor of shape [...] containing the max over the last dimension of `X` respecting the mask `mask`.
+        If `mask` is uniformly False for a row, the output is zero.
+
+    Raises:
+        AssertionError: If `mask` is not the correct shape for either mode.
+
+    Examples:
+        >>> import torch
+        >>> # An element-wise mask
+        >>> X = torch.FloatTensor([[1, 2, 3], [4, 5, 6]])
+        >>> mask = torch.BoolTensor([[True, True, False], [False, False, False]])
+        >>> safe_masked_max(X, mask)
+        tensor([2., 0.])
+        >>> # A column-wise mask, with a batch dimension.
+        >>> X = torch.FloatTensor([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
+        >>> mask = torch.BoolTensor([[False, True, False], [True, False, True]])
+        >>> safe_masked_max(X, mask)
+        tensor([[ 2.,  5.],
+                [ 9., 12.]])
+        >>> X = torch.FloatTensor([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
+        >>> mask = torch.BoolTensor([[[False, True], [True, True]]])
+        >>> safe_masked_max(X, mask)
+        Traceback (most recent call last):
+            ...
+        AssertionError: mask torch.Size([1, 2, 2]) must be the same shape as X torch.Size([2, 2, 3])\
+ or the same shape as X excluding the second to last dimension
+        >>> X = torch.FloatTensor([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
+        >>> mask = torch.BoolTensor([[False, True], [True, True]])
+        >>> safe_masked_max(X, mask)
+        Traceback (most recent call last):
+            ...
+        AssertionError: mask torch.Size([2, 2]) must be the same shape as X torch.Size([2, 2, 3])\
+ or the same shape as X excluding the second to last dimension
     """
 
-    if len(mask.shape) < len(X.shape):
-        mask = mask.unsqueeze(-2).expand_as(X)
-
-    torch._assert(
-        mask.shape == X.shape, f"mask {mask.shape} must be the same shape as X {X.shape}"
+    shape_err_string = (
+        f"mask {mask.shape} must be the same shape as X {X.shape} "
+        "or the same shape as X excluding the second to last dimension"
     )
+
+    if len(mask.shape) < len(X.shape):
+        try:
+            mask = mask.unsqueeze(-2).expand_as(X)
+        except RuntimeError as e:
+            raise AssertionError(shape_err_string) from e
+    else:
+        torch._assert(mask.shape == X.shape, shape_err_string)
 
     masked_X = torch.where(mask, X, -float("inf"))
     maxes = masked_X.max(-1)[0]
