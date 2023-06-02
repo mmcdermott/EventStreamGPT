@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Builds a dataset given a hydra config file."""
 
 try:
     import stackprinter
@@ -34,6 +35,34 @@ inflect = inflect.engine()
 
 
 def add_to_container(key: str, val: Any, cont: dict[str, Any]):
+    """Adds key to container, unless it is already present in that container with a different value.
+
+    If `key` is in `cont` with value `val`, prints a warning. If it is in `cont` with a different value,
+    raises a `ValueError`. Otherwise adds `key` to `cont` with value `val`. Returns `None`
+
+    Args:
+        key: The key to add to the container `cont`.
+        val: The value to associate with key `key` in container `cont`.
+        cont: The container in which to store `key` and `value`.
+
+    Raises:
+        ValueError: If `key` is in `cont` with value not equal to `val`.
+
+    Examples:
+        >>> cont = {'foo': "bar"}
+        >>> add_to_container('biz', 3, cont)
+        >>> cont
+        {'foo': 'bar', 'biz': 3}
+        >>> add_to_container('biz', 3, cont)
+        WARNING: biz is specified twice with value 3.
+        >>> cont
+        {'foo': 'bar', 'biz': 3}
+        >>> add_to_container('foo', 3, cont)
+        Traceback (most recent call last):
+            ...
+        ValueError: foo is specified twice (3 v. bar)
+    """
+
     if key in cont:
         if cont[key] == val:
             print(f"WARNING: {key} is specified twice with value {val}.")

@@ -1,6 +1,15 @@
 #!/usr/bin/env python
+"""Prepares subset directories, config files, and commands for running experiments.
+
+Includes:
+    * Pre-training subset experiments (for a specified architecture).
+    * Fine-tuning over few-shot subsets on specifiable fine-tuning tasks.
+    * Performing zero-shot evaluation of a model over a set of fine-tuning tasks.
+    * Getting model embeedings.
+"""
 
 try:
+    # This color-codes and prettifies error messages if the script fails.
     import stackprinter
 
     stackprinter.set_excepthook(style="darkbg2")

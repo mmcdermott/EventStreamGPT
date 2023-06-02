@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Fine-tunes a model on a user-specified downstream task."""
 
 try:
     import stackprinter
