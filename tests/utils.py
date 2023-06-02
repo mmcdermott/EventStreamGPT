@@ -30,6 +30,21 @@ ASSERT_FN = Callable[[Any, Any, Optional[str]], None]
 
 
 def round_dict(d: dict[str, float]) -> dict[str, float]:
+    """Rounds a dictionary of floats to five places.
+
+    Args:
+        d: The dictionary to round.
+
+    Returns:
+        A dictionary with the same keys as `d`, whose values are `None` if the associated value in `d` is
+        `None`, and otherwise the value in `d` rounde dto five places.
+
+    Examples:
+        >>> round_dict({"a": 1.23456789, "b": 2.3456789})
+        {'a': 1.23457, 'b': 2.34568}
+        >>> round_dict({"a": None, "b": 1})
+        {'a': None, 'b': 1}
+    """
     return {k: None if v is None else round(v, 5) for k, v in d.items()}
 
 
