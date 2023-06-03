@@ -262,6 +262,9 @@ def idx_distribution(
     Returns:
         The sliced distribution.
 
+    Raises:
+        IndexError: If the index is invalid for the distribution.
+
     Examples:
         >>> import torch
         >>> logits_tensor = torch.Tensor([[1, 2, -3], [4, 1, 0]])
@@ -284,6 +287,11 @@ def idx_distribution(
         >>> # We have to round because distributions modify their probs params which yields precision errors
         >>> D2.probs.round(decimals=1)
         tensor([0.2000, 0.8000, 0.0000])
+        >>> D2 = idx_distribution(D, (slice(None), 2))
+        Traceback (most recent call last):
+            ...
+        IndexError: Failed to slice probs of shape torch.Size([2, 3]) with\
+ (slice(None, None, None), 2) + (:,) * 1 = (slice(None, None, None), 2, slice(None, None, None))
     """
     if not isinstance(index, tuple):
         index = (index,)
@@ -318,12 +326,11 @@ def idx_distribution(
         for name, constraint in D.arg_constraints.items():
             try:
                 params[name] = getattr(D, name)[index + colon * constraint.event_dim]
-            except IndexError:
-                print(
+            except IndexError as e:
+                raise IndexError(
                     f"Failed to slice {name} of shape {getattr(D, name).shape} with "
                     f"{index} + (:,) * {constraint.event_dim} = {index + colon * constraint.event_dim}"
-                )
-                raise
+                ) from e
 
         cls = type(D)
         if "validate_args" in inspect.signature(cls).parameters.keys():
