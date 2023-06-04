@@ -11,15 +11,16 @@ class Labeler(abc.ABC):
 
     Zero-shot labeler functors are used to enable users to run zero-shot evaluation over novel fine-tuning
     tasks. To produce a zero-shot labeler, users must:
-        1. Sub-class this base class in a new file.
-        2. Implement the `__call__` method; this method must take as input a batch object `batch`, which will
-            contain newly generated data, and an integral `input_seq_len` parameter which gives how long the
-            input sequence was prior to generation. It must return a tuple of tensors -- first, a
-            `torch.LongTensor` containing one-hot classification labels that are implied by the generated
-            sequences in the batch elements, and second, a `torch.BoolTensor` which indicates for each element
-            of the generated set of labels whether or not a label was able to be produced for that sample.
-        3. Copy the file containing this labeler class into the task directory with the name
-            `${task_df_name}_labeler.py`.
+
+    1. Sub-class this base class in a new file.
+    2. Implement the `__call__` method; this method must take as input a batch object `batch`, which will
+       contain newly generated data, and an integral `input_seq_len` parameter which gives how long the input
+       sequence was prior to generation. It must return a tuple of tensors -- first, a `torch.LongTensor`
+       containing one-hot classification labels that are implied by the generated sequences in the batch
+       elements, and second, a `torch.BoolTensor` which indicates for each element of the generated set of
+       labels whether or not a label was able to be produced for that sample.
+    3. Copy the file containing this labeler class into the task directory with the name
+       `${task_df_name}_labeler.py`.
 
     You can then use built-in zero-shot evaluation utilities on that task and your labeler will automatically
     be used to evaluate zero-shot performance via unsupervised generation.
@@ -28,6 +29,8 @@ class Labeler(abc.ABC):
         config: The `StructuredTransformerConfig` config object defining the model being used. This holds
             information about vocabulary elements, index maps (which is important to decipher batch data into
             categories), etc.
+
+    .. automethod:: __call__
     """
 
     def __init__(self, config: StructuredTransformerConfig):

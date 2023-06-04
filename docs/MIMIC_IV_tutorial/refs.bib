@@ -1,0 +1,979 @@
+@misc{gpt4,
+      title={GPT-4 Technical Report},
+      author={OpenAI},
+      year={2023},
+      eprint={2303.08774},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+
+@article{gluonts_jmlr,
+  author  = {Alexander Alexandrov and Konstantinos Benidis and Michael Bohlke-Schneider
+    and Valentin Flunkert and Jan Gasthaus and Tim Januschowski and Danielle C. Maddix
+    and Syama Rangapuram and David Salinas and Jasper Schulz and Lorenzo Stella and
+    Ali Caner Türkmen and Yuyang Wang},
+  title   = {{GluonTS: Probabilistic and Neural Time Series Modeling in Python}},
+  journal = {Journal of Machine Learning Research},
+  year    = {2020},
+  volume  = {21},
+  number  = {116},
+  pages   = {1-6},
+  url     = {http://jmlr.org/papers/v21/19-820.html}
+}
+
+@article{rajkomar2018scalable,
+  title={Scalable and accurate deep learning with electronic health records},
+  author={Rajkomar, Alvin and Oren, Eyal and Chen, Kai and Dai, Andrew M and Hajaj, Nissan and Hardt, Michaela and Liu, Peter J and Liu, Xiaobing and Marcus, Jake and Sun, Mimi and others},
+  journal={NPJ Digital Medicine},
+  volume={1},
+  number={1},
+  pages={18},
+  year={2018},
+  publisher={Nature Publishing Group}
+}
+
+@article{hur2022unihpf,
+  title={UniHPF: Universal Healthcare Predictive Framework with Zero Domain Knowledge},
+  author={Hur, Kyunghoon and Oh, Jungwoo and Kim, Junu and Kim, Jiyoun and Lee, Min Jae and Cho, Eunbyeol and Moon, Seong-Eun and Kim, Young-Hak and Choi, Edward},
+  journal={arXiv preprint arXiv:2211.08082},
+  year={2022}
+}
+
+@InProceedings{10.1007/978-3-030-43823-4_48,
+author="Curth, Alicia
+and Thoral, Patrick
+and van den Wildenberg, Wilco
+and Bijlstra, Peter
+and de Bruin, Daan
+and Elbers, Paul
+and Fornasa, Mattia",
+editor="Cellier, Peggy
+and Driessens, Kurt",
+title="Transferring Clinical Prediction Models Across Hospitals and Electronic Health Record Systems",
+booktitle="Machine Learning and Knowledge Discovery in Databases",
+year="2020",
+publisher="Springer International Publishing",
+address="Cham",
+pages="605--621",
+abstract="Recent years have seen a surge in studies developing clinical prediction models based on electronic health records (EHRs) as a result of advances in machine learning techniques and data availability. Yet, validation and implementation of such models in practice are rare, in part because EHR-based clinical prediction models are more difficult to apply to new data sets than results of classical clinical studies due to less controlled clinical environments.",
+isbn="978-3-030-43823-4"
+}
+
+@InProceedings{pmlr-v174-hur22a,
+  title = 	 {Unifying Heterogeneous Electronic Health Records Systems via Text-Based Code Embedding},
+  author =       {Hur, Kyunghoon and Lee, Jiyoung and Oh, Jungwoo and Price, Wesley and Kim, Younghak and Choi, Edward},
+  booktitle = 	 {Proceedings of the Conference on Health, Inference, and Learning},
+  pages = 	 {183--203},
+  year = 	 {2022},
+  editor = 	 {Flores, Gerardo and Chen, George H and Pollard, Tom and Ho, Joyce C and Naumann, Tristan},
+  volume = 	 {174},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {07--08 Apr},
+  publisher =    {PMLR},
+  pdf = 	 {https://proceedings.mlr.press/v174/hur22a/hur22a.pdf},
+  url = 	 {https://proceedings.mlr.press/v174/hur22a.html},
+  abstract = 	 {Increase in the use of Electronic Health Records (EHRs) has facilitated advances in predictive healthcare. However, EHR systems lack a unified code system for representing medical concepts. Heterogeneous formats of EHR present a barrier for the training and deployment of state-of-the-art deep learning models at scale. To overcome this problem, we introduce Description-based Embedding, DescEmb, a code-agnostic description-based representation learning framework for predictive modeling on EHR. DescEmb takes advantage of the flexibility of neural language models while maintaining a neutral approach that can be combined with prior frameworks for task-specific representation learning or predictive modeling. We test our model’s capacity on various experiments including prediction tasks, transfer learning and pooled learning. DescEmb shows higher performance in overall experiments compared to the code-based approach, opening the door to a text-based approach in predictive healthcare research that is not constrained by EHR structure nor special domain knowledge.}
+}
+
+
+@inproceedings{mimic_extract,
+author = {Wang, Shirly and McDermott, Matthew B. A. and Chauhan, Geeticka and Ghassemi, Marzyeh and Hughes, Michael C. and Naumann, Tristan},
+title = {MIMIC-Extract: A Data Extraction, Preprocessing, and Representation Pipeline for MIMIC-III},
+year = {2020},
+isbn = {9781450370462},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3368555.3384469},
+doi = {10.1145/3368555.3384469},
+abstract = {Machine learning for healthcare researchers face challenges to progress and reproducibility due to a lack of standardized processing frameworks for public datasets. We present MIMIC-Extract, an open source pipeline for transforming the raw electronic health record (EHR) data of critical care patients from the publicly-available MIMIC-III database into data structures that are directly usable in common time-series prediction pipelines. MIMIC-Extract addresses three challenges in making complex EHR data accessible to the broader machine learning community. First, MIMIC-Extract transforms raw vital sign and laboratory measurements into usable hourly time series, performing essential steps such as unit conversion, outlier handling, and aggregation of semantically similar features to reduce missingness and improve robustness. Second, MIMIC-Extract extracts and makes prediction of clinically-relevant targets possible, including outcomes such as mortality and length-of-stay as well as comprehensive hourly intervention signals for ventilators, vasopressors, and fluid therapies. Finally, the pipeline emphasizes reproducibility and extensibility to future research questions. We demonstrate the pipeline's effectiveness by developing several benchmark tasks for outcome and intervention forecasting and assessing the performance of competitive models.},
+booktitle = {Proceedings of the ACM Conference on Health, Inference, and Learning},
+pages = {222–235},
+numpages = {14},
+keywords = {Reproducibility, Machine learning, MIMIC-III, Healthcare, Time series data},
+location = {Toronto, Ontario, Canada},
+series = {CHIL '20}
+}
+
+@inproceedings{omoplearn,
+  title={Deep Contextual Clinical Prediction with Reverse Distillation},
+  author={Kodialam, Rohan and Boiarsky, Rebecca and Lim, Justin and Sai, Aditya and Dixit, Neil and Sontag, David},
+  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume={35},
+  number={1},
+  pages={249--258},
+  year={2021}
+}
+
+@article{temporai,
+  title={TemporAI: Facilitating Machine Learning Innovation in Time Domain Tasks for Medicine},
+  author={Saveliev, Evgeny S and van der Schaar, Mihaela},
+  journal={arXiv preprint arXiv:2301.12260},
+  year={2023}
+}
+
+@article{fiddle,
+    author = {Tang, Shengpu and Davarmanesh, Parmida and Song, Yanmeng and Koutra, Danai and Sjoding, Michael W and Wiens, Jenna},
+    title = "{Democratizing EHR analyses with FIDDLE: a flexible data-driven preprocessing pipeline for structured clinical data}",
+    journal = {Journal of the American Medical Informatics Association},
+    year = {2020},
+    month = {10},
+    doi = {10.1093/jamia/ocaa139},
+}
+
+@article{MTMIMIC,
+  title={Multitask learning and benchmarking with clinical time series data},
+  author={Harutyunyan, Hrayr and Khachatrian, Hrant and Kale, David C and Ver Steeg, Greg and Galstyan, Aram},
+  journal={Scientific data},
+  volume={6},
+  number={1},
+  pages={96},
+  year={2019},
+  publisher={Nature Publishing Group UK London}
+}
+@inproceedings{EHR_PT,
+author = {McDermott, Matthew and Nestor, Bret and Kim, Evan and Zhang, Wancong and Goldenberg, Anna and Szolovits, Peter and Ghassemi, Marzyeh},
+title = {A Comprehensive EHR Timeseries Pre-Training Benchmark},
+year = {2021},
+isbn = {9781450383592},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3450439.3451877},
+doi = {10.1145/3450439.3451877},
+abstract = {Pre-training (PT) has been used successfully in many areas of machine learning. One area where PT would be extremely impactful is over electronic health record (EHR) data. Successful PT strategies on this modality could improve model performance in data-scarce contexts such as modeling for rare diseases or allowing smaller hospitals to benefit from data from larger health systems. While many PT strategies have been explored in other domains, much less exploration has occurred for EHR data. One reason for this may be the lack of standardized benchmarks suitable for developing and testing PT algorithms. In this work, we establish a PT benchmark dataset for EHR timeseries data, establishing cohorts, a diverse set of fine-tuning tasks, and PT-focused evaluation regimes across two public EHR datasets: MIMIC-III and eICU. This benchmark fills an essential hole in the field by enabling a robust manner of iterating on PT strategies for this modality. To show the value of this benchmark and provide baselines for further research, we also profile two simple PT algorithms: a self-supervised, masked imputation system and a weakly-supervised, multi-task system. We find that PT strategies (in particular weakly-supervised PT methods) can offer significant gains over traditional learning in few-shot settings, especially on tasks with strong class imbalance. Our full benchmark and code are publicly available at https://github.com/mmcdermott/comprehensive_MTL_EHR},
+booktitle = {Proceedings of the Conference on Health, Inference, and Learning},
+pages = {257–278},
+numpages = {22},
+keywords = {electronic health records, EHR, multi-task learning, timeseries, benchmarks, neural networks, pre-training},
+location = {Virtual Event, USA},
+series = {CHIL '21}
+}
+
+@inproceedings{
+clairvoyance,
+title={Clairvoyance: A Pipeline Toolkit for Medical Time Series},
+author={Daniel Jarrett and Jinsung Yoon and Ioana Bica and Zhaozhi Qian and Ari Ercole and Mihaela van der Schaar},
+booktitle={International Conference on Learning Representations},
+year={2021},
+url={https://openreview.net/forum?id=xnC8YwKUE3k}
+}
+
+@inproceedings{DUGRA_wang2020dugra,
+  title={DUGRA: dual-graph representation learning for health information networks},
+  author={Wang, Qifan and Fung, Benjamin CM and Hung, Patrick CK},
+  booktitle={2020 IEEE International Conference on Big Data (Big Data)},
+  pages={4961--4970},
+  year={2020},
+  organization={IEEE}
+}
+
+@article{BEHRT_li2020behrt,
+  title={BEHRT: transformer for electronic health records},
+  author={Li, Yikuan and Rao, Shishir and Solares, Jos{\'e} Roberto Ayala and Hassaine, Abdelaali and Ramakrishnan, Rema and Canoy, Dexter and Zhu, Yajie and Rahimi, Kazem and Salimi-Khorshidi, Gholamreza},
+  journal={Scientific reports},
+  volume={10},
+  number={1},
+  pages={1--12},
+  year={2020},
+  publisher={Nature Publishing Group}
+}
+
+@inproceedings{EHR_PT_mcdermott2021comprehensive,
+  title={A comprehensive EHR timeseries pre-training benchmark},
+  author={McDermott, Matthew and Nestor, Bret and Kim, Evan and Zhang, Wancong and Goldenberg, Anna and Szolovits, Peter and Ghassemi, Marzyeh},
+  booktitle={Proceedings of the Conference on Health, Inference, and Learning},
+  pages={257--278},
+  year={2021}
+}
+
+@inproceedings{CAUE_huang2022enriching,
+  title={Enriching Unsupervised User Embedding via Medical Concepts},
+  author={Huang, Xiaolei and Dernoncourt, Franck and Dredze, Mark},
+  booktitle={Conference on Health, Inference, and Learning},
+  pages={63--78},
+  year={2022},
+  organization={PMLR}
+}
+
+@article{GRAPH_TRANSFORMER_pellegrini2022unsupervised,
+  title={Unsupervised pre-training of graph transformers on patient population graphs},
+  author={Pellegrini, Chantal and Navab, Nassir and Kazi, Anees},
+  journal={arXiv preprint arXiv:2207.10603},
+  year={2022}
+}
+
+@article{T_BEHRT_rao2022targeted,
+  title={Targeted-BEHRT: Deep learning for observational causal inference on longitudinal electronic health records},
+  author={Rao, Shishir and Mamouei, Mohammad and Salimi-Khorshidi, Gholamreza and Li, Yikuan and Ramakrishnan, Rema and Hassaine, Abdelaali and Canoy, Dexter and Rahimi, Kazem},
+  journal={IEEE Transactions on Neural Networks and Learning Systems},
+  year={2022},
+  publisher={IEEE}
+}
+
+@inproceedings{G_BERT_shang2019pre,
+  title={Pre-training of graph augmented transformers for medication recommendation},
+  author={Shang, Junyuan and Ma, Tengfei and Xiao, Cao and Sun, Jimeng},
+  booktitle={28th International Joint Conference on Artificial Intelligence, IJCAI 2019},
+  pages={5953--5959},
+  year={2019},
+  organization={International Joint Conferences on Artificial Intelligence}
+}
+
+@inproceedings{SARD_kodialam2021deep,
+  title={Deep contextual clinical prediction with reverse distillation},
+  author={Kodialam, Rohan and Boiarsky, Rebecca and Lim, Justin and Sai, Aditya and Dixit, Neil and Sontag, David},
+  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume={35},
+  number={1},
+  pages={249--258},
+  year={2021}
+}
+
+@article{UNIHPF_hur2022unihpf,
+  title={UniHPF: Universal Healthcare Predictive Framework with Zero Domain Knowledge},
+  author={Hur, Kyunghoon and Oh, Jungwoo and Kim, Junu and Lee, Min Jae and Cho, Eunbyeol and Kim, Jiyoun and Moon, Seong-Eun and Kim, Young-Hak and Choi, Edward},
+  journal={arXiv preprint arXiv:2207.09858},
+  year={2022}
+}
+
+@inproceedings{
+li2022large,
+title={Large Language Models Can Be Strong Differentially Private Learners},
+author={Xuechen Li and Florian Tramer and Percy Liang and Tatsunori Hashimoto},
+booktitle={International Conference on Learning Representations},
+year={2022},
+url={https://openreview.net/forum?id=bVuP3ltATMz}
+}
+
+@inproceedings{OCP_agrawal2022leveraging,
+  title={Leveraging Time Irreversibility with Order-Contrastive Pre-training},
+  author={Agrawal, Monica N and Lang, Hunter and Offin, Michael and Gazit, Lior and Sontag, David},
+  booktitle={International Conference on Artificial Intelligence and Statistics},
+  pages={2330--2353},
+  year={2022},
+  organization={PMLR}
+}
+
+@article{CMS_LDS_BERT_lahlou2021explainable,
+  title={Explainable health risk predictor with transformer-based medicare claim encoder},
+  author={Lahlou, Chuhong and Crayton, Ancil and Trier, Caroline and Willett, Evan},
+  journal={arXiv preprint arXiv:2105.09428},
+  year={2021}
+}
+
+@article{MTL_si2021generalized,
+  title={Generalized and transferable patient language representation for phenotyping with limited data},
+  author={Si, Yuqi and Bernstam, Elmer V and Roberts, Kirk},
+  journal={Journal of Biomedical Informatics},
+  volume={116},
+  pages={103726},
+  year={2021},
+  publisher={Elsevier}
+}
+
+@inproceedings{RAINDROP_zhang2022graph,
+title = {Graph-Guided Network For Irregularly Sampled Multivariate Time Series},
+author = {Zhang, Xiang and Zeman, Marko and Tsiligkaridis, Theodoros and Zitnik, Marinka},
+booktitle = {International Conference on Learning Representations, ICLR},
+year      = {2022}
+}
+
+@article{PCLR_diamant2022patient,
+  title={Patient contrastive learning: A performant, expressive, and practical approach to electrocardiogram modeling},
+  author={Diamant, Nathaniel and Reinertsen, Erik and Song, Steven and Aguirre, Aaron D and Stultz, Collin M and Batra, Puneet},
+  journal={PLoS computational biology},
+  volume={18},
+  number={2},
+  pages={e1009862},
+  year={2022},
+  publisher={Public Library of Science San Francisco, CA USA}
+}
+
+@InProceedings{DESCEMB_pmlr-v174-hur22a,
+  title = 	 {Unifying Heterogeneous Electronic Health Records Systems via Text-Based Code Embedding},
+  author =       {Hur, Kyunghoon and Lee, Jiyoung and Oh, Jungwoo and Price, Wesley and Kim, Younghak and Choi, Edward},
+  booktitle = 	 {Proceedings of the Conference on Health, Inference, and Learning},
+  pages = 	 {183--203},
+  year = 	 {2022},
+  editor = 	 {Flores, Gerardo and Chen, George H and Pollard, Tom and Ho, Joyce C and Naumann, Tristan},
+  volume = 	 {174},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {07--08 Apr},
+  publisher =    {PMLR},
+  pdf = 	 {https://proceedings.mlr.press/v174/hur22a/hur22a.pdf},
+  url = 	 {https://proceedings.mlr.press/v174/hur22a.html},
+  abstract = 	 {Increase in the use of Electronic Health Records (EHRs) has facilitated advances in predictive healthcare. However, EHR systems lack a unified code system for representing medical concepts. Heterogeneous formats of EHR present a barrier for the training and deployment of state-of-the-art deep learning models at scale. To overcome this problem, we introduce Description-based Embedding, DescEmb, a code-agnostic description-based representation learning framework for predictive modeling on EHR. DescEmb takes advantage of the flexibility of neural language models while maintaining a neutral approach that can be combined with prior frameworks for task-specific representation learning or predictive modeling. We test our model’s capacity on various experiments including prediction tasks, transfer learning and pooled learning. DescEmb shows higher performance in overall experiments compared to the code-based approach, opening the door to a text-based approach in predictive healthcare research that is not constrained by EHR structure nor special domain knowledge.}
+}
+
+@inproceedings{RETAIN_NIPS2016_231141b3,
+ author = {Choi, Edward and Bahadori, Mohammad Taha and Sun, Jimeng and Kulas, Joshua and Schuetz, Andy and Stewart, Walter},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {D. Lee and M. Sugiyama and U. Luxburg and I. Guyon and R. Garnett},
+ pages = {},
+ publisher = {Curran Associates, Inc.},
+ title = {RETAIN: An Interpretable Predictive Model for Healthcare using Reverse Time Attention Mechanism},
+ url = {https://proceedings.neurips.cc/paper/2016/file/231141b34c82aa95e48810a9d1b33a79-Paper.pdf},
+ volume = {29},
+ year = {2016}
+}
+
+@inproceedings{GRAM_10.1145/3097983.3098126,
+author = {Choi, Edward and Bahadori, Mohammad Taha and Song, Le and Stewart, Walter F. and Sun, Jimeng},
+title = {GRAM: Graph-Based Attention Model for Healthcare Representation Learning},
+year = {2017},
+isbn = {9781450348874},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3097983.3098126},
+doi = {10.1145/3097983.3098126},
+abstract = {Deep learning methods exhibit promising performance for predictive modeling in healthcare, but two important challenges remain: - Data insufficiency: Often in healthcare predictive modeling, the sample size is insufficient for deep learning methods to achieve satisfactory results.Interpretation: The representations learned by deep learning methods should align with medical knowledge.To address these challenges, we propose GRaph-based Attention Model (GRAM) that supplements electronic health records (EHR) with hierarchical information inherent to medical ontologies. Based on the data volume and the ontology structure, GRAM represents a medical concept as a combination of its ancestors in the ontology via an attention mechanism.We compared predictive performance (i.e. accuracy, data needs, interpretability) of GRAM to various methods including the recurrent neural network (RNN) in two sequential diagnoses prediction tasks and one heart failure prediction task. Compared to the basic RNN, GRAM achieved 10% higher accuracy for predicting diseases rarely observed in the training data and 3% improved area under the ROC curve for predicting heart failure using an order of magnitude less training data. Additionally, unlike other methods, the medical concept representations learned by GRAM are well aligned with the medical ontology. Finally, GRAM exhibits intuitive attention behaviors by adaptively generalizing to higher level concepts when facing data insufficiency at the lower level concepts.},
+booktitle = {Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+pages = {787–795},
+numpages = {9},
+keywords = {graph, predictive healthcare, electronic health records, attention model},
+location = {Halifax, NS, Canada},
+series = {KDD '17}
+}
+
+@inproceedings{MIME_NEURIPS2018_934b5358,
+ author = {Choi, Edward and Xiao, Cao and Stewart, Walter and Sun, Jimeng},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {S. Bengio and H. Wallach and H. Larochelle and K. Grauman and N. Cesa-Bianchi and R. Garnett},
+ pages = {},
+ publisher = {Curran Associates, Inc.},
+ title = {MiME: Multilevel Medical Embedding of Electronic Health Records for Predictive Healthcare},
+ url = {https://proceedings.neurips.cc/paper/2018/file/934b535800b1cba8f96a5d72f72f1611-Paper.pdf},
+ volume = {31},
+ year = {2018}
+}
+
+@inproceedings{GRACE_10.1145/3534678.3539020,
+author = {Ren, Houxing and Wang, Jingyuan and Zhao, Wayne Xin},
+title = {Generative Adversarial Networks Enhanced Pre-Training for Insufficient Electronic Health Records Modeling},
+year = {2022},
+isbn = {9781450393850},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3534678.3539020},
+doi = {10.1145/3534678.3539020},
+abstract = {In recent years, automatic computational systems based on deep learning are widely used in medical fields, such as automatic diagnosing and disease prediction. Most of these systems are designed for data sufficient scenarios. However, due to the disease rarity or privacy, the medical data are always insufficient. When applying these data-hungry deep learning models with insufficient data, it is likely to lead to issues of over-fitting and cause serious performance problems. Many data augmentation methods have been proposed to solve the data insufficiency problem, such as using GAN (Generative Adversarial Networks) to generate training data. However, the augmented data usually contains lots of noise. Directly using them to train sensitive medical models is very difficult to achieve satisfactory results.To overcome this problem, we propose a novel deep model learning method for insufficient EHR (Electronic Health Record) data modeling, namely GRACE, which stands GeneRative Adversarial networks enhanCed prE-training. In the method, we propose an item-relation-aware GAN to capture changing trends and correlations among data for generating high-quality EHR records. Furthermore, we design a pre-training mechanism consisting of a masked records prediction task and a real-fake contrastive learning task to learn representations for EHR data using both generated and real data. After the pre-training, only the representations of real data is used to train the final prediction model. In this way, we can fully exploit useful information in generated data through pre-training, and also avoid the problems caused by directly using noisy generated data to train the final prediction model. The effectiveness of the proposed method is evaluated using extensive experiments on three healthcare-related real-world datasets. We also deploy our method in a maternal and child health care hospital for the online test. Both offline and online experimental results demonstrate the effectiveness of the proposed method. We believe doctors and patients can benefit from our effective learning method in various healthcare-related applications.},
+booktitle = {Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining},
+pages = {3810–3818},
+numpages = {9},
+keywords = {healthcare informatics, pre-training, representation learning},
+location = {Washington DC, USA},
+series = {KDD '22}
+}
+
+@inproceedings{RAPT_10.1145/3447548.3467069,
+author = {Ren, Houxing and Wang, Jingyuan and Zhao, Wayne Xin and Wu, Ning},
+title = {RAPT: Pre-Training of Time-Aware Transformer for Learning Robust Healthcare Representation},
+year = {2021},
+isbn = {9781450383325},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi-org.ezp-prod1.hul.harvard.edu/10.1145/3447548.3467069},
+doi = {10.1145/3447548.3467069},
+abstract = {With the development of electronic health records (EHRs), prenatal care examination records have become available for developing automatic prediction or diagnosis approaches with machine learning methods. In this paper, we study how to effectively learn representations applied to various downstream tasks for EHR data. Although several methods have been proposed in this direction, they usually adapt classic sequential models to solve one specific diagnosis task or address unique EHR data issues. This makes it difficult to reuse these existing methods for the early diagnosis of pregnancy complications or provide a general solution to address the series of health problems caused by pregnancy complications. In this paper, we propose a novel model RAPT, which stands for RepresentAtion by Pre-training time-aware Transformer. To associate pre-training and EHR data, we design an architecture that is suitable for both modeling EHR data and pre-training, namely time-aware Transformer. To handle various characteristics in EHR data, such as insufficiency, we carefully devise three pre-training tasks to handle data insufficiency, data incompleteness and short sequence problems, namely similarity prediction, masked prediction and reasonability check. In this way, our representations can capture various EHR data characteristics. Extensive experimental results for four downstream tasks have shown the effectiveness of the proposed approach. We also introduce sensitivity analysis to interpret the model and design an interface to show results and interpretation for doctors. Finally, we implement a diagnosis system for pregnancy complications based on our pre-training model. Doctors and pregnant women can benefit from the diagnosis system in early diagnosis of pregnancy complications.},
+booktitle = {Proceedings of the 27th ACM SIGKDD Conference on Knowledge Discovery \& Data Mining},
+pages = {3503–3511},
+numpages = {9},
+keywords = {representation learning, healthcare informatics, pre-training},
+location = {Virtual Event, Singapore},
+series = {KDD '21}
+}
+
+@article{FHIR_ML_rajkomar2018scalable,
+  title={Scalable and accurate deep learning with electronic health records},
+  author={Rajkomar, Alvin and Oren, Eyal and Chen, Kai and Dai, Andrew M and Hajaj, Nissan and Hardt, Michaela and Liu, Peter J and Liu, Xiaobing and Marcus, Jake and Sun, Mimi and others},
+  journal={NPJ digital medicine},
+  volume={1},
+  number={1},
+  pages={1--10},
+  year={2018},
+  publisher={Nature Publishing Group}
+}
+
+@inproceedings{POINCARE_CODEEMB_beaulieu2018learning,
+  title={Learning contextual hierarchical structure of medical concepts with poincair{\'e} embeddings to clarify phenotypes},
+  author={Beaulieu-Jones, Brett K and Kohane, Isaac S and Beam, Andrew L},
+  booktitle={BIOCOMPUTING 2019: Proceedings of the Pacific Symposium},
+  pages={8--17},
+  year={2018},
+  organization={World Scientific}
+}
+
+@InProceedings{DOCTOR_AI_pmlr-v56-Choi16,
+  title = 	 {Doctor AI: Predicting Clinical Events via Recurrent Neural Networks},
+  author = 	 {Choi, Edward and Bahadori, Mohammad Taha and Schuetz, Andy and Stewart, Walter F. and Sun, Jimeng},
+  booktitle = 	 {Proceedings of the 1st Machine Learning for Healthcare Conference},
+  pages = 	 {301--318},
+  year = 	 {2016},
+  editor = 	 {Doshi-Velez, Finale and Fackler, Jim and Kale, David and Wallace, Byron and Wiens, Jenna},
+  volume = 	 {56},
+  series = 	 {Proceedings of Machine Learning Research},
+  address = 	 {Northeastern University, Boston, MA, USA},
+  month = 	 {18--19 Aug},
+  publisher =    {PMLR},
+  pdf = 	 {http://proceedings.mlr.press/v56/Choi16.pdf},
+  url = 	 {https://proceedings.mlr.press/v56/Choi16.html},
+  abstract = 	 {Leveraging large historical data in electronic health record (EHR), we developed Doctor AI, a generic predictive model that covers observed medical conditions and medication uses. Doctor AI is a temporal model using recurrent neural networks (RNN) and was developed and applied to longitudinal time stamped EHR data from 260K patients and 2,128 physicians over 8 years. Encounter records (e.g. diagnosis codes, medication codes or procedure codes) were input to RNN to predict (all) the diagnosis and medication categories for a subsequent visit. Doctor AI assesses the history of patients to make multilabel predictions (one label for each diagnosis or medication category). Based on separate blind test set evaluation, Doctor AI can perform differential diagnosis with up to 79% recall@30, significantly higher than several baselines. Moreover, we demonstrate great generalizability of Doctor AI by adapting the resulting models from one institution to another without losing substantial accuracy.}
+}
+
+@article{CLMBR_steinberg2021language,
+  title={Language models are an effective representation learning technique for electronic health record data},
+  author={Steinberg, Ethan and Jung, Ken and Fries, Jason A and Corbin, Conor K and Pfohl, Stephen R and Shah, Nigam H},
+  journal={Journal of Biomedical Informatics},
+  volume={113},
+  pages={103637},
+  year={2021},
+  publisher={Elsevier}
+}
+
+@article{MEDGPT_kraljevic2021medgpt,
+  title={MedGPT: Medical Concept Prediction from Clinical Narratives},
+  author={Kraljevic, Zeljko and Shek, Anthony and Bean, Daniel and Bendayan, Rebecca and Teo, James and Dobson, Richard},
+  journal={arXiv preprint arXiv:2107.03134},
+  year={2021}
+}
+
+@article{MEDBERT_rasmy2021med,
+  title={Med-BERT: pretrained contextualized embeddings on large-scale structured electronic health records for disease prediction},
+  author={Rasmy, Laila and Xiang, Yang and Xie, Ziqian and Tao, Cui and Zhi, Degui},
+  journal={NPJ digital medicine},
+  volume={4},
+  number={1},
+  pages={1--13},
+  year={2021},
+  publisher={Nature Publishing Group}
+}
+
+@InProceedings{pandas_paper,
+  author    = { {W}es {M}c{K}inney },
+  title     = { {D}ata {S}tructures for {S}tatistical {C}omputing in {P}ython },
+  booktitle = { {P}roceedings of the 9th {P}ython in {S}cience {C}onference },
+  pages     = { 56 - 61 },
+  year      = { 2010 },
+  editor    = { {S}t\'efan van der {W}alt and {J}arrod {M}illman },
+  doi       = { 10.25080/Majora-92bf1922-00a }
+}
+
+@article{SIPT,
+  title={Structure inducing pre-training},
+  author={McDermott, Matthew and Yap, Brendan and Szolovits, Peter and Zitnik, Marinka},
+  journal={arXiv preprint arXiv:2103.10334},
+  year={2021}
+}
+
+@inproceedings{pointBERT,
+  title={Point-bert: Pre-training 3d point cloud transformers with masked point modeling},
+  author={Yu, Xumin and Tang, Lulu and Rao, Yongming and Huang, Tiejun and Zhou, Jie and Lu, Jiwen},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={19313--19322},
+  year={2022}
+}
+
+
+
+
+@inproceedings{
+intensityFree,
+title={Intensity-Free Learning of Temporal Point Processes},
+author={Oleksandr Shchur and Marin Biloš and Stephan Günnemann},
+booktitle={International Conference on Learning Representations},
+year={2020},
+url={https://openreview.net/forum?id=HygOjhEYDH}
+}
+
+@article{gorishniy2021revisiting,
+  title={Revisiting deep learning models for tabular data},
+  author={Gorishniy, Yury and Rubachev, Ivan and Khrulkov, Valentin and Babenko, Artem},
+  journal={Advances in Neural Information Processing Systems},
+  volume={34},
+  pages={18932--18943},
+  year={2021}
+}
+
+@article{tsfresh,
+author = {Christ, Maximilian and Braun, Nils and Neuffer, Julius and Kempa-Liehr, Andreas W.},
+title = {Time Series FeatuRe Extraction on Basis of Scalable Hypothesis Tests (Tsfresh – A Python Package)},
+year = {2018},
+issue_date = {Sep 2018},
+publisher = {Elsevier Science Publishers B. V.},
+address = {NLD},
+volume = {307},
+number = {C},
+issn = {0925-2312},
+url = {https://doi.org/10.1016/j.neucom.2018.03.067},
+doi = {10.1016/j.neucom.2018.03.067},
+journal = {Neurocomput.},
+month = {sep},
+pages = {72–77},
+numpages = {6},
+keywords = {Feature engineering, Feature selection, Feature extraction, Machine learning, Time series}
+}
+@software{KATS,
+author = {Jiang, Xiaodong and Srivastava, Sudeep and Chatterjee, Sourav and Yu, Yang and Handler, Jeffrey and Zhang, Peiyi and Bopardikar, Rohan and Li, Dawei and Lin, Yanjun and Thakore, Uttam and Brundage, Michael and Holt, Ginger and Komurlu, Caner and Nagalla, Rakshita and Wang, Zhichao and Sun, Hechao and Gao, Peng and Cheung, Wei and Gao, Jun and Wang, Qi and Guerard, Marius and Kazemi, Morteza and Chen, Yulin and Zhou, Chong and Lee, Sean and Laptev, Nikolay and Levendovszky, Tihamér and Taylor, Jake and Qian, Huijun and Zhang, Jian and Shoydokova, Aida and Singh, Trisha and Zhu, Chengjun and Baz, Zeynep and Bergmeir, Christoph and Yu, Di and Koylan, Ahmet and Jiang, Kun and Temiyasathit, Ploy and Yurtbay, Emre},
+license = {MIT License},
+month = {3},
+title = {{Kats}},
+url = {https://github.com/facebookresearch/Kats},
+version = {0.2.0},
+year = {2022}
+}
+
+@inproceedings{neuralHawkes,
+  title={Transformer hawkes process},
+  author={Zuo, Simiao and Jiang, Haoming and Li, Zichong and Zhao, Tuo and Zha, Hongyuan},
+  booktitle={International conference on machine learning},
+  pages={11692--11702},
+  year={2020},
+  organization={PMLR}
+}
+
+@article{
+ESM,
+author = {Alexander Rives  and Joshua Meier  and Tom Sercu  and Siddharth Goyal  and Zeming Lin  and Jason Liu  and Demi Guo  and Myle Ott  and C. Lawrence Zitnick  and Jerry Ma  and Rob Fergus },
+title = {Biological structure and function emerge from scaling unsupervised learning to 250 million protein sequences},
+journal = {Proceedings of the National Academy of Sciences},
+volume = {118},
+number = {15},
+pages = {e2016239118},
+year = {2021},
+doi = {10.1073/pnas.2016239118},
+URL = {https://www.pnas.org/doi/abs/10.1073/pnas.2016239118},
+eprint = {https://www.pnas.org/doi/pdf/10.1073/pnas.2016239118},
+abstract = {In the field of artificial intelligence, a combination of scale in data and model capacity enabled by unsupervised learning has led to major advances in representation learning and statistical generation. In the life sciences, the anticipated growth of sequencing promises unprecedented data on natural sequence diversity. Protein language modeling at the scale of evolution is a logical step toward predictive and generative artificial intelligence for biology. To this end, we use unsupervised learning to train a deep contextual language model on 86 billion amino acids across 250 million protein sequences spanning evolutionary diversity. The resulting model contains information about biological properties in its representations. The representations are learned from sequence data alone. The learned representation space has a multiscale organization reflecting structure from the level of biochemical properties of amino acids to remote homology of proteins. Information about secondary and tertiary structure is encoded in the representations and can be identified by linear projections. Representation learning produces features that generalize across a range of applications, enabling state-of-the-art supervised prediction of mutational effect and secondary structure and improving state-of-the-art features for long-range contact prediction.}}
+
+
+@software{duckdb,
+  author       = {Mark and
+                  Hannes Mühleisen and
+                  Pedro Holanda and
+                  tiagokepe and
+                  Diego Gomes Tomé and
+                  Josh Wills and
+                  Richard Wesley and
+                  Kirill Müller and
+                  Till Döhmen and
+                  tania and
+                  Denis Hirn and
+                  simonasked and
+                  Azim Afroozeh and
+                  nantiamak and
+                  Patrick Schratz and
+                  Aris Koning and
+                  André Kohn and
+                  Chilarai and
+                  Gabor Szarnyas and
+                  Arjen P. de Vries and
+                  Sreeharsha Ramanavarapu and
+                  Andy Teucher and
+                  Dominik Moritz and
+                  Igor [hyperxor] and
+                  Uwe L. Korn and
+                  travis-leith and
+                  Aleksei Kashuba and
+                  Erwan Le Pennec and
+                  Y. and
+                  Jian Zhang},
+  title        = {duckdb/duckdb: 0.2.6 Preview Release "Jamaicensis"},
+  month        = may,
+  year         = 2021,
+  publisher    = {Zenodo},
+  version      = {v0.2.6},
+  doi          = {10.5281/zenodo.4743597},
+  url          = {https://doi.org/10.5281/zenodo.4743597}
+}
+
+@software{polars_software,
+  author       = {Ritchie Vink and
+                  Stijn de Gooijer and
+                  Alexander Beedie and
+                  J van Zundert and
+                  Gert Hulselmans and
+                  Cory Grinstead and
+                  Marco Edward Gorelli and
+                  Matteo Santamaria and
+                  Daniël Heres and
+                  ibENPC and
+                  Jorge Leitao and
+                  Marc van Heerden and
+                  Colin Jermain and
+                  Ryan Russell and
+                  Chris Pryer and
+                  Adrián Gallego Castellanos and
+                  Jeremy Goh and
+                  Moritz Wilksch and
+                  illumination-k and
+                  Max Conradt and
+                  Liam Brannigan and
+                  Joshua Peek and
+                  Yu Ri Tan and
+                  elbaro and
+                  Nicolas Stalder and
+                  Søren Havelund Welling and
+                  Adam Gregory and
+                  paq and
+                  Jakob Keller},
+  title        = {pola-rs/polars: Python Polars 0.16.12},
+  month        = mar,
+  year         = 2023,
+  publisher    = {Zenodo},
+  version      = {py-0.16.12},
+  doi          = {10.5281/zenodo.7717132},
+  url          = {https://doi.org/10.5281/zenodo.7717132}
+}
+
+@software{pandas_software,
+  author       = {The pandas development team},
+  title        = {pandas-dev/pandas: Pandas},
+  month        = apr,
+  year         = 2023,
+  note         = {If you use this software, please cite it as below.},
+  publisher    = {Zenodo},
+  version      = {v2.0.1},
+  doi          = {10.5281/zenodo.7857418},
+  url          = {https://doi.org/10.5281/zenodo.7857418}
+}
+
+@article{allofus,
+  title={The “All of Us” research program},
+  author={Investigators, AURP},
+  journal={New England Journal of Medicine},
+  volume={381},
+  number={7},
+  pages={668--676},
+  year={2019}
+}
+
+@article{mimiciv,
+  title={MIMIC-IV, a freely accessible electronic health record dataset},
+  author={Johnson, Alistair EW and Bulgarelli, Lucas and Shen, Lu and Gayles, Alvin and Shammout, Ayad and Horng, Steven and Pollard, Tom J and Moody, Benjamin and Gow, Brian and Lehman, Li-wei H and others},
+  journal={Scientific data},
+  volume={10},
+  number={1},
+  pages={1},
+  year={2023},
+  publisher={Nature Publishing Group UK London}
+}
+
+@article{HIBEHRT_li2021hi,
+  title={Hi-BEHRT: Hierarchical Transformer-based model for accurate prediction of clinical events using multimodal longitudinal electronic health records},
+  author={Li, Yikuan and Mamouei, Mohammad and Salimi-Khorshidi, Gholamreza and Rao, Shishir and Hassaine, Abdelaali and Canoy, Dexter and Lukasiewicz, Thomas and Rahimi, Kazem},
+  journal={IEEE Journal of Biomedical and Health Informatics},
+  year={2022},
+  publisher={IEEE}
+}
+@InProceedings{CEHR_BERT_pmlr-v158-pang21a,
+  title = 	 {CEHR-BERT: Incorporating temporal information from structured EHR data to improve prediction tasks},
+  author =       {Pang, Chao and Jiang, Xinzhuo and Kalluri, Krishna S. and Spotnitz, Matthew and Chen, RuiJun and Perotte, Adler and Natarajan, Karthik},
+  booktitle = 	 {Proceedings of Machine Learning for Health},
+  pages = 	 {239--260},
+  year = 	 {2021},
+  editor = 	 {Roy, Subhrajit and Pfohl, Stephen and Rocheteau, Emma and Tadesse, Girmaw Abebe and Oala, Luis and Falck, Fabian and Zhou, Yuyin and Shen, Liyue and Zamzmi, Ghada and Mugambi, Purity and Zirikly, Ayah and McDermott, Matthew B. A. and Alsentzer, Emily},
+  volume = 	 {158},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {04 Dec},
+  publisher =    {PMLR},
+  pdf = 	 {https://proceedings.mlr.press/v158/pang21a/pang21a.pdf},
+  url = 	 {https://proceedings.mlr.press/v158/pang21a.html},
+  abstract = 	 {Embedding algorithms are increasingly used to represent clinical concepts in healthcare for improving machine learning tasks such as clinical phenotyping and disease prediction. Recent studies have adapted state-of-the-art bidirectional encoder representations from transformers (BERT) architecture to structured electronic health records (EHR) data for the generation of contextualized concept embeddings, yet do not fully incorporate temporal data across multiple clinical domains. Therefore we developed a new BERT adaptation, CEHR-BERT, to incorporate temporal information using a hybrid approach by augmenting the input to BERT using artificial time tokens, incorporating time, age, and concept embeddings, and introducing a new second learning objective for visit type. CEHR-BERT was trained on a subset of  clinical data from Columbia University Irving Medical Center-New York Presbyterian Hospital, which includes 2.4M patients, spanning over three decades, and tested using 4-fold evaluation on the following prediction tasks: hospitalization, death, new heart failure (HF) diagnosis, and HF readmission. Our experiments show that CEHR-BERT outperformed existing state-of-the-art clinical BERT adaptations and baseline models across all 4 prediction tasks in both ROC-AUC and PR-AUC. CEHR-BERT also demonstrated strong few-shot learning capability, as our model trained on only 5% of data outperformed comparison models trained on the entire data set. Ablation studies to better understand the contribution of each time component showed incremental gains with every element, suggesting that CEHR-BERT’s incorporation of artificial time tokens,  time/age embeddings with concept embeddings, and the addition of the second learning objective represents a promising approach for future BERT-based clinical embeddings.}
+}
+
+@article{lee2022association,
+  title={Association between long-term weight-change trajectory and cardiovascular disease risk by physical activity level},
+  author={Lee, Hye Ah and Park, Hyesook},
+  journal={Scientific reports},
+  volume={12},
+  number={1},
+  pages={1--10},
+  year={2022},
+  publisher={Nature Publishing Group}
+}
+
+@inproceedings{METACAREpp_10.1145/3477495.3532020,
+author = {Tan, Yanchao and Yang, Carl and Wei, Xiangyu and Chen, Chaochao and Liu, Weiming and Li, Longfei and Zhou, Jun and Zheng, Xiaolin},
+title = {MetaCare++: Meta-Learning with Hierarchical Subtyping for Cold-Start Diagnosis Prediction in Healthcare Data},
+year = {2022},
+isbn = {9781450387323},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3477495.3532020},
+doi = {10.1145/3477495.3532020},
+abstract = {Cold-start diagnosis prediction is a challenging task for AI in healthcare, where often only a few visits per patient and a few observations per disease can be exploited. Although meta-learning is widely adopted to address the data sparsity problem in general domains, directly applying it to healthcare data is less effective, since it is unclear how to capture both the temporal relations in clinical visits and the complicated relations among syndromic diseases for precise personalized diagnosis. To this end, we first propose a novel Meta-learning framework for cold-start diagnosis prediction in healthCare data (MetaCare). By explicitly encoding the effects of disease progress over time as a generalization prior, MetaCare dynamically predicts future diagnosis and timestamp for infrequent patients. Then, to model complicated relations among rare diseases, we propose to utilize domain knowledge of hierarchical relations among diseases, and further perform diagnosis subtyping to mine the latent syndromic relations among diseases. Finally, to tailor the generic meta-learning framework with personalized parameters, we design a hierarchical patient subtyping mechanism and bridge the modeling of both infrequent patients and rare diseases. We term the joint model as MetaCare++. Extensive experiments on two real-world benchmark datasets show significant performance gains brought by MetaCare++, yielding average improvements of 7.71% for diagnosis prediction and 13.94% for diagnosis time prediction over the state-of-the-art baselines.},
+booktitle = {Proceedings of the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval},
+pages = {449–459},
+numpages = {11},
+keywords = {meta-learning, diagnosis prediction, subtyping, hierarchical},
+location = {Madrid, Spain},
+series = {SIGIR '22}
+}
+
+@article{ko2022gwas,
+  title={GWAS of longitudinal trajectories at biobank scale},
+  author={Ko, Seyoon and German, Christopher A and Jensen, Aubrey and Shen, Judong and Wang, Anran and Mehrotra, Devan V and Sun, Yan V and Sinsheimer, Janet S and Zhou, Hua and Zhou, Jin J},
+  journal={The American Journal of Human Genetics},
+  volume={109},
+  number={3},
+  pages={433--445},
+  year={2022},
+  publisher={Elsevier}
+}
+
+@article{roswall2021developmental,
+  title={Developmental trajectory of the healthy human gut microbiota during the first 5 years of life},
+  author={Roswall, Josefine and Olsson, Lisa M and Kovatcheva-Datchary, Petia and Nilsson, Staffan and Tremaroli, Valentina and Simon, Marie-Christine and Kiilerich, Pia and Akrami, Rozita and Kr{\"a}mer, Manuela and Uhl{\'e}n, Mathias and others},
+  journal={Cell host \& microbe},
+  volume={29},
+  number={5},
+  pages={765--776},
+  year={2021},
+  publisher={Elsevier}
+}
+
+@article{leonard2021microbiome,
+  title={Microbiome signatures of progression toward celiac disease onset in at-risk children in a longitudinal prospective cohort study},
+  author={Leonard, Maureen M and Valitutti, Francesco and Karathia, Hiren and Pujolassos, Meritxell and Kenyon, Victoria and Fanelli, Brian and Troisi, Jacopo and Subramanian, Poorani and Camhi, Stephanie and Colucci, Angelo and others},
+  journal={Proceedings of the National Academy of Sciences},
+  volume={118},
+  number={29},
+  pages={e2020322118},
+  year={2021},
+  publisher={National Acad Sciences}
+}
+
+@article{yang2021life,
+  title={Life-course trajectories of body mass index from adolescence to old age: racial and educational disparities},
+  author={Yang, Yang Claire and Walsh, Christine E and Johnson, Moira P and Belsky, Daniel W and Reason, Max and Curran, Patrick and Aiello, Allison E and Chanti-Ketterl, Marianne and Harris, Kathleen Mullan},
+  journal={Proceedings of the National Academy of Sciences},
+  volume={118},
+  number={17},
+  pages={e2020167118},
+  year={2021},
+  publisher={National Acad Sciences}
+}
+@article{rodrigues2020mutant,
+  title={Mutant huntingtin and neurofilament light have distinct longitudinal dynamics in Huntington’s disease},
+  author={Rodrigues, Filipe B and Byrne, Lauren M and Tortelli, Rosanna and Johnson, Eileanoir B and Wijeratne, Peter A and Arridge, Marzena and De Vita, Enrico and Ghazaleh, Naghmeh and Houghton, Richard and Furby, Hannah and others},
+  journal={Science translational medicine},
+  volume={12},
+  number={574},
+  pages={eabc2888},
+  year={2020},
+  publisher={American Association for the Advancement of Science}
+}
+
+@article{wingo2019large,
+  title={Large-scale proteomic analysis of human brain identifies proteins associated with cognitive trajectory in advanced age},
+  author={Wingo, Aliza P and Dammer, Eric B and Breen, Michael S and Logsdon, Benjamin A and Duong, Duc M and Troncosco, Juan C and Thambisetty, Madhav and Beach, Thomas G and Serrano, Geidy E and Reiman, Eric M and others},
+  journal={Nature communications},
+  volume={10},
+  number={1},
+  pages={1--14},
+  year={2019},
+  publisher={Nature Publishing Group}
+}
+
+@article{xu2020genome,
+  title={Genome-wide association study of smoking trajectory and meta-analysis of smoking status in 842,000 individuals},
+  author={Xu, Ke and Li, Boyang and McGinnis, Kathleen A and Vickers-Smith, Rachel and Dao, Cecilia and Sun, Ning and Kember, Rachel L and Zhou, Hang and Becker, William C and Gelernter, Joel and others},
+  journal={Nature communications},
+  volume={11},
+  number={1},
+  pages={1--11},
+  year={2020},
+  publisher={Nature Publishing Group}
+}
+
+@article{siggaard2020disease,
+  title={Disease trajectory browser for exploring temporal, population-wide disease progression patterns in 7.2 million Danish patients},
+  author={Siggaard, Troels and Reguant, Roc and J{\o}rgensen, Isabella F and Haue, Amalie D and Lademann, Mette and Aguayo-Orozco, Alejandro and Hjaltelin, Jessica X and Jensen, Anders Boeck and Banasik, Karina and Brunak, S{\o}ren},
+  journal={Nature communications},
+  volume={11},
+  number={1},
+  pages={1--10},
+  year={2020},
+  publisher={Nature Publishing Group}
+}
+
+
+
+@article{ting2020joint,
+  title={Joint longitudinal low calcium high phosphorus trajectory associates with accelerated progression, acute coronary syndrome and mortality in chronic kidney disease},
+  author={Ting, I-Wen and Yeh, Hung-Chieh and Huang, Han-Chun and Chiang, Hsiu-Yin and Chu, Pei-Lun and Kuo, Chin-Chi},
+  journal={Scientific reports},
+  volume={10},
+  number={1},
+  pages={1--12},
+  year={2020},
+  publisher={Nature Publishing Group}
+}
+
+@article{baek2021temporal,
+  title={Temporal trajectory of biofluid markers in Parkinson’s disease},
+  author={Baek, Min Seok and Lee, Myung Jun and Kim, Han-Kyeol and Lyoo, Chul Hyoung},
+  journal={Scientific reports},
+  volume={11},
+  number={1},
+  pages={1--12},
+  year={2021},
+  publisher={Nature Publishing Group}
+}
+
+@article{jensen2014temporal,
+  title={Temporal disease trajectories condensed from population-wide registry data covering 6.2 million patients},
+  author={Jensen, Anders Boeck and Moseley, Pope L and Oprea, Tudor I and Elles{\o}e, Sabrina Gade and Eriksson, Robert and Schmock, Henriette and Jensen, Peter Bj{\o}dstrup and Jensen, Lars Juhl and Brunak, S{\o}ren},
+  journal={Nature communications},
+  volume={5},
+  number={1},
+  pages={1--10},
+  year={2014},
+  publisher={Nature Publishing Group}
+}
+
+@article{kwon2022progression,
+  title={Progression of type 1 diabetes from latency to symptomatic disease is predicted by distinct autoimmune trajectories},
+  author={Kwon, Bum Chul and Anand, Vibha and Achenbach, Peter and Dunne, Jessica L and Hagopian, William and Hu, Jianying and Koski, Eileen and Lernmark, {\AA}ke and Lundgren, Markus and Ng, Kenney and others},
+  journal={Nature communications},
+  volume={13},
+  number={1},
+  pages={1--9},
+  year={2022},
+  publisher={Nature Publishing Group}
+}
+
+% OLD
+@article{miotto2016deep,
+  title={Deep patient: an unsupervised representation to predict the future of patients from the electronic health records},
+  author={Miotto, Riccardo and Li, Li and Kidd, Brian A and Dudley, Joel T},
+  journal={Scientific reports},
+  volume={6},
+  number={1},
+  pages={1--10},
+  year={2016},
+  publisher={Nature Publishing Group}
+}
+
+@article{pham2017predicting,
+  title={Predicting healthcare trajectories from medical records: A deep learning approach},
+  author={Pham, Trang and Tran, Truyen and Phung, Dinh and Venkatesh, Svetha},
+  journal={Journal of biomedical informatics},
+  volume={69},
+  pages={218--229},
+  year={2017},
+  publisher={Elsevier}
+}
+
+@inproceedings{mcdermott2021comprehensive,
+  title={A comprehensive EHR timeseries pre-training benchmark},
+  author={McDermott, Matthew and Nestor, Bret and Kim, Evan and Zhang, Wancong and Goldenberg, Anna and Szolovits, Peter and Ghassemi, Marzyeh},
+  booktitle={Proceedings of the Conference on Health, Inference, and Learning},
+  pages={257--278},
+  year={2021}
+}
+
+@inproceedings{luo2016predicting,
+  title={Predicting ICU mortality risk by grouping temporal trends from a multivariate panel of physiologic measurements},
+  author={Luo, Yuan and Xin, Yu and Joshi, Rohit and Celi, Leo and Szolovits, Peter},
+  booktitle={Thirtieth AAAI conference on artificial intelligence},
+  year={2016}
+}
+
+@inproceedings{huopaniemi2014disease,
+  title={Disease progression subtype discovery from longitudinal EMR data with a majority of missing values and unknown initial time points},
+  author={Huopaniemi, Ilkka and Nadkarni, Girish and Nadukuru, Rajiv and Lotay, Vaneet and Ellis, Steve and Gottesman, Omri and Bottinger, Erwin P},
+  booktitle={AMIA Annual Symposium Proceedings},
+  volume={2014},
+  pages={709},
+  year={2014},
+  organization={American Medical Informatics Association}
+}
+
+@inproceedings{aguiar2022learning,
+  title={Learning of Cluster-based Feature Importance for Electronic Health Record Time-series},
+  author={Aguiar, Henrique and Santos, Mauro and Watkinson, Peter and Zhu, Tingting},
+  booktitle={International Conference on Machine Learning},
+  pages={161--179},
+  year={2022},
+  organization={PMLR}
+}
+
+@article{bahadori2019temporal,
+  title={Temporal-clustering invariance in irregular healthcare time series},
+  author={Bahadori, Mohammad Taha and Lipton, Zachary Chase},
+  journal={arXiv preprint arXiv:1904.12206},
+  year={2019}
+}
+
+@inproceedings{bahadori2015functional,
+  title={Functional subspace clustering with application to time series},
+  author={Bahadori, Mohammad Taha and Kale, David and Fan, Yingying and Liu, Yan},
+  booktitle={International Conference on Machine Learning},
+  pages={228--237},
+  year={2015},
+  organization={PMLR}
+}
+
+@InProceedings{RETRO_pmlr-v162-borgeaud22a,
+  title = 	 {Improving Language Models by Retrieving from Trillions of Tokens},
+  author =       {Borgeaud, Sebastian and Mensch, Arthur and Hoffmann, Jordan and Cai, Trevor and Rutherford, Eliza and Millican, Katie and Van Den Driessche, George Bm and Lespiau, Jean-Baptiste and Damoc, Bogdan and Clark, Aidan and De Las Casas, Diego and Guy, Aurelia and Menick, Jacob and Ring, Roman and Hennigan, Tom and Huang, Saffron and Maggiore, Loren and Jones, Chris and Cassirer, Albin and Brock, Andy and Paganini, Michela and Irving, Geoffrey and Vinyals, Oriol and Osindero, Simon and Simonyan, Karen and Rae, Jack and Elsen, Erich and Sifre, Laurent},
+  booktitle = 	 {Proceedings of the 39th International Conference on Machine Learning},
+  pages = 	 {2206--2240},
+  year = 	 {2022},
+  editor = 	 {Chaudhuri, Kamalika and Jegelka, Stefanie and Song, Le and Szepesvari, Csaba and Niu, Gang and Sabato, Sivan},
+  volume = 	 {162},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {17--23 Jul},
+  publisher =    {PMLR},
+  pdf = 	 {https://proceedings.mlr.press/v162/borgeaud22a/borgeaud22a.pdf},
+  url = 	 {https://proceedings.mlr.press/v162/borgeaud22a.html},
+  abstract = 	 {We enhance auto-regressive language models by conditioning on document chunks retrieved from a large corpus, based on local similarity with preceding tokens. With a 2 trillion token database, our Retrieval-Enhanced Transformer (RETRO) obtains comparable performance to GPT-3 and Jurassic-1 on the Pile, despite using 25{\texttimes} fewer parameters. After fine-tuning, RETRO performance translates to downstream knowledge-intensive tasks such as question answering. RETRO combines a frozen Bert retriever, a differentiable encoder and a chunked cross-attention mechanism to predict tokens based on an order of magnitude more data than what is typically consumed during training. We typically train RETRO from scratch, yet can also rapidly RETROfit pre-trained transformers with retrieval and still achieve good performance. Our work opens up new avenues for improving language models through explicit memory at unprecedented scale.}
+}
+
+@inproceedings{enguehard2020neural,
+  title={Neural temporal point processes for modelling electronic health records},
+  author={Enguehard, Joseph and Busbridge, Dan and Bozson, Adam and Woodcock, Claire and Hammerla, Nils},
+  booktitle={Machine Learning for Health},
+  pages={85--113},
+  year={2020},
+  organization={PMLR}
+}
+
+@article{CDT_lee2023clinical,
+  title={Clinical Decision Transformer: Intended Treatment Recommendation through Goal Prompting},
+  author={Lee, Seunghyun and Lee, Da Young and Im, Sujeong and Kim, Nan Hee and Park, Sung-Min},
+  journal={arXiv preprint arXiv:2302.00612},
+  year={2023}
+}
+
+@inproceedings{cruz2015fuzzy,
+  title={Fuzzy clustering for incomplete short time series data},
+  author={Cruz, L{\'u}cia P and Vieira, Susana M and Vinga, Susana},
+  booktitle={Portuguese Conference on Artificial Intelligence},
+  pages={353--359},
+  year={2015},
+  organization={Springer}
+}
+
+@article{kazemi2019time2vec,
+  title={Time2vec: Learning a vector representation of time},
+  author={Kazemi, Seyed Mehran and Goel, Rishab and Eghbali, Sepehr and Ramanan, Janahan and Sahota, Jaspreet and Thakur, Sanjay and Wu, Stella and Smyth, Cathal and Poupart, Pascal and Brubaker, Marcus},
+  journal={arXiv preprint arXiv:1907.05321},
+  year={2019}
+}
+
+@article{tavabi2021pattern,
+  title={Pattern Discovery in Time Series with Byte Pair Encoding},
+  author={Tavabi, Nazgol and Lerman, Kristina},
+  journal={arXiv preprint arXiv:2106.00614},
+  year={2021}
+}
+
+@inproceedings{rusanov2016unsupervised,
+  title={Unsupervised time-series clustering over lab data for automatic identification of uncontrolled diabetes},
+  author={Rusanov, Alexander and Prado, Patric V and Weng, Chunhua},
+  booktitle={2016 IEEE International Conference on Healthcare Informatics (ICHI)},
+  pages={72--80},
+  year={2016},
+  organization={IEEE}
+}
