@@ -128,16 +128,12 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             if self.config.task_df_name is not None:
                 task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
-                raw_task_df_fp = (
-                    self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
-                )
+                raw_task_df_fp = self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
                 task_df_fp = task_dir / f"{split}.parquet"
                 task_info_fp = task_dir / "task_info.json"
 
                 if task_df_fp.is_file():
-                    print(
-                        f"Re-loading task data for {self.config.task_df_name} from {task_df_fp}..."
-                    )
+                    print(f"Re-loading task data for {self.config.task_df_name} from {task_df_fp}...")
                     data = task_df_fp
                     with open(task_info_fp) as f:
                         task_info = json.load(f)
@@ -214,18 +210,12 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             self.task_df = task_df
 
             self.tasks = sorted(
-                [
-                    c
-                    for c in self.task_df.columns
-                    if c not in ["subject_id", "start_time", "end_time"]
-                ]
+                [c for c in self.task_df.columns if c not in ["subject_id", "start_time", "end_time"]]
             )
 
             normalized_cols = []
             for t in self.tasks:
-                task_type, normalized_vals = self.normalize_task(
-                    col=pl.col(t), dtype=self.task_df.schema[t]
-                )
+                task_type, normalized_vals = self.normalize_task(col=pl.col(t), dtype=self.task_df.schema[t])
                 self.task_types[t] = task_type
                 normalized_cols.append(normalized_vals.alias(t))
 
@@ -239,44 +229,31 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             )
 
             time_dep_cols = [c for c in ("time", "time_delta") if c in self.cached_data.columns]
-            time_dep_cols.extend(
-                ["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"]
-            )
+            time_dep_cols.extend(["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"])
 
             if "time" in self.cached_data.columns:
                 time_col_expr = pl.col("time")
             elif "time_delta" in self.cached_data.columns:
                 time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
-            start_idx_expr = time_col_expr.arr.explode().search_sorted(
-                pl.col("start_time_min").first()
-            )
-            end_idx_expr = time_col_expr.arr.explode().search_sorted(
-                pl.col("end_time_min").first()
-            )
+            start_idx_expr = time_col_expr.arr.explode().search_sorted(pl.col("start_time_min").first())
+            end_idx_expr = time_col_expr.arr.explode().search_sorted(pl.col("end_time_min").first())
 
             self.cached_data = (
                 self.cached_data.join(self.task_df, on="subject_id", how="inner", suffix="_task")
                 .with_columns(
                     start_time_min=(pl.col("start_time_task") - pl.col("start_time"))
                     / np.timedelta64(1, "m"),
-                    end_time_min=(pl.col("end_time") - pl.col("start_time"))
-                    / np.timedelta64(1, "m"),
+                    end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 )
                 .with_row_count("__id")
                 .groupby("__id")
                 .agg(
                     pl.col("task_row_num").first(),
-                    **{
-                        c: pl.col(c).first()
-                        for c in self.cached_data.columns
-                        if c not in time_dep_cols
-                    },
+                    **{c: pl.col(c).first() for c in self.cached_data.columns if c not in time_dep_cols},
                     **{c: pl.col(c).first() for c in self.tasks},
                     **{
-                        t: pl.col(t)
-                        .arr.explode()
-                        .slice(start_idx_expr, end_idx_expr - start_idx_expr)
+                        t: pl.col(t).arr.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr)
                         for t in time_dep_cols
                     },
                 )
@@ -327,9 +304,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         if "time_delta" not in self.cached_data.columns:
             self.cached_data = self.cached_data.with_columns(
-                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias(
-                    "start_time"
-                ),
+                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias("start_time"),
                 pl.col("time")
                 .arr.eval(
                     # We fill with 1 here as it will be ignored in the code anyways as the next event's
@@ -341,9 +316,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             ).drop("time")
 
         stats = (
-            self.cached_data.select(
-                pl.col("time_delta").explode().drop_nulls().alias("inter_event_time")
-            )
+            self.cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
             .select(
                 pl.col("inter_event_time").min().alias("min"),
                 pl.col("inter_event_time").log().mean().alias("mean_log"),
@@ -353,9 +326,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         )
 
         if stats["min"].item() <= 0:
-            bad_inter_event_times = self.cached_data.filter(
-                pl.col("time_delta").arr.min() <= 0
-            ).collect()
+            bad_inter_event_times = self.cached_data.filter(pl.col("time_delta").arr.min() <= 0).collect()
             bad_subject_ids = [str(x) for x in list(bad_inter_event_times["subject_id"])]
             warning_strs = [
                 f"WARNING: Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
@@ -389,9 +360,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                         f"{self.config.train_subset_size}"
                     )
 
-            self.cached_data = self.cached_data.sample(
-                seed=self.config.train_subset_seed, **kwargs
-            )
+            self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
         with self._time_as("convert_to_rows"):
             self.cached_data = self.cached_data.drop("subject_id")
@@ -524,9 +493,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             for v in e["dynamic_indices"]:
                 max_n_data = max(max_n_data, len(v))
         if max_n_data == 0:
-            raise ValueError(
-                f"Batch has no dynamic measurements! Got:\n{batch[0]}\n{batch[1]}\n..."
-            )
+            raise ValueError(f"Batch has no dynamic measurements! Got:\n{batch[0]}\n{batch[1]}\n...")
 
         # Walk through the batch and pad the associated tensors in all requisite dimensions.
         self._register_start("collate_dynamic_padding")
@@ -537,15 +504,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             if self.seq_padding_side == SeqPaddingSide.RIGHT:
                 out["time_delta"].append(
-                    torch.nn.functional.pad(
-                        torch.Tensor(e["time_delta"]), (0, seq_delta), value=np.NaN
-                    )
+                    torch.nn.functional.pad(torch.Tensor(e["time_delta"]), (0, seq_delta), value=np.NaN)
                 )
             else:
                 out["time_delta"].append(
-                    torch.nn.functional.pad(
-                        torch.Tensor(e["time_delta"]), (seq_delta, 0), value=np.NaN
-                    )
+                    torch.nn.functional.pad(torch.Tensor(e["time_delta"]), (seq_delta, 0), value=np.NaN)
                 )
 
             data_elements = defaultdict(list)

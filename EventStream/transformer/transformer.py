@@ -112,9 +112,7 @@ class InnerSelfAttention(nn.Module):
         # attn_weights is of shape batch, head, query_seq_length, key_seq_length
 
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(
-            torch.bool
-        )
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error:
         # `RuntimeError: expected scalar type float but found double`.
@@ -193,15 +191,11 @@ class InnerSelfAttention(nn.Module):
 
 
 class InnerAttention(nn.Module):
-    def __init__(
-        self, config: StructuredTransformerConfig, layer_id: int = 0, is_seq: bool = True
-    ):
+    def __init__(self, config: StructuredTransformerConfig, layer_id: int = 0, is_seq: bool = True):
         super().__init__()
         self.layer_id = layer_id
         self.is_seq = is_seq
-        self.attention_layers = (
-            config.seq_attention_layers if is_seq else config.dep_graph_attention_layers
-        )
+        self.attention_layers = config.seq_attention_layers if is_seq else config.dep_graph_attention_layers
         self.attention_type = self.attention_layers[layer_id]
         if self.attention_type == "local":
             self.window_size = config.seq_window_size if is_seq else config.dep_graph_window_size
@@ -247,9 +241,7 @@ class InnerMLP(nn.Module):
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__()
         embed_dim = config.hidden_size
-        inner_dim = (
-            config.intermediate_size if config.intermediate_size is not None else 4 * embed_dim
-        )
+        inner_dim = config.intermediate_size if config.intermediate_size is not None else 4 * embed_dim
 
         self.c_fc = nn.Linear(embed_dim, inner_dim)
         self.c_proj = nn.Linear(inner_dim, embed_dim)
@@ -388,9 +380,7 @@ class TemporalPositionEncoding(torch.nn.Module):
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
-        div_term = torch.exp(
-            torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim)
-        )
+        div_term = torch.exp(torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim))
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
         # embedding. This is not a principled decision, but enabling odd embedding dimensions helps avoid edge
@@ -416,12 +406,8 @@ class TemporalPositionEncoding(torch.nn.Module):
         # timepoints.
         temporal_embeddings = torch.zeros(bsz, seq_len, self.embedding_dim, device=device)
 
-        temporal_embeddings[:, :, 0::2] = torch.sin(
-            t * self.sin_div_term.unsqueeze(0).unsqueeze(0)
-        )
-        temporal_embeddings[:, :, 1::2] = torch.cos(
-            t * self.cos_div_term.unsqueeze(0).unsqueeze(0)
-        )
+        temporal_embeddings[:, :, 0::2] = torch.sin(t * self.sin_div_term.unsqueeze(0).unsqueeze(0))
+        temporal_embeddings[:, :, 1::2] = torch.cos(t * self.cos_div_term.unsqueeze(0).unsqueeze(0))
 
         return temporal_embeddings
 
@@ -474,10 +460,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
         self.input_layer = ConditionallyIndependentPointProcessInputLayer(config)
 
         # TODO(mmd): Replace this with InnerBlock for a non-structured version.
-        if (
-            config.structured_event_processing_mode
-            != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
-        ):
+        if config.structured_event_processing_mode != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
             raise ValueError(f"{config.structured_event_processing_mode} invalid!")
         self.h = nn.ModuleList(
             [InnerBlock(config, layer_id=i, is_seq=True) for i in range(config.num_hidden_layers)]
@@ -505,9 +488,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -522,11 +503,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
         else:
             assert batch is None, "Can't specify both input_embeds and batch."
 
-        if (
-            seq_attention_mask is None
-            and batch is not None
-            and batch.get("event_mask", None) is not None
-        ):
+        if seq_attention_mask is None and batch is not None and batch.get("event_mask", None) is not None:
             seq_attention_mask = expand_mask(batch["event_mask"], input_embeds.dtype)
 
         # Prepare head mask if needed
@@ -606,9 +583,7 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
 
         if not return_dict:
             return tuple(
-                v
-                for v in [hidden_states, presents, all_hidden_states, all_self_attentions]
-                if v is not None
+                v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None
             )
 
         return TransformerOutputWithPast(
@@ -664,9 +639,7 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
         self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
-    def forward(
-        self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None
-    ) -> torch.Tensor:
+    def forward(self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None) -> torch.Tensor:
         embed = self.data_embedding_layer(batch)
         # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len config.hidden_size).
 
@@ -700,10 +673,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__(config)
 
-        if (
-            config.structured_event_processing_mode
-            != StructuredEventProcessingMode.NESTED_ATTENTION
-        ):
+        if config.structured_event_processing_mode != StructuredEventProcessingMode.NESTED_ATTENTION:
             raise ValueError(f"{config.structured_event_processing_mode} invalid for this model!")
 
         self.embed_dim = config.hidden_size
@@ -711,10 +681,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         self.structured_event_processing_mode = config.structured_event_processing_mode
 
         self.h = nn.ModuleList(
-            [
-                StructuredTransformerBlock(config, layer_id=i)
-                for i in range(config.num_hidden_layers)
-            ]
+            [StructuredTransformerBlock(config, layer_id=i) for i in range(config.num_hidden_layers)]
         )
 
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -741,9 +708,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -759,11 +724,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
             assert batch is None, "Can't specify both input_embeds and batch."
             event_mask = None
 
-        if (
-            seq_attention_mask is None
-            and batch is not None
-            and batch.get("event_mask", None) is not None
-        ):
+        if seq_attention_mask is None and batch is not None and batch.get("event_mask", None) is not None:
             seq_attention_mask = expand_mask(batch["event_mask"], input_embeds.dtype)
 
         # Prepare head mask if needed
@@ -843,9 +804,7 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
             dep_graph_past = tuple([None] * len(self.h))
 
         all_hidden_states = () if output_hidden_states else None
-        for i, (block, layer_past, dep_graph_layer_past) in enumerate(
-            zip(self.h, past, dep_graph_past)
-        ):
+        for i, (block, layer_past, dep_graph_layer_past) in enumerate(zip(self.h, past, dep_graph_past)):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -919,12 +878,12 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
 
             if output_attentions:
                 if compute_contextualized_history_embeddings:
-                    all_self_attentions["seq_attentions"] = all_self_attentions[
-                        "seq_attentions"
-                    ] + (extra_return_info["seq_module"]["attn_weights"],)
-                all_self_attentions["dep_graph_attentions"] = all_self_attentions[
-                    "dep_graph_attentions"
-                ] + (extra_return_info["dep_graph_module"]["attn_weights"],)
+                    all_self_attentions["seq_attentions"] = all_self_attentions["seq_attentions"] + (
+                        extra_return_info["seq_module"]["attn_weights"],
+                    )
+                all_self_attentions["dep_graph_attentions"] = all_self_attentions["dep_graph_attentions"] + (
+                    extra_return_info["dep_graph_module"]["attn_weights"],
+                )
 
         hidden_states = self.ln_f(hidden_states)
 
@@ -955,21 +914,16 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
                     torch._assert(t.shape[1] == self.config.num_attention_heads, err_str)
                     torch._assert(t.shape[3] == self.config.head_dim, err_str)
 
-                    t = t.reshape(
-                        bsz, seq_len, self.config.num_attention_heads, -1, self.config.head_dim
-                    )
+                    t = t.reshape(bsz, seq_len, self.config.num_attention_heads, -1, self.config.head_dim)
                     return t[:, -1, :, -1, :].unsqueeze(2)
 
                 presents["dep_graph_past"] = tuple(
-                    tuple(reshape_to_last_dep_graph_el(e) for e in kv)
-                    for kv in presents["dep_graph_past"]
+                    tuple(reshape_to_last_dep_graph_el(e) for e in kv) for kv in presents["dep_graph_past"]
                 )
 
         if not return_dict:
             return tuple(
-                v
-                for v in [hidden_states, presents, all_hidden_states, all_self_attentions]
-                if v is not None
+                v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None
             )
 
         return TransformerOutputWithPast(

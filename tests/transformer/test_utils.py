@@ -197,16 +197,12 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
             {
                 "msg": "Should work with a purely integer slice.",
                 "slice": 2,
-                "want_dist": torch.distributions.Normal(
-                    loc=loc[2], scale=scale[2], validate_args=True
-                ),
+                "want_dist": torch.distributions.Normal(loc=loc[2], scale=scale[2], validate_args=True),
             },
             {
                 "msg": "Should work with a tuple slice.",
                 "slice": (3,),
-                "want_dist": torch.distributions.Normal(
-                    loc=loc[3], scale=scale[3], validate_args=True
-                ),
+                "want_dist": torch.distributions.Normal(loc=loc[3], scale=scale[3], validate_args=True),
             },
             {
                 "msg": "Should work with ellipsis.",
@@ -214,9 +210,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     Ellipsis,
                     3,
                 ),
-                "want_dist": torch.distributions.Normal(
-                    loc=loc[:, 3], scale=scale[:, 3], validate_args=True
-                ),
+                "want_dist": torch.distributions.Normal(loc=loc[:, 3], scale=scale[:, 3], validate_args=True),
             },
             {
                 "msg": "Should work with colons.",
@@ -224,9 +218,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     slice(None),
                     3,
                 ),
-                "want_dist": torch.distributions.Normal(
-                    loc=loc[:, 3], scale=scale[:, 3], validate_args=True
-                ),
+                "want_dist": torch.distributions.Normal(loc=loc[:, 3], scale=scale[:, 3], validate_args=True),
             },
             {
                 "msg": "Should work with 2 slices.",
@@ -329,9 +321,7 @@ class TestUtils(MLTypeEqualityCheckableMixin, unittest.TestCase):
             {
                 "msg": "Should work with 2 slices.",
                 "slice": slice(1, 3, 1),
-                "want_dist": torch.distributions.Categorical(
-                    logits=logits[1:3], validate_args=True
-                ),
+                "want_dist": torch.distributions.Categorical(logits=logits[1:3], validate_args=True),
             },
         ]
 

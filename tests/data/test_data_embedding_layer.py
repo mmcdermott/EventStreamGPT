@@ -230,9 +230,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ]
         )
 
-        got_normalization_values = DataEmbeddingLayer.get_measurement_index_normalziation(
-            meas_indices
-        )
+        got_normalization_values = DataEmbeddingLayer.get_measurement_index_normalziation(meas_indices)
         self.assertEqual(want_normalization_values, got_normalization_values)
 
         meas_indices = torch.LongTensor(
@@ -251,9 +249,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ]
         )
 
-        got_normalization_values = DataEmbeddingLayer.get_measurement_index_normalziation(
-            meas_indices
-        )
+        got_normalization_values = DataEmbeddingLayer.get_measurement_index_normalziation(meas_indices)
         self.assertEqual(want_normalization_values, got_normalization_values)
 
     def test_joint_embeds(self):

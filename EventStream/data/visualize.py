@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
 
 import pandas as pd
 import plotly.express as px
@@ -13,7 +12,9 @@ from ..utils import JSONableMixin
 
 @dataclasses.dataclass
 class Visualizer(JSONableMixin):
-    """This class helps visualize `Dataset` objects. It is both a configuration object and performs
+    """A visualization configuration and plotting class.
+
+    This class helps visualize `Dataset` objects. It is both a configuration object and performs
     the actual data manipulations for final visualization, interfacing only with the `Dataset`
     object to obtain appropriately sampled and processed cuts of the data to visualize. It currently
     produces the following plots. All plots are broken down by `static_covariates`, which are
@@ -43,6 +44,57 @@ class Visualizer(JSONableMixin):
           or before $a$.
         - "Events / Subject": $y$ = the average number of events per subject that occur when the subject is at
           age bucket $a$.
+
+    Attributes:
+        subset_size: When plotting, use an IID random subsample (over subjects) of the input dataset of this
+            size. This makes plotting much faster, and is statistically unbiased, though can increase
+            variance.
+        subset_random_seed: If subsampling the raw data, use this random seed to control that subsampling.
+        static_covariates: When plotting, split plots by these static covariates.
+        plot_by_time: If `True`, also plot how the dataset changes over time.
+        time_unit: If `plot_by_time` is `True`, aggregate timepoints into buckets of this size.
+        plot_by_age: If `True`, plot how datasret characteristics evolve with subject age.
+        age_col: The column in the Dataset's `events_df` where age is stored. This should typically be the
+            name of the measurement employing the `AgeFunctor` time dependent functor object, unless age is
+            pre-computed in the dataset.
+        dob_col: This is used to compute ages of subjects at inferred timepoints created dynamically during
+            plotting. This string should point to the date of birth (in datetime format) within the subjects
+            dataframe.
+        n_age_buckets: If `plot_by_age` is `True`, this controls how many buckets ages are discretized into to
+            limit plot granularity.
+        min_sub_to_plot_age_dist: If set, do not plot sub-population distributions over age if the total
+            number of patients in the sub-population is below this value. Useful for limiting variance.
+
+    Raises:
+        ValueError: If
+            * `subset_size` is specified but `subset_random_seed` is not.
+            * `plot_by_age` is `True`, but `age_col` or `n_age_buckets` is `None`
+            * `age_col` is specified but `dob_col` is not
+            * `plot_by_time` is `True`, but `time_unit` is None
+
+    Examples:
+        >>> V = Visualizer()
+        >>> V = Visualizer(
+        ...     subset_size=100, subset_random_seed=1,
+        ...     plot_by_age=True, age_col='age', dob_col='dob', n_age_buckets=100,
+        ...     plot_by_time=True, time_unit='1y',
+        ... )
+        >>> V = Visualizer(subset_size=100)
+        Traceback (most recent call last):
+            ...
+        ValueError: subset_size is specified, but subset_random_seed is not!
+        >>> V = Visualizer(plot_by_age=True, age_col='age', n_age_buckets=None)
+        Traceback (most recent call last):
+            ...
+        ValueError: plot_by_age is True, but n_age_buckets is unspecified!
+        >>> V = Visualizer(age_col='age')
+        Traceback (most recent call last):
+            ...
+        ValueError: age_col is specified, but dob_col is not!
+        >>> V = Visualizer(plot_by_time=True, time_unit=None)
+        Traceback (most recent call last):
+            ...
+        ValueError: plot_by_time is True, but time_unit is unspecified!
     """
 
     subset_size: int | None = None
@@ -60,36 +112,6 @@ class Visualizer(JSONableMixin):
 
     min_sub_to_plot_age_dist: int | None = 50
 
-    def to_dict(self) -> dict[str, Any]:
-        """Represents this configuration object as a plain dictionary."""
-        as_dict = dataclasses.asdict(self)
-        dynamic_last_seen = []
-        for e in self.split_subject_plots_by_dynamic_last_seen_covariates:
-            if type(e) is tuple:
-                if len(e) != 2:
-                    raise ValueError(f"Malformed covariate spec: {e}!")
-                e = [e[0], {k: list(v) for k, v in e[1].items()}]
-            elif type(e) is not str:
-                raise ValueError(f"Malformed covariate spec: {e}!")
-            dynamic_last_seen.append(e)
-        as_dict["split_subject_plots_by_dynamic_last_seen_covariates"] = dynamic_last_seen
-        return as_dict
-
-    @classmethod
-    def from_dict(cls, as_dict: dict) -> Visualizer:
-        """Creates a new instance of this class from a plain dictionary."""
-        dynamic_last_seen = []
-        for e in as_dict["split_subject_plots_by_dynamic_last_seen_covariates"]:
-            if type(e) is list:
-                if len(e) != 2:
-                    raise ValueError(f"Malformed covariate spec: {e}!")
-                e = (e[0], {k: set(v) for k, v in e[1].items()})
-            elif type(e) is not str:
-                raise ValueError(f"Malformed covariate spec: {e}!")
-            dynamic_last_seen.append(e)
-        as_dict["split_subject_plots_by_dynamic_last_seen_covariates"] = dynamic_last_seen
-        return cls(**as_dict)
-
     def __post_init__(self):
         if self.subset_size is not None and self.subset_random_seed is None:
             raise ValueError("subset_size is specified, but subset_random_seed is not!")
@@ -101,9 +123,10 @@ class Visualizer(JSONableMixin):
         if self.age_col is not None and self.dob_col is None:
             raise ValueError("age_col is specified, but dob_col is not!")
         if self.plot_by_time and self.time_unit is None:
-            raise ValueError("Can't plot by time if time_unit is unspecified!")
+            raise ValueError("plot_by_time is True, but time_unit is unspecified!")
 
-    def _normalize_to_pandas(self, df: pl.DataFrame, covariate: str | None = None) -> pd.DataFrame:
+    @staticmethod
+    def _normalize_to_pandas(df: pl.DataFrame, covariate: str | None = None) -> pd.DataFrame:
         df = df.to_pandas()
 
         if covariate is None:
@@ -168,9 +191,7 @@ class Visualizer(JSONableMixin):
                     pl.col("cumulative_subjects_delta").sum(),
                 )
                 .with_columns(
-                    (pl.col("n_events") / pl.col("n_subjects")).alias(
-                        "events_per_subject_per_time"
-                    ),
+                    (pl.col("n_events") / pl.col("n_subjects")).alias("events_per_subject_per_time"),
                 )
                 .sort("timestamp", descending=False)
             )
@@ -183,10 +204,7 @@ class Visualizer(JSONableMixin):
                 events_df.select(
                     "timestamp",
                     static_covariate,
-                    pl.col("active_subjects_delta")
-                    .cumsum()
-                    .over(static_covariate)
-                    .alias("Active Subjects"),
+                    pl.col("active_subjects_delta").cumsum().over(static_covariate).alias("Active Subjects"),
                     pl.col("cumulative_subjects_delta")
                     .cumsum()
                     .over(static_covariate)
@@ -258,8 +276,7 @@ class Visualizer(JSONableMixin):
         cross_df_all = (
             subj_ranges.join(time_points, how="cross")
             .filter(
-                (pl.col("start_time") <= pl.col("timestamp"))
-                & (pl.col("timestamp") <= pl.col("end_time"))
+                (pl.col("start_time") <= pl.col("timestamp")) & (pl.col("timestamp") <= pl.col("end_time"))
             )
             .select(
                 "timestamp",
@@ -277,10 +294,7 @@ class Visualizer(JSONableMixin):
         for static_covariate in self.static_covariates:
             cross_df = (
                 cross_df_all.with_columns(
-                    pl.col("subject_id")
-                    .n_unique()
-                    .over("timestamp", static_covariate)
-                    .alias("num_subjects")
+                    pl.col("subject_id").n_unique().over("timestamp", static_covariate).alias("num_subjects")
                 )
                 .filter(pl.col("num_subjects") > 20)
                 .with_columns((1 / pl.col("num_subjects")).alias("% Subjects @ time"))
@@ -288,9 +302,9 @@ class Visualizer(JSONableMixin):
 
             if self.min_sub_to_plot_age_dist is not None:
                 val_counts = subjects_df[static_covariate].value_counts()
-                valid_categories = val_counts.filter(
-                    pl.col("counts") > self.min_sub_to_plot_age_dist
-                )[static_covariate].to_list()
+                valid_categories = val_counts.filter(pl.col("counts") > self.min_sub_to_plot_age_dist)[
+                    static_covariate
+                ].to_list()
 
                 cross_df = cross_df.filter(pl.col(static_covariate).is_in(valid_categories))
 
@@ -339,14 +353,8 @@ class Visualizer(JSONableMixin):
 
         events_df = (
             events_df.with_columns(
-                (pl.col("age") / age_bucket_size)
-                .round(0)
-                .cast(pl.Int64, strict=False)
-                .alias("age_bucket"),
-                pl.col("subject_id")
-                .n_unique()
-                .over(*self.static_covariates)
-                .alias("total_n_subjects"),
+                (pl.col("age") / age_bucket_size).round(0).cast(pl.Int64, strict=False).alias("age_bucket"),
+                pl.col("subject_id").n_unique().over(*self.static_covariates).alias("total_n_subjects"),
             )
             .drop_nulls("age_bucket")
             .groupby("age_bucket", *self.static_covariates)
@@ -358,10 +366,7 @@ class Visualizer(JSONableMixin):
             )
             .sort(by=self.age_col, descending=False)
             .with_columns(
-                pl.col("n_events")
-                .cumsum()
-                .over(*self.static_covariates)
-                .alias("Cumulative Events"),
+                pl.col("n_events").cumsum().over(*self.static_covariates).alias("Cumulative Events"),
             )
         )
 
@@ -387,12 +392,8 @@ class Visualizer(JSONableMixin):
                     (pl.col("Events @ Age") / pl.col("Subjects with Event @ Age")).alias(
                         "Events @ Age / (Subjects with >= 1 Event @ Age)"
                     ),
-                    (pl.col("Events @ Age") / pl.col("Total Subjects")).alias(
-                        "Events @ Age / Subject"
-                    ),
-                    (pl.col("Events <= Age") / pl.col("Total Subjects")).alias(
-                        "Events <= Age / Subject"
-                    ),
+                    (pl.col("Events @ Age") / pl.col("Total Subjects")).alias("Events @ Age / Subject"),
+                    (pl.col("Events <= Age") / pl.col("Total Subjects")).alias("Events <= Age / Subject"),
                 )
                 .sort(self.age_col, descending=False),
                 static_covariate,
@@ -419,9 +420,7 @@ class Visualizer(JSONableMixin):
         )
 
         return [
-            px.histogram(
-                self._normalize_to_pandas(events_per_patient, c), x="# of Events", color=c
-            )
+            px.histogram(self._normalize_to_pandas(events_per_patient, c), x="# of Events", color=c)
             for c in self.static_covariates
         ]
 

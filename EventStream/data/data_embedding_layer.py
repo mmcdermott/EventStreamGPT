@@ -188,9 +188,7 @@ class DataEmbeddingLayer(torch.nn.Module):
             )
         else:
             self.embedding_mode = EmbeddingMode.SPLIT_CATEGORICAL_NUMERICAL
-            assert (categorical_embedding_dim is not None) and (
-                numerical_embedding_dim is not None
-            )
+            assert (categorical_embedding_dim is not None) and (numerical_embedding_dim is not None)
             self.categorical_embed_layer = torch.nn.EmbeddingBag(
                 num_embeddings=n_total_embeddings,
                 embedding_dim=categorical_embedding_dim,
@@ -233,9 +231,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         normalization_vals = torch.where(measurement_indices == 0, 0, normalization_vals)
 
         normalization_vals_sum = normalization_vals.sum(dim=-1, keepdim=True)
-        normalization_vals_sum = torch.where(
-            normalization_vals_sum == 0, 1, normalization_vals_sum
-        )
+        normalization_vals_sum = torch.where(normalization_vals_sum == 0, 1, normalization_vals_sum)
         return normalization_vals / normalization_vals_sum
 
     def joint_embed(
@@ -270,9 +266,7 @@ class DataEmbeddingLayer(torch.nn.Module):
             meas_norm = self.get_measurement_index_normalziation(measurement_indices)
             cat_values *= meas_norm
 
-        cat_embeds = self.cat_proj(
-            self.categorical_embed_layer(indices, per_sample_weights=cat_values)
-        )
+        cat_embeds = self.cat_proj(self.categorical_embed_layer(indices, per_sample_weights=cat_values))
 
         if values is None:
             return cat_embeds
@@ -281,9 +275,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         if self.do_normalize_by_measurement_index:
             num_values *= meas_norm
 
-        num_embeds = self.num_proj(
-            self.numerical_embed_layer(indices, per_sample_weights=num_values)
-        )
+        num_embeds = self.num_proj(self.numerical_embed_layer(indices, per_sample_weights=num_values))
 
         return self.categorical_weight * cat_embeds + self.numerical_weight * num_embeds
 
@@ -303,9 +295,7 @@ class DataEmbeddingLayer(torch.nn.Module):
             case EmbeddingMode.JOINT:
                 return self.joint_embed(indices, measurement_indices, values, values_mask)
             case EmbeddingMode.SPLIT_CATEGORICAL_NUMERICAL:
-                return self.split_embed(
-                    indices, measurement_indices, values, values_mask, cat_mask
-                )
+                return self.split_embed(indices, measurement_indices, values, values_mask, cat_mask)
             case _:
                 raise ValueError(f"Invalid embedding mode: {self.embedding_mode}")
 
@@ -338,12 +328,8 @@ class DataEmbeddingLayer(torch.nn.Module):
                 )
 
             # Create a mask that is True if each data element in the batch is in the measurement group.
-            group_categorical_mask = torch.zeros_like(
-                batch["dynamic_measurement_indices"], dtype=torch.bool
-            )
-            group_values_mask = torch.zeros_like(
-                batch["dynamic_measurement_indices"], dtype=torch.bool
-            )
+            group_categorical_mask = torch.zeros_like(batch["dynamic_measurement_indices"], dtype=torch.bool)
+            group_values_mask = torch.zeros_like(batch["dynamic_measurement_indices"], dtype=torch.bool)
             for meas_index in meas_index_group:
                 if type(meas_index) is tuple:
                     meas_index, group_mode = meas_index
@@ -372,9 +358,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         out_shape = (batch_size, sequence_length, self.out_dim)
 
         if self.split_by_measurement_indices:
-            categorical_mask, numerical_mask = self.split_batch_into_measurement_index_buckets(
-                batch
-            )
+            categorical_mask, numerical_mask = self.split_batch_into_measurement_index_buckets(batch)
             _, _, num_measurement_buckets, _ = categorical_mask.shape
             out_shape = (batch_size, sequence_length, num_measurement_buckets, self.out_dim)
 
@@ -386,9 +370,7 @@ class DataEmbeddingLayer(torch.nn.Module):
             )
             indices = batch["dynamic_indices"].unsqueeze(-2).expand(*expand_shape)
             values = batch["dynamic_values"].unsqueeze(-2).expand(*expand_shape)
-            measurement_indices = (
-                batch["dynamic_measurement_indices"].unsqueeze(-2).expand(*expand_shape)
-            )
+            measurement_indices = batch["dynamic_measurement_indices"].unsqueeze(-2).expand(*expand_shape)
             values_mask = batch["dynamic_values_mask"].unsqueeze(-2).expand(*expand_shape)
             values_mask = values_mask & numerical_mask
         else:
@@ -407,9 +389,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         else:
             categorical_mask_2D = None
 
-        embedded = self.embed(
-            indices_2D, meas_indices_2D, values_2D, values_mask_2D, categorical_mask_2D
-        )
+        embedded = self.embed(indices_2D, meas_indices_2D, values_2D, values_mask_2D, categorical_mask_2D)
 
         # Reshape back out into the original shape. Testing ensures these reshapes reflect original structure
         return embedded.view(*out_shape)

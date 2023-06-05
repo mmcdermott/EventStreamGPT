@@ -1,6 +1,8 @@
 #!/usr/bin/env python
+"""Pre-trains a model from scartch."""
 
 try:
+    # This color-codes and prettifies error messages if the script fails.
     import stackprinter
 
     stackprinter.set_excepthook(style="darkbg2")

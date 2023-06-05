@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Builds a dataset given a hydra config file."""
 
 try:
     import stackprinter
@@ -34,6 +35,34 @@ inflect = inflect.engine()
 
 
 def add_to_container(key: str, val: Any, cont: dict[str, Any]):
+    """Adds key to container, unless it is already present in that container with a different value.
+
+    If `key` is in `cont` with value `val`, prints a warning. If it is in `cont` with a different value,
+    raises a `ValueError`. Otherwise adds `key` to `cont` with value `val`. Returns `None`
+
+    Args:
+        key: The key to add to the container `cont`.
+        val: The value to associate with key `key` in container `cont`.
+        cont: The container in which to store `key` and `value`.
+
+    Raises:
+        ValueError: If `key` is in `cont` with value not equal to `val`.
+
+    Examples:
+        >>> cont = {'foo': "bar"}
+        >>> add_to_container('biz', 3, cont)
+        >>> cont
+        {'foo': 'bar', 'biz': 3}
+        >>> add_to_container('biz', 3, cont)
+        WARNING: biz is specified twice with value 3.
+        >>> cont
+        {'foo': 'bar', 'biz': 3}
+        >>> add_to_container('foo', 3, cont)
+        Traceback (most recent call last):
+            ...
+        ValueError: foo is specified twice (3 v. bar)
+    """
+
     if key in cont:
         if cont[key] == val:
             print(f"WARNING: {key} is specified twice with value {val}.")
@@ -60,16 +89,12 @@ def main(cfg: DictConfig):
     measurement_configs = {}
 
     if TemporalityType.FUNCTIONAL_TIME_DEPENDENT in measurements_by_temporality:
-        time_dep_measurements = measurements_by_temporality.pop(
-            TemporalityType.FUNCTIONAL_TIME_DEPENDENT
-        )
+        time_dep_measurements = measurements_by_temporality.pop(TemporalityType.FUNCTIONAL_TIME_DEPENDENT)
     else:
         time_dep_measurements = {}
 
     for temporality, measurements_by_modality in measurements_by_temporality.items():
-        schema_source = (
-            static_sources if temporality == TemporalityType.STATIC else dynamic_sources
-        )
+        schema_source = static_sources if temporality == TemporalityType.STATIC else dynamic_sources
         for modality, measurements_by_source in measurements_by_modality.items():
             if not measurements_by_source:
                 continue
@@ -106,9 +131,7 @@ def main(cfg: DictConfig):
                         case str(), DataModality.MULTI_LABEL_CLASSIFICATION:
                             add_to_container(m, InputDataType.CATEGORICAL, data_schema)
                         case _:
-                            raise ValueError(
-                                f"{m}, {modality} invalid! Must be in {DataModality.values()}!"
-                            )
+                            raise ValueError(f"{m}, {modality} invalid! Must be in {DataModality.values()}!")
 
                     if m in measurement_configs:
                         if measurement_configs[m].to_dict() != measurement_config_kwargs:
@@ -148,10 +171,7 @@ def main(cfg: DictConfig):
 
                 static_col_schema[schema_key] = schema_val
 
-        if (
-            m in measurement_configs
-            and measurement_configs[m].to_dict() != measurement_config_kwargs
-        ):
+        if m in measurement_configs and measurement_configs[m].to_dict() != measurement_config_kwargs:
             raise ValueError(f"{m} differs across input sources!")
         measurement_configs[m] = MeasurementConfig(**measurement_config_kwargs)
 
@@ -176,14 +196,10 @@ def main(cfg: DictConfig):
             match source_schema["query"]:
                 case str() | list() as query:
                     if not connection_uri:
-                        raise ValueError(
-                            "If providing a query string, must provide a connection_uri!"
-                        )
+                        raise ValueError("If providing a query string, must provide a connection_uri!")
                     if type(query) is list:
                         query = tuple(query)
-                    input_schema_kwargs["input_df"] = Query(
-                        query=query, connection_uri=connection_uri
-                    )
+                    input_schema_kwargs["input_df"] = Query(query=query, connection_uri=connection_uri)
                 case dict() as query_kwargs:
                     if "connection_uri" not in query_kwargs:
                         query_kwargs["connection_uri"] = connection_uri
@@ -214,10 +230,7 @@ def main(cfg: DictConfig):
         else:
             input_schema_kwargs["type"] = InputDFType.STATIC
 
-        if (
-            input_schema_kwargs["type"] != InputDFType.STATIC
-            and "event_type" not in input_schema_kwargs
-        ):
+        if input_schema_kwargs["type"] != InputDFType.STATIC and "event_type" not in input_schema_kwargs:
             input_schema_kwargs["event_type"] = inflect.singular_noun(schema_name).upper()
 
         cols_covered = []
@@ -316,9 +329,7 @@ def main(cfg: DictConfig):
     config = DatasetConfig(measurement_configs=measurement_configs, **config_kwargs)
 
     if config.save_dir is not None:
-        dataset_schema.to_json_file(
-            config.save_dir / "input_schema.json", do_overwrite=do_overwrite
-        )
+        dataset_schema.to_json_file(config.save_dir / "input_schema.json", do_overwrite=do_overwrite)
 
     ESD = Dataset(config=config, input_schema=dataset_schema)
     ESD.split(split, seed=seed)

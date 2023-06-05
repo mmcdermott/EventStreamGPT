@@ -24,9 +24,7 @@ class StoppingCriteria(ABC):
     """Abstract base class for all stopping criteria that can be applied during generation."""
 
     @add_start_docstrings(STOPPING_CRITERIA_INPUTS_DOCSTRING)
-    def __call__(
-        self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs
-    ) -> bool:
+    def __call__(self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs) -> bool:
         raise NotImplementedError("StoppingCriteria needs to be subclassed")
 
 
@@ -45,15 +43,11 @@ class MaxLengthCriteria(StoppingCriteria):
         self.max_length = max_length
 
     @add_start_docstrings(STOPPING_CRITERIA_INPUTS_DOCSTRING)
-    def __call__(
-        self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs
-    ) -> bool:
+    def __call__(self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs) -> bool:
         return batch.sequence_length >= self.max_length
 
 
 class StoppingCriteriaList(list):
     @add_start_docstrings(STOPPING_CRITERIA_INPUTS_DOCSTRING)
-    def __call__(
-        self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs
-    ) -> bool:
+    def __call__(self, batch: PytorchBatch, outputs: GenerativeSequenceModelPredictions, **kwargs) -> bool:
         return any(criteria(batch, outputs) for criteria in self)

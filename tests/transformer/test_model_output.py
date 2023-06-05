@@ -204,12 +204,8 @@ SUBJECT_EVENT_TIMES = [
 
 age_mean = MEASUREMENT_CONFIGS["age"].measurement_metadata["normalizer"]["mean_"]
 age_std = MEASUREMENT_CONFIGS["age"].measurement_metadata["normalizer"]["std_"]
-age_thresh_large = MEASUREMENT_CONFIGS["age"].measurement_metadata["outlier_model"][
-    "thresh_large_"
-]
-age_thresh_small = MEASUREMENT_CONFIGS["age"].measurement_metadata["outlier_model"][
-    "thresh_small_"
-]
+age_thresh_large = MEASUREMENT_CONFIGS["age"].measurement_metadata["outlier_model"]["thresh_large_"]
+age_thresh_small = MEASUREMENT_CONFIGS["age"].measurement_metadata["outlier_model"]["thresh_small_"]
 
 SUBJECT_AGES_AT_EVENTS = []
 for dob, event_times in zip(SUBJECT_DOB, SUBJECT_EVENT_TIMES):
@@ -220,9 +216,7 @@ for dob, event_times in zip(SUBJECT_DOB, SUBJECT_EVENT_TIMES):
         else:
             age = (event_time - dob) / timedelta(microseconds=1) / 1e6 / 60 / 60 / 24 / 365.25
             if age > age_thresh_large or age < age_thresh_small:
-                raise NotImplementedError(
-                    f"Age {age} is outside of the range of the outlier model."
-                )
+                raise NotImplementedError(f"Age {age} is outside of the range of the outlier model.")
             else:
                 ages.append((age - age_mean) / age_std)
     SUBJECT_AGES_AT_EVENTS.append(ages)
@@ -390,9 +384,7 @@ BASE_BATCH = {
 # ]
 NEW_EVENT_DELTA_TIMES = [1 * 60, 2 * 60]
 NEW_EVENT_AGES = []
-for subj_dob, event_times, new_event_delta_T in zip(
-    SUBJECT_DOB, SUBJECT_EVENT_TIMES, NEW_EVENT_DELTA_TIMES
-):
+for subj_dob, event_times, new_event_delta_T in zip(SUBJECT_DOB, SUBJECT_EVENT_TIMES, NEW_EVENT_DELTA_TIMES):
     age = event_times[-1] + timedelta(minutes=new_event_delta_T) - subj_dob
     age = age / timedelta(microseconds=1) / 1e6 / 60 / 60 / 24 / 365.25
     if age > age_thresh_large or age < age_thresh_small:
@@ -823,9 +815,7 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
                 want_L = val.shape[-1]
                 old_L = want_batch[key].shape[-1]
                 if want_L > old_L:
-                    want_batch[key] = torch.nn.functional.pad(
-                        want_batch[key], (0, want_L - old_L), value=0
-                    )
+                    want_batch[key] = torch.nn.functional.pad(want_batch[key], (0, want_L - old_L), value=0)
                 elif want_L < old_L:
                     val = torch.nn.functional.pad(val, (0, old_L - want_L), value=0)
 
@@ -942,9 +932,7 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 "want_dists": {
                     # All dists are of shape batch X seq X vocab size.
                     "event_type": (
-                        torch.distributions.Bernoulli(
-                            logits=torch.FloatTensor([[0.0, -1.0, -2.0]])
-                        ),
+                        torch.distributions.Bernoulli(logits=torch.FloatTensor([[0.0, -1.0, -2.0]])),
                         torch.distributions.Categorical(
                             logits=torch.FloatTensor(
                                 [
@@ -1146,9 +1134,7 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 "want_dists": {
                     # All dists are of shape batch X seq X vocab size.
                     "event_type": (
-                        torch.distributions.Bernoulli(
-                            logits=torch.FloatTensor([[0.0, -1.0, -2.0]])
-                        ),
+                        torch.distributions.Bernoulli(logits=torch.FloatTensor([[0.0, -1.0, -2.0]])),
                         torch.distributions.Categorical(
                             logits=torch.FloatTensor(
                                 [
@@ -1406,9 +1392,7 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
 
                 layer = GenerativeOutputLayerBase(config)
                 layer.IsObservedLayer.weight = torch.nn.Parameter(is_obs_weight)
-                layer.IsObservedLayer.bias = torch.nn.Parameter(
-                    torch.zeros_like(layer.IsObservedLayer.bias)
-                )
+                layer.IsObservedLayer.bias = torch.nn.Parameter(torch.zeros_like(layer.IsObservedLayer.bias))
                 layer.ClassificationLayer.weight = torch.nn.Parameter(torch.eye(10))
                 layer.ClassificationLayer.bias = torch.nn.Parameter(
                     torch.zeros_like(layer.ClassificationLayer.bias)
@@ -1591,14 +1575,10 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 config.vocab_size = 10
 
                 layer = GenerativeOutputLayerBase(config)
-                layer.TTE_layer.proj.bias = torch.nn.Parameter(
-                    torch.zeros_like(layer.TTE_layer.proj.bias)
-                )
+                layer.TTE_layer.proj.bias = torch.nn.Parameter(torch.zeros_like(layer.TTE_layer.proj.bias))
 
                 if C["TTE_generation_layer_type"] == "exponential":
-                    layer.TTE_layer.proj.weight = torch.nn.Parameter(
-                        torch.Tensor([[1, 0, 0, 0, 0, 0]])
-                    )
+                    layer.TTE_layer.proj.weight = torch.nn.Parameter(torch.Tensor([[1, 0, 0, 0, 0, 0]]))
                 elif C["TTE_generation_layer_type"] == "log_normal_mixture":
                     layer.TTE_layer.proj.weight = torch.nn.Parameter(torch.eye(6))
                 else:
@@ -1606,9 +1586,7 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                         f"TTE_generation_layer_type of {C['TTE_generation_layer_type']} unrecognized."
                     )
 
-                got_LL, got_dist, got_label = layer.get_TTE_outputs(
-                    batch=C["batch"], encoded=C["encoded"]
-                )
+                got_LL, got_dist, got_label = layer.get_TTE_outputs(batch=C["batch"], encoded=C["encoded"])
 
                 self.assertEqual(C["want_label"], got_label)
                 self.assertDistributionsEqual(C["want_dist"], got_dist)
@@ -2110,9 +2088,7 @@ class TestGenerativeOutputLayerBase(MLTypeEqualityCheckableMixin, unittest.TestC
                 config.vocab_size = 10
 
                 layer = GenerativeOutputLayerBase(config)
-                layer.regression_layers["regression_col"].proj.weight = torch.nn.Parameter(
-                    torch.eye(8)
-                )
+                layer.regression_layers["regression_col"].proj.weight = torch.nn.Parameter(torch.eye(8))
                 layer.regression_layers["regression_col"].proj.bias = torch.nn.Parameter(
                     torch.zeros_like(layer.regression_layers["regression_col"].proj.bias)
                 )

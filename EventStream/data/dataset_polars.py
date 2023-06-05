@@ -132,13 +132,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
                 if len(out_query) == 1:
                     partition_kwargs = {
-                        "partition_on": subject_id_col
-                        if q.partition_on is None
-                        else q.partition_on,
+                        "partition_on": subject_id_col if q.partition_on is None else q.partition_on,
                         "partition_num": (
-                            multiprocessing.cpu_count()
-                            if q.partition_num is None
-                            else q.partition_num
+                            multiprocessing.cpu_count() if q.partition_num is None else q.partition_num
                         ),
                     }
                 elif q.partition_on is not None or q.partition_num is not None:
@@ -174,10 +170,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             df = df.with_columns(pl.col(subject_id_col).cast(pl.Utf8).cast(pl.Categorical))
             df = cls._filter_col_inclusion(df, {subject_id_col: list(subject_ids_map.keys())})
             col_exprs.append(
-                pl.col(subject_id_col)
-                .map_dict(subject_ids_map)
-                .cast(subject_id_dtype)
-                .alias("subject_id")
+                pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias("subject_id")
             )
 
         for in_col, out_dt in columns:
@@ -191,9 +184,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case InputDataType.TIMESTAMP:
                     col_exprs.append(pl.col(in_col).cast(pl.Datetime, strict=True))
                 case (InputDataType.TIMESTAMP, str() as ts_format):
-                    col_exprs.append(
-                        pl.col(in_col).str.strptime(pl.Datetime, ts_format, strict=False)
-                    )
+                    col_exprs.append(pl.col(in_col).str.strptime(pl.Datetime, ts_format, strict=False))
                 case _:
                     raise ValueError(f"Invalid out data type {out_dt}!")
 
@@ -207,9 +198,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             return df.select(col_exprs)
 
     @classmethod
-    def resolve_ts_col(
-        cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp"
-    ) -> DF_T:
+    def resolve_ts_col(cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp") -> DF_T:
         match ts_col:
             case list():
                 ts_expr = pl.min(ts_col)
@@ -244,9 +233,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         ]
         if event_type.startswith("COL:"):
             event_type_col = event_type[len("COL:") :]
-            cols_select_exprs.append(
-                pl.col(event_type_col).cast(pl.Categorical).alias("event_type")
-            )
+            cols_select_exprs.append(pl.col(event_type_col).cast(pl.Categorical).alias("event_type"))
         else:
             cols_select_exprs.append(pl.lit(event_type).cast(pl.Categorical).alias("event_type"))
 
@@ -287,9 +274,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         eq_df = df.filter(pl.col("start_time") == pl.col("end_time"))
         ne_df = df.filter(pl.col("start_time") != pl.col("end_time"))
 
-        st_col, end_col = pl.col("start_time").alias("timestamp"), pl.col("end_time").alias(
-            "timestamp"
-        )
+        st_col, end_col = pl.col("start_time").alias("timestamp"), pl.col("end_time").alias("timestamp")
         drop_cols = ["start_time", "end_time"]
         return (
             eq_df.with_columns(st_col).drop(drop_cols),
@@ -398,8 +383,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if drop_lower_bound is not None:
             conditions.append(
                 (
-                    (col < drop_lower_bound)
-                    | ((col == drop_lower_bound) & drop_lower_bound_inclusive),
+                    (col < drop_lower_bound) | ((col == drop_lower_bound) & drop_lower_bound_inclusive),
                     np.NaN,
                 )
             )
@@ -407,8 +391,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if drop_upper_bound is not None:
             conditions.append(
                 (
-                    (col > drop_upper_bound)
-                    | ((col == drop_upper_bound) & drop_upper_bound_inclusive),
+                    (col > drop_upper_bound) | ((col == drop_upper_bound) & drop_upper_bound_inclusive),
                     np.NaN,
                 )
             )
@@ -445,14 +428,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         match id_col.dtype:
             case pl.Float32 | pl.Float64:
                 if not (id_col == id_col.round(0)).all() and (id_col >= 0).all():
-                    raise ValueError(
-                        f"ID column {id_col.name} is not a non-negative integer type!"
-                    )
+                    raise ValueError(f"ID column {id_col.name} is not a non-negative integer type!")
             case pl.Int8 | pl.Int16 | pl.Int32 | pl.Int64:
                 if not (id_col >= 0).all():
-                    raise ValueError(
-                        f"ID column {id_col.name} is not a non-negative integer type!"
-                    )
+                    raise ValueError(f"ID column {id_col.name} is not a non-negative integer type!")
             case pl.UInt8 | pl.UInt16 | pl.UInt32 | pl.UInt64:
                 pass
             case _:
@@ -502,9 +481,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 if cfg.temporality != valid_temporality_type:
                     raise ValueError(f"Column {cat_col} found in dataframe of wrong temporality")
 
-                source_df = source_df.with_columns(
-                    pl.col(cat_col).cast(pl.Utf8).cast(pl.Categorical)
-                )
+                source_df = source_df.with_columns(pl.col(cat_col).cast(pl.Utf8).cast(pl.Categorical))
 
             if val_col is not None and val_col in source_df:
                 if cfg.temporality != valid_temporality_type:
@@ -589,9 +566,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if self.config.agg_by_time_scale is None:
             grouped = self.events_df.groupby(["subject_id", "timestamp"], maintain_order=True)
         else:
-            grouped = self.events_df.sort(
-                ["subject_id", "timestamp"], descending=False
-            ).groupby_dynamic(
+            grouped = self.events_df.sort(["subject_id", "timestamp"], descending=False).groupby_dynamic(
                 "timestamp",
                 every=self.config.agg_by_time_scale,
                 truncate=True,
@@ -636,9 +611,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .to_list()
             )
 
-            n_events_pd = (
-                self.events_df.get_column("subject_id").value_counts(sort=False).to_pandas()
-            )
+            n_events_pd = self.events_df.get_column("subject_id").value_counts(sort=False).to_pandas()
             self.n_events_per_subject = n_events_pd.set_index("subject_id")["counts"].to_dict()
             self.subject_ids = set(self.n_events_per_subject.keys())
 
@@ -651,9 +624,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             self.subject_ids.update(subjects_with_no_events)
 
     @classmethod
-    def _filter_col_inclusion(
-        cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]
-    ) -> DF_T:
+    def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]) -> DF_T:
         filter_exprs = []
         for col, incl_targets in col_inclusion_targets.items():
             match incl_targets:
@@ -681,9 +652,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         if join_cols:
             self.events_df = (
-                self.events_df.join(
-                    self.subjects_df.select("subject_id", *join_cols), on="subject_id"
-                )
+                self.events_df.join(self.subjects_df.select("subject_id", *join_cols), on="subject_id")
                 .with_columns(exprs)
                 .drop(join_cols)
             )
@@ -705,29 +674,17 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 metadata_as_polars = pl.DataFrame(
                     {key_col: [measure], **{c: [v] for c, v in metadata.items()}}
                 )
-                source_df = source_df.with_columns(
-                    pl.lit(measure).cast(pl.Categorical).alias(key_col)
-                )
+                source_df = source_df.with_columns(pl.lit(measure).cast(pl.Categorical).alias(key_col))
             case DataModality.MULTIVARIATE_REGRESSION:
                 key_col = measure
                 val_col = config.values_column
                 metadata_as_polars = pl.from_pandas(metadata, include_index=True)
             case _:
-                raise ValueError(
-                    f"Called _pre_numerical_source on {config.modality} measure {measure}!"
-                )
+                raise ValueError(f"Called _pre_numerical_source on {config.modality} measure {measure}!")
 
-        if (
-            "outlier_model" in metadata_as_polars
-            and len(metadata_as_polars.drop_nulls("outlier_model")) == 0
-        ):
-            metadata_as_polars = metadata_as_polars.with_columns(
-                pl.lit(None).alias("outlier_model")
-            )
-        if (
-            "normalizer" in metadata_as_polars
-            and len(metadata_as_polars.drop_nulls("normalizer")) == 0
-        ):
+        if "outlier_model" in metadata_as_polars and len(metadata_as_polars.drop_nulls("outlier_model")) == 0:
+            metadata_as_polars = metadata_as_polars.with_columns(pl.lit(None).alias("outlier_model"))
+        if "normalizer" in metadata_as_polars and len(metadata_as_polars.drop_nulls("normalizer")) == 0:
             metadata_as_polars = metadata_as_polars.with_columns(pl.lit(None).alias("normalizer"))
 
         metadata_as_polars = metadata_as_polars.with_columns(
@@ -778,9 +735,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         vals_col = pl.col(vals_col)
 
         if "value_type" in measurement_metadata:
-            missing_val_types = measurement_metadata.filter(pl.col("value_type").is_null())[
-                vocab_keys_col
-            ]
+            missing_val_types = measurement_metadata.filter(pl.col("value_type").is_null())[vocab_keys_col]
             for_val_type_inference = source_df.filter(
                 (~pl.col(vocab_keys_col).is_in(measurement_metadata[vocab_keys_col]))
                 | pl.col(vocab_keys_col).is_in(missing_val_types)
@@ -791,18 +746,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # a. Convert to integeres where appropriate.
         if self.config.min_true_float_frequency is not None:
             is_int_expr = (
-                (
-                    (vals_col == vals_col.round(0)).mean()
-                    > (1 - self.config.min_true_float_frequency)
-                )
+                ((vals_col == vals_col.round(0)).mean() > (1 - self.config.min_true_float_frequency))
                 .cast(pl.Boolean)
                 .alias("is_int")
             )
             int_keys = for_val_type_inference.groupby(vocab_keys_col).agg(is_int_expr)
 
-            measurement_metadata = measurement_metadata.join(
-                int_keys, on=vocab_keys_col, how="outer"
-            )
+            measurement_metadata = measurement_metadata.join(int_keys, on=vocab_keys_col, how="outer")
 
             key_is_int = pl.col(vocab_keys_col).is_in(int_keys.filter("is_int")[vocab_keys_col])
             for_val_type_inference = for_val_type_inference.with_columns(
@@ -840,13 +790,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             categorical_keys = for_val_type_inference.groupby(vocab_keys_col).agg(is_cat_expr)
 
-            measurement_metadata = measurement_metadata.join(
-                categorical_keys, on=vocab_keys_col, how="outer"
-            )
+            measurement_metadata = measurement_metadata.join(categorical_keys, on=vocab_keys_col, how="outer")
         else:
-            measurement_metadata = measurement_metadata.with_columns(
-                pl.lit(False).alias("is_categorical")
-            )
+            measurement_metadata = measurement_metadata.with_columns(pl.lit(False).alias("is_categorical"))
 
         inferred_value_type = (
             pl.when(pl.col("is_int") & pl.col("is_categorical"))
@@ -888,9 +834,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if self.config.min_valid_vocab_element_observations is not None:
             if config.temporality == TemporalityType.DYNAMIC:
                 num_possible = source_df.select(pl.col("event_id").n_unique()).item()
-                num_non_null = (
-                    pl.col("event_id").filter(pl.col(vocab_keys_col).is_not_null()).n_unique()
-                )
+                num_non_null = pl.col("event_id").filter(pl.col(vocab_keys_col).is_not_null()).n_unique()
             else:
                 num_possible = len(source_df)
                 num_non_null = pl.col(vocab_keys_col).drop_nulls().len()
@@ -917,9 +861,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .with_columns(pl.coalesce(["value_type", "value_type_right"]).alias("value_type"))
                 .drop("value_type_right")
             )
-            source_df = source_df.filter(
-                ~pl.col(vocab_keys_col).is_in(dropped_keys[vocab_keys_col])
-            )
+            source_df = source_df.filter(~pl.col(vocab_keys_col).is_in(dropped_keys[vocab_keys_col]))
 
             if len(source_df) == 0:
                 measurement_metadata = measurement_metadata.to_pandas()
@@ -931,9 +873,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 else:
                     return measurement_metadata
 
-        source_df = source_df.drop_nulls([vocab_keys_col, vals_col]).filter(
-            pl.col(vals_col).is_not_nan()
-        )
+        source_df = source_df.drop_nulls([vocab_keys_col, vals_col]).filter(pl.col(vals_col).is_not_nan())
 
         # 2. Eliminates hard outliers and performs censoring via specified config.
         bound_cols = {}
@@ -963,9 +903,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         )
 
         source_df = (
-            source_df.update(
-                measurement_metadata.select(vocab_keys_col, "value_type"), on=vocab_keys_col
-            )
+            source_df.update(measurement_metadata.select(vocab_keys_col, "value_type"), on=vocab_keys_col)
             .with_columns(
                 pl.when(pl.col("value_type") == NumericDataModalitySubtype.INTEGER)
                 .then(pl.col(vals_col).round(0))
@@ -995,9 +933,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     pl.col("outlier_model").cast(outlier_model_params["outlier_model"].dtype)
                 )
 
-                measurement_metadata = measurement_metadata.update(
-                    outlier_model_params, on=vocab_keys_col
-                )
+                measurement_metadata = measurement_metadata.update(outlier_model_params, on=vocab_keys_col)
                 source_df = source_df.update(
                     measurement_metadata.select(vocab_keys_col, "outlier_model"), on=vocab_keys_col
                 )
@@ -1008,18 +944,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # 5. Fit a normalizer model.
         if self.config.normalizer_config is not None:
             with self._time_as("fit_normalizer"):
-                normalizer_config, M = self._get_metadata_model(
-                    self.config.normalizer_config, for_fit=True
-                )
+                normalizer_config, M = self._get_metadata_model(self.config.normalizer_config, for_fit=True)
                 normalizer_params = source_df.groupby(vocab_keys_col).agg(
                     M.fit_from_polars(pl.col(vals_col)).alias("normalizer")
                 )
                 measurement_metadata = measurement_metadata.with_columns(
                     pl.col("normalizer").cast(normalizer_params["normalizer"].dtype)
                 )
-                measurement_metadata = measurement_metadata.update(
-                    normalizer_params, on=vocab_keys_col
-                )
+                measurement_metadata = measurement_metadata.update(normalizer_params, on=vocab_keys_col)
 
         # 6. Convert to the appropriate type and return.
         measurement_metadata = measurement_metadata.to_pandas()
@@ -1032,9 +964,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             return measurement_metadata
 
     @TimeableMixin.TimeAs
-    def _fit_vocabulary(
-        self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> Vocabulary:
+    def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: DF_T) -> Vocabulary:
         match config.modality:
             case DataModality.MULTIVARIATE_REGRESSION:
                 val_types = pl.from_pandas(
@@ -1045,9 +975,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 observations = (
                     source_df.join(val_types, on=measure)
                     .with_columns(
-                        pl.when(
-                            pl.col("value_type") == NumericDataModalitySubtype.CATEGORICAL_INTEGER
-                        )
+                        pl.when(pl.col("value_type") == NumericDataModalitySubtype.CATEGORICAL_INTEGER)
                         .then(
                             pl.col(measure).cast(pl.Utf8)
                             + "__EQ_"
@@ -1068,10 +996,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 match config.measurement_metadata.value_type:
                     case NumericDataModalitySubtype.CATEGORICAL_INTEGER:
                         observations = source_df.with_columns(
-                            (
-                                f"{measure}__EQ_"
-                                + pl.col(measure).round(0).cast(int).cast(pl.Utf8)
-                            ).alias(measure)
+                            (f"{measure}__EQ_" + pl.col(measure).round(0).cast(int).cast(pl.Utf8)).alias(
+                                measure
+                            )
                         ).get_column(measure)
                     case NumericDataModalitySubtype.CATEGORICAL_FLOAT:
                         observations = source_df.with_columns(
@@ -1182,24 +1109,18 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         if len(present_source) == 0:
             if self.config.outlier_detector_config is not None:
-                null_source = null_source.with_columns(
-                    pl.lit(None).cast(pl.Boolean).alias(inliers_col_name)
-                )
+                null_source = null_source.with_columns(pl.lit(None).cast(pl.Boolean).alias(inliers_col_name))
             return null_source.drop(cols_to_drop_at_end)
 
         # 5. Add inlier/outlier indices and remove learned outliers.
         if self.config.outlier_detector_config is not None:
             M = self._get_metadata_model(self.config.outlier_detector_config, for_fit=False)
 
-            inliers_col = ~M.predict_from_polars(vals_col, pl.col("outlier_model")).alias(
-                inliers_col_name
-            )
+            inliers_col = ~M.predict_from_polars(vals_col, pl.col("outlier_model")).alias(inliers_col_name)
             vals_col = pl.when(inliers_col).then(vals_col).otherwise(np.NaN)
 
             present_source = present_source.with_columns(inliers_col, vals_col)
-            null_source = null_source.with_columns(
-                pl.lit(None).cast(pl.Boolean).alias(inliers_col_name)
-            )
+            null_source = null_source.with_columns(pl.lit(None).cast(pl.Boolean).alias(inliers_col_name))
 
             new_nulls = present_source.filter(~pl.col(inliers_col_name))
             null_source = null_source.vstack(new_nulls)
@@ -1293,12 +1214,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 modality = cfg.modality
 
             if m in self.measurement_vocabs:
-                idx_present_expr = pl.col(m).is_not_null() & pl.col(m).is_in(
-                    self.measurement_vocabs[m]
-                )
-                idx_value_expr = pl.col(m).map_dict(
-                    self.unified_vocabulary_idxmap[m], return_dtype=idx_dt
-                )
+                idx_present_expr = pl.col(m).is_not_null() & pl.col(m).is_in(self.measurement_vocabs[m])
+                idx_value_expr = pl.col(m).map_dict(self.unified_vocabulary_idxmap[m], return_dtype=idx_dt)
             else:
                 idx_present_expr = pl.col(m).is_not_null()
                 idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m]).cast(idx_dt)
@@ -1320,9 +1237,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.struct([idx_present_expr, idx_value_expr, val_expr.alias("value")]).alias(m)
             )
 
-        measurements_idx_dt = self.get_smallest_valid_int_type(
-            len(self.unified_measurements_idxmap)
-        )
+        measurements_idx_dt = self.get_smallest_valid_int_type(len(self.unified_measurements_idxmap))
         return (
             source_df.select(*id_cols, *struct_exprs)
             .melt(
@@ -1403,9 +1318,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             events_df = self.events_df
             event_ids = None
-        event_data = self.melt_df(
-            events_df, ["subject_id", "timestamp", "event_id"], event_measures
-        )
+        event_data = self.melt_df(events_df, ["subject_id", "timestamp", "event_id"], event_measures)
 
         # 3. Process measurement data into the right base format:
         if event_ids:
@@ -1437,9 +1350,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .groupby("subject_id")
             .agg(
                 pl.col("timestamp").first().alias("start_time"),
-                (
-                    (pl.col("timestamp") - pl.col("timestamp").min()).dt.nanoseconds() / (1e9 * 60)
-                ).alias("time"),
+                ((pl.col("timestamp") - pl.col("timestamp").min()).dt.nanoseconds() / (1e9 * 60)).alias(
+                    "time"
+                ),
                 pl.col("dynamic_measurement_indices"),
                 pl.col("dynamic_indices"),
                 pl.col("dynamic_values"),
@@ -1456,9 +1369,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if self.config.normalizer_config is None:
             return events_df
         elif self.config.normalizer_config["cls"] != "standard_scaler":
-            raise ValueError(
-                f"De-normalizing from {self.config.normalizer_config} not yet supported!"
-            )
+            raise ValueError(f"De-normalizing from {self.config.normalizer_config} not yet supported!")
 
         config = self.measurement_configs[col]
         if config.modality != DataModality.UNIVARIATE_REGRESSION:

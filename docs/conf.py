@@ -33,6 +33,8 @@ version = "0.0.1"
 # -- Run sphinx-apidoc -------------------------------------------------------
 # This ensures we don't need to run apidoc manually.
 
+# TODO: use https://github.com/sphinx-extensions2/sphinx-autodoc2
+
 from sphinx.ext import apidoc
 
 output_dir = __location__ / "api"
@@ -45,7 +47,6 @@ try:
     apidoc.main(cmd_line.split(" "))
 except Exception as e:  # pylint: disable=broad-except
     print(f"Running `sphinx-apidoc {cmd_line}` failed!\n{e}")
-
 
 # -- General configuration ---------------------------------------------------
 
@@ -64,7 +65,10 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
     "myst_parser",
+    "sphinxcontrib.bibtex",
 ]
+
+bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -149,9 +153,7 @@ todo_emit_warnings = True
 
 autoclass_content = "both"
 
-autodoc_member_order = "bysource"
-
-# autodoc_mock_imports = ["sklearn"]  # Update as needed.
+# autodoc_member_order = "bysource"
 
 # -- Configure autodoc (end) ---------------------------------------
 
@@ -274,9 +276,7 @@ latex_elements = {  # type: ignore
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
-latex_documents = [
-    ("index", "user_guide.tex", "EventFlowGPT Documentation", "Matthew McDermott", "manual")
-]
+latex_documents = [("index", "user_guide.tex", "EventFlowGPT Documentation", "Matthew McDermott", "manual")]
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.

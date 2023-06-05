@@ -215,19 +215,13 @@ class OptimizationConfig(JSONableMixin):
 
         if self.lr_num_warmup_steps is None:
             assert self.lr_frac_warmup_steps is not None
-            self.lr_num_warmup_steps = int(
-                round(self.lr_frac_warmup_steps * self.max_training_steps)
-            )
+            self.lr_num_warmup_steps = int(round(self.lr_frac_warmup_steps * self.max_training_steps))
         elif self.lr_frac_warmup_steps is None:
             self.lr_frac_warmup_steps = self.lr_num_warmup_steps / self.max_training_steps
 
         assert (
-            math.floor(self.lr_frac_warmup_steps * self.max_training_steps)
-            <= self.lr_num_warmup_steps
-        ) and (
-            math.ceil(self.lr_frac_warmup_steps * self.max_training_steps)
-            >= self.lr_num_warmup_steps
-        ), (
+            math.floor(self.lr_frac_warmup_steps * self.max_training_steps) <= self.lr_num_warmup_steps
+        ) and (math.ceil(self.lr_frac_warmup_steps * self.max_training_steps) >= self.lr_num_warmup_steps), (
             "`self.lr_frac_warmup_steps`, `self.max_training_steps`, and `self.lr_num_warmup_steps` should "
             "be consistent, but they aren't! Got\n"
             f"\tself.max_training_steps = {self.max_training_steps}\n"
@@ -563,9 +557,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.numerical_embedding_weight = numerical_embedding_weight
         self.do_normalize_by_measurement_index = do_normalize_by_measurement_index
 
-        missing_param_err_tmpl = (
-            f"For a {structured_event_processing_mode} model, {{}} should not be None"
-        )
+        missing_param_err_tmpl = f"For a {structured_event_processing_mode} model, {{}} should not be None"
         extra_param_err_tmpl = (
             f"WARNING: For a {structured_event_processing_mode} model, {{}} is not used; got {{}}. Setting "
             "to None."
@@ -573,17 +565,11 @@ class StructuredTransformerConfig(PretrainedConfig):
         match structured_event_processing_mode:
             case StructuredEventProcessingMode.NESTED_ATTENTION:
                 if do_full_block_in_seq_attention is None:
-                    raise ValueError(
-                        missing_param_err_tmpl.format("do_full_block_in_seq_attention")
-                    )
+                    raise ValueError(missing_param_err_tmpl.format("do_full_block_in_seq_attention"))
                 if do_full_block_in_dep_graph_attention is None:
-                    raise ValueError(
-                        missing_param_err_tmpl.format("do_full_block_in_dep_graph_attention")
-                    )
+                    raise ValueError(missing_param_err_tmpl.format("do_full_block_in_dep_graph_attention"))
                 if measurements_per_dep_graph_level is None:
-                    raise ValueError(
-                        missing_param_err_tmpl.format("measurements_per_dep_graph_level")
-                    )
+                    raise ValueError(missing_param_err_tmpl.format("measurements_per_dep_graph_level"))
 
                 proc_measurements_per_dep_graph_level = []
                 for group in measurements_per_dep_graph_level:
@@ -626,16 +612,10 @@ class StructuredTransformerConfig(PretrainedConfig):
                     )
                     do_full_block_in_dep_graph_attention = None
                 if dep_graph_attention_types is not None:
-                    print(
-                        extra_param_err_tmpl.format(
-                            "dep_graph_attention_types", dep_graph_attention_types
-                        )
-                    )
+                    print(extra_param_err_tmpl.format("dep_graph_attention_types", dep_graph_attention_types))
                     dep_graph_attention_types = None
                 if dep_graph_window_size is not None:
-                    print(
-                        extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size)
-                    )
+                    print(extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size))
                     dep_graph_window_size = None
 
             case _:
@@ -687,9 +667,7 @@ class StructuredTransformerConfig(PretrainedConfig):
             if dep_graph_attention_types is None:
                 dep_graph_attention_types = "global"
 
-            dep_graph_attention_layers = self.expand_attention_types_params(
-                dep_graph_attention_types
-            )
+            dep_graph_attention_layers = self.expand_attention_types_params(dep_graph_attention_types)
 
             if len(dep_graph_attention_layers) != num_hidden_layers:
                 raise ValueError(
@@ -710,9 +688,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         self.seq_window_size = seq_window_size
         self.dep_graph_window_size = dep_graph_window_size
 
-        missing_param_err_tmpl = (
-            f"For a {TTE_generation_layer_type} model, {{}} should not be None"
-        )
+        missing_param_err_tmpl = f"For a {TTE_generation_layer_type} model, {{}} should not be None"
         extra_param_err_tmpl = (
             f"WARNING: For a {TTE_generation_layer_type} model, {{}} is not used; got {{}}. "
             "Setting to None."
@@ -720,9 +696,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         match TTE_generation_layer_type:
             case TimeToEventGenerationHeadType.LOG_NORMAL_MIXTURE:
                 if TTE_lognormal_generation_num_components is None:
-                    raise ValueError(
-                        missing_param_err_tmpl.format("TTE_lognormal_generation_num_components")
-                    )
+                    raise ValueError(missing_param_err_tmpl.format("TTE_lognormal_generation_num_components"))
                 if type(TTE_lognormal_generation_num_components) is not int:
                     raise TypeError(
                         f"`TTE_lognormal_generation_num_components` must be an int! "
@@ -799,9 +773,7 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.use_cache = use_cache
 
-        assert not kwargs.get(
-            "is_encoder_decoder", False
-        ), "Can't be used in encoder/decoder mode!"
+        assert not kwargs.get("is_encoder_decoder", False), "Can't be used in encoder/decoder mode!"
         kwargs["is_encoder_decoder"] = False
 
         super().__init__(**kwargs)
@@ -817,9 +789,7 @@ class StructuredTransformerConfig(PretrainedConfig):
             return [attention_types] * self.num_hidden_layers
 
         if not isinstance(attention_types, list):
-            raise TypeError(
-                f"Config Invalid {attention_types} ({type(attention_types)}) is wrong type!"
-            )
+            raise TypeError(f"Config Invalid {attention_types} ({type(attention_types)}) is wrong type!")
 
         if isinstance(attention_types[0], str):
             return (attention_types * self.num_hidden_layers)[: self.num_hidden_layers]
@@ -830,9 +800,7 @@ class StructuredTransformerConfig(PretrainedConfig):
                 attentions.extend(list(sub_list) * n_layers)
             return attentions[: self.num_hidden_layers]
 
-        raise TypeError(
-            f"Config Invalid {attention_types} El 0 ({type(attention_types[0])}) is wrong type!"
-        )
+        raise TypeError(f"Config Invalid {attention_types} El 0 ({type(attention_types[0])}) is wrong type!")
 
     def set_to_dataset(self, dataset: PytorchDataset):
         """Set various configuration parameters to match `dataset`."""
@@ -840,9 +808,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         # streamlined.
         self.measurement_configs = dataset.measurement_configs
         self.measurements_idxmap = dataset.vocabulary_config.measurements_idxmap
-        self.measurements_per_generative_mode = (
-            dataset.vocabulary_config.measurements_per_generative_mode
-        )
+        self.measurements_per_generative_mode = dataset.vocabulary_config.measurements_per_generative_mode
         for k in DataModality.values():
             if k not in self.measurements_per_generative_mode:
                 self.measurements_per_generative_mode[k] = []
@@ -866,9 +832,7 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         self.vocab_offsets_by_measurement = dataset.vocabulary_config.vocab_offsets_by_measurement
         self.vocab_sizes_by_measurement = dataset.vocabulary_config.vocab_sizes_by_measurement
-        for k in set(self.vocab_offsets_by_measurement.keys()) - set(
-            self.vocab_sizes_by_measurement.keys()
-        ):
+        for k in set(self.vocab_offsets_by_measurement.keys()) - set(self.vocab_sizes_by_measurement.keys()):
             self.vocab_sizes_by_measurement[k] = 1
 
         self.vocab_size = dataset.vocabulary_config.total_vocab_size

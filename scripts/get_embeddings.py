@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Gets the emeddings of a pre-trained model for a user-specified fine-tuning dataset."""
 
 try:
     import stackprinter

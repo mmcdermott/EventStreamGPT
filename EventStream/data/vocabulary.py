@@ -140,9 +140,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         return (
             (type(self) is type(other))
             and (self.vocabulary == other.vocabulary)
-            and (
-                np.array(self.obs_frequencies).round(3) == np.array(other.obs_frequencies).round(3)
-            ).all()
+            and (np.array(self.obs_frequencies).round(3) == np.array(other.obs_frequencies).round(3)).all()
         )
 
     def __post_init__(self):
@@ -185,9 +183,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         self.vocabulary = ["UNK"] + [vocab[i] for i in idx]
         self.obs_frequencies = list(np.concatenate(([unk_freq], obs_frequencies[idx])))
 
-    def filter(
-        self, total_observations: int, min_valid_element_freq: COUNT_OR_PROPORTION
-    ) -> Vocabulary:
+    def filter(self, total_observations: int, min_valid_element_freq: COUNT_OR_PROPORTION) -> Vocabulary:
         """Filters the vocabulary elements to only those occurring sufficiently often.
 
         Filters out infrequent elements from the vocabulary, pushing the dropped elements into the UNK
@@ -300,9 +296,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
                 lines.append(f"  ({self.obs_frequencies[i+1]*100:.1f}%) {self.vocabulary[i+1]}")
             lines.append("  ...")
             for i in range(n_tail):
-                lines.append(
-                    f"  ({self.obs_frequencies[-n_tail+i]*100:.1f}%) {self.vocabulary[-n_tail+i]}"
-                )
+                lines.append(f"  ({self.obs_frequencies[-n_tail+i]*100:.1f}%) {self.vocabulary[-n_tail+i]}")
 
         line_indents = [num_initial_spaces(line) for line in lines]
         if wrap_lines:

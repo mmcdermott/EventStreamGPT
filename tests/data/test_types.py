@@ -232,12 +232,8 @@ class TestPytorchBatch(ConfigComparisonsMixin, unittest.TestCase):
             static_indices=torch.LongTensor([[1, 2, 3], [3, 2, 3]]),
             static_measurement_indices=torch.LongTensor([[2, 3, 4], [4, 3, 4]]),
             dynamic_indices=torch.LongTensor([[[[9, 10], [11, 12]]], [[[21, 22], [23, 24]]]]),
-            dynamic_measurement_indices=torch.LongTensor(
-                [[[[9, 9], [11, 11]]], [[[21, 21], [23, 23]]]]
-            ),
-            dynamic_values=torch.FloatTensor(
-                [[[[9.1, 9], [11.1, 11]]], [[[21.1, 21], [23.1, 23]]]]
-            ),
+            dynamic_measurement_indices=torch.LongTensor([[[[9, 9], [11, 11]]], [[[21, 21], [23, 23]]]]),
+            dynamic_values=torch.FloatTensor([[[[9.1, 9], [11.1, 11]]], [[[21.1, 21], [23.1, 23]]]]),
             dynamic_values_mask=torch.BoolTensor(
                 [
                     [[[False, True], [False, False]]],

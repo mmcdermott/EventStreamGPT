@@ -153,14 +153,10 @@ class TestGenerativeSequenceModelSamples(MLTypeEqualityCheckableMixin, unittest.
         self.batch = PytorchBatch(**BASE_BATCH)
 
     def test_expand_inputs_for_generation(self):
-        out_batch = StructuredGenerationMixin._expand_inputs_for_generation(
-            batch=self.batch, expand_size=1
-        )
+        out_batch = StructuredGenerationMixin._expand_inputs_for_generation(batch=self.batch, expand_size=1)
         self.assertNestedDictEqual(BASE_BATCH, {k: v for k, v in out_batch.items()})
 
-        out_batch_2 = StructuredGenerationMixin._expand_inputs_for_generation(
-            batch=self.batch, expand_size=2
-        )
+        out_batch_2 = StructuredGenerationMixin._expand_inputs_for_generation(batch=self.batch, expand_size=2)
         self.assertNestedDictEqual(EXPANDED_BATCH_2, {k: v for k, v in out_batch_2.items()})
 
 

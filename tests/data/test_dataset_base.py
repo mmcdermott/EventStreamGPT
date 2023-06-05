@@ -54,17 +54,11 @@ class ESDMock(DatasetBase[dict, dict]):
     def _fit_measurement_metadata(
         self, measure: str, config: MeasurementConfig, source_df: dict
     ) -> pd.DataFrame:
-        self.functions_called["_fit_measurement_metadata"].append(
-            copy.deepcopy((measure, config, source_df))
-        )
+        self.functions_called["_fit_measurement_metadata"].append(copy.deepcopy((measure, config, source_df)))
         return config.measurement_metadata
 
-    def _fit_vocabulary(
-        self, measure: str, config: MeasurementConfig, source_df: dict
-    ) -> Vocabulary:
-        self.functions_called["_fit_vocabulary"].append(
-            copy.deepcopy((measure, config, source_df))
-        )
+    def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: dict) -> Vocabulary:
+        self.functions_called["_fit_vocabulary"].append(copy.deepcopy((measure, config, source_df)))
         return Vocabulary(["foo", "bar"], [3 / 4, 1 / 4])
 
     def update_attr_df(self, attr: str, df: dict):
@@ -162,9 +156,7 @@ class ESDMock(DatasetBase[dict, dict]):
         return {}
 
     @classmethod
-    def resolve_ts_col(
-        cls, df: dict, ts_col: str | list[str], out_name: str = "timestamp"
-    ) -> dict:
+    def resolve_ts_col(cls, df: dict, ts_col: str | list[str], out_name: str = "timestamp") -> dict:
         cls.FUNCTIONS_CALLED["resolve_ts_col"].append((df, ts_col, out_name))
         return {}
 
@@ -179,9 +171,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         self.events_df = {"name": "events", "event_id": [1, 2]}
         self.dynamic_measurements_df = {"name": "dynamic_measurements"}
 
-        self.E = ESDMock(
-            self.config, self.subjects_df, self.events_df, self.dynamic_measurements_df
-        )
+        self.E = ESDMock(self.config, self.subjects_df, self.events_df, self.dynamic_measurements_df)
 
     def test_basic_construction(self):
         self.assertEqual(self.config, self.E.config)
@@ -198,9 +188,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         self.assertEqual({}, self.E.n_events_per_subject)
 
         want_functions_called = {
-            "_validate_initial_dfs": [
-                (self.subjects_df, self.events_df, self.dynamic_measurements_df)
-            ],
+            "_validate_initial_dfs": [(self.subjects_df, self.events_df, self.dynamic_measurements_df)],
             "_update_subject_event_properties": [()],
             "agg_by_time": [()],
             "sort_events": [()],
@@ -312,18 +300,14 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
             with self.subTest(msg=C["msg"]):
                 self.E._reset_functions_called()
                 self.assertEqual(C["want_out"], getattr(self.E, C["attr"]))
-                self.assertNestedDictEqual(
-                    {C["want_fn"]: [C["want_fn_arg"]]}, self.E.functions_called
-                )
+                self.assertNestedDictEqual({C["want_fn"]: [C["want_fn_arg"]]}, self.E.functions_called)
 
     def test_get_source_df(self):
         dynamic = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
             modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         )
-        static = MeasurementConfig(
-            temporality=TemporalityType.STATIC, modality="single_label_classification"
-        )
+        static = MeasurementConfig(temporality=TemporalityType.STATIC, modality="single_label_classification")
         time_dependent = MeasurementConfig(
             temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
             functor=AgeFunctor,
@@ -399,13 +383,9 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 if C["want_fn"] is None:
                     self.assertEqual({}, self.E.functions_called)
                 elif type(C["want_fn_arg"]) is list:
-                    self.assertNestedDictEqual(
-                        {C["want_fn"]: C["want_fn_arg"]}, self.E.functions_called
-                    )
+                    self.assertNestedDictEqual({C["want_fn"]: C["want_fn_arg"]}, self.E.functions_called)
                 else:
-                    self.assertNestedDictEqual(
-                        {C["want_fn"]: [C["want_fn_arg"]]}, self.E.functions_called
-                    )
+                    self.assertNestedDictEqual({C["want_fn"]: [C["want_fn_arg"]]}, self.E.functions_called)
 
     def test_preprocess_measurements(self):
         def fit_measurements(self, *args, **kwargs):
@@ -467,9 +447,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
             },
         )
 
-        self.E = ESDMock(
-            self.config, self.subjects_df, self.events_df, self.dynamic_measurements_df
-        )
+        self.E = ESDMock(self.config, self.subjects_df, self.events_df, self.dynamic_measurements_df)
         self.E._get_source_df = get_source_df.__get__(self.E)
 
         self.assertFalse(self.E._is_fit)
@@ -589,9 +567,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
             "numeric": want_numeric_config,
         }
 
-        self.assertNestedDictEqual(
-            want_inferred_measurement_configs, self.E.inferred_measurement_configs
-        )
+        self.assertNestedDictEqual(want_inferred_measurement_configs, self.E.inferred_measurement_configs)
 
     @unittest.skip("TODO: Implement this test!")
     def test_transform_measurements(self):

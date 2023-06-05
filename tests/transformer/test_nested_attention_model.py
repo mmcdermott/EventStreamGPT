@@ -362,9 +362,7 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
                         is_generation=False,
                     ),
                 ],
-                "TTE_calls": [
-                    call(dummy_batch, default_encoded[:, :, -1, :], is_generation=False)
-                ],
+                "TTE_calls": [call(dummy_batch, default_encoded[:, :, -1, :], is_generation=False)],
             },
             {
                 "msg": "Should work in generative mode with dep_graph_el_generation_target > 0.",
@@ -403,17 +401,13 @@ class TestNestedAttentionGenerativeOutputLayer(ConfigComparisonsMixin, unittest.
 
         for case in cases:
             with self.subTest(msg=case["msg"]):
-                M = NestedAttentionGenerativeOutputLayer(
-                    StructuredTransformerConfig(**NA_CONFIG_KWARGS)
-                )
+                M = NestedAttentionGenerativeOutputLayer(StructuredTransformerConfig(**NA_CONFIG_KWARGS))
 
                 M.classification_mode_per_measurement = {
                     m: None for m in classification_measures + multivariate_regression_measures
                 }
                 if "measurements_per_dep_graph_level" in case:
-                    M.config.measurements_per_dep_graph_level = case[
-                        "measurements_per_dep_graph_level"
-                    ]
+                    M.config.measurements_per_dep_graph_level = case["measurements_per_dep_graph_level"]
                 else:
                     M.config.measurements_per_dep_graph_level = [
                         [],
@@ -476,18 +470,14 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             time_delta=torch.Tensor([[1.0, 2.0, 3.0]]),
             event_mask=torch.BoolTensor([[True, False, True]]),
             dynamic_indices=torch.LongTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
-            dynamic_measurement_indices=torch.LongTensor(
-                [[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]
-            ),
+            dynamic_measurement_indices=torch.LongTensor([[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]),
             dynamic_values=torch.FloatTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
             dynamic_values_mask=torch.BoolTensor(
                 [[[[True, True, False]], [[True, False, True]], [[False, True, True]]]]
             ),
         )
 
-        default_attention_mask = expand_mask(
-            default_batch.event_mask, default_batch.dynamic_values.dtype
-        )
+        default_attention_mask = expand_mask(default_batch.event_mask, default_batch.dynamic_values.dtype)
 
         unsqueezed_batch_with_time = PytorchBatch(
             time_delta=torch.Tensor([[3.0]]),
@@ -622,9 +612,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                 if "past" in case:
                     kwargs["past"] = case["past"]
                 if "dep_graph_el_generation_target" in case:
-                    kwargs["dep_graph_el_generation_target"] = case[
-                        "dep_graph_el_generation_target"
-                    ]
+                    kwargs["dep_graph_el_generation_target"] = case["dep_graph_el_generation_target"]
                 if "use_cache" in case:
                     kwargs["use_cache"] = case["use_cache"]
 
@@ -687,9 +675,7 @@ class TestNAPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
                     batch,
                     "last_hidden_state",
                     is_generation=is_generation,
-                    dep_graph_el_generation_target=kwargs.get(
-                        "dep_graph_el_generation_target", None
-                    ),
+                    dep_graph_el_generation_target=kwargs.get("dep_graph_el_generation_target", None),
                 )
 
     def test_generation_seed_dependent(self):

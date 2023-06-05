@@ -297,9 +297,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             index=pd.Index([2, 4, 6], name="col"),
         )
         nontrivial_measurement_metadata_series = pd.Series(["foo"], index=pd.Index(["value_type"]))
-        nontrivial_vocabulary = Vocabulary(
-            vocabulary=["UNK", "A", "B"], obs_frequencies=[0, 0.5, 0.5]
-        )
+        nontrivial_vocabulary = Vocabulary(vocabulary=["UNK", "A", "B"], obs_frequencies=[0, 0.5, 0.5])
 
         cases = [
             {

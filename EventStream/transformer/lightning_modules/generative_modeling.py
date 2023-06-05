@@ -216,9 +216,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                                 elif averaging == Averaging.WEIGHTED:
                                     avg_str = "variance_weighted"
                                 else:
-                                    raise ValueError(
-                                        f"{averaging} not supported for explained variance."
-                                    )
+                                    raise ValueError(f"{averaging} not supported for explained variance.")
 
                                 averaging_kwargs = {"multioutput": avg_str}
                             else:
@@ -326,10 +324,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         # We start by logging the losses.
         if self.metrics_config.do_log(split, MetricCategories.LOSS_PARTS):
             self.log_dict(
-                {
-                    f"{split}_{k}_cls_NLL": v
-                    for k, v in results["losses"]["classification"].items()
-                },
+                {f"{split}_{k}_cls_NLL": v for k, v in results["losses"]["classification"].items()},
                 **log_kwargs,
             )
             self.log_dict(
@@ -375,9 +370,8 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         cat=MetricCategories.CLASSIFICATION,
                     )
 
-                elif (
-                    task_type == DataModality.MULTIVARIATE_REGRESSION
-                    and self.metrics_config.do_log(split, MetricCategories.REGRESSION)
+                elif task_type == DataModality.MULTIVARIATE_REGRESSION and self.metrics_config.do_log(
+                    split, MetricCategories.REGRESSION
                 ):
                     vocab_size = self.config.vocab_sizes_by_measurement[measurement]
 
@@ -416,9 +410,8 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         split=split,
                         cat=MetricCategories.REGRESSION,
                     )
-                elif (
-                    task_type == DataModality.UNIVARIATE_REGRESSION
-                    and self.metrics_config.do_log(split, MetricCategories.REGRESSION)
+                elif task_type == DataModality.UNIVARIATE_REGRESSION and self.metrics_config.do_log(
+                    split, MetricCategories.REGRESSION
                 ):
                     # Here, like for TTE, we need to sample from the returned distribution before we can use
                     # it directly. Here we also need to limit to just those events that are actually observed.
@@ -507,9 +500,7 @@ class PretrainConfig:
             "_target_": "EventStream.transformer.config.StructuredTransformerConfig",
             **{
                 k: v
-                for k, v in StructuredTransformerConfig(measurements_per_dep_graph_level=[])
-                .to_dict()
-                .items()
+                for k, v in StructuredTransformerConfig(measurements_per_dep_graph_level=[]).to_dict().items()
                 if k not in SKIP_CFG_PARAMS
             },
         }
@@ -558,9 +549,7 @@ class PretrainConfig:
         if type(self.save_dir) is str and self.save_dir != omegaconf.MISSING:
             self.save_dir = Path(self.save_dir)
         if "max_epochs" in self.trainer_config:
-            raise ValueError(
-                "Max epochs is set in the optimization_config, not the trainer config!"
-            )
+            raise ValueError("Max epochs is set in the optimization_config, not the trainer config!")
         if "callbacks" in self.trainer_config:
             raise ValueError("Callbacks are built internally, not set via trainer_config!")
 

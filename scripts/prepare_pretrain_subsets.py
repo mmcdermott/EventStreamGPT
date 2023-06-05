@@ -1,6 +1,15 @@
 #!/usr/bin/env python
+"""Prepares subset directories, config files, and commands for running experiments.
+
+Includes:
+    * Pre-training subset experiments (for a specified architecture).
+    * Fine-tuning over few-shot subsets on specifiable fine-tuning tasks.
+    * Performing zero-shot evaluation of a model over a set of fine-tuning tasks.
+    * Getting model embeedings.
+"""
 
 try:
+    # This color-codes and prettifies error messages if the script fails.
     import stackprinter
 
     stackprinter.set_excepthook(style="darkbg2")
@@ -40,9 +49,7 @@ def main(cfg: DictConfig):
         case dict() if all([subset in seeds for subset in subset_sizes]):
             seeds = [seeds[subset] for subset in subset_sizes]
         case _:
-            raise TypeError(
-                f"seeds must be an int or a list/dict matching {subset_sizes}, got {seeds}!"
-            )
+            raise TypeError(f"seeds must be an int or a list/dict matching {subset_sizes}, got {seeds}!")
 
     # Load initial config information
     initial_config = OmegaConf.load(initial_config_path)
@@ -106,23 +113,16 @@ def main(cfg: DictConfig):
                         do_overwrite=False,
                         task_df_name=FT_task,
                         data_config_overrides={
-                            "subsequence_sampling_strategy": str(
-                                SubsequenceSamplingStrategy.TO_END
-                            ),
+                            "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                             "train_subset_size": "FULL",
                             "train_subset_seed": None,
                         },
                         task_specific_params={"pooling_method": "last"},
-                        optimization_config=dict(
-                            **cfg["get_embeddings_commands"]["optimization_config"]
-                        ),
+                        optimization_config=dict(**cfg["get_embeddings_commands"]["optimization_config"]),
                     )
 
                     get_embeddings_config_path = (
-                        seed_runs_dir
-                        / "embeddings"
-                        / FT_task
-                        / "get_embeddings_config_source.yaml"
+                        seed_runs_dir / "embeddings" / FT_task / "get_embeddings_config_source.yaml"
                     )
                     get_embeddings_config_path.parent.mkdir(exist_ok=True, parents=True)
 
@@ -150,9 +150,7 @@ def main(cfg: DictConfig):
                         do_overwrite=False,
                         task_df_name=FT_task,
                         data_config_overrides={
-                            "subsequence_sampling_strategy": str(
-                                SubsequenceSamplingStrategy.TO_END
-                            ),
+                            "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                             "seq_padding_side": str(SeqPaddingSide.LEFT),
                             "max_seq_len": cfg["zero_shot_commands"]["input_seq_len"],
                             "do_include_start_time_min": True,
@@ -160,9 +158,7 @@ def main(cfg: DictConfig):
                         task_specific_params={
                             "num_samples": cfg["zero_shot_commands"]["num_samples"],
                         },
-                        optimization_config=dict(
-                            **cfg["zero_shot_commands"]["optimization_config"]
-                        ),
+                        optimization_config=dict(**cfg["zero_shot_commands"]["optimization_config"]),
                         wandb_logger_kwargs={
                             "name": f"zero_shot_{FT_task}_PT_{subset_size}_seed_{seed}",
                             "project": cfg["project"],
@@ -208,16 +204,12 @@ def main(cfg: DictConfig):
                             do_overwrite=False,
                             task_df_name=FT_task,
                             data_config_overrides={
-                                "subsequence_sampling_strategy": str(
-                                    SubsequenceSamplingStrategy.TO_END
-                                ),
+                                "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                                 "train_subset_size": FT_subset_size,
                                 "train_subset_seed": seed,
                             },
                             task_specific_params={"pooling_method": "last"},
-                            optimization_config=dict(
-                                **cfg["few_shot_commands"]["optimization_config"]
-                            ),
+                            optimization_config=dict(**cfg["few_shot_commands"]["optimization_config"]),
                             wandb_logger_kwargs={
                                 "name": (
                                     f"finetune_{FT_task}_{FT_subset_size}_shot_PT_{subset_size}_seed_{seed}"

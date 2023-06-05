@@ -1,0 +1,150 @@
+defaults:
+  - dataset_base
+  - _self_
+
+subject_id_col: "subject_id"
+
+connection_uri: "postgres://${oc.env:USER}:@localhost:5432/mimiciv"
+min_los: 3
+min_admissions: 1
+inputs:
+  patients:
+    query: |-
+      SELECT subject_id, gender, to_date((anchor_year-anchor_age)::CHAR(4), 'YYYY') AS year_of_birth
+      FROM mimiciv_hosp.patients
+      WHERE subject_id IN (
+        SELECT long_icu.subject_id FROM (
+          (
+            SELECT subject_id FROM mimiciv_icu.icustays WHERE los > ${min_los}
+          ) AS long_icu INNER JOIN (
+            SELECT subject_id
+            FROM mimiciv_hosp.admissions
+            GROUP BY subject_id
+            HAVING COUNT(*) > ${min_admissions}
+          ) AS many_admissions
+          ON long_icu.subject_id = many_admissions.subject_id
+        )
+      )
+    must_have: ["gender", "year_of_birth"]
+  admissions:
+    query: "SELECT * FROM mimiciv_hosp.admissions"
+    start_ts_col: "admittime"
+    end_ts_col: ["dischtime", "deathtime"]
+    start_columns:
+      - "admission_type"
+      - "admission_location"
+      - "language"
+      - "race"
+      - "marital_status"
+      - "insurance"
+    end_columns: ["discharge_location"]
+    event_type: ["VISIT", "ADMISSION", "DISCHARGE"]
+  icu_stays:
+    query: "SELECT * FROM mimiciv_icu.icustays"
+    start_ts_col: "intime"
+    end_ts_col: "outtime"
+    start_columns: { "first_careunit": "careunit" }
+    end_columns: { "last_careunit": "careunit" }
+  diagnoses:
+    query: |-
+      SELECT
+        admissions.subject_id,
+        admissions.dischtime,
+        ('ICD_' || diagnoses.icd_version || ' ' || TRIM(diagnoses.icd_code)) AS icd_code
+      FROM (
+        mimiciv_hosp.diagnoses_icd AS diagnoses JOIN mimiciv_hosp.admissions AS admissions
+        ON admissions.hadm_id = diagnoses.hadm_id
+      )
+    ts_col: "dischtime"
+  labs:
+    query:
+      - |-
+        SELECT subject_id, charttime, (itemid || ' (' || valueuom || ')') AS lab_itemid, valuenum FROM
+        mimiciv_hosp.labevents
+      - |-
+        SELECT subject_id, charttime, (itemid || ' (' || valueuom || ')') AS lab_itemid, valuenum FROM
+        mimiciv_icu.chartevents
+    ts_col: "charttime"
+  infusions:
+    query: |-
+      SELECT
+        icustays.subject_id,
+        inputevents.itemid AS infusion_itemid,
+        inputevents.totalamount,
+        inputevents.patientweight,
+        inputevents.starttime,
+        inputevents.endtime
+      FROM (
+        mimiciv_icu.icustays AS icustays INNER JOIN mimiciv_icu.inputevents AS inputevents
+        ON inputevents.stay_id = icustays.stay_id
+      )
+    start_ts_col: "starttime"
+    end_ts_col: "endtime"
+  procedures:
+    query: |-
+      SELECT
+        icustays.subject_id,
+        procedureevents.itemid AS procedure_itemid,
+        procedureevents.starttime,
+        procedureevents.endtime
+      FROM (
+        mimiciv_icu.icustays AS icustays INNER JOIN mimiciv_icu.procedureevents AS procedureevents
+        ON procedureevents.stay_id = icustays.stay_id
+      )
+      WHERE procedureevents.ordercategorydescription IN ('Task', 'ContinuousProcess')
+    start_ts_col: "starttime"
+    end_ts_col: "endtime"
+  medications:
+    query: |-
+      SELECT
+        icustays.subject_id,
+        emar.charttime,
+        emar.medication
+      FROM (
+        mimiciv_icu.icustays AS icustays INNER JOIN mimiciv_hosp.emar AS emar
+        ON emar.hadm_id = icustays.hadm_id
+      )
+      WHERE icustays.intime <= emar.charttime AND emar.charttime <= icustays.outtime
+    ts_col: "charttime"
+
+measurements:
+  static:
+    single_label_classification:
+      patients: ["gender"]
+  functional_time_dependent:
+    age:
+      functor: AgeFunctor
+      necessary_static_measurements: { "year_of_birth": "timestamp" }
+      kwargs:
+        dob_col: "year_of_birth"
+    time_of_day:
+      functor: TimeOfDayFunctor
+  dynamic:
+    multi_label_classification:
+      admissions:
+        - "admission_type"
+        - "admission_location"
+        - "language"
+        - "race"
+        - "marital_status"
+        - "insurance"
+        - "discharge_location"
+      icu_stays: ["careunit"]
+      diagnoses: ["icd_code"]
+      procedures: ["procedure_itemid"]
+      medications: ["medication"]
+    multivariate_regression:
+      labs: [["lab_itemid", "valuenum"]]
+      infusions: [["infusion_itemid", "totalamount"]]
+    univariate_regression:
+      infusions: ["patientweight"]
+
+save_dir: "${oc.env:PROJECT_DATA_DIR}/${cohort_name}"
+outlier_detector_config:
+  stddev_cutoff: 4.0
+min_valid_vocab_element_observations: 25
+min_valid_column_observations: 50
+min_true_float_frequency: 0.1
+min_unique_numerical_observations: 25
+min_events_per_subject: 20
+agg_by_time_scale: "2h"

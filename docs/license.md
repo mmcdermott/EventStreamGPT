@@ -1,5 +1,7 @@
 # License
 
 ```{literalinclude} ../LICENSE
-:language: text
+---
+language: text
+---
 ```

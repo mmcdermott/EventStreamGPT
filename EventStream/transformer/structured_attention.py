@@ -92,9 +92,7 @@ class StructuredAttention(torch.nn.Module):
         if compute_contextualized_history_embeddings:
             # To pool the per-event data, we need to reshape the data so that the natural "sequence length"
             # dimension is the dependency graph length.
-            for_per_event_pooling = torch.reshape(
-                hidden_states, (bsz * seq_len, dep_graph_len, hidden_size)
-            )
+            for_per_event_pooling = torch.reshape(hidden_states, (bsz * seq_len, dep_graph_len, hidden_size))
 
             # However, we don't want to process any padding elements, so we need to filter those out.
             # To do this, we'll use the event_mask. It has shape (bsz, seq_len). We'll expand it then re-shape
@@ -152,9 +150,7 @@ class StructuredAttention(torch.nn.Module):
                 # ).
 
                 # To do this, we first produce these augmented dependency graph sequences:
-                dep_graph_seq = torch.cat(
-                    (contextualized_history.unsqueeze(2), hidden_states), dim=2
-                )
+                dep_graph_seq = torch.cat((contextualized_history.unsqueeze(2), hidden_states), dim=2)
                 # dep_graph_seq is now of shape (batch size, seq len, dependency graph len + 1, hidden size)
                 static_kv_first = True
             else:
