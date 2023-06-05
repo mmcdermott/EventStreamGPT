@@ -248,9 +248,7 @@ class InputDFSchema(JSONableMixin):
                     case str():
                         pass
                     case _:
-                        raise TypeError(
-                            f"event_type must be a string for events. Got {self.event_type}"
-                        )
+                        raise TypeError(f"event_type must be a string for events. Got {self.event_type}")
                 if self.subject_id_col is not None:
                     raise ValueError("subject_id_col should be None for non-static types!")
                 for param in (
@@ -263,9 +261,7 @@ class InputDFSchema(JSONableMixin):
                 ):
                     val = getattr(self, param)
                     if val is not None:
-                        raise ValueError(
-                            f"{param} should be None for {self.type} schema: Got {val}"
-                        )
+                        raise ValueError(f"{param} should be None for {self.type} schema: Got {val}")
 
             case InputDFType.RANGE:
                 match self.event_type:
@@ -301,9 +297,7 @@ class InputDFSchema(JSONableMixin):
                 if self.end_ts_col is None:
                     raise ValueError("Missing mandatory range parameter end_ts_col!")
                 if self.ts_col is not None:
-                    raise ValueError(
-                        f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}."
-                    )
+                    raise ValueError(f"ts_col should be `None` for {self.type} schemas! Got: {self.ts_col}.")
                 if self.subject_id_col is not None:
                     raise ValueError("subject_id_col should be None for non-static types!")
                 if self.start_ts_format is not None:
@@ -312,9 +306,7 @@ class InputDFSchema(JSONableMixin):
                             "If start_ts_format is specified, end_ts_format must also be specified!"
                         )
                     if self.ts_format is not None:
-                        raise ValueError(
-                            "If start_ts_format is specified, ts_format must be `None`!"
-                        )
+                        raise ValueError("If start_ts_format is specified, ts_format must be `None`!")
                 else:
                     if self.end_ts_format is not None:
                         raise ValueError(
@@ -487,26 +479,18 @@ class InputDFSchema(JSONableMixin):
                     for in_col, schema_info in schema.items():
                         match schema_info:
                             case str() as out_col, str() as dt if dt in InputDataType.values():
-                                cls.__add_to_schema(
-                                    unified_schema, in_col=in_col, dt=dt, out_col=out_col
-                                )
+                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
                             case str() as out_col, InputDataType() as dt:
-                                cls.__add_to_schema(
-                                    unified_schema, in_col=in_col, dt=dt, out_col=out_col
-                                )
+                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
                             case str() as out_col, [InputDataType.TIMESTAMP, str()] as dt:
-                                cls.__add_to_schema(
-                                    unified_schema, in_col=in_col, dt=dt, out_col=out_col
-                                )
+                                cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
                             case [InputDataType.TIMESTAMP, str()] as dt:
                                 cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
                             case str() | InputDataType() as dt if dt in InputDataType.values():
                                 cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt)
                             case _:
                                 raise ValueError(f"Schema Unprocessable!\n{schema_info}")
-                case dict() as col_names_map, (
-                    InputDataType() | [InputDataType.TIMESTAMP, str()]
-                ) as dt:
+                case dict() as col_names_map, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
                     for in_col, out_col in col_names_map.items():
                         cls.__add_to_schema(unified_schema, in_col=in_col, dt=dt, out_col=out_col)
                 case _:
@@ -668,9 +652,7 @@ class PytorchDatasetConfig(JSONableMixin):
 
     def __post_init__(self):
         if self.seq_padding_side not in SeqPaddingSide.values():
-            raise ValueError(
-                f"seq_padding_side invalid; must be in {', '.join(SeqPaddingSide.values())}"
-            )
+            raise ValueError(f"seq_padding_side invalid; must be in {', '.join(SeqPaddingSide.values())}")
         if type(self.min_seq_len) is not int or self.min_seq_len < 0:
             raise ValueError(f"min_seq_len must be a non-negative integer; got {self.min_seq_len}")
         if type(self.max_seq_len) is not int or self.max_seq_len < self.min_seq_len:
@@ -694,16 +676,12 @@ class PytorchDatasetConfig(JSONableMixin):
                 raise ValueError(f"If float, train_subset_size must be in (0, 1)! Got {frac}")
             case int() | float() if (self.train_subset_seed is None):
                 seed = int(random.randint(1, int(1e6)))
-                print(
-                    f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}"
-                )
+                print(f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}")
                 self.train_subset_seed = seed
             case None | "FULL" | int() | float():
                 pass
             case _:
-                raise TypeError(
-                    f"train_subset_size is of unrecognized type {type(self.train_subset_size)}."
-                )
+                raise TypeError(f"train_subset_size is of unrecognized type {type(self.train_subset_size)}.")
 
     def to_dict(self) -> dict:
         """Represents this configuration object as a plain dictionary."""
@@ -873,9 +851,7 @@ class MeasurementConfig(JSONableMixin):
         match self.modality:
             case DataModality.MULTIVARIATE_REGRESSION:
                 if self.values_column is None:
-                    err_strings.append(
-                        f"values_column must be set on a {self.modality} MeasurementConfig"
-                    )
+                    err_strings.append(f"values_column must be set on a {self.modality} MeasurementConfig")
                 if (self.measurement_metadata is not None) and not isinstance(
                     self.measurement_metadata, pd.DataFrame
                 ):
@@ -972,9 +948,7 @@ class MeasurementConfig(JSONableMixin):
                             out[col] = out[col].apply(eval)
                 return out
             case _:
-                raise ValueError(
-                    f"_measurement_metadata is invalid! Got {type(self.measurement_metadata)}!"
-                )
+                raise ValueError(f"_measurement_metadata is invalid! Got {type(self.measurement_metadata)}!")
 
     @measurement_metadata.setter
     def measurement_metadata(self, new_metadata: pd.DataFrame | pd.Series | None):
@@ -990,9 +964,7 @@ class MeasurementConfig(JSONableMixin):
     def cache_measurement_metadata(self, fp: Path):
         if isinstance(self._measurement_metadata, (str, Path)):
             if str(fp) != str(self._measurement_metadata):
-                raise ValueError(
-                    f"Caching is already enabled at {self._measurement_metadata} != {fp}"
-                )
+                raise ValueError(f"Caching is already enabled at {self._measurement_metadata} != {fp}")
             return
         if self.measurement_metadata is None:
             return
@@ -1013,9 +985,7 @@ class MeasurementConfig(JSONableMixin):
     def add_empty_metadata(self):
         """Adds an empty `measurement_metadata` dataframe or series."""
         if self.measurement_metadata is not None:
-            raise ValueError(
-                f"Can't add empty metadata; already set to {self.measurement_metadata}"
-            )
+            raise ValueError(f"Can't add empty metadata; already set to {self.measurement_metadata}")
 
         match self.modality:
             case DataModality.UNIVARIATE_REGRESSION:
@@ -1026,10 +996,7 @@ class MeasurementConfig(JSONableMixin):
                 )
             case DataModality.MULTIVARIATE_REGRESSION:
                 self._measurement_metadata = pd.DataFrame(
-                    {
-                        c: pd.Series([], dtype=t)
-                        for c, t in self.PREPROCESSING_METADATA_COLUMNS.items()
-                    },
+                    {c: pd.Series([], dtype=t) for c, t in self.PREPROCESSING_METADATA_COLUMNS.items()},
                     index=pd.Index([], name=self.name),
                 )
             case _:
@@ -1060,13 +1027,9 @@ class MeasurementConfig(JSONableMixin):
         as_dict = dataclasses.asdict(self)
         match self._measurement_metadata:
             case pd.DataFrame():
-                as_dict["_measurement_metadata"] = self.measurement_metadata.to_dict(
-                    orient="tight"
-                )
+                as_dict["_measurement_metadata"] = self.measurement_metadata.to_dict(orient="tight")
             case pd.Series():
-                as_dict["_measurement_metadata"] = self.measurement_metadata.to_dict(
-                    into=OrderedDict
-                )
+                as_dict["_measurement_metadata"] = self.measurement_metadata.to_dict(into=OrderedDict)
             case Path():
                 as_dict["_measurement_metadata"] = str(self._measurement_metadata)
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
@@ -1089,9 +1052,7 @@ class MeasurementConfig(JSONableMixin):
             case dict(), DataModality.UNIVARIATE_REGRESSION:
                 as_dict["_measurement_metadata"] = pd.Series(as_dict["_measurement_metadata"])
             case _:
-                raise ValueError(
-                    f"{as_dict['measurement_metadata']} and {as_dict['modality']} incompatible!"
-                )
+                raise ValueError(f"{as_dict['measurement_metadata']} and {as_dict['modality']} incompatible!")
 
         if as_dict["functor"] is not None:
             if as_dict["temporality"] != TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
@@ -1099,9 +1060,7 @@ class MeasurementConfig(JSONableMixin):
                     "Only TemporalityType.FUNCTIONAL_TIME_DEPENDENT measures can have functors. Got "
                     f"{as_dict['temporality']}"
                 )
-            as_dict["functor"] = cls.FUNCTORS[as_dict["functor"]["class"]].from_dict(
-                as_dict["functor"]
-            )
+            as_dict["functor"] = cls.FUNCTORS[as_dict["functor"]["class"]].from_dict(as_dict["functor"])
 
         return cls(**as_dict)
 
@@ -1213,9 +1172,7 @@ class DatasetConfig(JSONableMixin):
             https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
     """
 
-    measurement_configs: dict[str, MeasurementConfig] = dataclasses.field(
-        default_factory=lambda: {}
-    )
+    measurement_configs: dict[str, MeasurementConfig] = dataclasses.field(default_factory=lambda: {})
 
     min_events_per_subject: int | None = None
 
@@ -1281,9 +1238,7 @@ class DatasetConfig(JSONableMixin):
         for var in ("outlier_detector_config", "normalizer_config"):
             val = getattr(self, var)
             if val is not None and (type(val) is not dict or "cls" not in val):
-                raise ValueError(
-                    f"{var} must be either None or a dictionary with 'cls' as a key! Got {val}"
-                )
+                raise ValueError(f"{var} must be either None or a dictionary with 'cls' as a key! Got {val}")
 
         for k, v in self.measurement_configs.items():
             try:
@@ -1299,9 +1254,7 @@ class DatasetConfig(JSONableMixin):
         as_dict = dataclasses.asdict(self)
         if self.save_dir is not None:
             as_dict["save_dir"] = str(self.save_dir)
-        as_dict["measurement_configs"] = {
-            k: v.to_dict() for k, v in self.measurement_configs.items()
-        }
+        as_dict["measurement_configs"] = {k: v.to_dict() for k, v in self.measurement_configs.items()}
         return as_dict
 
     @classmethod
@@ -1320,8 +1273,7 @@ class DatasetConfig(JSONableMixin):
         cls,
         dynamic_measurement_columns: Sequence[str | tuple[str, str]] | None = None,
         static_measurement_columns: Sequence[str] | None = None,
-        time_dependent_measurement_columns: None
-        | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
+        time_dependent_measurement_columns: None | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
         **kwargs,
     ) -> DatasetConfig:
         """Builds an appropriate configuration object given a simple list of columns:

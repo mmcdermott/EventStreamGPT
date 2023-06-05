@@ -69,9 +69,7 @@ class TestJSONableMixin(unittest.TestCase):
                 obj.to_json_file(save_path)
 
             obj.a = 4
-            self.assertNotEqual(
-                obj, got_obj, "These should no longer be equal given the modification."
-            )
+            self.assertNotEqual(obj, got_obj, "These should no longer be equal given the modification.")
 
             obj.to_json_file(save_path, do_overwrite=True)
             got_obj = Derived.from_json_file(save_path)

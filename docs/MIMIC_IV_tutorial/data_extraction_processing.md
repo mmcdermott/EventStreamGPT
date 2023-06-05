@@ -1,6 +1,9 @@
 ## Data Extraction & Pre-processing
 
-The first entry point for our software is the data extraction and pre-processing component. To detail this pipeline, we will walk through the user's process of creating a dataset and detail the technical inner workings of the pipeline at each stage.
+Now that we know the overarching data model for the pipeline, let us explore how we can actually build a
+dataset within it. The first entry point for our software is the data extraction and pre-processing component.
+To detail this pipeline, we will walk through the user's process of creating a dataset and detail the
+technical inner workings of the pipeline at each stage.
 
 ### Configuring the pipeline
 
@@ -13,7 +16,9 @@ configuration options are used for, we will rely on an example configuration fil
 working example over MIMIC-IV, shown below:
 
 ```{literalinclude} dataset_config.yml
-:language: yaml
+---
+language: yaml
+---
 ```
 
 With this configuration file saved to path `.../configs/dataset.yml`, and with `EFGPT_PATH` defined to point
@@ -52,8 +57,8 @@ individual input sources, with configuration information detailing how to extrac
 The global parameters, in this example, consist of the following:
 
 ```yaml
-subject_id_col: "subject_id"
-connection_uri: "postgres://${oc.env:USER}:@localhost:5432/mimiciv"
+subject_id_col: subject_id
+connection_uri: postgres://${oc.env:USER}:@localhost:5432/mimiciv
 
 min_los: 3
 min_admissions: 1
@@ -73,20 +78,20 @@ through Hydra's interpolation syntax, we are able to use these parameters to con
 query in the `patients` input block:
 
 ```yaml
-  patients:
-    query: |-
-      ... # Omitted for brevity
-      WHERE subject_id IN (
-        SELECT long_icu.subject_id FROM (
-          (
-            SELECT subject_id FROM mimiciv_icu.icustays WHERE los > ${min_los}
-          ) AS long_icu INNER JOIN (
-            SELECT subject_id
-            FROM mimiciv_hosp.admissions
-            GROUP BY subject_id
-            HAVING COUNT(*) > ${min_admissions}
-          ) AS many_admissions
-      ... # Omitted for brevity
+patients:
+  query: |-
+    ... # Omitted for brevity
+    WHERE subject_id IN (
+      SELECT long_icu.subject_id FROM (
+        (
+          SELECT subject_id FROM mimiciv_icu.icustays WHERE los > ${min_los}
+        ) AS long_icu INNER JOIN (
+          SELECT subject_id
+          FROM mimiciv_hosp.admissions
+          GROUP BY subject_id
+          HAVING COUNT(*) > ${min_admissions}
+        ) AS many_admissions
+    ... # Omitted for brevity
 ```
 
 This allows us to overwrite those parameters in a given run on the command line, with, for example, `... min_los=1 min_admissions=2`.

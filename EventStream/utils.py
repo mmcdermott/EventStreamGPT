@@ -83,9 +83,7 @@ def count_or_proportion(N: WHOLE | None, cnt_or_prop: COUNT_OR_PROPORTION) -> in
         case pl.Expr():
             return (N * cnt_or_prop).round(0).cast(int)
         case _:
-            raise TypeError(
-                f"{N} must be an integer or a polars.Expr when cnt_or_prop is a float!"
-            )
+            raise TypeError(f"{N} must be an integer or a polars.Expr when cnt_or_prop is a float!")
 
 
 def lt_count_or_proportion(

@@ -103,9 +103,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
             time_delta=torch.FloatTensor([[0, 2, 5, 3], [0, 2, 5, 3], [0, 3, 2, 3], [0, 3, 2, 3]]),
             start_time=torch.FloatTensor([1.0, 1.0, 1412.0, 1412.0]),
             static_indices=torch.LongTensor([[1, 2, 3], [1, 2, 3], [1, 3, 0], [1, 3, 0]]),
-            static_measurement_indices=torch.LongTensor(
-                [[1, 2, 3], [1, 2, 3], [1, 3, 0], [1, 3, 0]]
-            ),
+            static_measurement_indices=torch.LongTensor([[1, 2, 3], [1, 2, 3], [1, 3, 0], [1, 3, 0]]),
             dynamic_values_mask=torch.BoolTensor(
                 [
                     [
@@ -231,15 +229,11 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
     def test_update_model_kwargs_for_generation(self):
         self.assertEqual(
             {"past": None},
-            StructuredGenerationMixin._update_model_kwargs_for_generation(
-                {"wrong_key": "present"}, {}
-            ),
+            StructuredGenerationMixin._update_model_kwargs_for_generation({"wrong_key": "present"}, {}),
         )
         self.assertEqual(
             {"past": "present"},
-            StructuredGenerationMixin._update_model_kwargs_for_generation(
-                {"past_key_values": "present"}, {}
-            ),
+            StructuredGenerationMixin._update_model_kwargs_for_generation({"past_key_values": "present"}, {}),
         )
 
     def test_get_stopping_criteria_max_length(self):
@@ -279,9 +273,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
 
                 if want_max_length_calls:
                     mock_criteria = MockMaxLengthCriteria.return_value
-                    MockStoppingCriteriaList.return_value.append.assert_called_once_with(
-                        mock_criteria
-                    )
+                    MockStoppingCriteriaList.return_value.append.assert_called_once_with(mock_criteria)
 
                 mock_criteria_list = MockStoppingCriteriaList.return_value
 
@@ -414,14 +406,12 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     setattr(M.config, key, val)
 
                 CI_sample_mocks = [
-                    (MagicMock(), MagicMock(), MagicMock(), MagicMock(), {"CI_event": i})
-                    for i in range(100)
+                    (MagicMock(), MagicMock(), MagicMock(), MagicMock(), {"CI_event": i}) for i in range(100)
                 ]
                 M._conditionally_independent_sample_event = Mock(side_effect=CI_sample_mocks)
 
                 NA_sample_mocks = [
-                    (MagicMock(), MagicMock(), MagicMock(), MagicMock(), {"NA_event": i})
-                    for i in range(100)
+                    (MagicMock(), MagicMock(), MagicMock(), MagicMock(), {"NA_event": i}) for i in range(100)
                 ]
                 M._nested_attention_sample_event = Mock(side_effect=NA_sample_mocks)
 
@@ -481,9 +471,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                         M._conditionally_independent_sample_event.assert_not_called()
 
                     if case.get("want_call_sample_NA", False):
-                        self.assertNestedCalledWith(
-                            M._nested_attention_sample_event, want_sample_calls
-                        )
+                        self.assertNestedCalledWith(M._nested_attention_sample_event, want_sample_calls)
                     else:
                         M._nested_attention_sample_event.assert_not_called()
 
@@ -524,9 +512,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         sample.update_last_event_data.assert_called_once_with(batch, M.config)
         batch = sample.update_last_event_data.return_value
 
-        self.assertNestedEqual(
-            (batch, pred, output.attentions, output.hidden_states, out_kwargs), got
-        )
+        self.assertNestedEqual((batch, pred, output.attentions, output.hidden_states, out_kwargs), got)
 
     def test_nested_attention_sample_event_first_event(self):
         class MockMixin(StructuredGenerationMixin, MagicMock):
@@ -538,12 +524,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         M = MockMixin(side_effect=model_outputs)
         M.config.measurements_per_dep_graph_level = [[], ["foo", "bar"], ["baz"]]
 
-        M.prepare_inputs_for_generation = Mock(
-            side_effect=[{f"prepared_{i}": True} for i in range(10)]
-        )
-        M._update_model_kwargs_for_generation = Mock(
-            side_effect=[{"updated_{i}": True} for _ in range(10)]
-        )
+        M.prepare_inputs_for_generation = Mock(side_effect=[{f"prepared_{i}": True} for i in range(10)])
+        M._update_model_kwargs_for_generation = Mock(side_effect=[{"updated_{i}": True} for _ in range(10)])
 
         batch = MagicMock()
         model_kwargs = {"foo": "bar"}
@@ -573,9 +555,7 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
                     **model_kwargs,
                 )
             )
-            self_calls.append(
-                call(**{f"prepared_{i}": True}, return_dict=True, is_generation=True)
-            )
+            self_calls.append(call(**{f"prepared_{i}": True}, return_dict=True, is_generation=True))
             output = model_outputs[i]
             update_kwargs_calls.append(call(output, model_kwargs))
             model_kwargs = {"updated_{i}": True}
@@ -622,12 +602,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         M = MockMixin(side_effect=model_outputs)
         M.config.measurements_per_dep_graph_level = [[], ["foo", "bar"], ["baz"]]
 
-        M.prepare_inputs_for_generation = Mock(
-            side_effect=[{f"prepared_{i}": True} for i in range(10)]
-        )
-        M._update_model_kwargs_for_generation = Mock(
-            side_effect=[{"updated_{i}": True} for _ in range(10)]
-        )
+        M.prepare_inputs_for_generation = Mock(side_effect=[{f"prepared_{i}": True} for i in range(10)])
+        M._update_model_kwargs_for_generation = Mock(side_effect=[{"updated_{i}": True} for _ in range(10)])
 
         batch = MagicMock()
         model_kwargs = {"foo": "bar"}
@@ -645,12 +621,8 @@ class TestGenerationUtils(ConfigComparisonsMixin, unittest.TestCase):
         hidden_states = []
 
         for i, m_to_fill in enumerate(want_measurements_to_fill):
-            prepare_inputs_calls.append(
-                call(batch, dep_graph_el_generation_target=i, **model_kwargs)
-            )
-            self_calls.append(
-                call(**{f"prepared_{i}": True}, return_dict=True, is_generation=True)
-            )
+            prepare_inputs_calls.append(call(batch, dep_graph_el_generation_target=i, **model_kwargs))
+            self_calls.append(call(**{f"prepared_{i}": True}, return_dict=True, is_generation=True))
             output = model_outputs[i]
             update_kwargs_calls.append(call(output, model_kwargs))
             model_kwargs = {"updated_{i}": True}

@@ -191,9 +191,7 @@ class Visualizer(JSONableMixin):
                     pl.col("cumulative_subjects_delta").sum(),
                 )
                 .with_columns(
-                    (pl.col("n_events") / pl.col("n_subjects")).alias(
-                        "events_per_subject_per_time"
-                    ),
+                    (pl.col("n_events") / pl.col("n_subjects")).alias("events_per_subject_per_time"),
                 )
                 .sort("timestamp", descending=False)
             )
@@ -206,10 +204,7 @@ class Visualizer(JSONableMixin):
                 events_df.select(
                     "timestamp",
                     static_covariate,
-                    pl.col("active_subjects_delta")
-                    .cumsum()
-                    .over(static_covariate)
-                    .alias("Active Subjects"),
+                    pl.col("active_subjects_delta").cumsum().over(static_covariate).alias("Active Subjects"),
                     pl.col("cumulative_subjects_delta")
                     .cumsum()
                     .over(static_covariate)
@@ -281,8 +276,7 @@ class Visualizer(JSONableMixin):
         cross_df_all = (
             subj_ranges.join(time_points, how="cross")
             .filter(
-                (pl.col("start_time") <= pl.col("timestamp"))
-                & (pl.col("timestamp") <= pl.col("end_time"))
+                (pl.col("start_time") <= pl.col("timestamp")) & (pl.col("timestamp") <= pl.col("end_time"))
             )
             .select(
                 "timestamp",
@@ -300,10 +294,7 @@ class Visualizer(JSONableMixin):
         for static_covariate in self.static_covariates:
             cross_df = (
                 cross_df_all.with_columns(
-                    pl.col("subject_id")
-                    .n_unique()
-                    .over("timestamp", static_covariate)
-                    .alias("num_subjects")
+                    pl.col("subject_id").n_unique().over("timestamp", static_covariate).alias("num_subjects")
                 )
                 .filter(pl.col("num_subjects") > 20)
                 .with_columns((1 / pl.col("num_subjects")).alias("% Subjects @ time"))
@@ -311,9 +302,9 @@ class Visualizer(JSONableMixin):
 
             if self.min_sub_to_plot_age_dist is not None:
                 val_counts = subjects_df[static_covariate].value_counts()
-                valid_categories = val_counts.filter(
-                    pl.col("counts") > self.min_sub_to_plot_age_dist
-                )[static_covariate].to_list()
+                valid_categories = val_counts.filter(pl.col("counts") > self.min_sub_to_plot_age_dist)[
+                    static_covariate
+                ].to_list()
 
                 cross_df = cross_df.filter(pl.col(static_covariate).is_in(valid_categories))
 
@@ -362,14 +353,8 @@ class Visualizer(JSONableMixin):
 
         events_df = (
             events_df.with_columns(
-                (pl.col("age") / age_bucket_size)
-                .round(0)
-                .cast(pl.Int64, strict=False)
-                .alias("age_bucket"),
-                pl.col("subject_id")
-                .n_unique()
-                .over(*self.static_covariates)
-                .alias("total_n_subjects"),
+                (pl.col("age") / age_bucket_size).round(0).cast(pl.Int64, strict=False).alias("age_bucket"),
+                pl.col("subject_id").n_unique().over(*self.static_covariates).alias("total_n_subjects"),
             )
             .drop_nulls("age_bucket")
             .groupby("age_bucket", *self.static_covariates)
@@ -381,10 +366,7 @@ class Visualizer(JSONableMixin):
             )
             .sort(by=self.age_col, descending=False)
             .with_columns(
-                pl.col("n_events")
-                .cumsum()
-                .over(*self.static_covariates)
-                .alias("Cumulative Events"),
+                pl.col("n_events").cumsum().over(*self.static_covariates).alias("Cumulative Events"),
             )
         )
 
@@ -410,12 +392,8 @@ class Visualizer(JSONableMixin):
                     (pl.col("Events @ Age") / pl.col("Subjects with Event @ Age")).alias(
                         "Events @ Age / (Subjects with >= 1 Event @ Age)"
                     ),
-                    (pl.col("Events @ Age") / pl.col("Total Subjects")).alias(
-                        "Events @ Age / Subject"
-                    ),
-                    (pl.col("Events <= Age") / pl.col("Total Subjects")).alias(
-                        "Events <= Age / Subject"
-                    ),
+                    (pl.col("Events @ Age") / pl.col("Total Subjects")).alias("Events @ Age / Subject"),
+                    (pl.col("Events <= Age") / pl.col("Total Subjects")).alias("Events <= Age / Subject"),
                 )
                 .sort(self.age_col, descending=False),
                 static_covariate,
@@ -442,9 +420,7 @@ class Visualizer(JSONableMixin):
         )
 
         return [
-            px.histogram(
-                self._normalize_to_pandas(events_per_patient, c), x="# of Events", color=c
-            )
+            px.histogram(self._normalize_to_pandas(events_per_patient, c), x="# of Events", color=c)
             for c in self.static_covariates
         ]
 

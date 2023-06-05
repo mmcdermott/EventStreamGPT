@@ -41,10 +41,7 @@ class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
 
     @property
     def uses_dep_graph(self):
-        return (
-            self.config.structured_event_processing_mode
-            == StructuredEventProcessingMode.NESTED_ATTENTION
-        )
+        return self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION
 
     def forward(self, batch: PytorchBatch, **kwargs):
         encoded = self.encoder(batch, **kwargs).last_hidden_state

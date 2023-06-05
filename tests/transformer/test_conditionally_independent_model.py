@@ -191,14 +191,10 @@ BASE_BATCH = {
 
 class TestConditionallyIndependentGenerativeOutputLayer(ConfigComparisonsMixin, unittest.TestCase):
     def test_constructs(self):
-        ConditionallyIndependentGenerativeOutputLayer(
-            StructuredTransformerConfig(**CI_CONFIG_KWARGS)
-        )
+        ConditionallyIndependentGenerativeOutputLayer(StructuredTransformerConfig(**CI_CONFIG_KWARGS))
 
         with self.assertRaises(ValueError):
-            ConditionallyIndependentGenerativeOutputLayer(
-                StructuredTransformerConfig(**NA_CONFIG_KWARGS)
-            )
+            ConditionallyIndependentGenerativeOutputLayer(StructuredTransformerConfig(**NA_CONFIG_KWARGS))
 
     def test_e2e(self):
         dummy_batch = {
@@ -404,18 +400,14 @@ class TestCIPPTForGenerativeSequenceModeling(ConfigComparisonsMixin, unittest.Te
             time_delta=torch.Tensor([[1.0, 2.0, 3.0]]),
             event_mask=torch.BoolTensor([[True, False, True]]),
             dynamic_indices=torch.LongTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
-            dynamic_measurement_indices=torch.LongTensor(
-                [[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]
-            ),
+            dynamic_measurement_indices=torch.LongTensor([[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]]]),
             dynamic_values=torch.FloatTensor([[[[0, 1, 2]], [[3, 4, 5]], [[6, 7, 8]]]]),
             dynamic_values_mask=torch.BoolTensor(
                 [[[[True, True, False]], [[True, False, True]], [[False, True, True]]]]
             ),
         )
 
-        default_attention_mask = expand_mask(
-            default_batch.event_mask, default_batch.dynamic_values.dtype
-        )
+        default_attention_mask = expand_mask(default_batch.event_mask, default_batch.dynamic_values.dtype)
 
         unsqueezed_batch_with_time = PytorchBatch(
             time_delta=torch.Tensor([[3.0]]),

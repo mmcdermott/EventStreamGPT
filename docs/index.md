@@ -3,9 +3,10 @@
 ## Contents
 
 ```{toctree}
-:glob:
-:maxdepth: 1
-
+---
+glob:
+maxdepth: 1
+---
 Overview <overview>
 MIMIC-IV Tutorial <MIMIC_IV_tutorial/index>
 License <license>

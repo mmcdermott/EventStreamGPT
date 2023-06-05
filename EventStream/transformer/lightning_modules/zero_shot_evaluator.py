@@ -78,10 +78,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
 
         if pretrained_weights_fp is None:
             raise ValueError("pretrained_weights_fp must be specified")
-        elif (
-            self.config.structured_event_processing_mode
-            == StructuredEventProcessingMode.NESTED_ATTENTION
-        ):
+        elif self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION:
             self.model = NAPPTForGenerativeSequenceModeling.from_pretrained(
                 pretrained_weights_fp, config=config
             )
@@ -93,9 +90,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
     def build_metrics(self):
         """Build the various torchmetrics we'll use to track performance."""
 
-        if (self.config.problem_type == "single_label_classification") and (
-            self.config.num_labels > 2
-        ):
+        if (self.config.problem_type == "single_label_classification") and (self.config.num_labels > 2):
             metric_kwargs = {"num_classes": self.config.num_labels}
 
             # For judging classification, we'll use macro & weighted accuracy, AUROC, and AUPRC
@@ -107,14 +102,10 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                     "weighted_accuracy": MulticlassAccuracy(**metric_kwargs, average="weighted"),
                     "micro_accuracy": MulticlassAccuracy(**metric_kwargs, average="micro"),
                     "macro_AUPRC": MulticlassAveragePrecision(**metric_kwargs, average="macro"),
-                    "weighted_AUPRC": MulticlassAveragePrecision(
-                        **metric_kwargs, average="weighted"
-                    ),
+                    "weighted_AUPRC": MulticlassAveragePrecision(**metric_kwargs, average="weighted"),
                 }
             )
-        elif (self.config.problem_type == "single_label_classification") and (
-            self.config.num_labels == 2
-        ):
+        elif (self.config.problem_type == "single_label_classification") and (self.config.num_labels == 2):
             metric_kwargs = {}
 
             # For judging classification, we'll use macro & weighted accuracy, AUROC, and AUPRC
@@ -138,9 +129,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                     "weighted_accuracy": MultilabelAccuracy(**metric_kwargs, average="weighted"),
                     "micro_accuracy": MultilabelAccuracy(**metric_kwargs, average="micro"),
                     "macro_AUPRC": MultilabelAveragePrecision(**metric_kwargs, average="macro"),
-                    "weighted_AUPRC": MultilabelAveragePrecision(
-                        **metric_kwargs, average="weighted"
-                    ),
+                    "weighted_AUPRC": MultilabelAveragePrecision(**metric_kwargs, average="weighted"),
                     "micro_AUPRC": MultilabelAveragePrecision(**metric_kwargs, average="micro"),
                 }
             )

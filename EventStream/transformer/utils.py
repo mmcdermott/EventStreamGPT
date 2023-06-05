@@ -197,9 +197,7 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Ten
     denom = weights.float().sum(dim=-1)
     safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
     return (
-        torch.where(
-            denom > 0, (X * weights.float()).sum(dim=-1) / safe_denom, torch.zeros_like(denom)
-        ),
+        torch.where(denom > 0, (X * weights.float()).sum(dim=-1) / safe_denom, torch.zeros_like(denom)),
         denom,
     )
 
@@ -336,11 +334,7 @@ def idx_distribution(
         if "validate_args" in inspect.signature(cls).parameters.keys():
             params["validate_args"] = False
 
-        if (
-            isinstance(D, _PROBS_LOGITS_NOT_BOTH_DISTRIBUTIONS)
-            and "probs" in params
-            and "logits" in params
-        ):
+        if isinstance(D, _PROBS_LOGITS_NOT_BOTH_DISTRIBUTIONS) and "probs" in params and "logits" in params:
             params.pop("probs")
 
         result = cls(**params)

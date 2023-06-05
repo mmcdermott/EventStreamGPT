@@ -37,9 +37,7 @@ class Labeler(abc.ABC):
         self.config = config
 
     @abc.abstractmethod
-    def __call__(
-        self, batch: PytorchBatch, input_seq_len: int
-    ) -> tuple[torch.LongTensor, torch.BoolTensor]:
+    def __call__(self, batch: PytorchBatch, input_seq_len: int) -> tuple[torch.LongTensor, torch.BoolTensor]:
         """The core labeling method of the class. Must be overwritten by subclass.
 
         Args:

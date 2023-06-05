@@ -28,10 +28,7 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
         config: StructuredTransformerConfig,
     ):
         super().__init__(config)
-        if (
-            config.structured_event_processing_mode
-            != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
-        ):
+        if config.structured_event_processing_mode != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
             raise ValueError(f"{config.structured_event_processing_mode} invalid!")
 
     def forward(
@@ -139,19 +136,14 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
         )
 
 
-class CIPPTForGenerativeSequenceModeling(
-    StructuredGenerationMixin, StructuredTransformerPreTrainedModel
-):
+class CIPPTForGenerativeSequenceModeling(StructuredGenerationMixin, StructuredTransformerPreTrainedModel):
     def __init__(
         self,
         config: StructuredTransformerConfig,
     ):
         super().__init__(config)
 
-        if (
-            config.structured_event_processing_mode
-            != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
-        ):
+        if config.structured_event_processing_mode != StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
             raise ValueError(f"{config.structured_event_processing_mode} invalid!")
 
         self.encoder = ConditionallyIndependentPointProcessTransformer(config)
@@ -160,9 +152,7 @@ class CIPPTForGenerativeSequenceModeling(
         # Initialize weights and apply final processing
         self.post_init()
 
-    def prepare_inputs_for_generation(
-        self, batch: PytorchBatch, past=None, **kwargs
-    ) -> dict[str, Any]:
+    def prepare_inputs_for_generation(self, batch: PytorchBatch, past=None, **kwargs) -> dict[str, Any]:
         # only last sequence element in the batch if past is defined in kwargs
         batch.time = time_from_deltas(batch)
 

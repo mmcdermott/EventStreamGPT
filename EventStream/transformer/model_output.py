@@ -40,9 +40,7 @@ def get_event_types(
     event_type_mask = dynamic_measurement_indices == event_type_measurment_idx
 
     num_event_types = event_type_mask.sum(-1)
-    torch._assert(
-        (num_event_types <= 1).all().all(), f"Got {num_event_types.max()} event types per event!"
-    )
+    torch._assert((num_event_types <= 1).all().all(), f"Got {num_event_types.max()} event types per event!")
 
     return torch.where(event_type_mask, dynamic_indices - event_type_vocab_offset, 0).sum(-1)
 
@@ -53,9 +51,7 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
     present_indices = torch.argwhere(is_present)
     present_rows = present_indices[:, 0]
     col_counts = torch.ones_like(present_rows).cumsum(0)
-    present_row_change = torch.cat(
-        [torch.ones_like(present_rows[:1]), (present_rows.diff() != 0).long()], 0
-    )
+    present_row_change = torch.cat([torch.ones_like(present_rows[:1]), (present_rows.diff() != 0).long()], 0)
 
     present_cols = col_counts - (col_counts * present_row_change).cummax(0)[0]
 
@@ -67,9 +63,7 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
     mask.index_put_((present_rows, present_cols), torch.ones_like(present_indices[:, 1]).bool())
 
     def idx_fn(T: torch.Tensor) -> torch.Tensor:
-        return torch.where(
-            mask, torch.gather(T, -1, index=index), torch.zeros_like(index, dtype=T.dtype)
-        )
+        return torch.where(mask, torch.gather(T, -1, index=index), torch.zeros_like(index, dtype=T.dtype))
 
     if not other_tensors:
         return idx_fn(dynamic_indices)
@@ -103,9 +97,7 @@ class TransformerOutputWithPast(ModelOutput):
     """Transformer Model Outputs, with optional past key values and hidden states."""
 
     last_hidden_state: torch.FloatTensor = None
-    past_key_values: tuple[tuple[torch.FloatTensor]] | dict[
-        str, tuple[torch.FloatTensor]
-    ] | None = None
+    past_key_values: tuple[tuple[torch.FloatTensor]] | dict[str, tuple[torch.FloatTensor]] | None = None
     hidden_states: tuple[torch.FloatTensor] | None = None
     attentions: tuple[torch.FloatTensor] | None = None
 
@@ -187,12 +179,8 @@ class GenerativeSequenceModelSamples(ModelOutput):
         # Add event_mask
         event_mask = self.event_mask
 
-        duration_since_start = torch.where(
-            batch.event_mask[:, :-1], batch.time_delta[:, :-1], 0
-        ).sum(-1)
-        new_time = torch.where(
-            event_mask, batch.start_time + duration_since_start + self.time_to_event, 0
-        )
+        duration_since_start = torch.where(batch.event_mask[:, :-1], batch.time_delta[:, :-1], 0).sum(-1)
+        new_time = torch.where(event_mask, batch.start_time + duration_since_start + self.time_to_event, 0)
 
         # Add time-dependent values if present.
         for m, cfg in config.measurement_configs.items():
@@ -207,9 +195,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             # initialized to zero!
             fn = cfg.functor
 
-            is_meas_map = (
-                batch.dynamic_measurement_indices[:, -1, :] == config.measurements_idxmap[m]
-            )
+            is_meas_map = batch.dynamic_measurement_indices[:, -1, :] == config.measurements_idxmap[m]
             indices = batch.dynamic_indices[:, -1, :]
             values = batch.dynamic_values[:, -1, :]
             values_mask = batch.dynamic_values_mask[:, -1, :]
@@ -246,9 +232,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             dynamic_values_mask = torch.cat(dynamic_values_mask, 1)
         else:
             if config.measurements_per_dep_graph_level is None:
-                dynamic_indices = torch.zeros(
-                    batch.batch_size, 1, 0, dtype=torch.long, device=batch.device
-                )
+                dynamic_indices = torch.zeros(batch.batch_size, 1, 0, dtype=torch.long, device=batch.device)
             else:
                 dynamic_indices = torch.zeros(
                     batch.batch_size,
@@ -310,9 +294,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 raise ValueError("For {measurement}, need preds < vocab_size!")
             indices = vocab_offset + preds
 
-            measurement_indices = config.measurements_idxmap[measurement] * torch.ones_like(
-                indices
-            )
+            measurement_indices = config.measurements_idxmap[measurement] * torch.ones_like(indices)
 
             dynamic_indices.append(indices.unsqueeze(-1))
             dynamic_measurement_indices.append(measurement_indices.unsqueeze(-1))
@@ -381,9 +363,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
                 # TODO(mmd): this is inefficient -- don't need to expand fully to dense then back to a
                 # different spares...
-                regressed_values = expand_indexed_regression(
-                    regressed_values, regressed_indices, vocab_size
-                )
+                regressed_values = expand_indexed_regression(regressed_values, regressed_indices, vocab_size)
                 regressed_values_mask = expand_indexed_regression(
                     regressed_values_mask, regressed_indices, vocab_size
                 )
@@ -442,12 +422,8 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 case (DataModality.UNIVARIATE_REGRESSION, None):
                     add_univariate_regression(m)
 
-                    indices = (
-                        config.vocab_offsets_by_measurement[m] * dynamic_values_mask[-1].long()
-                    )
-                    measurement_indices = (
-                        config.measurements_idxmap[m] * dynamic_values_mask[-1].long()
-                    )
+                    indices = config.vocab_offsets_by_measurement[m] * dynamic_values_mask[-1].long()
+                    measurement_indices = config.measurements_idxmap[m] * dynamic_values_mask[-1].long()
 
                     dynamic_indices.append(indices)
                     dynamic_measurement_indices.append(measurement_indices)
@@ -507,15 +483,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
         if n_data_elements_new < n_data_elements_old:
             data_delta = n_data_elements_old - n_data_elements_new
-            new_dynamic_indices = torch.nn.functional.pad(
-                new_dynamic_indices, (0, data_delta), value=0
-            )
+            new_dynamic_indices = torch.nn.functional.pad(new_dynamic_indices, (0, data_delta), value=0)
             new_dynamic_measurement_indices = torch.nn.functional.pad(
                 new_dynamic_measurement_indices, (0, data_delta), value=0
             )
-            new_dynamic_values = torch.nn.functional.pad(
-                new_dynamic_values, (0, data_delta), value=0
-            )
+            new_dynamic_values = torch.nn.functional.pad(new_dynamic_values, (0, data_delta), value=0)
             new_dynamic_values_mask = torch.nn.functional.pad(
                 new_dynamic_values_mask, (0, data_delta), value=False
             )
@@ -526,9 +498,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 dynamic_measurement_indices, (0, data_delta), value=0
             )
             dynamic_values = torch.nn.functional.pad(dynamic_values, (0, data_delta), value=0)
-            dynamic_values_mask = torch.nn.functional.pad(
-                dynamic_values_mask, (0, data_delta), value=False
-            )
+            dynamic_values_mask = torch.nn.functional.pad(dynamic_values_mask, (0, data_delta), value=False)
 
         return (
             (dynamic_indices, dynamic_measurement_indices, dynamic_values, dynamic_values_mask),
@@ -587,16 +557,12 @@ class GenerativeSequenceModelSamples(ModelOutput):
             new_dynamic_values_mask,
         )
 
-        dynamic_indices = torch.cat(
-            (dynamic_indices, new_dynamic_indices.unsqueeze(seq_dim)), seq_dim
-        )
+        dynamic_indices = torch.cat((dynamic_indices, new_dynamic_indices.unsqueeze(seq_dim)), seq_dim)
         dynamic_measurement_indices = torch.cat(
             (dynamic_measurement_indices, new_dynamic_measurement_indices.unsqueeze(seq_dim)),
             seq_dim,
         )
-        dynamic_values = torch.cat(
-            (dynamic_values, new_dynamic_values.unsqueeze(seq_dim)), seq_dim
-        )
+        dynamic_values = torch.cat((dynamic_values, new_dynamic_values.unsqueeze(seq_dim)), seq_dim)
         dynamic_values_mask = torch.cat(
             (dynamic_values_mask, new_dynamic_values_mask.unsqueeze(seq_dim)), seq_dim
         )
@@ -645,9 +611,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             new_dynamic_measurement_indices,
             new_dynamic_values,
             new_dynamic_values_mask,
-        ) = self.format_updates_to_last_batch_event(
-            batch, config, measurements_to_build=measurements_to_fill
-        )
+        ) = self.format_updates_to_last_batch_event(batch, config, measurements_to_build=measurements_to_fill)
 
         # The `format_updates_to_last_batch_event` function takes care of only building the relevant metrics,
         # including building either just categorical elements or categorical and numerical or numerical only.
@@ -660,9 +624,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
                 continue
 
             m = m[0]
-            prev_measurements_to_drop_idx |= (
-                prev_dynamic_measurement_indices == config.measurements_idxmap[m]
-            )
+            prev_measurements_to_drop_idx |= prev_dynamic_measurement_indices == config.measurements_idxmap[m]
 
         data_tensors = []
         for dt in (
@@ -759,9 +721,7 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
                         ]:
                             is_obs = is_obs_dist.sample() == 1
                             samp = samp_dist.sample()
-                            sampled_classification[k] = torch.where(
-                                is_obs, samp, torch.zeros_like(samp)
-                            )
+                            sampled_classification[k] = torch.where(is_obs, samp, torch.zeros_like(samp))
                         case _:
                             raise ValueError(f"Don't know how to sample classification dist {v}!")
             case _:
@@ -871,9 +831,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         for measurement in config.measurements_for(DataModality.SINGLE_LABEL_CLASSIFICATION):
             self.classification_criteria[measurement] = torch.nn.CrossEntropyLoss(reduction="none")
         for measurement in config.measurements_for(DataModality.MULTI_LABEL_CLASSIFICATION):
-            self.classification_criteria[measurement] = torch.nn.BCEWithLogitsLoss(
-                reduction="none"
-            )
+            self.classification_criteria[measurement] = torch.nn.BCEWithLogitsLoss(reduction="none")
 
         self.regression_layers = torch.nn.ModuleDict({})
         for measurement in config.measurements_for(DataModality.MULTIVARIATE_REGRESSION):
@@ -884,9 +842,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         for measurement in config.measurements_for(DataModality.UNIVARIATE_REGRESSION):
             if measurement in self.regression_layers:
                 raise ValueError(f"{measurement} duplicated!")
-            self.regression_layers[measurement] = GaussianRegressionLayer(
-                in_dim=config.hidden_size
-            )
+            self.regression_layers[measurement] = GaussianRegressionLayer(in_dim=config.hidden_size)
 
         self.classification_mode_per_measurement = {}
         for generative_mode, measurements in config.measurements_per_generative_mode.items():
@@ -943,9 +899,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
 
         # As TTE_dist contains a predicted distribution for the last sequence element, which we want to return
         # for generative purposes, we add a fake observation to the last element.
-        TTE_true_exp = torch.cat(
-            (TTE_true, torch.ones_like(TTE_true[:, -1]).unsqueeze(-1)), dim=-1
-        )
+        TTE_true_exp = torch.cat((TTE_true, torch.ones_like(TTE_true[:, -1]).unsqueeze(-1)), dim=-1)
         TTE_obs_mask_exp = torch.cat(
             (TTE_obs_mask, torch.zeros_like(TTE_obs_mask[:, -1]).unsqueeze(-1)), dim=-1
         )
@@ -967,9 +921,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         elif (TTE_obs_mask_exp.float().sum(-1) == 0).any():
             raise ValueError(f"No observed time-to-event for >= 1 patient in batch: {batch}")
 
-        TTE_LL_per_patient = (TTE_LL * TTE_obs_mask_exp.float()).sum(
-            -1
-        ) / TTE_obs_mask_exp.float().sum(-1)
+        TTE_LL_per_patient = (TTE_LL * TTE_obs_mask_exp.float()).sum(-1) / TTE_obs_mask_exp.float().sum(-1)
         TTE_LL_overall = TTE_LL_per_patient.mean()
 
         return TTE_LL_overall, TTE_dist, TTE_true
@@ -1051,8 +1003,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             vocab_start = self.config.vocab_offsets_by_measurement[measurement]
             vocab_end = min(
                 o
-                for o in list(self.config.vocab_offsets_by_measurement.values())
-                + [self.config.vocab_size]
+                for o in list(self.config.vocab_offsets_by_measurement.values()) + [self.config.vocab_size]
                 if o > vocab_start
             )
 
@@ -1080,9 +1031,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                 # labels is of shape [batch X seq]
 
                 try:
-                    loss_per_event = self.classification_criteria[measurement](
-                        scores.transpose(1, 2), labels
-                    )
+                    loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
                 except IndexError as e:
                     print(f"Failed to get loss for {measurement}: {e}!")
                     print(f"vocab_start: {vocab_start}, vocab_end: {vocab_end}")

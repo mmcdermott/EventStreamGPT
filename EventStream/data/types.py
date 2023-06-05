@@ -69,13 +69,9 @@ class PytorchBatch:
         if not isinstance(index, tuple):
             index = (index,)
         if len(index) == 0 or len(index) > 3:
-            raise ValueError(
-                f"Invalid index {index} for PytorchBatch! Must be of length 1, 2, or 3."
-            )
+            raise ValueError(f"Invalid index {index} for PytorchBatch! Must be of length 1, 2, or 3.")
         if any(not isinstance(i, (int, slice)) for i in index):
-            raise ValueError(
-                f"Invalid index {index} for PytorchBatch! Can only consist of ints and slices."
-            )
+            raise ValueError(f"Invalid index {index} for PytorchBatch! Can only consist of ints and slices.")
 
         batch_index = index[0]
         seq_index = slice(None)
@@ -89,18 +85,14 @@ class PytorchBatch:
         return PytorchBatch(
             event_mask=self.event_mask[batch_index, seq_index],
             time_delta=self.time_delta[batch_index, seq_index],
-            static_indices=None
-            if self.static_indices is None
-            else self.static_indices[batch_index],
+            static_indices=None if self.static_indices is None else self.static_indices[batch_index],
             static_measurement_indices=(
                 None
                 if self.static_measurement_indices is None
                 else self.static_measurement_indices[batch_index]
             ),
             dynamic_indices=self.dynamic_indices[batch_index, seq_index, meas_index],
-            dynamic_measurement_indices=self.dynamic_measurement_indices[
-                batch_index, seq_index, meas_index
-            ],
+            dynamic_measurement_indices=self.dynamic_measurement_indices[batch_index, seq_index, meas_index],
             dynamic_values=self.dynamic_values[batch_index, seq_index, meas_index],
             dynamic_values_mask=self.dynamic_values_mask[batch_index, seq_index, meas_index],
             start_time=None if self.start_time is None else self.start_time[batch_index],

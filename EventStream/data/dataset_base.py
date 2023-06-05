@@ -138,9 +138,7 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def resolve_ts_col(
-        cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp"
-    ) -> DF_T:
+    def resolve_ts_col(cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp") -> DF_T:
         """Produces an output column of type datetime that contains the minimum of the passed
         columns in `ts_col`"""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -170,9 +168,7 @@ class DatasetBase(
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
             try:
-                df = self._load_input_df(
-                    df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype
-                )
+                df = self._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
             except Exception as e:
                 raise ValueError(f"Errored while loading {df}") from e
 
@@ -221,9 +217,7 @@ class DatasetBase(
 
             all_events.append(new_events)
             if measurements is not None:
-                all_measurements.append(
-                    self._inc_df_col(measurements, "event_id", running_event_id_max)
-                )
+                all_measurements.append(self._inc_df_col(measurements, "event_id", running_event_id_max))
 
             running_event_id_max = all_events[-1]["event_id"].max() + 1
 
@@ -293,9 +287,7 @@ class DatasetBase(
 
     @property
     def dynamic_measurements_df(self) -> DF_T:
-        if (
-            not hasattr(self, "_dynamic_measurements_df")
-        ) or self._dynamic_measurements_df is None:
+        if (not hasattr(self, "_dynamic_measurements_df")) or self._dynamic_measurements_df is None:
             dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
             print(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
             self._dynamic_measurements_df = self._read_df(dynamic_measurements_fp)
@@ -345,16 +337,12 @@ class DatasetBase(
         self.config.to_json_file(config_fp, do_overwrite=do_overwrite)
 
         if self._is_fit:
-            inferred_measurement_metadata_dir = (
-                self.config.save_dir / "inferred_measurement_metadata"
-            )
+            inferred_measurement_metadata_dir = self.config.save_dir / "inferred_measurement_metadata"
             for k, v in self.inferred_measurement_configs.items():
                 fp = inferred_measurement_metadata_dir / f"{k}.csv"
                 v.cache_measurement_metadata(fp)
 
-            inferred_measurement_configs_fp = (
-                self.config.save_dir / "inferred_measurement_configs.json"
-            )
+            inferred_measurement_configs_fp = self.config.save_dir / "inferred_measurement_configs.json"
             inferred_measurement_configs = {
                 k: v.to_dict() for k, v in self.inferred_measurement_configs.items()
             }
@@ -374,9 +362,7 @@ class DatasetBase(
 
         self._write_df(self.subjects_df, subjects_fp, do_overwrite=do_overwrite)
         self._write_df(self.events_df, events_fp, do_overwrite=do_overwrite)
-        self._write_df(
-            self.dynamic_measurements_df, dynamic_measurements_fp, do_overwrite=do_overwrite
-        )
+        self._write_df(self.dynamic_measurements_df, dynamic_measurements_fp, do_overwrite=do_overwrite)
 
     def __init__(
         self,
@@ -453,9 +439,7 @@ class DatasetBase(
 
         self.split_subjects = {}
 
-    def _validate_and_set_initial_properties(
-        self, subjects_df, events_df, dynamic_measurements_df
-    ):
+    def _validate_and_set_initial_properties(self, subjects_df, events_df, dynamic_measurements_df):
         self.subject_ids = []
         self.event_types = []
         self.n_events_per_subject = {}
@@ -493,16 +477,10 @@ class DatasetBase(
             return
 
         subjects_to_keep = [
-            s
-            for s, n in self.n_events_per_subject.items()
-            if n >= self.config.min_events_per_subject
+            s for s, n in self.n_events_per_subject.items() if n >= self.config.min_events_per_subject
         ]
-        self.subjects_df = self._filter_col_inclusion(
-            self.subjects_df, {"subject_id": subjects_to_keep}
-        )
-        self.events_df = self._filter_col_inclusion(
-            self.events_df, {"subject_id": subjects_to_keep}
-        )
+        self.subjects_df = self._filter_col_inclusion(self.subjects_df, {"subject_id": subjects_to_keep})
+        self.events_df = self._filter_col_inclusion(self.events_df, {"subject_id": subjects_to_keep})
         self.dynamic_measurements_df = self._filter_col_inclusion(
             self.dynamic_measurements_df, {"event_id": list(self.events_df["event_id"])}
         )
@@ -579,9 +557,7 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _filter_col_inclusion(
-        cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]
-    ) -> DF_T:
+    def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]) -> DF_T:
         """Filters the given dataframe to only the rows such that the column `col` is in
         incl_target."""
         raise NotImplementedError("This method must be implemented by a subclass.")
@@ -589,39 +565,27 @@ class DatasetBase(
     # Special accessors for train, tuning, and held-out splits.
     @property
     def train_subjects_df(self) -> DF_T:
-        return self._filter_col_inclusion(
-            self.subjects_df, {"subject_id": self.split_subjects["train"]}
-        )
+        return self._filter_col_inclusion(self.subjects_df, {"subject_id": self.split_subjects["train"]})
 
     @property
     def tuning_subjects_df(self) -> DF_T:
-        return self._filter_col_inclusion(
-            self.subjects_df, {"subject_id": self.split_subjects["tuning"]}
-        )
+        return self._filter_col_inclusion(self.subjects_df, {"subject_id": self.split_subjects["tuning"]})
 
     @property
     def held_out_subjects_df(self) -> DF_T:
-        return self._filter_col_inclusion(
-            self.subjects_df, {"subject_id": self.split_subjects["held_out"]}
-        )
+        return self._filter_col_inclusion(self.subjects_df, {"subject_id": self.split_subjects["held_out"]})
 
     @property
     def train_events_df(self) -> DF_T:
-        return self._filter_col_inclusion(
-            self.events_df, {"subject_id": self.split_subjects["train"]}
-        )
+        return self._filter_col_inclusion(self.events_df, {"subject_id": self.split_subjects["train"]})
 
     @property
     def tuning_events_df(self) -> DF_T:
-        return self._filter_col_inclusion(
-            self.events_df, {"subject_id": self.split_subjects["tuning"]}
-        )
+        return self._filter_col_inclusion(self.events_df, {"subject_id": self.split_subjects["tuning"]})
 
     @property
     def held_out_events_df(self) -> DF_T:
-        return self._filter_col_inclusion(
-            self.events_df, {"subject_id": self.split_subjects["held_out"]}
-        )
+        return self._filter_col_inclusion(self.events_df, {"subject_id": self.split_subjects["held_out"]})
 
     @TimeableMixin.TimeAs
     def _filter_measurements_df(
@@ -674,9 +638,7 @@ class DatasetBase(
         if split is not None:
             subject_ids = self.split_subjects[split]
         elif splits is not None:
-            subject_ids = list(
-                set(itertools.chain.from_iterable(self.split_subjects[sp] for sp in splits))
-            )
+            subject_ids = list(set(itertools.chain.from_iterable(self.split_subjects[sp] for sp in splits)))
 
         filter_cols = {}
         if event_type is not None:
@@ -689,9 +651,7 @@ class DatasetBase(
             filter_cols["subject_id"] = subject_ids
 
         event_ids = self._filter_col_inclusion(self.events_df, filter_cols)["event_id"]
-        return self._filter_col_inclusion(
-            self.dynamic_measurements_df, {"event_id": list(event_ids)}
-        )
+        return self._filter_col_inclusion(self.dynamic_measurements_df, {"event_id": list(event_ids)})
 
     @TimeableMixin.TimeAs
     def preprocess_measurements(self):
@@ -708,9 +668,7 @@ class DatasetBase(
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
-    def _get_source_df(
-        self, config: MeasurementConfig, do_only_train: bool = True
-    ) -> tuple[str, DF_T]:
+    def _get_source_df(self, config: MeasurementConfig, do_only_train: bool = True) -> tuple[str, DF_T]:
         match config.temporality:
             case TemporalityType.DYNAMIC:
                 source_attr = "dynamic_measurements_df"
@@ -757,9 +715,7 @@ class DatasetBase(
                 config.drop()
                 continue
 
-            total_possible, total_observed = self._total_possible_and_observed(
-                measure, config, source_df
-            )
+            total_possible, total_observed = self._total_possible_and_observed(measure, config, source_df)
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
@@ -779,13 +735,9 @@ class DatasetBase(
             if config.is_numeric:
                 config.add_missing_mandatory_metadata_cols()
                 try:
-                    config.measurement_metadata = self._fit_measurement_metadata(
-                        measure, config, source_df
-                    )
+                    config.measurement_metadata = self._fit_measurement_metadata(measure, config, source_df)
                 except BaseException as e:
-                    raise ValueError(
-                        f"Fitting measurement metadata failed for measure {measure}!"
-                    ) from e
+                    raise ValueError(f"Fitting measurement metadata failed for measure {measure}!") from e
 
             if config.vocabulary is None:
                 config.vocabulary = self._fit_vocabulary(measure, config, source_df)
@@ -817,9 +769,7 @@ class DatasetBase(
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def _fit_vocabulary(
-        self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> Vocabulary:
+    def _fit_vocabulary(self, measure: str, config: MeasurementConfig, source_df: DF_T) -> Vocabulary:
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
@@ -976,9 +926,7 @@ class DatasetBase(
     @property
     def vocabulary_config(self) -> VocabularyConfig:
         measurements_per_generative_mode = defaultdict(list)
-        measurements_per_generative_mode[DataModality.SINGLE_LABEL_CLASSIFICATION].append(
-            "event_type"
-        )
+        measurements_per_generative_mode[DataModality.SINGLE_LABEL_CLASSIFICATION].append("event_type")
         for m, cfg in self.measurement_configs.items():
             if cfg.temporality != TemporalityType.DYNAMIC:
                 continue
@@ -988,9 +936,7 @@ class DatasetBase(
                 measurements_per_generative_mode[DataModality.MULTI_LABEL_CLASSIFICATION].append(m)
 
         return VocabularyConfig(
-            vocab_sizes_by_measurement={
-                m: len(idxmap) for m, idxmap in self.measurement_idxmaps.items()
-            },
+            vocab_sizes_by_measurement={m: len(idxmap) for m, idxmap in self.measurement_idxmaps.items()},
             vocab_offsets_by_measurement=self.unified_vocabulary_offsets,
             measurements_idxmap=self.unified_measurements_idxmap,
             event_types_idxmap=self.unified_vocabulary_idxmap["event_type"],
@@ -1092,9 +1038,7 @@ class DatasetBase(
         """
 
         if viz_config.subset_size is not None:
-            viz_config.subset_random_seed = self._seed(
-                seed=viz_config.subset_random_seed, key="visualize"
-            )
+            viz_config.subset_random_seed = self._seed(seed=viz_config.subset_random_seed, key="visualize")
 
         if viz_config.subset_size is not None:
             subject_ids = list(np.random.choice(list(self.subject_ids), viz_config.subset_size))

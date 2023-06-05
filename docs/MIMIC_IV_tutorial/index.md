@@ -3,6 +3,9 @@
 ```{include} problem_setup.md
 ```
 
+```{include} data_model.md
+```
+
 ```{include} data_extraction_processing.md
 ```
 

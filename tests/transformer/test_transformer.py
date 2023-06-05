@@ -183,9 +183,7 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
 
         self.assertEqual(out1, out1_alt)
 
-        batch2.event_mask = torch.BoolTensor(
-            [[False, False, True, True], [True, True, True, True]]
-        )
+        batch2.event_mask = torch.BoolTensor([[False, False, True, True], [True, True, True, True]])
 
         out2 = self.M(batch2)
         with self.assertRaises(AssertionError):
@@ -234,9 +232,7 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
         # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
         # output there, then use that as the starting point for the iterative cache-based computation.
 
-        seq_attention_mask = expand_mask(
-            self.batch.event_mask, out_full_caching.last_hidden_state.dtype
-        )
+        seq_attention_mask = expand_mask(self.batch.event_mask, out_full_caching.last_hidden_state.dtype)
         M_kwargs = {"return_dict": True, "use_cache": True}
 
         seq_idx = 1
@@ -291,9 +287,7 @@ class TestConditionallyIndependentTransformer(ConfigComparisonsMixin, unittest.T
             out_iterative_caching.append(sliced_out)
 
         out_iterative_caching = TransformerOutputWithPast(
-            last_hidden_state=torch.cat(
-                [x.last_hidden_state for x in out_iterative_caching], dim=1
-            ),
+            last_hidden_state=torch.cat([x.last_hidden_state for x in out_iterative_caching], dim=1),
         )
 
         self.assertEqual(out_no_caching, out_iterative_caching)
@@ -323,9 +317,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
 
         self.assertEqual(out1, out1_alt)
 
-        batch2.event_mask = torch.BoolTensor(
-            [[False, False, True, True], [True, True, True, True]]
-        )
+        batch2.event_mask = torch.BoolTensor([[False, False, True, True], [True, True, True, True]])
 
         out2 = self.M(batch2)
         with self.assertRaises(AssertionError):
@@ -359,8 +351,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
 
         out_full_caching = self.M(self.batch, return_dict=True, use_cache=True)
         full_seq_past_up_to_2 = tuple(
-            tuple(e[:, :, :2, :] for e in ee)
-            for ee in out_full_caching["past_key_values"]["seq_past"]
+            tuple(e[:, :, :2, :] for e in ee) for ee in out_full_caching["past_key_values"]["seq_past"]
         )
 
         out_full_caching["past_key_values"] = None
@@ -375,9 +366,7 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
         # that; Instead, we'll run the first sequence element outside the iterative selection and capture it's
         # output there, then use that as the starting point for the iterative cache-based computation.
 
-        seq_attention_mask = expand_mask(
-            self.batch.event_mask, out_full_caching.last_hidden_state.dtype
-        )
+        seq_attention_mask = expand_mask(self.batch.event_mask, out_full_caching.last_hidden_state.dtype)
 
         seq_idx = 1
         dep_graph_idx = None
@@ -435,16 +424,12 @@ class TestNestedAttentionTransformer(ConfigComparisonsMixin, unittest.TestCase):
                 out_iterative_caching_seq.append(sliced_out)
 
             joint_seq_out_iterative_caching = TransformerOutputWithPast(
-                last_hidden_state=torch.cat(
-                    [x.last_hidden_state for x in out_iterative_caching_seq], dim=2
-                ),
+                last_hidden_state=torch.cat([x.last_hidden_state for x in out_iterative_caching_seq], dim=2),
             )
             out_iterative_caching.append(joint_seq_out_iterative_caching)
 
         out_iterative_caching = TransformerOutputWithPast(
-            last_hidden_state=torch.cat(
-                [x.last_hidden_state for x in out_iterative_caching], dim=1
-            ),
+            last_hidden_state=torch.cat([x.last_hidden_state for x in out_iterative_caching], dim=1),
         )
 
         self.assertEqual(out_no_caching, out_iterative_caching)

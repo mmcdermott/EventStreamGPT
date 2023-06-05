@@ -340,14 +340,10 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     with self.assertRaises(C["want_raise"]):
                         PytorchDataset.normalize_task(pl.col("c"), C["vals"].dtype)
                 else:
-                    got_type, got_normalizer = PytorchDataset.normalize_task(
-                        pl.col("c"), C["vals"].dtype
-                    )
+                    got_type, got_normalizer = PytorchDataset.normalize_task(pl.col("c"), C["vals"].dtype)
                     self.assertEqual(C["want_type"], got_type)
 
-                    got_vals = (
-                        pl.DataFrame({"c": C["vals"]}).select(got_normalizer).get_column("c")
-                    )
+                    got_vals = pl.DataFrame({"c": C["vals"]}).select(got_normalizer).get_column("c")
                     want_vals = pl.DataFrame({"c": C["want_vals"]}).get_column("c")
 
                     self.assertEqual(want_vals.to_pandas(), got_vals.to_pandas())
@@ -396,8 +392,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         "regression": 1.2,
                         **WANT_SUBJ_1_UNCUT,
                         "time_delta": [
-                            t if i < (2 - 1) else 1
-                            for i, t in enumerate(WANT_SUBJ_1_UNCUT["time_delta"])
+                            t if i < (2 - 1) else 1 for i, t in enumerate(WANT_SUBJ_1_UNCUT["time_delta"])
                         ],
                     },
                     {
@@ -407,8 +402,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         "regression": 3.2,
                         **WANT_SUBJ_3_UNCUT,
                         "time_delta": [
-                            t if i < (3 - 1) else 1
-                            for i, t in enumerate(WANT_SUBJ_3_UNCUT["time_delta"])
+                            t if i < (3 - 1) else 1 for i, t in enumerate(WANT_SUBJ_3_UNCUT["time_delta"])
                         ],
                     },
                 ],
@@ -507,9 +501,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         want_out = PytorchBatch(
             **{
-                "event_mask": torch.BoolTensor(
-                    [[True, True, True, True], [True, True, True, False]]
-                ),
+                "event_mask": torch.BoolTensor([[True, True, True, True], [True, True, True, False]]),
                 "dynamic_values_mask": torch.BoolTensor(
                     [
                         [
@@ -526,9 +518,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                     ]
                 ),
-                "time_delta": torch.Tensor(
-                    [[0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0], [0, 5, 10, 0]]
-                ),
+                "time_delta": torch.Tensor([[0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0], [0, 5, 10, 0]]),
                 "dynamic_indices": torch.LongTensor(
                     [
                         [
@@ -594,9 +584,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         want_out = PytorchBatch(
             **{
-                "event_mask": torch.BoolTensor(
-                    [[True, True, True, True], [False, True, True, True]]
-                ),
+                "event_mask": torch.BoolTensor([[True, True, True, True], [False, True, True, True]]),
                 "dynamic_values_mask": torch.BoolTensor(
                     [
                         [
@@ -613,9 +601,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                         ],
                     ]
                 ),
-                "time_delta": torch.Tensor(
-                    [[0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0], [0, 0, 5, 10]]
-                ),
+                "time_delta": torch.Tensor([[0.0, 24 * 60.0, 2 * 24 * 60.0, 3 * 24 * 60.0], [0, 0, 5, 10]]),
                 "dynamic_indices": torch.LongTensor(
                     [
                         [
@@ -733,9 +719,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         want_out = PytorchBatch(
             **{
-                "event_mask": torch.BoolTensor(
-                    [[True, True, True, True], [True, True, False, False]]
-                ),
+                "event_mask": torch.BoolTensor([[True, True, True, True], [True, True, False, False]]),
                 "dynamic_values_mask": torch.BoolTensor(
                     [
                         [

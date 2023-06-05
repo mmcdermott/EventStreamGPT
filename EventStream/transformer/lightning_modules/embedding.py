@@ -19,10 +19,7 @@ from .fine_tuning import FinetuneConfig
 class EmbeddingsOnlyModel(StructuredTransformerPreTrainedModel):
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__(config)
-        if (
-            self.config.structured_event_processing_mode
-            == StructuredEventProcessingMode.NESTED_ATTENTION
-        ):
+        if self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION:
             self.encoder = NestedAttentionPointProcessTransformer(config=config)
         else:
             self.encoder = ConditionallyIndependentPointProcessTransformer(config)
@@ -61,8 +58,7 @@ class ESTForEmbedding(L.LightningModule):
         self.config = config
 
         self.uses_dep_graph = (
-            self.config.structured_event_processing_mode
-            == StructuredEventProcessingMode.NESTED_ATTENTION
+            self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION
         )
         self.pooling_method = config.task_specific_params["pooling_method"]
 
@@ -144,15 +140,11 @@ def get_embeddings(cfg: FinetuneConfig):
         # Getting Embeddings model
         embeddings = torch.cat(trainer.predict(LM, dataloader), 0)
 
-        embeddings_fp = (
-            cfg.load_from_model_dir / "embeddings" / cfg.task_df_name / f"{sp}_embeddings.pt"
-        )
+        embeddings_fp = cfg.load_from_model_dir / "embeddings" / cfg.task_df_name / f"{sp}_embeddings.pt"
 
         if os.environ.get("LOCAL_RANK", "0") == "0":
             if embeddings_fp.is_file() and not cfg.do_overwrite:
-                print(
-                    f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`."
-                )
+                print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
             else:
                 print(f"Saving {sp} embeddings to {embeddings_fp}.")
                 torch.save(embeddings, embeddings_fp)

@@ -30,10 +30,7 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
     ):
         super().__init__(config)
 
-        if (
-            config.structured_event_processing_mode
-            != StructuredEventProcessingMode.NESTED_ATTENTION
-        ):
+        if config.structured_event_processing_mode != StructuredEventProcessingMode.NESTED_ATTENTION:
             raise ValueError(f"{config.structured_event_processing_mode} invalid for this model!")
 
     def forward(
@@ -80,9 +77,7 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     # This case can trigger when use_cache is True.
                     dep_graph_loop = range(1, 2)
                 else:
-                    dep_graph_loop = range(
-                        dep_graph_el_generation_target, dep_graph_el_generation_target + 1
-                    )
+                    dep_graph_loop = range(dep_graph_el_generation_target, dep_graph_el_generation_target + 1)
                 do_TTE = False
         else:
             dep_graph_loop = range(1, dep_graph_len)
@@ -121,8 +116,8 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                         case _:
                             raise ValueError(f"Unknown mode {mode}")
 
-                classification_measurements_in_level = (
-                    categorical_measurements_in_level.intersection(classification_measurements)
+                classification_measurements_in_level = categorical_measurements_in_level.intersection(
+                    classification_measurements
                 )
                 regression_measurements_in_level = numerical_measurements_in_level.intersection(
                     regression_measurements
@@ -194,19 +189,14 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
         )
 
 
-class NAPPTForGenerativeSequenceModeling(
-    StructuredGenerationMixin, StructuredTransformerPreTrainedModel
-):
+class NAPPTForGenerativeSequenceModeling(StructuredGenerationMixin, StructuredTransformerPreTrainedModel):
     def __init__(
         self,
         config: StructuredTransformerConfig,
     ):
         super().__init__(config)
 
-        if (
-            config.structured_event_processing_mode
-            != StructuredEventProcessingMode.NESTED_ATTENTION
-        ):
+        if config.structured_event_processing_mode != StructuredEventProcessingMode.NESTED_ATTENTION:
             raise ValueError(f"{config.structured_event_processing_mode} invalid for this model!")
 
         self.encoder = NestedAttentionPointProcessTransformer(config)
@@ -215,9 +205,7 @@ class NAPPTForGenerativeSequenceModeling(
         # Initialize weights and apply final processing
         self.post_init()
 
-    def prepare_inputs_for_generation(
-        self, batch: PytorchBatch, past=None, **kwargs
-    ) -> dict[str, Any]:
+    def prepare_inputs_for_generation(self, batch: PytorchBatch, past=None, **kwargs) -> dict[str, Any]:
         use_cache = kwargs.get("use_cache", False)
         if not use_cache:
             return {**kwargs, "batch": batch}
@@ -230,9 +218,7 @@ class NAPPTForGenerativeSequenceModeling(
                 dep_graph_past = None
 
                 if dep_graph_el_generation_target is not None:
-                    raise ValueError(
-                        f"Can't have dep target {dep_graph_el_generation_target} without past"
-                    )
+                    raise ValueError(f"Can't have dep target {dep_graph_el_generation_target} without past")
 
             case dict() as pasts_dict if "seq_past" in pasts_dict and "dep_graph_past" in pasts_dict:
                 past = pasts_dict["seq_past"]

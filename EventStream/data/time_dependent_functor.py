@@ -141,14 +141,7 @@ class AgeFunctor(TimeDependentFunctor):
         self.link_static_cols = [dob_col]
 
     def pl_expr(self) -> pl.Expression:
-        return (
-            (pl.col("timestamp") - pl.col(self.dob_col)).dt.nanoseconds()
-            / 1e9
-            / 60
-            / 60
-            / 24
-            / 365.25
-        )
+        return (pl.col("timestamp") - pl.col(self.dob_col)).dt.nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
 
     def update_from_prior_timepoint(
         self,
@@ -272,9 +265,7 @@ class TimeOfDayFunctor(TimeDependentFunctor):
             torch.where(
                 new_hour_local < 12,
                 vocab.idxmap.get("AM", 0),
-                torch.where(
-                    new_hour_local < 21, vocab.idxmap.get("PM", 0), vocab.idxmap.get("LATE_PM", 0)
-                ),
+                torch.where(new_hour_local < 21, vocab.idxmap.get("PM", 0), vocab.idxmap.get("LATE_PM", 0)),
             ),
         )
 

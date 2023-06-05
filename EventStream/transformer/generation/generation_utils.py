@@ -82,11 +82,7 @@ class StructuredGenerationMixin:
     @staticmethod
     def _expand_inputs_for_generation(batch: PytorchBatch, expand_size: int = 1) -> PytorchBatch:
         expanded_return_idx = (
-            torch.arange(batch.batch_size)
-            .view(-1, 1)
-            .repeat(1, expand_size)
-            .view(-1)
-            .to(batch.device)
+            torch.arange(batch.batch_size).view(-1, 1).repeat(1, expand_size).view(-1).to(batch.device)
         )
 
         batch = copy.deepcopy(batch)
@@ -94,9 +90,7 @@ class StructuredGenerationMixin:
         for k, v in batch.items():
             match v:
                 case dict():
-                    batch[k] = {
-                        kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()
-                    }
+                    batch[k] = {kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()}
                 case torch.Tensor():
                     batch[k] = v.index_select(0, expanded_return_idx)
                 case None if k in ("time", "stream_labels"):
@@ -168,9 +162,7 @@ class StructuredGenerationMixin:
             raise ValueError("Only `do_sample=True` mode is currently supported")
 
         num_return_sequences = (
-            num_return_sequences
-            if num_return_sequences is not None
-            else self.config.num_return_sequences
+            num_return_sequences if num_return_sequences is not None else self.config.num_return_sequences
         )
 
         output_scores = output_scores if output_scores is not None else self.config.output_scores
@@ -178,9 +170,7 @@ class StructuredGenerationMixin:
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict_in_generate = (
             return_dict_in_generate
@@ -268,9 +258,7 @@ class StructuredGenerationMixin:
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
                 # The following logic allows an early break if all peers finished generating their sequence
-                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(
-                    batch.device
-                )
+                this_peer_finished_flag = torch.tensor(0.0 if this_peer_finished else 1.0).to(batch.device)
                 # send 0.0 if we finished, 1.0 otherwise
                 dist.all_reduce(this_peer_finished_flag, op=dist.ReduceOp.SUM)
                 # did all peers finish? the reduced sum will be 0.0 then

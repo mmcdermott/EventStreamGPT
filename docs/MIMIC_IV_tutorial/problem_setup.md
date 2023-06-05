@@ -12,16 +12,17 @@ BIDMC.
 
 Our task with these data is to build a generative model over the continuous-time, complex event stream data
 contained in MIMIC-IV. This can also be seen as a multi-variate marked temporal point process. In particular,
-given a sequence of complex events $\\vec x_1, \\ldots, \\vec x_N$ which occur at continuous times $t_1, \\ldots,
-t_N$, we wish to produce a model of the following probability distribution:
+given a sequence of complex events
+$\vec x_1, \ldots, \vec x_N$ which occur at continuous times $t_1, \ldots, t_N$, we wish to produce a
+model of the following probability distribution:
 
 $$
-p(t_i, \\vec x_i | \\underbrace{(t_1, \\vec x_1), \\ldots, (t\_{i-1}, \\vec x\_{i-1})}_{\\vec h_{i-1}})
+p(t_i, \vec x_i | \underbrace{(t_1, \vec x_1), \ldots, (t_{i-1}, \vec x_{i-1})}_{\vec h_{i-1}})
 $$
 
-We will realize this through a transformer neural network architecture parametrized by $\\vec \\theta$, such
-that $f\_{\\vec \\theta} (t_i, \\vec x_i, \\vec h\_{i-1}) = p(t_i, \\vec x_i | \\vec h\_{i-1})$. Note that here it may
-be the case that internal covariates of each event $\\vec x_i$ have internal causal dependencies. For example,
-if $\\vec x_i^{(j)}$ is used to denote the $j$th internal covariate of event $i$, then $p(\\vec x_i | \\vec
-h\_{i-1}, t_i) \\neq \\prod\_{j} p(\\vec x_i^{(j)} | \\vec h\_{i-1}, t_i)$. Any full generative model will
+We will realize this through a transformer neural network architecture parametrized by $\vec \theta$, such
+that $f_{\vec \theta} (t_i, \vec x_i, \vec h_{i-1}) = p(t_i, \vec x_i | \vec h_{i-1})$. Note that here it may
+be the case that internal covariates of each event $\vec x_i$ have internal causal dependencies. For example,
+if $\vec x_i^{(j)}$ is used to denote the $j$th internal covariate of event $i$, then $p(\vec x_i | \vec
+h_{i-1}, t_i) \neq \prod_{j} p(\vec x_i^{(j)} | \vec h_{i-1}, t_i)$. Any full generative model will
 therefore need to account for these internal causal dependencies.

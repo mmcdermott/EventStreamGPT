@@ -88,9 +88,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
         if pretrained_weights_fp is None:
             self.model = ESTForStreamClassification(config)
         else:
-            self.model = ESTForStreamClassification.from_pretrained(
-                pretrained_weights_fp, config=config
-            )
+            self.model = ESTForStreamClassification.from_pretrained(pretrained_weights_fp, config=config)
 
     def save_pretrained(self, model_dir: Path):
         fp = model_dir / "pretrained_weights"
@@ -99,9 +97,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
     def build_metrics(self):
         """Build the various torchmetrics we'll use to track performance."""
 
-        if (self.config.problem_type == "single_label_classification") and (
-            self.config.num_labels > 2
-        ):
+        if (self.config.problem_type == "single_label_classification") and (self.config.num_labels > 2):
             metric_kwargs = {"num_classes": self.config.num_labels}
             if not self.do_debug_mode:
                 metric_kwargs["validate_args"] = False
@@ -115,14 +111,10 @@ class ESTForStreamClassificationLM(L.LightningModule):
                     "weighted_accuracy": MulticlassAccuracy(**metric_kwargs, average="weighted"),
                     "micro_accuracy": MulticlassAccuracy(**metric_kwargs, average="micro"),
                     "macro_AUPRC": MulticlassAveragePrecision(**metric_kwargs, average="macro"),
-                    "weighted_AUPRC": MulticlassAveragePrecision(
-                        **metric_kwargs, average="weighted"
-                    ),
+                    "weighted_AUPRC": MulticlassAveragePrecision(**metric_kwargs, average="weighted"),
                 }
             )
-        elif (self.config.problem_type == "single_label_classification") and (
-            self.config.num_labels == 2
-        ):
+        elif (self.config.problem_type == "single_label_classification") and (self.config.num_labels == 2):
             metric_kwargs = {}
             if not self.do_debug_mode:
                 metric_kwargs["validate_args"] = False
@@ -150,9 +142,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
                     "weighted_accuracy": MultilabelAccuracy(**metric_kwargs, average="weighted"),
                     "micro_accuracy": MultilabelAccuracy(**metric_kwargs, average="micro"),
                     "macro_AUPRC": MultilabelAveragePrecision(**metric_kwargs, average="macro"),
-                    "weighted_AUPRC": MultilabelAveragePrecision(
-                        **metric_kwargs, average="weighted"
-                    ),
+                    "weighted_AUPRC": MultilabelAveragePrecision(**metric_kwargs, average="weighted"),
                     "micro_AUPRC": MultilabelAveragePrecision(**metric_kwargs, average="micro"),
                 }
             )
@@ -198,9 +188,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
                     f"with preds ({str_summary(preds)}) and labels ({str_summary(labels)}): {e}."
                 )
 
-    def log_metrics(
-        self, results: StreamClassificationModelOutput, skip_metrics: Sequence[str], prefix: str
-    ):
+    def log_metrics(self, results: StreamClassificationModelOutput, skip_metrics: Sequence[str], prefix: str):
         """Logs metric results for a given output result.
 
         Args:
@@ -353,9 +341,7 @@ class FinetuneConfig:
                     self.data_config_overrides["train_subset_size"]
                     self.data_config_overrides["train_subset_seed"]
                     if self.data_config_overrides["train_subset_seed"] is None:
-                        self.data_config_overrides["train_subset_seed"] = int(
-                            random.randint(1, int(1e6))
-                        )
+                        self.data_config_overrides["train_subset_seed"] = int(random.randint(1, int(1e6)))
                         print(
                             f"WARNING: train_subset_size={self.train_subset_size} but seed is unset. Setting "
                             f"to {self.data_config_overrides['train_subset_seed']}"
@@ -382,9 +368,7 @@ class FinetuneConfig:
                         f"Original is {self.task_df_name}. Ignoring data_config_overrides..."
                     )
                     continue
-                print(
-                    f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}"
-                )
+                print(f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}")
                 setattr(self.data_config, param, val)
 
             config_fp = self.load_from_model_dir / "config.json"

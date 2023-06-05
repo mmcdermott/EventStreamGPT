@@ -77,9 +77,7 @@ class MLTypeEqualityCheckableMixin:
         np.ndarray: np.testing.assert_allclose,
     }
 
-    def _typedAssertEqualFntr(
-        self, assert_fn: ASSERT_FN | tuple[ASSERT_FN, dict[str, Any]]
-    ) -> ASSERT_FN:
+    def _typedAssertEqualFntr(self, assert_fn: ASSERT_FN | tuple[ASSERT_FN, dict[str, Any]]) -> ASSERT_FN:
         if type(assert_fn) is tuple:
             assert_fn, assert_kwargs = assert_fn
         else:
@@ -96,9 +94,7 @@ class MLTypeEqualityCheckableMixin:
 
         return f
 
-    def assertNestedEqual(
-        self, want: Any, got: Any, msg: str | None = None, check_like: bool = False
-    ):
+    def assertNestedEqual(self, want: Any, got: Any, msg: str | None = None, check_like: bool = False):
         m = msg
         if m is None:
             m = "Values aren't equal"
@@ -135,9 +131,7 @@ class MLTypeEqualityCheckableMixin:
             if not m:
                 m = "Sequences aren't equal"
             for i, (want_i, got_i) in enumerate(zip(want, got)):
-                self.assertNestedEqual(
-                    want_i, got_i, msg=f"{m} (index {i})", check_like=check_like
-                )
+                self.assertNestedEqual(want_i, got_i, msg=f"{m} (index {i})", check_like=check_like)
         elif isinstance(want, float):
             if math.isnan(want):
                 self.assertTrue(math.isnan(got), msg=m)
@@ -148,9 +142,7 @@ class MLTypeEqualityCheckableMixin:
             m = f"{m}: Want {want}, got {got}"
             self.assertEqual(want, got, msg=m)
 
-    def assertNestedDictEqual(
-        self, want: dict, got: dict, msg: str | None = None, check_like: bool = False
-    ):
+    def assertNestedDictEqual(self, want: dict, got: dict, msg: str | None = None, check_like: bool = False):
         """This assers that two dictionaries are equal using nested assert checks for the internal
         values.
 
@@ -263,9 +255,7 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
     ):
         if msg is None:
             msg = "MeasurementConfigs are not equal"
-        self.assertEqual(
-            type(want), type(got), f"{msg}: Types {type(want)} and {type(got)} don't match"
-        )
+        self.assertEqual(type(want), type(got), f"{msg}: Types {type(want)} and {type(got)} don't match")
 
         want_less_metadata = vars(want).copy()
         want_metadata = want_less_metadata.pop("_measurement_metadata")
@@ -370,7 +360,5 @@ class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
         self.addTypeEqualityFunc(GenerativeSequenceModelLabels, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(GenerativeSequenceModelLosses, self.assert_type_and_vars_equal)
         self.addTypeEqualityFunc(GenerativeSequenceModelOutput, self.assert_type_and_vars_equal)
-        self.addTypeEqualityFunc(
-            GenerativeSequenceModelPredictions, self.assert_type_and_vars_equal
-        )
+        self.addTypeEqualityFunc(GenerativeSequenceModelPredictions, self.assert_type_and_vars_equal)
         super().setUp()
