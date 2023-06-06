@@ -1,3 +1,5 @@
+"""A collection of objects and enumerations for better type support in data applications."""
+
 import dataclasses
 import enum
 from typing import Any, Union
@@ -8,12 +10,39 @@ from ..utils import StrEnum
 
 
 class InputDFType(StrEnum):
+    """The kinds of input dataframes that can be used to construct a dataset.
+
+    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings.
+
+    Members:
+        STATIC: A dataframe such that each row contains static (non-time-varying) data for each subject.
+        EVENT: A dataframe containing event-level data about a subject --- i.e., such that each row contains a
+            timestamp, associated measurements, and subject ID. Timestamps may be duplicated in these input
+            dataframes, but will be deduplicated in the resulting dataset.
+        RANGE: A dataframe containing range-level data about a subject --- i.e., such that each row contains a
+            start and end timestamp, associated measurements, and subject ID. RANGE dataframes are converted
+            into start, end, and equal (start time = end time) event-level dataframes. Timestamps may be
+            duplicated in these input dataframes, but will be deduplicated in the resulting dataset.
+    """
+
     STATIC = enum.auto()
     EVENT = enum.auto()
     RANGE = enum.auto()
 
 
 class InputDataType(StrEnum):
+    """The kinds of data that can be contained in an input dataframe column.
+
+    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings.
+
+    Members:
+        CATEGORICAL: A categorical variable.
+        FLOAT: A floating-point variable.
+        TIMESTAMP: A timestamp variable. This may also be associated with a separate string for timestamp
+            format, if the timestamp is originally presented as a string.
+        BOOLEAN: A boolean variable.
+    """
+
     CATEGORICAL = enum.auto()
     FLOAT = enum.auto()
     TIMESTAMP = enum.auto()
@@ -22,6 +51,54 @@ class InputDataType(StrEnum):
 
 @dataclasses.dataclass
 class PytorchBatch:
+    """A dataclass representing a batch of event flow data for a Pytorch model.
+
+    This class defines the data-output interface for deep learning models built off Event Flow GPT datasets.
+    It stores the underlying data in the batch in a set of tensors, and also exposes some helpful methods and
+    properties to simplify interacting with data.
+
+    Attributes:
+        event_mask: A boolean tensor of shape (batch_size, sequence_length) indicating which events in the
+            batch are valid (i.e., which are not padding).
+        time_delta: A float tensor of shape (batch_size, sequence_length) indicating the time delta in minutes
+            between each event and the subsequent event in that subject's sequence in the batch.
+        time: A float tensor of shape (batch_size, sequence_length) indicating the time in minutes since the
+            start of the subject's sequence of each event in the batch. This is often left unset, as it is
+            generally redundant with `time_delta`. However, it is used in generation, when the batch is
+            truncated to use efficient caching so the raw time point can't be recovered from the time delta.
+        static_indices: A long tensor of shape (batch_size, n_static_data_elements) indicating the indices of
+            the static data elements observed for each subject in the batch. These are *unordered*; meaning
+            that the second dimension position of a given element in this tensor is not necessarily
+            meaningful. This is because the static data elements are sparsely encoded, so the indices are
+            sufficient to recover the original data even in an unordered form.
+        static_measurement_indices: A long tensor of shape (batch_size, n_static_data_elements) indicating
+            which measurements the indices in `static_indices` correspond to. E.g., if there is a static data
+            element corresponding to race, then the value in `static_measurement_indices` at the associated
+            position would be an integer index corresponding to the race measurement overall, whereas the
+            index at the identical position in `static_indices` would be an integer index corresponding to the
+            specific race observed for the subject (e.g., "White", "Black", etc.).
+        dynamic_indices: A long tensor of shape (batch_size, sequence_length, n_data_elements) indicating the
+            indices of the dynamic data elements observed for each subject in the batch. These are
+            *unordered* in the last dimension, meaning that the third dimension position of a given element in
+            this tensor is not necessarily meaningful. This is because the dynamic data elements are sparsely
+            encoded, so the indices and values are sufficient to recover the original data even in an
+            unordered form.
+        dynamic_measurement_indices: A long tensor of shape (batch_size, sequence_length, n_data_elements)
+            indicating which measurements the indices in `dynamic_indices` correspond to, similar to the
+            `static_measurement_indices` attribute.
+        dynamic_values: A float tensor of shape (batch_size, sequence_length, n_data_elements) indicating the
+            numeric values associated with each dynamic data element in the `dynamic_indices` tensor. If no
+            value was recorded for a given dynamic data element, the value in this tensor will be zero.
+        dynamic_values_mask: A boolean tensor of shape (batch_size, sequence_length, n_data_elements)
+            indicating which values in the `dynamic_values` tensor were actually observed.
+        start_time: A float tensor of shape (batch_size,) indicating the start time in minutes since the epoch
+            of each subject's sequence in the batch. This is often unset, as it is only used in generation
+            when we may need to know the actual time of day of any generated event.
+        stream_labels: A dictionary mapping task names to label LongTensors of shape (batch_size,) providing
+            labels for the associated tasks for the sequences in the batch. Is only used during fine-tuning or
+            zero-shot evaluation runs.
+    """
+
     event_mask: torch.BoolTensor | None = None
 
     # We track this instead of raw times as it is less likely to suffer from underflow errors.
@@ -43,26 +120,48 @@ class PytorchBatch:
     stream_labels: dict[str, torch.FloatTensor | torch.LongTensor] | None = None
 
     @property
-    def device(self):
+    def device(self) -> torch.device:
+        """Returns the device storing the tensors in this batch.
+
+        Assumes all elements of the batch are on the same device.
+        """
         return self.event_mask.device
 
     @property
     def batch_size(self) -> int:
+        """Returns the batch size of this batch.
+
+        Assumes the batch has not been sliced from its initial configuration.
+        """
         return self.event_mask.shape[0]
 
     @property
     def sequence_length(self) -> int:
+        """Returns the maximum sequence length of the sequences in this batch.
+
+        Assumes the batch has not been sliced from its initial configuration.
+        """
         return self.event_mask.shape[1]
 
     @property
     def n_data_elements(self) -> int:
+        """Returns the maximum number of dynamic data elements of the events in this batch.
+
+        Assumes the batch has not been sliced from its initial configuration.
+        """
         return self.dynamic_indices.shape[2]
 
     @property
     def n_static_data_elements(self) -> int:
+        """Returns the maximum number of static data elements of the subjects in this batch.
+
+        Assumes the batch has not been sliced from its initial configuration.
+        """
         return self.static_indices.shape[1]
 
     def get(self, item: str, default: Any) -> Any:
+        """Exposes a dictionary like `get` method for the elements of this batch, by attribute
+        name."""
         return getattr(self, item) if item in self.keys() else default
 
     def _slice(self, index: tuple[int | slice] | int | slice) -> "PytorchBatch":
@@ -119,15 +218,21 @@ class PytorchBatch:
         setattr(self, item, val)
 
     def items(self):
+        """Exposes a dictionary like `items` method for the elements of this batch, by attribute."""
         return dataclasses.asdict(self).items()
 
     def keys(self):
+        """Exposes a dictionary like `keys` method for the elements of this batch, by attribute."""
         return dataclasses.asdict(self).keys()
 
     def values(self):
+        """Exposes a dictionary like `values` method for the elements of this batch, by
+        attribute."""
         return dataclasses.asdict(self).values()
 
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
+        """Filters the batch down to just the last sequence element, while retaining the same # of
+        dims."""
         return self[:, -1:]
 
 
