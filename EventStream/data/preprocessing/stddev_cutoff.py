@@ -36,7 +36,7 @@ class StddevCutoffOutlierDetector(Preprocessor):
 
     @classmethod
     def params_schema(cls) -> dict[str, pl.DataType]:
-        """Returns {"thresh_large\_": pl.Float64, "thresh_small\_": pl.Float64}."""
+        r"""Returns {"thresh_large\_": pl.Float64, "thresh_small\_": pl.Float64}."""
         return {"thresh_large_": pl.Float64, "thresh_small_": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
