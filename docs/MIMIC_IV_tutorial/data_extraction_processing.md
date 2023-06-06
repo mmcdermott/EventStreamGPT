@@ -26,10 +26,10 @@ to the root of the EFGPT repo, then the dataset pipeline can be built with the c
 
 ```bash
 PYTHONPATH="$EFGPT_PATH:$PYTHONPATH" python \
-  $EFGPT_PATH/scripts/build_dataset.py \
-  --config-path=$(pwd)/configs \
-  --config-name=dataset \
-  "hydra.searchpath=[$EFGPT_PATH/configs]" [configuration args...]
+	$EFGPT_PATH/scripts/build_dataset.py \
+	--config-path=$(pwd)/configs \
+	--config-name=dataset \
+	"hydra.searchpath=[$EFGPT_PATH/configs]" [configuration args...]
 ```
 
 The only mandatory command line configuration argument with this setup is the `cohort_name` argument. As can
