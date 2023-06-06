@@ -5,6 +5,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - _go_select=2.2.0=nocgo
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_kmp_llvm
   - abseil-cpp=20211102.0=hd4dd3e8_0
@@ -89,6 +90,7 @@ dependencies:
   - gmp=6.2.1=h295c915_3
   - gmpy2=2.1.2=py310heeb90bb_0
   - gnutls=3.6.15=he1e5248_0
+  - go=1.19.3=hb589e2e_0
   - grpc-cpp=1.46.1=h33aed49_1
   - gst-plugins-base=1.14.1=h6a678d5_1
   - gstreamer=1.14.1=h5eee18b_1
@@ -356,6 +358,7 @@ dependencies:
   - zstd=1.5.4=hc292b87_0
   - pip:
       - antlr4-python3-runtime==4.9.3
+      - astroid==2.15.5
       - cfgv==3.3.1
       - coverage==7.2.6
       - css-html-js-minify==2.5.5
@@ -366,7 +369,12 @@ dependencies:
       - identify==2.5.24
       - inflect==6.0.4
       - iniconfig==2.0.0
+      - latexcodec==2.0.1
+      - lazy-object-proxy==1.9.0
       - linkify-it-py==1.0.3
+      - mdformat==0.7.16
+      - mdformat-config==0.1.3
+      - mdformat-shfmt==0.1.0
       - mdit-py-plugins==0.3.5
       - ml-mixins==0.0.3
       - mpmath==1.2.1
@@ -375,6 +383,8 @@ dependencies:
       - omegaconf==2.3.0
       - pluggy==1.0.0
       - pre-commit==3.3.1
+      - pybtex==0.24.0
+      - pybtex-docutils==1.0.2
       - pyqt5-sip==12.11.0
       - pyrootutils==1.0.4
       - pytest==7.3.1
@@ -383,11 +393,15 @@ dependencies:
       - python-dotenv==1.0.0
       - python-slugify==8.0.1
       - pytorch-lognormal-mixture==0.0.1
+      - ruamel-yaml==0.17.31
+      - ruamel-yaml-clib==0.2.7
       - sparklines==0.4.2
       - sphinx-material==0.0.35
+      - sphinxcontrib-bibtex==2.5.0
       - sphinxcontrib-jquery==4.1
       - text-unidecode==1.3
       - uc-micro-py==1.0.2
       - unidecode==1.3.6
+      - wrapt==1.15.0
       - xitorch==0.3.0
 prefix: /home/mmd/Programs/miniconda3/envs/RAMMS_cpu
