@@ -864,12 +864,12 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             `batch` (`PytorchBatch`):
                 The batch of data for which the classification predictions are desired.
             `encoded` (`torch.FloatTensor`, shape is batch_size X sequence_length X hidden_dim):
-                The final encodings _to be used to predict the time from the event at that position to the
-                subsequent event_. For example, the vector `encoded[i][j]` (which is of size `hidden_dim` and
+                The final encodings *to be used to predict the time from the event at that position to the
+                subsequent event*. For example, the vector `encoded[i][j]` (which is of size `hidden_dim` and
                 corresponds to event `j` for batch element `i`) is
-                _not_ used to predict the time from event `j-1` to event `j`, but rather is used to predict
-                the time from event `j` to event `j+1` (all for batch index `i`, of course). _Note that this
-                is shifted from how `encoded` is used in other functions in this class._
+                *not* used to predict the time from event `j-1` to event `j`, but rather is used to predict
+                the time from event `j` to event `j+1` (all for batch index `i`, of course). *Note that this
+                is shifted from how `encoded` is used in other functions in this class.*
 
         Returns:
             `TTE_LL` (`torch.FloatTensor`):
@@ -942,8 +942,8 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             `batch` (`PytorchBatch`):
                 The batch of data for which the classification predictions are desired.
             `encoded` (`torch.FloatTensor`, shape is batch_size X sequence_length X hidden_dim):
-                The final encodings _to be used to predict for each position in the sequence_. For example,
-                the vector `encoded[i][j]` (which is of size `hidden_dim`) is _not_ the summary encoding of
+                The final encodings *to be used to predict for each position in the sequence*. For example,
+                the vector `encoded[i][j]` (which is of size `hidden_dim`) is *not* the summary encoding of
                 the batch element at batch index `i` and sequence index `j`, but rather is the input to be
                 used to form classification predictions corresponding to batch element `i` at sequence
                 position `j`.
@@ -1109,7 +1109,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
             `batch` (`PytorchBatch`):
                 The batch of data for which the regression predictions are desired.
             `encoded` (`torch.FloatTensor`, shape is batch_size X sequence_length X hidden_dim):
-                The final encodings _to be used to predict for each position in the sequence_. For example,
+                The final encodings *to be used to predict for each position in the sequence*. For example,
                 the vector `encoded[i][j]` (which is of size `hidden_dim`) is _not_ the summary encoding of
                 the batch element at batch index `i` and sequence index `j`, but rather is the input to be
                 used to form regression predictions corresponding to batch element `i` at sequence

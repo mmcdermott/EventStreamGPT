@@ -49,7 +49,7 @@ class DataEmbeddingLayer(torch.nn.Module):
     layer, taking into account `dynamic_indices` (including an implicit padding index of 0),
     `dynamic_values`, and `dynamic_values_mask`.
 
-    It _does not_ take into account `data_types`, `time`, or `event_mask`.
+    It *does not* take into account `data_types`, `time`, or `event_mask`.
     """
 
     def __init__(

@@ -27,7 +27,7 @@ class StandardScaler(Preprocessor):
 
     @classmethod
     def params_schema(cls) -> dict[str, pl.DataType]:
-        """Returns {"mean_": pl.Float64, "std_": pl.Float64}."""
+        """Returns {"mean\_": pl.Float64, "std\_": pl.Float64}."""
         return {"mean_": pl.Float64, "std_": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
@@ -38,7 +38,7 @@ class StandardScaler(Preprocessor):
 
         Returns:
             pl.Expr: A polars expression for a struct column containing the mean and standard deviation of
-                the data in `column` in fields named "mean_" and "std_" respectively.
+                the data in `column` in fields named "mean\_" and "std\_" respectively.
         """
         return pl.struct([column.mean().alias("mean_"), column.std().alias("std_")])
 
@@ -48,7 +48,7 @@ class StandardScaler(Preprocessor):
 
         Arguments:
             column: The Polars expression for the column containing the raw data to be centered and scaled.
-            model_column: The Polars expression for a struct column containing "mean_" and "std_" fields.
+            model_column: The Polars expression for a struct column containing "mean\_" and "std\_" fields.
 
         Returns:
             pl.Expr: `(column - model_column.struct.field("mean_")) / model_column.struct.field("std_")`

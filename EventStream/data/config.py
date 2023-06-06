@@ -735,7 +735,7 @@ class MeasurementConfig(JSONableMixin):
                 * In the case that `temporality == TemporalityType.DYNAMIC`, this is an existent column in the
                   `joint_metadata_df` dataframe.
                 * In the case that `temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT`, then this is
-                  the name the _output, to-be-created_ column will take in the `events_df` dataframe.
+                  the name the *output-to-be-created* column will take in the `events_df` dataframe.
         `modality` (`Optional[DataModality]`, defaults to `None`):
             What modality the values of this measure are.
         `temporality` (`Optional[TemporalityType]`, defaults to `None`):
