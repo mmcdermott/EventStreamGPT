@@ -103,7 +103,7 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --skip=logs/**,data/**,*.ipynb,*.bib
+          - --skip=logs/**,data/**,*.ipynb,*.bib,env.yml,env_cpu.yml
           - --ignore-words-list=ehr
 
   # jupyter notebook cell output clearing

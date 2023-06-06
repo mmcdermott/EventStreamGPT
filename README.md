@@ -48,10 +48,10 @@ The script endpoint to launch a pre-training run, with the built in transformer 
 via hydra:
 
 ```bash
-PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pretrain.py  \
---config-path='/path/to/local/configs' \
---config-name='local_config_name' \
-optimization_config.batch_size=24 optimization_config.num_dataloader_workers=64` # hydra overrides...
+PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pretrain.py \
+	--config-path='/path/to/local/configs' \
+	--config-name='local_config_name' \
+	optimization_config.batch_size=24 optimization_config.num_dataloader_workers=64 # hydra overrides...
 ```
 
 In your local config file (or via the command line), you can override various parameters, e.g.
@@ -124,9 +124,9 @@ To launch a weights and biases hyperparameter sweep, you can use the
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/launch_wandb_hp_sweep.py \
-    --config-path=/path/to/local/configs \
-    --config-name=local_config_name \
-    hydra.searchpath=[$EVENT_STREAM_PATH/configs] # This line ensures hydra can find the pre-defined default
+	--config-path=/path/to/local/configs \
+	--config-name=local_config_name \
+	hydra.searchpath=[$EVENT_STREAM_PATH/configs] # This line ensures hydra can find the pre-defined default
 ```
 
 An example of the overriding local config is:
@@ -242,12 +242,12 @@ look like:
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/finetune.py \
-load_from_model_dir=/pretrained/model/dir \
-optimization_config.batch_size=64 \
-optimization_config.init_lr=1e-4 \
-optimization_config.end_lr=null  \
-optimization_config.max_epochs=25 \
-task_df_name=lv_ef/60d
+	load_from_model_dir=/pretrained/model/dir \
+	optimization_config.batch_size=64 \
+	optimization_config.init_lr=1e-4 \
+	optimization_config.end_lr=null \
+	optimization_config.max_epochs=25 \
+	task_df_name=lv_ef/60d
 ```
 
 If you wish to pursue a few-shot fine-tuning experiment, you can use the parameters `train_subset_size` and
