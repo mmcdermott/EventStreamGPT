@@ -490,59 +490,6 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
                 got_config = DatasetConfig.from_dict(C["want_dict"])
                 self.assertEqual(C["config"], got_config)
 
-    def test_from_simple_args(self):
-        want_config = DatasetConfig(
-            measurement_configs={
-                "A_key": MeasurementConfig(
-                    temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-                ),
-                "B_key": MeasurementConfig(
-                    temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.MULTIVARIATE_REGRESSION,
-                    values_column="B_val",
-                ),
-                "C": MeasurementConfig(
-                    temporality=TemporalityType.STATIC,
-                    modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-                ),
-                "D": MeasurementConfig(
-                    temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-                    functor=AgeFunctor("dob"),
-                ),
-            },
-            min_valid_column_observations=10,
-        )
-
-        got_config = DatasetConfig.from_simple_args(
-            dynamic_measurement_columns=["A_key", ("B_key", "B_val")],
-            static_measurement_columns=["C"],
-            time_dependent_measurement_columns=[("D", AgeFunctor("dob"))],
-            min_valid_column_observations=10,
-        )
-        self.assertEqual(want_config, got_config)
-
-        want_config = DatasetConfig(
-            measurement_configs={
-                "A_key": MeasurementConfig(
-                    temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-                ),
-                "B_key": MeasurementConfig(
-                    temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.MULTIVARIATE_REGRESSION,
-                    values_column="B_val",
-                ),
-            },
-            min_valid_column_observations=10,
-        )
-
-        got_config = DatasetConfig.from_simple_args(
-            dynamic_measurement_columns=["A_key", ("B_key", "B_val")],
-            min_valid_column_observations=10,
-        )
-        self.assertEqual(want_config, got_config)
-
     def test_eq(self):
         config1 = DatasetConfig(
             measurement_configs={

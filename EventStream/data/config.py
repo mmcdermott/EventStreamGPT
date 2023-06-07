@@ -698,6 +698,117 @@ class PytorchDatasetConfig(JSONableMixin):
 
 @dataclasses.dataclass
 class MeasurementConfig(JSONableMixin):
+    """The Configuration class for a measurement in the Dataset.
+
+    A measurement is any observation in the dataset; be it static or dynamic, categorical or continuous. This
+    class contains configuration options to define a measurement and dictate how it should be pre-processed,
+    embedded, and generated in generative models.
+
+    Attributes:
+        name:
+            Stores the name of this measurement; also the column in the appropriate internal dataframe
+            (`subjects_df`, `events_df`, or `dynamic_measurements_df`) that will contain this measurement. All
+            measurements will have this set.
+
+            The 'column' linkage has slightly different meanings depending on `self.modality`:
+
+            * If `modality == DataModality.UNIVARIATE_REGRESSION`, then this column stores the values
+              associated with this continuous-valued measure.
+            * If `modality == DataModality.MULTIVARIATE_REGRESSION`, then this column stores the keys that
+              dictate the dimensions for which the associated `values_column` has the values.
+            * Otherwise, this column stores the categorical values of this measure.
+
+            Similarly, it has slightly different meanings depending on `self.temporality`:
+
+            * If `temporality == TemporalityType.STATIC`, this is an existent column in the `subjects_df`
+              dataframe.
+            * If `temporality == TemporalityType.DYNAMIC`, this is an existent column in the
+              `dynamic_measurements_df` dataframe.
+            * Otherwise, (when `temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT`), then this is
+              the name the *output-to-be-created* column will take in the `events_df` dataframe.
+
+        modality: The modality of this measurement. If `DataModality.UNIVARIATE_REGRESSION`, then this
+            measurement takes on single-variate continuous values. If `DataModality.MULTIVARIATE_REGRESSION`,
+            then this measurement consists of key-value pairs of categorical covariate identifiers and
+            continuous values. Keys are stored in the column reflected in `self.name` and values in
+            `self.values_column`.
+        temporality: How this measure varies in time. If `TemporalityType.STATIC`, this is a static
+            measurement. If `TemporalityType.FUNCTIONAL_TIME_DEPENDENT`, then this measurement is a
+            time-dependent measure that varies with time and static data in an analytically computable manner
+            (e.g., age). If `TemporalityType.DYNAMIC`, then this is a measurement that varies in time in a
+            non-a-priori computable manner.
+        observation_frequency: The fraction of valid instances in which this measure is observed. Is set
+            dynamically during pre-procesisng, and not specified at construction.
+        functor: If `temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT`, then this will be set to the
+            functor used to compute the value of a known-time-depedency measure. In this case, `functor` must
+            be a subclass of `data.time_dependent_functor.TimeDependentFunctor`. If `temporality` is anything
+            else, then this will be `None`.
+        vocabulary: The vocabulary for this column, realized as a `Vocabulary` object. Begins with `'UNK'`.
+            Not set on `modality==UNIVARIATE_REGRESSION` measurements.
+        values_column: For `modality==MULTIVARIATE_REGRESSION` measurements, this will store the name of the
+            column which will contain the numerical values corresponding to this measurement. Otherwise will
+            be `None`.
+        measurement_metadata: Stores metadata about the numerical values corresponding to this measurement.
+            This can take one of two forms, depending on the measurement modality. If
+            `modality==UNIVARIATE_REGRESSION`, then this will be a `pd.Series` whose index will contain the
+            set of possible column headers listed below. If `modality==MULTIVARIATE_REGRESSION`, then this
+            will be a `pd.DataFrame`, whose index will contain the possible regression covariate identifier
+            keys and whose columns will contain the set of possible columns listed below.
+
+            Metadata Columns:
+
+            * drop_lower_bound: A lower bound such that values either below or at or below this level will
+              be dropped (key presence will be retained for multivariate regression measures). Optional.
+            * drop_lower_bound_inclusive: This must be set if `drop_lower_bound` is set. If this is true,
+              then values will be dropped if they are $<=$ `drop_lower_bound`. If it is false, then values
+              will be dropped if they are $<$ `drop_lower_bound`.
+            * censor_lower_bound: A lower bound such that values either below or at or below this level,
+              but above the level of `drop_lower_bound`, will be replaced with the value
+              `censor_lower_bound`. Optional.
+            * drop_upper_bound An upper bound such that values either above or at or above this level will
+              be dropped (key presence will be retained for multivariate regression measures). Optional.
+            * drop_upper_bound_inclusive: This must be set if `drop_upper_bound` is set. If this is true,
+              then values will be dropped if they are $>=$ `drop_upper_bound`. If it is false, then values
+              will be dropped if they are $>$ `drop_upper_bound`.
+            * censor_upper_bound: An upper bound such that values either above or at or above this level,
+              but below the level of `drop_upper_bound`, will be replaced with the value
+              `censor_upper_bound`. Optional.
+            * value_type: To which kind of value (e.g., integer, categorical, float) this key corresponds.
+              Must be an element of the enum `NumericMetadataValueType`. Optional. If not pre-specified,
+              will be inferred from the data.
+            * outlier_model: The parameters (in dictionary form) for the fit outlier model. Optional. If
+              not pre-specified, will be inferred from the data.
+            * normalizer: The parameters (in dictionary form) for the fit normalizer model. Optional. If
+              not pre-specified, will be inferred from the data.
+
+    Raises:
+        ValueError: If the configuration is not self consistent (e.g., a functor specified on a
+            non-functional_time_dependent measure).
+        NotImplementedError: If the configuration relies on a measurement configuration that is not yet
+            supported, such as numeric, static measurements.
+
+
+    Examples:
+        >>> MeasurementConfig()
+        Traceback (most recent call last):
+            ...
+        ValueError: `self.temporality = None` Invalid! Must be in static, dynamic, functional_time_dependent
+        >>> MeasurementConfig(
+        ...     temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
+        ...     functor=None,
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: functor must be set for functional_time_dependent measurements!
+        >>> MeasurementConfig(
+        ...     temporality=TemporalityType.STATIC,
+        ...     functor=AgeFunctor(dob_col="date_of_birth"),
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: functor should be None for static measurements! Got ...
+    """
+
     FUNCTORS = {
         "AgeFunctor": AgeFunctor,
         "TimeOfDayFunctor": TimeOfDayFunctor,
@@ -710,81 +821,6 @@ class MeasurementConfig(JSONableMixin):
             "normalizer": object,
         }
     )
-
-    """
-    Base configuration class for a measurement in the Dataset.
-    A measurement is any observation in the dataset; be it static or dynamic, categorical or continuous. This
-    class contains configuration options to define a measurement and dictate how it should be pre-processed,
-    embedded, and generated in generative models.
-
-    Args:
-        # Present in all measures
-        `name` (`Optional[str]`, defaults to `None`):
-            Stores the name of this measurement; also the column that contains this measurement.
-            The 'column' linkage has slightly different meanings depending on `self.modality`:
-                * In the case that `modality == DataModality.UNIVARIATE_REGRESSION`, then this column
-                  stores the values associated with this continuous-valued measure.
-                * In the case that `modality == DataModality.MULTIVARIATE_REGRESSION`, then this column stores
-                  the keys that dictate the dimensions for which the associated `values_column` has the
-                  values.
-                * In the case that `modality` is neither of the above two options, then this column stores the
-                  categorical values of this measure.
-            Similarly, it has slightly different meanings depending on `self.temporality`:
-                * In the case that `temporality == TemporalityType.STATIC`, this is an existent column in the
-                  `subjects_df` dataframe.
-                * In the case that `temporality == TemporalityType.DYNAMIC`, this is an existent column in the
-                  `joint_metadata_df` dataframe.
-                * In the case that `temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT`, then this is
-                  the name the *output-to-be-created* column will take in the `events_df` dataframe.
-        `modality` (`Optional[DataModality]`, defaults to `None`):
-            What modality the values of this measure are.
-        `temporality` (`Optional[TemporalityType]`, defaults to `None`):
-            How this measure varies in time.
-        `observation_frequency` (`Optional[float]`, defaults to `None`):
-            The fraction of valid instances in which this measure is observed. Is set dynamically during
-            pre-procesisng, and not specified at construction.
-
-        # Specific to time-dependent measures
-        `functor` (`Optional[TimeDependentFunctor]`, defaults to `None`):
-            The functor used to compute the value of a known-time-depedency measure (e.g., Age). Must be None
-            if measure is not a known-time-dependency measure.
-            The vocabulary for this column. Begins with 'UNK'.
-
-        # Specific to categorical or partially observed multivariate regression measures.
-        `vocabulary` (`Optional[Vocabulary]`, defaults to `None`):
-
-        # Specific to numeric measures
-        `values_column` (`Optional[str]`, defaults to `None`):
-            Which column stores the numerical values corresponding to this measurement. If `None`, then
-            measurement values are stored in the same column.
-
-        `measurement_metadata` (`Optional[pd.DataFrame]`, *optional*, defaults to `None`):
-            Stores metadata (dataframe columns) about the numerical values corresponding to each
-            key (dataframe index). Metadata columns must include the following, which are sentinel values in
-            preprocessing steps:
-                * `unit`: The unit of measure of this key.
-                * `drop_lower_bound`:
-                    A lower bound such that values either below or at or below this level will be dropped
-                    (key presence will be retained).
-                * `drop_lower_bound_inclusive`:
-                    Is the drop lower bound inclusive or exclusive?
-                * `censor_lower_bound`:
-                    A lower bound such that values either below or at or below this level, but above the
-                    level of `drop_lower_bound`, will be replaced with the value of `censor_lower_bound`.
-                * `drop_upper_bound`:
-                    An upper bound such that values either above or at or above this level will be dropped
-                    (key presence will be retained).
-                * `drop_upper_bound_inclusive`:
-                    Is the drop upper bound inclusive or exclusive?
-                * `censor_upper_bound`:
-                    An upper bound such that values either above or at or above this level, but below the
-                    level of `drop_upper_bound`, will be replaced with the value of `censor_upper_bound`.
-                * `value_type`:
-                    To which kind of value this key corresponds. Must be an element of the enum
-                    `NumericMetadataValueType`
-                * `outlier_model`: The fit outlier model associated with this key.
-                * `normalizer`: The fit normalizer model associated with this key.
-    """
 
     # Present in all measures
     name: str | None = None
@@ -1116,60 +1152,137 @@ class MeasurementConfig(JSONableMixin):
 
 @dataclasses.dataclass
 class DatasetConfig(JSONableMixin):
-    """Configuration options for parsing an `Dataset`.
+    """Configuration options for a Dataset class.
 
-    Args:
-        `measurement_configs` (`Dict[str, MeasurementConfig]`, defaults to `{}`):
-            The dataset configuration for this `Dataset`. Keys are measurement names, and
+    This is the core configuration object for Dataset objects. Contains configuration options for
+    pre-processing a dataset already in the "Subject-Events-Measurements" data model or interpreting an
+    existing dataset. This configures details such as
+
+    1. Which measurements should be extracted and included in the raw dataset, via the `measurement_configs`
+       arg.
+    2. What filtering parameters should be applied to eliminate infrequently observed variables or columns.
+    3. How/whether or not numerical values should be re-cast as categorical or integral types.
+    4. Configuration options for outlier detector or normalization models.
+    5. Time aggregation controls.
+    6. The output save directory.
+
+    These configuration options do not include options to extract the raw dataset from source. For options for
+    raw dataset extraction, see `DatasetSchema` and `InputDFSchema`, and for options for the raw script
+    builder, see `configs/dataset_base.yml`.
+
+    Attributes:
+        measurement_configs: The dataset configuration for this `Dataset`. Keys are measurement names, and
             values are `MeasurementConfig` objects detailing configuration parameters for that measure.
-            Measurement configs may point to other columns as well, as in the case of key-value processed
-            multivariate, partially observed regression values.
-            Columns not referenced in any configs are not pre-processed.
+            Measurement names / dictionary keys are also used as source columns for the data of that measure,
+            though in the case of `DataModality.MULTIVARIATE_REGRESSION` measures, this name will reference
+            the categorical regression target index column and the config will also contain a reference to a
+            values column name which points to the column containing the associated numerical values.
+            Columns not referenced in any configs are not pre-processed. Measurement configs are checked for
+            validity upon creation. Dictionary keys must match measurement config object names if such are
+            specified; if measurement config object names are not specified, they will be set to their
+            associated dictionary keys.
 
-        `min_valid_column_observations` (`Optional[COUNT_OR_PROPORTION]`, defaults to `None`):
-            The minimum number of column observations or proportion of possible events that contain a column
-            that must be observed for the column to be included in the training set. If fewer than this
-            many observations are observed, the entire column will be dropped.
-            Can be either an integer count or a proportion (of total vocabulary size) in (0, 1).
-            If `None`, no constraint is applied.
+        min_valid_column_observations: The minimum number of column observations or proportion of possible
+            events that contain a column that must be observed for the column to be included in the training
+            set. If fewer than this many observations are observed, the entire column will be dropped. Can be
+            either an integer count or a proportion (of total vocabulary size) in (0, 1). If `None`, no
+            constraint is applied.
 
-        `min_valid_vocab_element_observations` (`Optional[COUNT_OR_PROPORTION]`, defaults to `None`):
-            The minimum number or proportion of observations of a particular metadata vocabulary element that
-            must be observed for the element to be included in the training set vocabulary. If fewer than this
-            many observations are observed, observed elements will be dropped.
-            Can be either an integer count or a proportion (of total vocabulary size) in (0, 1).
-            If `None`, no constraint is applied.
+        min_valid_vocab_element_observations: The minimum number or proportion of observations of a particular
+            metadata vocabulary element that must be observed for the element to be included in the training
+            set vocabulary. If fewer than this many observations are observed, observed elements will be
+            dropped. Can be either an integer count or a proportion (of total vocabulary size) in (0, 1). If
+            `None`, no constraint is applied.
 
-        `min_true_float_frequency` (`Optional[PROPORTION]`, defaults to `None`):
-            The minimum proportion of true float values that must be observed in order for observations to be
-            treated as true floating point numbers, not integers.
+        min_true_float_frequency: The minimum proportion of true float values that must be observed in order
+            for observations to be treated as true floating point numbers, not integers.
 
-        `min_unique_numerical_observations` (`Optional[COUNT_OR_PROPORTION]`, defaults to `None`):
-            The minimum number of unique values a numerical column must have in the training set to
-            be treated as a numerical type (rather than an implied categorical or ordinal type). Numerical
-            entries with fewer than this many observations will be converted to categorical or ordinal types.
-            Can be either an integer count or a proportion (of total numerical observations) in (0, 1).
-            If `None`, no constraint is applied.
+        min_unique_numerical_observations: The minimum number of unique values a numerical column must have in
+            the training set to be treated as a numerical type (rather than an implied categorical or ordinal
+            type). Numerical entries with fewer than this many observations will be converted to categorical
+            or ordinal types. Can be either an integer count or a proportion (of total numerical observations)
+            in (0, 1). If `None`, no constraint is applied.
 
-        `outlier_detector_config` (`Optional[Dict[str, Any]]`, defaults to `None`):
-            Configuration options for outlier detection. If not `None`, must contain the key `'cls'`, which
-            points to the class used outlier detection. All other keys and values are keyword arguments to be
-            passed to the specified class. The API of these objects is expected to mirror scikit-learn outlier
-            detection model APIs.
-            If `None`, numerical outlier values are not removed.
+        outlier_detector_config: Configuration options for outlier detection. If not `None`, must contain the
+            key `'cls'`, which points to the class used outlier detection. All other keys and values are
+            keyword arguments to be passed to the specified class. The API of these objects is expected to
+            mirror scikit-learn outlier detection model APIs. If `None`, numerical outlier values are not
+            removed.
 
-        `normalizer_config` (`Optional[Dict[str, Any]]`, defaults to `None`):
-            Configuration options for normalization. If not `None`, must contain the key `'cls'`, which points
-            to the class used normalization. All other keys and values are keyword arguments to be passed to
-            the specified class. The API of these objects is expected to mirror scikit-learn normalization
-            system APIs.
-            If `None`, numerical values are not normalized.
+        normalizer_config: Configuration options for normalization. If not `None`, must contain the key
+            `'cls'`, which points to the class used normalization. All other keys and values are keyword
+            arguments to be passed to the specified class. The API of these objects is expected to mirror
+            scikit-learn normalization system APIs. If `None`, numerical values are not normalized.
 
-        `save_dir`
+        save_dir: The output save directory for this dataset. Will be converted to a `pathlib.Path` upon
+            creation if it is not already one.
 
-        `agg_by_time_scale` (`Optional[str]`...
-            Uses the string language described here:
+        agg_by_time_scale: Aggregate events into temporal buckets at this frequency. Uses the string language
+            described here:
             https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
+
+    Raises:
+        ValueError: If configuration parameters are invalid (e.g., proportion parameters being > 1, etc.).
+        TypeError: If configuration parameters are of invalid types.
+
+    Examples:
+        >>> cfg = DatasetConfig(
+        ...     measurement_configs={
+        ...         "meas1": MeasurementConfig(
+        ...             temporality=TemporalityType.DYNAMIC,
+        ...             modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+        ...         ),
+        ...     },
+        ...     min_valid_column_observations=0.5,
+        ...     save_dir="/path/to/save/dir",
+        ... )
+        >>> cfg.save_dir
+        PosixPath('/path/to/save/dir')
+        >>> cfg.to_dict()
+        {'measurement_configs': {'meas1': {'name': 'meas1', 'temporality': <TemporalityType.DYNAMIC:\
+ 'dynamic'>, 'modality': <DataModality.MULTI_LABEL_CLASSIFICATION: 'multi_label_classification'>,\
+ 'observation_frequency': None, 'functor': None, 'vocabulary': None, 'values_column': None,\
+ '_measurement_metadata': None}}, 'min_events_per_subject': None, 'agg_by_time_scale': '1h',\
+ 'min_valid_column_observations': 0.5, 'min_valid_vocab_element_observations': None,\
+ 'min_true_float_frequency': None, 'min_unique_numerical_observations': None,\
+ 'outlier_detector_config': None, 'normalizer_config': None, 'save_dir': '/path/to/save/dir'}
+        >>> cfg2 = DatasetConfig.from_dict(cfg.to_dict())
+        >>> assert cfg == cfg2
+        >>> DatasetConfig(
+        ...     measurement_configs={
+        ...         "meas1": MeasurementConfig(
+        ...             name="invalid_name",
+        ...             temporality=TemporalityType.DYNAMIC,
+        ...             modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+        ...         ),
+        ...     },
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Measurement config meas1 has name invalid_name which differs from dict key!
+        >>> DatasetConfig(
+        ...     min_valid_column_observations="invalid type"
+        ... )
+        Traceback (most recent call last):
+            ...
+        TypeError: min_valid_column_observations must either be a fraction (float between 0 and 1) or count\
+ (int > 1). Got <class 'str'> of invalid type
+        >>> measurement_configs = {
+        ...     "meas1": MeasurementConfig(
+        ...         temporality=TemporalityType.DYNAMIC,
+        ...         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
+        ...     ),
+        ... }
+        >>> # Make one of the measurements invalid to show that validitiy is re-checked...
+        >>> measurement_configs["meas1"].temporality = None
+        >>> DatasetConfig(
+        ...     measurement_configs=measurement_configs,
+        ...     min_valid_column_observations=0.5,
+        ...     save_dir="/path/to/save/dir",
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Measurement config meas1 invalid!
     """
 
     measurement_configs: dict[str, MeasurementConfig] = dataclasses.field(default_factory=lambda: {})
@@ -1250,7 +1363,11 @@ class DatasetConfig(JSONableMixin):
             self.save_dir = Path(self.save_dir)
 
     def to_dict(self) -> dict:
-        """Represents this configuration object as a plain dictionary."""
+        """Represents this configuration object as a plain dictionary.
+
+        Returns:
+            A plain dictionary representation of self (nested through measurement configs as well).
+        """
         as_dict = dataclasses.asdict(self)
         if self.save_dir is not None:
             as_dict["save_dir"] = str(self.save_dir)
@@ -1259,7 +1376,13 @@ class DatasetConfig(JSONableMixin):
 
     @classmethod
     def from_dict(cls, as_dict: dict) -> DatasetConfig:
-        """Build a configuration object from a plain dictionary representation."""
+        """Build a configuration object from a plain dictionary representation.
+
+        Args:
+            as_dict: The plain dictionary representation to be converted.
+
+        Returns: A DatasetConfig instance containing the same data as `as_dict`.
+        """
         as_dict["measurement_configs"] = {
             k: MeasurementConfig.from_dict(v) for k, v in as_dict["measurement_configs"].items()
         }
@@ -1268,72 +1391,6 @@ class DatasetConfig(JSONableMixin):
 
         return cls(**as_dict)
 
-    @classmethod
-    def from_simple_args(
-        cls,
-        dynamic_measurement_columns: Sequence[str | tuple[str, str]] | None = None,
-        static_measurement_columns: Sequence[str] | None = None,
-        time_dependent_measurement_columns: None | (Sequence[tuple[str, TimeDependentFunctor]]) = None,
-        **kwargs,
-    ) -> DatasetConfig:
-        """Builds an appropriate configuration object given a simple list of columns:
-
-        Args:
-            `dynamic_measurement_columns`
-            (`Sequence[Union[str, Tuple[str, str]]]`, *optional*, defaults to `None`):
-                A list of either multi_label_classification columns (if only one str) or
-                multivariate_regression columns (if given a pair of strings, in which case the former is
-                considered the main measure / key column name and the latter the values column). All produced
-                measures are dynamic.
-
-            `static_measurement_columns` (`Sequence[str]`, *optional*, defaults to `None`):
-                A list of columns that will be interpreted as static, single_label_classification tasks.
-                If None, no such columns will be added.
-
-            `time_dependent_measurement_columns`
-            (`Sequence[Tuple[str, TimeDependentFunctor]]`, *optional, defaults to `None`):
-                A list of tuples of column names and computation functions that will define time-dependent
-                functional columns. If None, no such columns will be added.
-
-            `**kwargs`: Other keyword arguments will be passed to the `DatasetConfig` constructor.
-
-        Returns:
-            An `DatasetConfig` object with an appropriate `measurement_configs` variable set based
-            on the above args, and all other passed keyword args passed as well.
-        """
-        measurement_configs = {}
-
-        if dynamic_measurement_columns is not None:
-            for measurement in dynamic_measurement_columns:
-                col_kwargs = {"temporality": TemporalityType.DYNAMIC}
-                col_name = None
-                match measurement:
-                    case (None, str() as col_name):
-                        col_kwargs["modality"] = DataModality.UNIVARIATE_REGRESSION
-                    case (str() as col_name, str() as val_col):
-                        col_kwargs["modality"] = DataModality.MULTIVARIATE_REGRESSION
-                        col_kwargs["values_column"] = val_col
-                    case str() as col_name:
-                        col_kwargs["modality"] = DataModality.MULTI_LABEL_CLASSIFICATION
-                    case _:
-                        raise TypeError(f"{measurement} is of incorrect type!")
-
-                measurement_configs[col_name] = MeasurementConfig(**col_kwargs)
-
-        if static_measurement_columns is not None:
-            for measurement in static_measurement_columns:
-                measurement_configs[measurement] = MeasurementConfig(
-                    modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-                    temporality=TemporalityType.STATIC,
-                )
-
-        if time_dependent_measurement_columns is not None:
-            for measurement, functor in time_dependent_measurement_columns:
-                measurement_configs[measurement] = MeasurementConfig(
-                    temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT, functor=functor
-                )
-
-        return cls(measurement_configs=measurement_configs, **kwargs)
-
     def __eq__(self, other: DatasetConfig) -> bool:
+        """Returns true if self and other are equal."""
         return self.to_dict() == other.to_dict()
