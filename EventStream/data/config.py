@@ -789,6 +789,41 @@ class MeasurementConfig(JSONableMixin):
 
 
     Examples:
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='multi_label_classification',
+        ...     temporality='dynamic',
+        ...     vocabulary=Vocabulary(['foo', 'bar', 'baz'], [0.3, 0.4, 0.3]),
+        ... )
+        >>> cfg.is_numeric
+        False
+        >>> cfg.is_dropped
+        False
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='univariate_regression',
+        ...     temporality='dynamic',
+        ...     _measurement_metadata=pd.Series([1, 0.2], index=['censor_upper_bound', 'censor_lower_bound']),
+        ... )
+        >>> cfg.is_numeric
+        True
+        >>> cfg.is_dropped
+        False
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='multivariate_regression',
+        ...     temporality='dynamic',
+        ...     values_column='vals',
+        ...     _measurement_metadata=pd.DataFrame(
+        ...         {'censor_lower_bound': [1, 0.2, 0.1]},
+        ...         index=pd.Index(['foo', 'bar', 'baz'], name='key'),
+        ...     ),
+        ...     vocabulary=Vocabulary(['foo', 'bar', 'baz'], [0.3, 0.4, 0.3]),
+        ... )
+        >>> cfg.is_numeric
+        True
+        >>> cfg.is_dropped
+        False
         >>> MeasurementConfig()
         Traceback (most recent call last):
             ...
@@ -807,6 +842,19 @@ class MeasurementConfig(JSONableMixin):
         Traceback (most recent call last):
             ...
         ValueError: functor should be None for static measurements! Got ...
+        >>> MeasurementConfig(
+        ...     temporality=TemporalityType.DYNAMIC,
+        ...     modality=DataModality.MULTIVARIATE_REGRESSION,
+        ...     _measurement_metadata=pd.Series([1, 10], index=['censor_lower_bound', 'censor_upper_bound']),
+        ...     values_column='vals',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: If set, measurement_metadata must be a DataFrame on a multivariate_regression\
+ MeasurementConfig. Got <class 'pandas.core.series.Series'>
+        censor_lower_bound     1
+        censor_upper_bound    10
+        dtype: int64
     """
 
     FUNCTORS = {
@@ -938,7 +986,27 @@ class MeasurementConfig(JSONableMixin):
             raise ValueError("\n".join(err_strings))
 
     def drop(self):
-        """Sets the modality to DROPPED and does associated post-processing to ensure validity."""
+        """Sets the modality to DROPPED and does associated post-processing to ensure validity.
+
+        Examples:
+            >>> cfg = MeasurementConfig(
+            ...     name='key',
+            ...     modality='multivariate_regression',
+            ...     temporality='dynamic',
+            ...     values_column='vals',
+            ...     _measurement_metadata=pd.DataFrame(
+            ...         {'censor_lower_bound': [1, 0.2, 0.1]},
+            ...         index=pd.Index(['foo', 'bar', 'baz'], name='key'),
+            ...     ),
+            ...     vocabulary=Vocabulary(['foo', 'bar', 'baz'], [0.3, 0.4, 0.3]),
+            ... )
+            >>> cfg.drop()
+            >>> cfg.modality
+            <DataModality.DROPPED: 'dropped'>
+            >>> assert cfg._measurement_metadata is None
+            >>> assert cfg.vocabulary is None
+            >>> assert cfg.is_dropped
+        """
         self.modality = DataModality.DROPPED
         self._measurement_metadata = None
         self.vocabulary = None
