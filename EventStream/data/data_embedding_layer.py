@@ -7,41 +7,49 @@ from ..utils import StrEnum
 from .types import PytorchBatch
 
 
+class EmbeddingMode(StrEnum):
+    """The different ways that the data can be embedded."""
+
+    JOINT = enum.auto()
+    """Embed all data jointly via a single embedding layer, weighting observed measurement
+    embdddings by values when present."""
+
+    SPLIT_CATEGORICAL_NUMERICAL = enum.auto()
+    """Embed the categorical observations of measurements separately from their numerical values,
+    and combine the two via a specifiable strategy."""
+
+
 class MeasIndexGroupOptions(StrEnum):
-    """The different ways that the `split_by_measurement_indices` argument can be interpreted."""
+    """The different ways that the `split_by_measurement_indices` argument can be interpreted.
+
+    If measurements are split, then the final embedding can be seen as a combination of
+    ``emb_cat(measurement_indices)`` and ``emb_num(measurement_indices, measurement_values)``, where
+    ``emb_*`` are embedding layers with sum aggregations that take in indices to be embedded and
+    possible values to use in the output sum. This enumeration controls how those two elements are
+    combined for a given measurement feature.
+    """
 
     CATEGORICAL_ONLY = enum.auto()
-    CATEGORICAL_AND_NUMERICAL = enum.auto()
-    NUMERICAL_ONLY = enum.auto()
+    """Only embed the categorical component of this measurement (``emb_cat(...)``)."""
 
-    @classmethod
-    def values(cls):
-        return list(map(lambda c: c.value, cls))
+    CATEGORICAL_AND_NUMERICAL = enum.auto()
+    """Embed both the categorical features and the numerical features of this measurement."""
+
+    NUMERICAL_ONLY = enum.auto()
+    """Only embed the numerical component of this measurement (``emb_num(...)``)."""
 
 
 MEAS_INDEX_GROUP_T = Union[int, tuple[int, MeasIndexGroupOptions]]
 
 
 class StaticEmbeddingMode(StrEnum):
-    """The different ways that static embeddings can be combined with the dynamic embeddings.
-
-    * `DROP` means that the static embeddings are dropped, and only the dynamic embeddings are used.
-    * `SUM_ALL` means that the static embeddings are summed with the dynamic embeddings per event.
-    """
+    """The different ways that static embeddings can be combined with the dynamic embeddings."""
 
     DROP = enum.auto()
+    """Static embeddings are dropped, and only the dynamic embeddings are used."""
+
     SUM_ALL = enum.auto()
-
-    @classmethod
-    def values(cls):
-        return list(map(lambda c: c.value, cls))
-
-
-class EmbeddingMode(StrEnum):
-    """The different ways that the data can be embedded."""
-
-    JOINT = enum.auto()
-    SPLIT_CATEGORICAL_NUMERICAL = enum.auto()
+    """Static embeddings are summed with the dynamic embeddings per event."""
 
 
 class DataEmbeddingLayer(torch.nn.Module):
