@@ -316,7 +316,7 @@ class JSONableMixin:
             ...     data.to_json_file(fp, do_overwrite=False)
             Traceback (most recent call last):
                 ...
-            FileExistsError: ... exists and do_overwrite = False
+            FileExistsError: ...test.json exists and do_overwrite = False
         """
         if (not do_overwrite) and fp.exists():
             raise FileExistsError(f"{fp} exists and do_overwrite = {do_overwrite}")
@@ -334,6 +334,30 @@ class JSONableMixin:
 
         Returns:
             An instance of the calling class.
+
+        Raises:
+            FileNotFoundError: If the passed file path does not exist.
+
+        Examples:
+            >>> import dataclasses
+            >>> import tempfile
+            >>> from pathlib import Path
+            >>> @dataclasses.dataclass
+            ... class MyData(JSONableMixin):
+            ...     name: str
+            >>> with tempfile.TemporaryDirectory() as tmp_dir:
+            ...     fp = Path(tmp_dir) / 'test.json'
+            ...     with open(fp, mode='w') as f:
+            ...         _ = f.write('{"name": "Test"}')
+            ...     data = MyData.from_json_file(fp)
+            >>> data.to_dict()
+            {'name': 'Test'}
+            >>> with tempfile.TemporaryDirectory() as tmp_dir:
+            ...     fp = Path(tmp_dir) / 'test.json'
+            ...     MyData.from_json_file(fp)
+            Traceback (most recent call last):
+                ...
+            FileNotFoundError: ...test.json...
         """
         with open(fp) as f:
             return cls.from_dict(json.load(f))
@@ -371,11 +395,12 @@ def task_wrapper(task_func: Callable) -> Callable:
 def hydra_dataclass(dataclass: Any) -> Any:
     """Decorator that allows you to use a dataclass as a hydra config via the `ConfigStore`
 
-    Adds the decorated dataclass to the
-    [Hydra ConfigStore](https://hydra.cc/docs/tutorials/structured_config/config_store/)
-    as a
-    [StructuredConfig object](https://hydra.cc/docs/tutorials/structured_config/intro/). The name of the
-    stored config in the ConfigStore is the snake case version of the CamelCase class name.
+    Adds the decorated dataclass as a `Hydra StructuredConfig object`_ to the `Hydra ConfigStore`_.
+    The name of the stored config in the ConfigStore is the snake case version of the CamelCase class name.
+
+    .. _Hydra StructuredConfig object: https://hydra.cc/docs/tutorials/structured_config/intro/
+
+    .. _Hydra ConfigStore: https://hydra.cc/docs/tutorials/structured_config/config_store/
     """
 
     dataclass = dataclasses.dataclass(dataclass)

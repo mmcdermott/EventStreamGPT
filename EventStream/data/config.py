@@ -60,14 +60,48 @@ class DatasetSchema(JSONableMixin):
     methods.
 
     Attributes:
-        static: The schema for the input dataset containing static (per-subject) information.
-        dynamic: A list of schemas for all dynamic dataset schemas.
+        static: The schema for the input dataset containing static (per-subject) information, in either object
+            or dict form.
+        dynamic: A list of schemas for all dynamic dataset schemas, each in either object or dict form.
 
     Raises:
-        ValueError: If the static schema is `None` or if there is not a subject ID column specified in the
-            static schema.
-        TypeError: If the passed "static" schema is not typed as a static schema, or if any dynamic schema is
-            typed as a static schema.
+        ValueError: If the static schema is `None`, if there is not a subject ID column specified in the
+            static schema, if the passed "static" schema is not typed as a static schema, or if any dynamic
+            schema is typed as a static schema.
+
+    Examples:
+        >>> DatasetSchema(dynamic=[])
+        Traceback (most recent call last):
+            ...
+        ValueError: Must specify a static schema!
+        >>> DatasetSchema(
+        ...     static=dict(type="event", event_type="foo", input_df="/path/to/df.csv", ts_col="col"),
+        ...     dynamic=[]
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Must pass a static schema config for static.
+        >>> DatasetSchema(
+        ...     static=dict(type="static", input_df="/path/to/df.csv", subject_id_col="col"),
+        ...     dynamic=[dict(type="static", input_df="/path/to/df.csv", subject_id_col="col")]
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Must pass dynamic schemas in self.dynamic!
+        >>> DS = DatasetSchema(
+        ...     static=dict(type="static", input_df="/path/to/df.csv", subject_id_col="col"),
+        ...     dynamic=[
+        ...         dict(type="event", event_type="foo", input_df="/path/to/foo.csv", ts_col="col"),
+        ...         dict(type="event", event_type="bar", input_df="/path/to/bar.csv", ts_col="col"),
+        ...         dict(type="event", event_type="bar2", input_df="/path/to/bar.csv", ts_col="col2"),
+        ...     ],
+        ... )
+        >>> DS.dynamic_by_df
+        {'/path/to/foo.csv': [InputDFSchema(input_df='/path/to/foo.csv', type='event', event_type='foo',\
+ subject_id_col='col', ts_col='col')], '/path/to/bar.csv': [InputDFSchema(input_df='/path/to/bar.csv',\
+ type='event', event_type='bar', subject_id_col='col', ts_col='col'),\
+ InputDFSchema(input_df='/path/to/bar.csv', type='event', event_type='bar2', subject_id_col='col',\
+ ts_col='col2')]}
     """
 
     static: dict[str, Any] | InputDFSchema | None = None
@@ -80,29 +114,19 @@ class DatasetSchema(JSONableMixin):
         if type(self.static) is dict:
             self.static = InputDFSchema(**self.static)
             if not self.static.is_static:
-                raise TypeError("Must pass a static schema config for static.")
-
-        if self.static.subject_id_col is None:
-            raise ValueError("Must specify a subject_id_col source for the static dataframe!")
+                raise ValueError("Must pass a static schema config for static.")
 
         if self.dynamic is not None:
             new_dynamic = []
             for v in self.dynamic:
                 if type(v) is dict:
                     v = InputDFSchema(**v)
-                if v.subject_id_col is None:
-                    v.subject_id_col = self.static.subject_id_col
-
-                if v.subject_id_col != self.static.subject_id_col:
-                    print(
-                        f"WARNING: {v.input_df} subject ID col name ({v.subject_id_col}) differs from static "
-                        f"({self.static.subject_id_col})."
-                    )
+                v.subject_id_col = self.static.subject_id_col
 
                 new_dynamic.append(v)
 
                 if v.is_static:
-                    raise TypeError("Must pass dynamic schemas in `self.dynamic`!")
+                    raise ValueError("Must pass dynamic schemas in self.dynamic!")
             self.dynamic = new_dynamic
 
         self.dynamic_by_df = defaultdict(list)
@@ -157,6 +181,34 @@ class InputDFSchema(JSONableMixin):
         >>> S = InputDFSchema(
         ...     input_df="/path/to/df.csv",
         ...     type='static',
+        ...     subject_id_col='subj_id',
+        ...     must_have=['subj_id', ['foo', ['opt1', 'opt2']]],
+        ... )
+        >>> S.filter_on
+        {'subj_id': True, 'foo': ['opt1', 'opt2']}
+        >>> S.is_static
+        True
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='col',
+        ...     event_type='bar',
+        ... )
+        >>> S.is_static
+        False
+        >>> S
+        InputDFSchema(input_df='/path/to_df.parquet', type='event', event_type='bar', ts_col='col')
+        >>> InputDFSchema()
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory parameter input_df!
+        >>> S = InputDFSchema(input_df="/path/to/df.csv")
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory parameter type!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
         ... )
         Traceback (most recent call last):
             ...
@@ -165,13 +217,11 @@ class InputDFSchema(JSONableMixin):
         ...     input_df="/path/to/df.csv",
         ...     type='static',
         ...     subject_id_col='subj_id',
+        ...     must_have=[34]
         ... )
-        >>> S.is_static
-        True
-        >>> S.columns_to_load
-        []
-        >>> S.unified_schema
-        {}
+        Traceback (most recent call last):
+            ...
+        ValueError: Malformed filter: 34
         >>> S = InputDFSchema(
         ...     input_df="/path/to/df.parquet",
         ...     type=InputDFType.RANGE,
@@ -319,6 +369,11 @@ class InputDFSchema(JSONableMixin):
 
         # This checks validity.
         self.columns_to_load
+
+    def __repr__(self) -> str:
+        kwargs = {k: v for k, v in self.to_dict().items() if v}
+        kwargs_str = [f"{k}={repr(v)}" for k, v in kwargs.items()]
+        return f"InputDFSchema({', '.join(kwargs_str)})"
 
     @property
     def columns_to_load(self) -> list[tuple[str, InputDataType]]:
@@ -550,37 +605,42 @@ class VocabularyConfig(JSONableMixin):
 
 
 class SeqPaddingSide(StrEnum):
-    """Enumeration for the side of sequence padding during PyTorch Batch construction.
-
-    As a `StrEnum`, all values are equivalent to their lowercase string forms (e.g., RIGHT == 'right').
-
-    Values:
-        RIGHT: Pad on the right side (at the end of the sequence). This is the default during normal training.
-        LEFT: Pad on the left side (at the beginning of the sequence). This is the default during generation.
-    """
+    """Enumeration for the side of sequence padding during PyTorch Batch construction."""
 
     RIGHT = enum.auto()
+    """Pad on the right side (at the end of the sequence).
+
+    This is the default during normal training.
+    """
+
     LEFT = enum.auto()
+    """Pad on the left side (at the beginning of the sequence).
+
+    This is the default during generation.
+    """
 
 
 class SubsequenceSamplingStrategy(StrEnum):
     """Enumeration for subsequence sampling strategies.
 
-    When the maximum allowed sequence length for a PyTorchDataset is shorter than the sequence length of a
-    subject's data, this enumeration dictates how we sample a subsequence to include. As a `StrEnum`, all
-    values are equivalent to their lowercase string forms (e.g., RIGHT == 'right').
-
-    Values:
-        TO_END: Sample subsequences of the maximum length up to the end of the permitted window. This is the
-            default during fine-tuning and with task dataframes.
-        FROM_START: Sample subsequences of the maximum length from the start of the permitted window.
-        RANDOM: Sample subsequences of the maximum length randomly within the permitted window. This is the
-            default during pre-training.
+    When the maximum allowed sequence length for a PyTorchDataset is shorter than the sequence
+    length of a subject's data, this enumeration dictates how we sample a subsequence to include.
     """
 
     TO_END = enum.auto()
+    """Sample subsequences of the maximum length up to the end of the permitted window.
+
+    This is the default during fine-tuning and with task dataframes.
+    """
+
     FROM_START = enum.auto()
+    """Sample subsequences of the maximum length from the start of the permitted window."""
+
     RANDOM = enum.auto()
+    """Sample subsequences of the maximum length randomly within the permitted window.
+
+    This is the default during pre-training.
+    """
 
 
 @hydra_dataclass
@@ -589,8 +649,9 @@ class PytorchDatasetConfig(JSONableMixin):
 
     This is the main configuration object for a `PytorchDataset`. The `PytorchDataset` class specializes the
     representation of the data in a base `Dataset` class for sequential deep learning. This dataclass is also
-    an acceptable [Hydra Structured Config](https://hydra.cc/docs/tutorials/structured_config/intro/) object
-    with the name "pytorch_dataset_config".
+    an acceptable `Hydra Structured Config`_ object with the name "pytorch_dataset_config".
+
+    .. _Hydra Structured Config: https://hydra.cc/docs/tutorials/structured_config/intro/
 
     Attributes:
         save_dir: Directory where the base dataset, including the deep learning representation outputs, is
@@ -634,6 +695,35 @@ class PytorchDatasetConfig(JSONableMixin):
         >>> new_config = PytorchDatasetConfig.from_dict(config_dict)
         >>> config == new_config
         True
+        >>> config = PytorchDatasetConfig(train_subset_size=-1)
+        Traceback (most recent call last):
+            ...
+        ValueError: If integral, train_subset_size must be positive! Got -1
+        >>> config = PytorchDatasetConfig(train_subset_size=1.2)
+        Traceback (most recent call last):
+            ...
+        ValueError: If float, train_subset_size must be in (0, 1)! Got 1.2
+        >>> config = PytorchDatasetConfig(train_subset_size='200')
+        Traceback (most recent call last):
+            ...
+        TypeError: train_subset_size is of unrecognized type <class 'str'>.
+        >>> config = PytorchDatasetConfig(train_subset_size="FULL", train_subset_seed=10)
+        Traceback (most recent call last):
+            ...
+        ValueError: train_subset_seed 10 should be None if train_subset_size is FULL.
+        >>> config = PytorchDatasetConfig(
+        ...     save_dir='./dataset',
+        ...     max_seq_len=256,
+        ...     min_seq_len=2,
+        ...     seq_padding_side='left',
+        ...     subsequence_sampling_strategy=SubsequenceSamplingStrategy.RANDOM,
+        ...     train_subset_size=100,
+        ...     train_subset_seed=None,
+        ...     task_df_name=None,
+        ...     do_include_start_time_min=False
+        ... )
+        WARNING! train_subset_size is set, but train_subset_seed is not. Setting to...
+        >>> assert config.train_subset_seed is not None
     """
 
     save_dir: Path = omegaconf.MISSING
@@ -1174,6 +1264,61 @@ class MeasurementConfig(JSONableMixin):
     def describe(
         self, line_width: int = 60, wrap_lines: bool = False, stream: TextIOBase | None = None
     ) -> int | None:
+        """Provides a plain-text description of the measurement.
+
+        Prints the following information about the MeasurementConfig object:
+
+        1. The measurement's name, temporality, modality, and observation frequency.
+        2. What value types (e.g., integral, float, etc.) it's values take on, if the measurement is a
+           numerical modality whose values may take on distinct value types.
+        3. Details about its internal `self.vocabulary` object, via `Vocabulary.describe`.
+
+        Args:
+            line_width: The maximum width of each line in the description.
+            wrap_lines: Whether to wrap lines that exceed the `line_width`.
+            stream: The stream to write the description to. If `None`, the description is printed to stdout.
+
+        Returns:
+            The number of characters written to the stream if a stream was provided, otherwise `None`.
+
+        Raises:
+            ValueError: if the calling object is misconfigured.
+
+        Examples:
+            >>> vocab = Vocabulary(
+            ...     vocabulary=['apple', 'banana', 'pear', 'UNK'],
+            ...     obs_frequencies=[3, 4, 1, 2],
+            ... )
+            >>> cfg = MeasurementConfig(
+            ...     name="MVR",
+            ...     values_column='bar',
+            ...     temporality='dynamic',
+            ...     modality='multivariate_regression',
+            ...     observation_frequency=0.6816,
+            ...     _measurement_metadata=pd.DataFrame(
+            ...         {'value_type': ['float', 'categorical', 'categorical']},
+            ...         index=pd.Index(['apple', 'pear', 'banana'], name='MVR'),
+            ...     ),
+            ...     vocabulary=vocab,
+            ... )
+            >>> cfg.describe()
+            MVR: dynamic, multivariate_regression observed 68.2%
+            Value Types:
+              2 categorical
+              1 float
+            Vocabulary:
+              4 elements, 20.0% UNKs
+              Frequencies: █▆▁
+              Elements:
+                (40.0%) banana
+                (30.0%) apple
+                (10.0%) pear
+            >>> cfg.modality = 'wrong'
+            >>> cfg.describe()
+            Traceback (most recent call last):
+                ...
+            ValueError: Can't describe wrong measure MVR!
+        """
         lines = []
         lines.append(
             f"{self.name}: {self.temporality}, {self.modality} observed {100*self.observation_frequency:.1f}%"

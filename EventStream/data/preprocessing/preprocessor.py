@@ -28,8 +28,9 @@ class Preprocessor(ABC):
         Must be implemented by a sub-class.
 
         Returns:
-            dict[str, pl.DataType]: The schema of the output column produced by the pre-processor, as a
-                mapping from field names to polars data types.
+            dict[str, pl.DataType]:
+                The schema of the output column produced by the pre-processor, as a mapping from field names
+                to polars data types.
         """
         raise NotImplementedError("Subclass must implement abstract method")
 
@@ -47,8 +48,9 @@ class Preprocessor(ABC):
             column: The Polars expression for the column containing the raw data to be pre-processed.
 
         Returns:
-            pl.Expr: The Polars expression for a column that would materialize the resulting pre-processing
-                model parameters.
+            pl.Expr:
+                The Polars expression for a column that would materialize the resulting pre-processing model
+                parameters.
         """
         raise NotImplementedError("Subclass must implement abstract method")
 
@@ -69,7 +71,8 @@ class Preprocessor(ABC):
             model_column: The Polars expression for the column containing the pre-processing model parameters.
 
         Returns:
-            pl.Expr: The Polars expression for a column that would materialize the pre-processed outputs for
-                the input data given the pre-processing model parameters.
+            pl.Expr:
+                The Polars expression for a column that would materialize the pre-processed outputs for the
+                input data given the pre-processing model parameters.
         """
         raise NotImplementedError("Subclass must implement abstract method")
