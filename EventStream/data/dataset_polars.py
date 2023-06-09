@@ -197,7 +197,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             return df.select(col_exprs)
 
     @classmethod
-    def resolve_ts_col(cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp") -> DF_T:
+    def _resolve_ts_col(cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp") -> DF_T:
         match ts_col:
             case list():
                 ts_expr = pl.min(ts_col)
@@ -209,7 +209,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return df.with_columns(ts_expr.alias(out_name)).drop(ts_to_drop)
 
     @classmethod
-    def process_events_and_measurements_df(
+    def _process_events_and_measurements_df(
         cls,
         df: DF_T,
         event_type: str,
@@ -255,7 +255,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return events_df, dynamic_measurements_df
 
     @classmethod
-    def split_range_events_df(cls, df: DF_T) -> tuple[DF_T, DF_T, DF_T]:
+    def _split_range_events_df(cls, df: DF_T) -> tuple[DF_T, DF_T, DF_T]:
         """Performs the following steps:
 
         1. Produces unified start and end timestamp columns representing the minimum of the passed start and
@@ -311,10 +311,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         }
 
         if self.config.outlier_detector_config is not None:
-            M = self._get_metadata_model(self.config.outlier_detector_config, for_fit=False)
+            M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=False)
             schema["outlier_model"] = self.METADATA_SCHEMA["outlier_model"](M.params_schema())
         if self.config.normalizer_config is not None:
-            M = self._get_metadata_model(self.config.normalizer_config, for_fit=False)
+            M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=False)
             schema["normalizer"] = self.METADATA_SCHEMA["normalizer"](M.params_schema())
 
         metadata = config.measurement_metadata
@@ -547,12 +547,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return subjects_df, events_df, dynamic_measurements_df
 
     @TimeableMixin.TimeAs
-    def sort_events(self):
+    def _sort_events(self):
         """Sorts events by subject ID and timestamp in ascending order."""
         self.events_df = self.events_df.sort("subject_id", "timestamp", descending=False)
 
     @TimeableMixin.TimeAs
-    def agg_by_time(self):
+    def _agg_by_time(self):
         """Aggregates the events_df by subject_id, timestamp, combining event_types into grouped
         categories, tracking all associated metadata.
 
@@ -637,7 +637,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return df.filter(pl.all(filter_exprs))
 
     @TimeableMixin.TimeAs
-    def add_time_dependent_measurements(self):
+    def _add_time_dependent_measurements(self):
         exprs = []
         join_cols = set()
         for col, cfg in self.config.measurement_configs.items():
@@ -918,9 +918,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # 4. Infer outlier detector and normalizer parameters.
         if self.config.outlier_detector_config is not None:
             with self._time_as("fit_outlier_detector"):
-                outlier_config, M = self._get_metadata_model(
-                    self.config.outlier_detector_config, for_fit=True
-                )
+                M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=True)
                 outlier_model_params = source_df.groupby(vocab_keys_col).agg(
                     M.fit_from_polars(pl.col(vals_col)).alias("outlier_model")
                 )
@@ -943,7 +941,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # 5. Fit a normalizer model.
         if self.config.normalizer_config is not None:
             with self._time_as("fit_normalizer"):
-                normalizer_config, M = self._get_metadata_model(self.config.normalizer_config, for_fit=True)
+                M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=True)
                 normalizer_params = source_df.groupby(vocab_keys_col).agg(
                     M.fit_from_polars(pl.col(vals_col)).alias("normalizer")
                 )
@@ -1113,7 +1111,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         # 5. Add inlier/outlier indices and remove learned outliers.
         if self.config.outlier_detector_config is not None:
-            M = self._get_metadata_model(self.config.outlier_detector_config, for_fit=False)
+            M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=False)
 
             inliers_col = ~M.predict_from_polars(vals_col, pl.col("outlier_model")).alias(inliers_col_name)
             vals_col = pl.when(inliers_col).then(vals_col).otherwise(np.NaN)
@@ -1130,7 +1128,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         # 6. Normalize values.
         if self.config.normalizer_config is not None:
-            M = self._get_metadata_model(self.config.normalizer_config, for_fit=False)
+            M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=False)
 
             vals_col = M.predict_from_polars(vals_col, pl.col("normalizer"))
             present_source = present_source.with_columns(vals_col)

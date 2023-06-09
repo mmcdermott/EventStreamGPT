@@ -59,7 +59,7 @@ class DataEmbeddingLayer(torch.nn.Module):
     `EmbeddingBag` layer, weighted by the batch's ``dynamic_values`` (respecting ``dynamic_values_mask``).
     This layer assumes a padding index of 0, as that is how the `PytorchDataset` object is structured.
     layer, taking into account `dynamic_indices` (including an implicit padding index of 0), It *does not*
-    take into account `data_types`, `time`, or `event_mask`.
+    take into account the time component of the events; that should be embedded separately.
 
     It has two possible embedding modes; a joint embedding mode, in which categorical data and numerical
     values are embedded jointly through a unified feature map, which effectively equates to a constant value
@@ -680,46 +680,22 @@ class DataEmbeddingLayer(torch.nn.Module):
             >>> out.shape # batch, seq_len, dependency graph length (split_by_measruement_indices), out_dim
             torch.Size([2, 3, 2, 10])
         """
-        if batch.batch_size == 0:
-            return torch.empty(0, batch.sequence_length, self.out_dim)
-        elif batch.sequence_length == 0:
-            return torch.empty(batch.batch_size, 0, self.out_dim)
-
-        if batch.n_data_elements == 0:
-            embedded = torch.zeros(
-                batch.batch_size,
-                batch.sequence_length,
-                self.out_dim,
-                device=batch["dynamic_indices"].device,
-            )
-        else:
-            embedded = self._dynamic_embedding(batch)
+        embedded = self._dynamic_embedding(batch)
         # embedded is of shape (batch_size, sequence_length, out_dim) or of shape
         # (batch_size, sequence_length, num_measurement_buckets, out_dim)
 
-        if batch.event_mask is not None:
-            mask = batch.event_mask
-            while len(mask.shape) < len(embedded.shape):
-                mask = mask.unsqueeze(-1)
+        mask = batch.event_mask
+        while len(mask.shape) < len(embedded.shape):
+            mask = mask.unsqueeze(-1)
 
-            mask = mask.expand_as(embedded)
-            embedded = torch.where(mask, embedded, torch.zeros_like(embedded))
+        mask = mask.expand_as(embedded)
+        embedded = torch.where(mask, embedded, torch.zeros_like(embedded))
 
         if self.static_embedding_mode == StaticEmbeddingMode.DROP:
             return embedded
 
-        if batch.n_static_data_elements == 0:
-            static_embedded = torch.zeros(
-                batch.batch_size,
-                self.out_dim,
-                device=batch["static_indices"].device,
-            )
-        else:
-            static_embedded = self._static_embedding(batch)
-        # static_embedded is of shape (batch_size, out_dim)
-
-        static_embedded = static_embedded.unsqueeze(1)
-        # static_embedded is now of shape (batch_size, 1, out_dim)
+        static_embedded = self._static_embedding(batch).unsqueeze(1)
+        # static_embedded is of shape (batch_size, 1, out_dim)
 
         if self.split_by_measurement_indices:
             static_embedded = static_embedded.unsqueeze(2)
@@ -728,9 +704,6 @@ class DataEmbeddingLayer(torch.nn.Module):
         match self.static_embedding_mode:
             case StaticEmbeddingMode.SUM_ALL:
                 embedded = self.dynamic_weight * embedded + self.static_weight * static_embedded
-                if batch.event_mask is not None:
-                    return torch.where(mask, embedded, torch.zeros_like(embedded))
-                else:
-                    return embedded
+                return torch.where(mask, embedded, torch.zeros_like(embedded))
             case _:
                 raise ValueError(f"Invalid static embedding mode: {self.static_embedding_mode}")

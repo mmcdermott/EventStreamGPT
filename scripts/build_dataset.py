@@ -333,8 +333,8 @@ def main(cfg: DictConfig):
 
     ESD = Dataset(config=config, input_schema=dataset_schema)
     ESD.split(split, seed=seed)
-    ESD.preprocess_measurements()
-    ESD._save(do_overwrite=do_overwrite)
+    ESD.preprocess()
+    ESD.save(do_overwrite=do_overwrite)
     ESD.cache_deep_learning_representation(DL_chunk_size, do_overwrite=do_overwrite)
 
 

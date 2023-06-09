@@ -200,22 +200,23 @@ found in the source documentation.
 
 ### Saving / Loading
 
-`EventStream.data.Datasets` can be efficiently saved and loaded to disk via the instance method `_save` and class
-method `_load`, both of which use a `pathlib.Path` object pointing to a directory in which the dataset should
-be saved / loaded. For `_save`, this directory is not passed as a parameter, but is specified in the
+`EventStream.data.Dataset`s can be efficiently saved and loaded to disk via the instance method `save` and
+class method `load`, both of which use a `pathlib.Path` object pointing to a directory in which the dataset
+should be saved / loaded. For `save`, this directory is not passed as a parameter, but is specified in the
 configuration object for the instance. For loading, it is passed as a parameter to the function. For saving
 (loading) the dataset will write (read) a number of files and subdirectories to (from)
 that passed directory. Dataframes are stored in a user-specifiable format via a class variable, but for the
-only current `EventStream.data.Dataset` class, the `Polars` version, we recommend using the `parquet` format and it
-is the only format supported out of the box. The `EventStream.data.Dataset` also saves a vocabulary configuration
-object to JSON and stores its other attributes via a pickled file produced via `dill`. We plan to further
-specialize the saving logic to write the internal `config` object to a JSON file instead and to write the fit
-measurement information to disk in a more translatable format as well. `_save` should only be called after the
-model has been fit. `_save` does not store the deep-learning representation at present; this needs to be saved
-separately via `cache_deep_learning_representation`. `_load`, upon calling, will not load the transformed
-dataframes, as those may not be needed if the user only wants to inspect the configuration objects. This
-allows the loading to be very fast, and the dataframes are instead lazily loaded upon first access by the
-user.
+only current `EventStream.data.Dataset` class, the `Polars` version, we recommend using the `parquet` format
+and it is the only format supported out of the box. The `EventStream.data.Dataset` also saves a vocabulary
+configuration object to JSON and stores its other attributes via a pickled file produced via `dill`.
+
+Upon saving, the `Dataset` object will write a number of files to disk, including a JSON version of the
+internal `config` object, separate files for each of the three internal dataframes (`subjects_df`,
+`events_df`, and `dynamic_measurements_df`), and a separate file for the inferred, pre-processed measurement
+configuration objects, in JSON format. Depending on the measurements in question, there may be further files
+written to disk containing data-frame versions of the pre-processed, key-specific measurement metadata (e.g.,
+inferred outlier parameters, etc.) These policies allow the loading to be very fast, with nested objects
+instead lazily loaded upon first access by the user.
 
 ### Pre-processing Data Capabilities
 

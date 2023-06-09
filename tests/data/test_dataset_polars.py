@@ -1685,7 +1685,7 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
 
         E.split_subjects = TEST_SPLIT
 
-        E.preprocess_measurements()
+        E.preprocess()
 
         self.assertNestedDictEqual(
             WANT_INFERRED_MEASUREMENT_CONFIGS, E.inferred_measurement_configs, check_like=True
@@ -1712,23 +1712,9 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
             with TemporaryDirectory() as d:
                 save_dir = Path(d) / "save_dir"
                 E.config.save_dir = save_dir
-                E._save()
+                E.save()
 
-                got_E = Dataset._load(save_dir, do_load_dfs=False)
-
-                self.assertEqual(WANT_MEASUREMENTS_DF, got_E.dynamic_measurements_df)
-                self.assertEqual(WANT_EVENTS_DF, got_E.events_df)
-                self.assertEqual(WANT_SUBJECTS_DF, got_E.subjects_df)
-
-                got_inferred_measurement_configs = got_E.inferred_measurement_configs
-                for v in got_inferred_measurement_configs.values():
-                    v.uncache_measurement_metadata()
-
-                self.assertNestedDictEqual(
-                    WANT_INFERRED_MEASUREMENT_CONFIGS, got_inferred_measurement_configs
-                )
-
-                got_E = Dataset._load(save_dir, do_load_dfs=True)
+                got_E = Dataset.load(save_dir)
 
                 self.assertEqual(WANT_MEASUREMENTS_DF, got_E.dynamic_measurements_df)
                 self.assertEqual(WANT_EVENTS_DF, got_E.events_df)

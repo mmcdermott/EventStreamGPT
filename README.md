@@ -272,7 +272,7 @@ cfg = FinetuneConfig(
         "seq_padding_side": "left",
     },
 )
-ESD = Dataset._load(cfg.data_config.save_dir)
+ESD = Dataset.load(cfg.data_config.save_dir)
 train_pyd = PytorchDataset(cfg.data_config, split="train")
 M = ESTForGenerativeSequenceModeling.from_pretrained(
     cfg.pretrained_weights_fp, config=cfg.config

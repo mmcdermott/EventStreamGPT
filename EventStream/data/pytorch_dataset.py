@@ -155,9 +155,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             vocabulary_config = self.config.save_dir / "vocabulary_config.json"
 
-            # TODO(mmd): This is bad as it necessitates loading the dataset regardless of dataset class
-            # identity!
-            ESD = Dataset._load(self.config.save_dir)
+            ESD = Dataset.load(self.config.save_dir)
             self.measurement_configs = ESD.measurement_configs
         else:
             assert vocabulary_config is not None

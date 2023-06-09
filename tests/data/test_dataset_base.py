@@ -41,14 +41,14 @@ class ESDMock(DatasetBase[dict, dict]):
     def _update_subject_event_properties(self):
         self.functions_called["_update_subject_event_properties"].append(())
 
-    def agg_by_time(self):
-        self.functions_called["agg_by_time"].append(())
+    def _agg_by_time(self):
+        self.functions_called["_agg_by_time"].append(())
 
-    def sort_events(self):
-        self.functions_called["sort_events"].append(())
+    def _sort_events(self):
+        self.functions_called["_sort_events"].append(())
 
-    def add_time_dependent_measurements(self):
-        self.functions_called["add_time_dependent_measurements"].append(())
+    def _add_time_dependent_measurements(self):
+        self.functions_called["_add_time_dependent_measurements"].append(())
         return
 
     def _fit_measurement_metadata(
@@ -126,23 +126,23 @@ class ESDMock(DatasetBase[dict, dict]):
         return {}
 
     @classmethod
-    def process_events_and_measurements_df(
+    def _process_events_and_measurements_df(
         cls,
         df: dict,
         event_type: str,
         columns_schema: dict[str, tuple[str, InputDataType]],
         ts_col: str | list[str],
     ) -> tuple[dict, dict | None]:
-        cls.FUNCTIONS_CALLED["process_events_and_measurements_df"].append(
+        cls.FUNCTIONS_CALLED["_process_events_and_measurements_df"].append(
             (df, event_type, columns_schema, ts_col)
         )
         return {}, None
 
     @classmethod
-    def split_range_events_df(
+    def _split_range_events_df(
         cls, df: dict, start_ts_col: str | list[str], end_ts_col: str | list[str]
     ) -> tuple[dict, dict, dict]:
-        cls.FUNCTIONS_CALLED["split_range_events_df"].append((df, start_ts_col, end_ts_col))
+        cls.FUNCTIONS_CALLED["_split_range_events_df"].append((df, start_ts_col, end_ts_col))
         return {}, {}, {}
 
     @classmethod
@@ -156,8 +156,8 @@ class ESDMock(DatasetBase[dict, dict]):
         return {}
 
     @classmethod
-    def resolve_ts_col(cls, df: dict, ts_col: str | list[str], out_name: str = "timestamp") -> dict:
-        cls.FUNCTIONS_CALLED["resolve_ts_col"].append((df, ts_col, out_name))
+    def _resolve_ts_col(cls, df: dict, ts_col: str | list[str], out_name: str = "timestamp") -> dict:
+        cls.FUNCTIONS_CALLED["_resolve_ts_col"].append((df, ts_col, out_name))
         return {}
 
 
@@ -190,8 +190,8 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         want_functions_called = {
             "_validate_initial_dfs": [(self.subjects_df, self.events_df, self.dynamic_measurements_df)],
             "_update_subject_event_properties": [()],
-            "agg_by_time": [()],
-            "sort_events": [()],
+            "_agg_by_time": [()],
+            "_sort_events": [()],
         }
         self.assertEqual(want_functions_called, self.E.functions_called)
 
@@ -387,7 +387,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 else:
                     self.assertNestedDictEqual({C["want_fn"]: [C["want_fn_arg"]]}, self.E.functions_called)
 
-    def test_preprocess_measurements(self):
+    def test_preprocess(self):
         def fit_measurements(self, *args, **kwargs):
             self.functions_called["fit_measurements"].append((args, kwargs))
 
@@ -398,10 +398,10 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         self.E.transform_measurements = transform_measurements.__get__(self.E)
 
         self.E._reset_functions_called()
-        self.E.preprocess_measurements()
+        self.E.preprocess()
 
         want_functions_called = {
-            "add_time_dependent_measurements": [()],
+            "_add_time_dependent_measurements": [()],
             "fit_measurements": [((), {})],
             "transform_measurements": [((), {})],
         }
