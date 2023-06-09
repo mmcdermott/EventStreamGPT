@@ -3,6 +3,7 @@ import sys
 sys.path.append("../..")
 
 import unittest
+from unittest.mock import MagicMock
 
 import torch
 
@@ -337,7 +338,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 L = DataEmbeddingLayer(**case["params"])
                 L.embed_layer.weight = torch.nn.Parameter(torch.eye(4))
 
-                got = L.joint_embed(
+                got = L._joint_embed(
                     indices=case["indices"],
                     measurement_indices=case["measurement_indices"],
                     values=case["values"],
@@ -346,7 +347,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 self.assertEqual(case["want"], got)
 
     def test_split_embeds(self):
-        """This tests the joint embedding layer functionality."""
+        """This tests the split embedding layer functionality."""
 
         valid_params = {
             "n_total_embeddings": 4,
@@ -566,7 +567,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 L.num_proj.weight = torch.nn.Parameter(torch.eye(4) * (-1))
                 L.num_proj.bias = torch.nn.Parameter(torch.zeros(4))
 
-                got = L.split_embed(
+                got = L._split_embed(
                     indices=case["indices"],
                     measurement_indices=case["measurement_indices"],
                     values=case["values"],
@@ -574,6 +575,70 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     cat_mask=case["cat_mask"],
                 )
                 self.assertEqual(case["want"], got)
+
+    def test_embed(self):
+        inputs = {
+            "indices": torch.LongTensor([[1, 2, 3], [2, 3, 0]]),
+            "measurement_indices": torch.LongTensor([[1, 2, 1], [2, 1, 0]]),
+            "values": torch.Tensor([[0, -1.0, 0], [0.5, 0, 0]]),
+            "values_mask": torch.BoolTensor([[False, True, False], [True, False, False]]),
+            "cat_mask": torch.BoolTensor([[True, True, True], [True, True, False]]),
+        }
+        joint_inputs = tuple(inputs[k] for k in ["indices", "measurement_indices", "values", "values_mask"])
+        split_inputs = joint_inputs + (inputs["cat_mask"],)
+
+        cases = [
+            {
+                "msg": "When embedding dimensions are unset, should call joint_embed.",
+                "should_call": "joint",
+            },
+            {
+                "msg": "When embedding dimensions are set, should call split_embed.",
+                "categorical_embedding_dim": 2,
+                "numerical_embedding_dim": 2,
+                "should_call": "split",
+            },
+            {
+                "msg": "When indices are too large, should throw an error.",
+                "n_total_embeddings": 2,
+                "should_raise": AssertionError,
+            },
+            {
+                "msg": "When embedding_mode is mangled, should throw an error.",
+                "embedding_mode": "mangled",
+                "should_raise": ValueError,
+            },
+        ]
+
+        for i, case in enumerate(cases):
+            with self.subTest(f"Subtest {i}: {case['msg']}"):
+                L = DataEmbeddingLayer(
+                    n_total_embeddings=case.get("n_total_embeddings", 4),
+                    out_dim=4,
+                    static_embedding_mode=StaticEmbeddingMode.DROP,
+                    categorical_embedding_dim=case.get("categorical_embedding_dim", None),
+                    numerical_embedding_dim=case.get("numerical_embedding_dim", None),
+                )
+
+                L._joint_embed = MagicMock()
+                L._split_embed = MagicMock()
+
+                if case.get("embedding_mode", None) is not None:
+                    L.embedding_mode = case["embedding_mode"]
+
+                if case.get("should_raise", None) is not None:
+                    with self.assertRaises(case["should_raise"]):
+                        L._embed(**inputs)
+                else:
+                    L._embed(**inputs)
+                    if case["should_call"] == "joint":
+                        L._joint_embed.assert_called_once_with(*joint_inputs)
+                        L._split_embed.assert_not_called()
+                    elif case["should_call"] == "split":
+                        L._joint_embed.assert_not_called()
+                        L._split_embed.assert_called_once_with(*split_inputs)
+                    else:
+                        raise ValueError(f"Case {i} has invalid should_call value ({case['should_call']}).")
 
     def test_split_batch_into_measurement_index_buckets(self):
         batch = PytorchBatch(
@@ -660,7 +725,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
             ]
         )
 
-        got_cat_mask, got_num_mask = L.split_batch_into_measurement_index_buckets(batch)
+        got_cat_mask, got_num_mask = L._split_batch_into_measurement_index_buckets(batch)
 
         self.assertEqual(want_cat_mask, got_cat_mask)
         self.assertEqual(want_num_mask, got_num_mask)

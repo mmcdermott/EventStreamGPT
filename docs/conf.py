@@ -68,7 +68,7 @@ extensions = [
     "sphinxcontrib.bibtex",
 ]
 
-bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib"]
+bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib", "api_refs.bib"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
