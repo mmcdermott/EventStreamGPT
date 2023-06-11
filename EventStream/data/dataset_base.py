@@ -44,8 +44,18 @@ class DatasetBase(
     """A unified base class for dataset objects using different processing libraries.
 
     Args:
-        TODO
         config: Configuration object for this dataset.
+        subjects_df: The dataframe containing all static, subject-level data. If this is specified,
+            `events_df` and `dynamic_measurements_df` should also be specified. Otherwise, this will be built
+            from source via the extraction pipeline defined in `input_schema`.
+        events_df:  The dataframe containing all event timestamps, types, and subject IDs. If this is
+            specified, `subjects_df` and `dynamic_measurements_df` should also be specified. Otherwise, this
+            will be built from source via the extraction pipeline defined in `input_schema`.
+        dynamic_measurements_df: The dataframe containing all time-varying measurement observations. If this
+            is specified, `subjects_df` and `events_df` should also be specified. Otherwise, this will be
+            built from source via the extraction pipeline defined in `input_schema`.
+        input_schema: The schema configuration object to define the extraction pipeline for pulling raw data
+            from source and produce the `subjects_df`, `events_df`, `dynamic_measurements_df` input view.
     """
 
     _PICKLER: str = "dill"
@@ -1065,13 +1075,21 @@ class DatasetBase(
           observed for that subject.
         * ``static_measurement_indices``: This column corresponds in shape to ``static_indices``, but contains
           unsigned integer indices into the unified measurement vocabulary, defining to which measurement each
-          observation corresponds.
+          observation corresponds. It is of the same shape and of a consistent order as ``static_indices.``
         * ``time``: This column is a ragged array of the time in minutes from the start time at which each
           event takes place. For a given row, the length of the array within this column corresponds to the
           number of events that subject has.
-        * ``dynamic_indices``
-        * ``dynamic_measurement_indices``
-        * ``dynamic_values``
+        * ``dynamic_indices``: This column is a doubly ragged array containing the indices of the observed
+          values within the unified vocabulary per event per subject. Each subject's data for this column
+          consists of an array of arrays, each containing only the indices observed at each event.
+        * ``dynamic_measurement_indices`` This column is a doubly ragged array containing the indices of the
+          observed measurements per event per subject. Each subject's data for this column consists of an
+          array of arrays, each containing only the indices of measurements observed at each event. It is of
+          the same shape and of a consistent order as ``dynamic_indices``.
+        * ``dynamic_values`` This column is a doubly ragged array containing the indices of the
+          observed measurements per event per subject. Each subject's data for this column consists of an
+          array of arrays, each containing only the indices of measurements observed at each event. It is of
+          the same shape and of a consistent order as ``dynamic_indices``.
 
         Args:
             subjects_per_output_file: How big to chunk the dataset down for writing to disk; larger values
@@ -1164,7 +1182,8 @@ class DatasetBase(
     def build_DL_cached_representation(
         self, subject_ids: list[int] | None = None, do_sort_outputs: bool = False
     ) -> DF_T:
-        """Produces a format with the below syntax:"""
+        """Produces the deep learning format dataframe described previously for the passed
+        subjects:"""
 
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -1178,6 +1197,7 @@ class DatasetBase(
         do_print_measurement_summaries: bool = True,
         viz_config: Visualizer | None = None,
     ) -> list[Figure] | None:
+        """Describes the dataset, both in language and in figures."""
         print(
             f"Dataset has {humanize.intword(len(self.subjects_df))} subjects, "
             f"with {humanize.intword(len(self.events_df))} events and "
@@ -1198,12 +1218,7 @@ class DatasetBase(
         self,
         viz_config: Visualizer,
     ) -> list[Figure]:
-        """Visualizes the dataset, along the following axes:
-
-        1. By time
-        2. By subject age at event
-        3. Overall histograms
-        """
+        """Visualizes the dataset, along several axes."""
 
         if viz_config.subset_size is not None:
             viz_config.subset_random_seed = self._seed(seed=viz_config.subset_random_seed, key="visualize")
