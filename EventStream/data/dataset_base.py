@@ -897,8 +897,7 @@ class DatasetBase(
     def _fit_measurement_metadata(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
     ) -> pd.DataFrame:
-        """Fits and returns the metadata dataframe for a numeric measurement over the source
-        dataframe.
+        """Fits & returns the metadata df for a numeric measurement over the source df.
 
         The measurement metadata structure stores pre-processing parameters for numerical variables like
         value type, outlier model parameters, normalizer parameters, etc.
@@ -951,13 +950,12 @@ class DatasetBase(
             except BaseException as e:
                 raise ValueError(f"Transforming measurement failed for measure {measure}!") from e
 
-            self.update_attr_df(source_attr, id_col, source_df, updated_cols)
+            self._update_attr_df(source_attr, id_col, source_df, updated_cols)
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
-    def update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: list[str]):
-        """Selectively replaces the columns in cols_to_update in the dataframe stored at attr with
-        new vals.
+    def _update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: list[str]):
+        """Replaces the columns in `cols_to_update` in self's df stored @ `attr` with the vals in `df`.
 
         Replaces all values in the currently stored dataframe at the columns in cols_to_update with
         None, then further updates the dataframe by ID with the values for those columns in `df`.
@@ -1188,7 +1186,7 @@ class DatasetBase(
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @abc.abstractmethod
-    def denormalize(self, events_df: DF_T, col: str) -> DF_T:
+    def _denormalize(self, events_df: DF_T, col: str) -> DF_T:
         """Un-normalizes the column `col` in df `events_df`."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -1237,7 +1235,7 @@ class DatasetBase(
             dynamic_measurements_df = self.dynamic_measurements_df
 
         if viz_config.age_col is not None:
-            events_df = self.denormalize(events_df, viz_config.age_col)
+            events_df = self._denormalize(events_df, viz_config.age_col)
 
         figs = viz_config.plot(subjects_df, events_df, dynamic_measurements_df)
         return figs

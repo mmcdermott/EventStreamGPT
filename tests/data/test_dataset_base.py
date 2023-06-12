@@ -61,8 +61,8 @@ class ESDMock(DatasetBase[dict, dict]):
         self.functions_called["_fit_vocabulary"].append(copy.deepcopy((measure, config, source_df)))
         return Vocabulary(["foo", "bar"], [3 / 4, 1 / 4])
 
-    def update_attr_df(self, attr: str, df: dict):
-        self.functions_called["update_attr_df"].append((attr, df))
+    def _update_attr_df(self, attr: str, df: dict):
+        self.functions_called["_update_attr_df"].append((attr, df))
 
     def backup_numerical_measurements(self):
         self.functions_called["backup_numerical_measurements"].append(())
@@ -107,8 +107,8 @@ class ESDMock(DatasetBase[dict, dict]):
     def build_DL_cached_representation(self):
         self.functions_called["build_DL_cached_representation"].append(())
 
-    def denormalize(self, events_df: dict, col: str) -> dict:
-        self.functions_called["denormalize"].append((events_df, col))
+    def _denormalize(self, events_df: dict, col: str) -> dict:
+        self.functions_called["_denormalize"].append((events_df, col))
         return events_df
 
     @classmethod

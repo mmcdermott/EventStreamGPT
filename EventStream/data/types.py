@@ -160,8 +160,7 @@ class PytorchBatch:
         return self.static_indices.shape[1]
 
     def get(self, item: str, default: Any) -> Any:
-        """Exposes a dictionary like `get` method for the elements of this batch, by attribute
-        name."""
+        """A dictionary like get method for this batch, by attribute name."""
         return getattr(self, item) if item in self.keys() else default
 
     def _slice(self, index: tuple[int | slice] | int | slice) -> "PytorchBatch":
@@ -218,43 +217,35 @@ class PytorchBatch:
         setattr(self, item, val)
 
     def items(self):
-        """Exposes a dictionary like `items` method for the elements of this batch, by attribute."""
+        """A dictionary like items` method for the elements of this batch, by attribute."""
         return dataclasses.asdict(self).items()
 
     def keys(self):
-        """Exposes a dictionary like `keys` method for the elements of this batch, by attribute."""
+        """A dictionary like keys method for the elements of this batch, by attribute."""
         return dataclasses.asdict(self).keys()
 
     def values(self):
-        """Exposes a dictionary like `values` method for the elements of this batch, by
-        attribute."""
+        """A dictionary like values method for the elements of this batch, by attribute."""
         return dataclasses.asdict(self).values()
 
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
-        """Filters the batch down to just the last sequence element, while retaining the same # of
-        dims."""
+        """Filters the batch down to just the last event, while retaining the same # of dims."""
         return self[:, -1:]
 
 
 class TemporalityType(StrEnum):
-    """Describes the different ways in which a measure can vary w.r.t. time. As a `StrEnum`, can be
-    used interchangeably with the lowercase versions of the member name strings (e.g., `STATIC` is
-    equivalent to `'static'`).
+    """The ways a measurement can vary in time.
 
     Members:
-        `STATIC` (`'static'`):
-            This measure is static per-subject. Currently only supported with classificaton data modalities.
-
-        `DYNAMIC` (`'dynamic'`):
-            This measure is dynamic with respect to time in a general manner. It will be recorded potentially
-            many times per-event, and can take on either categorical or partially observed regression data
+        STATIC: This measure is static per-subject. Currently only supported with classificaton data
             modalities.
-
-        `FUNCTIONAL_TIME_DEPENDENT` (`'functional_time_dependent'`):
-            This measure varies with respect to time and the static measures of a subject in a manner that can
-            be pre-specified in known functional form. The "observations" of this measure will be computed on
-            the basis of that functional form and added to the observed events. Currently only supported with
-            categorical or fully observed regression variables.
+        DYNAMIC: This measure is dynamic with respect to time in a general manner. It will be recorded
+            potentially many times per-event, and can take on either categorical or partially observed
+            regression data modalities.
+        FUNCTIONAL_TIME_DEPENDENT: This measure varies with respect to time and the static measures of a
+            subject in a manner that can be pre-specified in known functional form. The "observations" of this
+            measure will be computed on the basis of that functional form and added to the observed events.
+            Currently only supported with categorical or fully observed regression variables.
     """
 
     STATIC = enum.auto()
@@ -263,42 +254,25 @@ class TemporalityType(StrEnum):
 
 
 class DataModality(StrEnum):
-    """The modality of a data element, which dictates pre-processing, embedding, and possible
-    generation of said element. As a `StrEnum`, can be used interchangeably with the lowercase
-    versions of the member name strings (e.g., `DROPPED` is equivalent to `'dropped'`).
+    """The modality of a data element.
 
-    TODO(mmd): Maybe missing:
-        * PARTIALLY_OBSERVED_SINGLE_LABEL_CLASSIFICATION:
-            A data element that may or may not be observed, but if observed takes on exactly one of a fixed
-            set of classes.
-            Examples: Laboratory test results taking the value of "categorical"
-
+    Measurement modality dictates pre-processing, embedding, and possible generation of said element.
     Members:
-        `DROPPED` (`'dropped'`): This column was dropped due to occurring too infrequently for use.
-
-        `SINGLE_LABEL_CLASSIFICATION` (`'single_label_classification'`):
-            This data modality must take on a single label in all possible instances in which it can be
-            observed.
-            This will never have an associated data value measured.
-            Element will be generated via single-label, multi-class classification, only applied in valid
-            instances (e.g., in events of the appropriate type).
-
-        `MULTI_LABEL_CLASSIFICATION` (`'multi_label_classification'`):
-            This data modality can occur zero or more times with different labels in valid instances.
-            This will never have an associated data value measured (see MULTIVARIATE_REGRESSION).
-            Element will be generated via multi-label, binary classification.
-
-        `MULTIVARIATE_REGRESSION` (`'multivariate_regression'`):
-            A column which can occur zero or more times per event with different labels and
-            associated numerical values, keyed by label. All multivariate regression measures are assumed to
-            be partially observed at present.
-            Element keys will be generated via multi-label, binary classification.
-            Values will be generated via probabilistic regression.
-
-        `UNIVARIATE_REGRESSION` (`'univariate_regression'`):
-            This column is a continuous-valued numerical measure which is fully observed across all
-            dimensions. Currently only supported on static or time-dependent columns, and then only for
-            univariate data.
+        DROPPED: This column was dropped due to occurring too infrequently for use.
+        SINGLE_LABEL_CLASSIFICATION: This data modality must take on a single label in all possible instances
+            in which it can be observed. This will never have an associated data value measured. Element will
+            be generated via single-label, multi-class classification, only applied in valid instances (e.g.,
+            in events of the appropriate type).
+        MULTI_LABEL_CLASSIFICATION: This data modality can occur zero or more times with different labels in
+            valid instances. This will never have an associated data value measured (see
+            MULTIVARIATE_REGRESSION). Element will be generated via multi-label, binary classification.
+        MULTIVARIATE_REGRESSION: A column which can occur zero or more times per event with different labels
+            and associated numerical values, keyed by label. All multivariate regression measures are assumed
+            to be partially observed at present. Element keys will be generated via multi-label, binary
+            classification. Values will be generated via probabilistic regression.
+        UNIVARIATE_REGRESSION: This column is a continuous-valued numerical measure which is fully observed
+            across all dimensions. Currently only supported on static or time-dependent columns, and then only
+            for univariate data.
     """
 
     DROPPED = enum.auto()
@@ -309,19 +283,19 @@ class DataModality(StrEnum):
 
 
 class NumericDataModalitySubtype(StrEnum):
-    """Numeric value types. Is used to characterize both entire measures (e.g., 'age' takes on
-    integer values) or sub-measures (e.g., within the measure of "vitals signs", observations for
-    the key "heart rate" take on float values). As a `StrEnum`, can be used interchangeably with the
-    lowercase versions of the member name strings (e.g., `DROPPED` is equivalent to `'dropped'`).
+    """Numeric value types.
+
+    These are used to characterize both entire measures (e.g., 'age' takes on integer values) or sub-measures
+    (e.g., within the measure of "vitals signs", observations for the key "heart rate" take on float values).
 
     Members:
-        `DROPPED` (`'dropped'`): The values of this measure (or sub-measure) were dropped.
-        `INTEGER` (`'integer'`): This measure (or sub-measure) takes on integer values.
-        `FLOAT` (`'float'`): This measure (or sub-measure) takes on floating point values.
-        `CATEGORICAL_INTEGER` (`'categorical_integer'`):
+        DROPPED: The values of this measure (or sub-measure) were dropped.
+        INTEGER: This measure (or sub-measure) takes on integer values.
+        FLOAT: This measure (or sub-measure) takes on floating point values.
+        CATEGORICAL_INTEGER:
             This formerly integer measure/sub-measure has been converted to take on categorical values.
             Options can be found in the global vocabulary, with the syntax f"{key_col}__EQ_{orig_val}".
-        `CATEGORICAL_FLOAT` (`'categorical_float'`):
+        CATEGORICAL_FLOAT:
             This formerly floating point measure/sub-measure has been converted to take on categorical values.
             Options can be found in the global vocabulary, with the syntax f"{key_col}__EQ_{orig_val}".
     """

@@ -1,3 +1,12 @@
+"""The polars implementation of the Dataset class.
+
+Attributes:
+    INPUT_DF_T: The types of supported input dataframes, which includes paths, pandas dataframes, polars
+        dataframes, or queries.
+    DF_T: The types of supported dataframes, which include polars lazyframes, dataframes, expressions, or
+        series.
+"""
+
 import dataclasses
 import multiprocessing
 from collections.abc import Sequence
@@ -21,11 +30,28 @@ from .types import (
 )
 from .vocabulary import Vocabulary
 
+# We need to do this so that categorical columns can be reliably used via category names.
 pl.enable_string_cache(True)
 
 
 @dataclasses.dataclass(frozen=True)
 class Query:
+    """A structure for database query based input dataframes.
+
+    Args:
+        connection_uri: The connection URI for the database. This is in the `connectorx`_ format.
+        query: The query to be run over the database. It can be specified either as a direct string, a path to
+            a file on disk containing the query in txt format, or a list of said options.
+        partition_on: If the query should be partitioned, on what column should it be partitioned? See the
+            `polars documentation`_ for more details.
+        partition_num: If the query should be partitioned, into how many partitions should it be divided? See
+            the `polars documentation`_ for more details.
+        protocol: The `connectorx`_ backend protocol.
+
+    .. connectorx_: https://github.com/sfu-db/connector-x
+    .. polars documentation_: https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.read_database.html
+    """  # noqa E501
+
     connection_uri: str
     query: str | Path | list[str | Path]
     partition_on: str | None = None
@@ -41,6 +67,23 @@ INPUT_DF_T = Union[Path, pd.DataFrame, pl.DataFrame, Query]
 
 
 class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
+    """The polars specific implementation of the dataset.
+
+    Args:
+        config: Configuration object for this dataset.
+        subjects_df: The dataframe containing all static, subject-level data. If this is specified,
+            `events_df` and `dynamic_measurements_df` should also be specified. Otherwise, this will be built
+            from source via the extraction pipeline defined in `input_schema`.
+        events_df:  The dataframe containing all event timestamps, types, and subject IDs. If this is
+            specified, `subjects_df` and `dynamic_measurements_df` should also be specified. Otherwise, this
+            will be built from source via the extraction pipeline defined in `input_schema`.
+        dynamic_measurements_df: The dataframe containing all time-varying measurement observations. If this
+            is specified, `subjects_df` and `events_df` should also be specified. Otherwise, this will be
+            built from source via the extraction pipeline defined in `input_schema`.
+        input_schema: The schema configuration object to define the extraction pipeline for pulling raw data
+            from source and produce the `subjects_df`, `events_df`, `dynamic_measurements_df` input view.
+    """
+
     # Dictates what models can be fit on numerical metadata columns, for both outlier detection and
     # normalization.
     PREPROCESSORS: dict[str, Preprocessor] = {
@@ -49,6 +92,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # Normalizers
         "standard_scaler": StandardScaler,
     }
+    """A dictionary containing the valid pre-processors that can be used by this model class."""
 
     METADATA_SCHEMA = {
         "drop_upper_bound": pl.Float64,
@@ -61,9 +105,36 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         "normalizer": lambda normalizer_params_schema: pl.Struct(normalizer_params_schema),
         "value_type": pl.Categorical,
     }
+    """The Polars schema of the numerical measurement metadata dataframes which track fit
+    parameters."""
 
     @staticmethod
     def get_smallest_valid_int_type(num: int | float | pl.Expr) -> pl.DataType:
+        """Returns the smallest valid unsigned integral type for an ID variable with `num` unique
+        options.
+
+        Args:
+            num: The number of IDs that must be uniquely expressed.
+
+        Raises:
+            ValueError: If there is no unsigned int type big enough to express the passed number of ID
+                variables.
+
+        Examples:
+            >>> import polars as pl
+            >>> Dataset.get_smallest_valid_int_type(num=1)
+            UInt8
+            >>> Dataset.get_smallest_valid_int_type(num=2**8-1)
+            UInt16
+            >>> Dataset.get_smallest_valid_int_type(num=2**16-1)
+            UInt32
+            >>> Dataset.get_smallest_valid_int_type(num=2**32-1)
+            UInt64
+            >>> Dataset.get_smallest_valid_int_type(num=2**64-1)
+            Traceback (most recent call last):
+                ...
+            ValueError: Value is too large to be expressed as an int!
+        """
         if num >= (2**64) - 1:
             raise ValueError("Value is too large to be expressed as an int!")
         if num >= (2**32) - 1:
@@ -352,29 +423,21 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         pre-set in metadata.
 
         Args:
-            `val` (`pl.Expr`): The value to drop, censor, or return unchanged.
-            `drop_lower_bound` (`pl.Expr`):
-              A lower bound such that if `val` is either below or at or below this level, `np.NaN`
-              will be returned.
-              If `None` or `np.NaN`, no bound will be applied.
-            `drop_lower_bound_inclusive`:
-              If `True`, returns `np.NaN` if `val <= row['drop_lower_bound']`. Else, returns
-              `np.NaN` if `val < row['drop_lower_bound']`.
-            `drop_upper_bound`:
-              An upper bound such that if `val` is either above or at or above this level, `np.NaN`
-              will be returned.
-              If `None` or `np.NaN`, no bound will be applied.
-            `drop_upper_bound_inclusive`:
-              If `True`, returns `np.NaN` if `val >= row['drop_upper_bound']`. Else, returns
-              `np.NaN` if `val > row['drop_upper_bound']`.
-            `censor_lower_bound`:
-              A lower bound such that if `val` is below this level but above `drop_lower_bound`,
-              `censor_lower_bound` will be returned.
-              If `None` or `np.NaN`, no bound will be applied.
-            `censor_upper_bound`:
-              An upper bound such that if `val` is above this level but below `drop_upper_bound`,
-              `censor_upper_bound` will be returned.
-              If `None` or `np.NaN`, no bound will be applied.
+            val: The value to drop, censor, or return unchanged.
+            drop_lower_bound: A lower bound such that if `val` is either below or at or below this level,
+                `np.NaN` will be returned. If `None` or `np.NaN`, no bound will be applied.
+            drop_lower_bound_inclusive: If `True`, returns `np.NaN` if ``val <= row['drop_lower_bound']``.
+                Else, returns `np.NaN` if ``val < row['drop_lower_bound']``.
+            drop_upper_bound: An upper bound such that if `val` is either above or at or above this level,
+                `np.NaN` will be returned. If `None` or `np.NaN`, no bound will be applied.
+            drop_upper_bound_inclusive: If `True`, returns `np.NaN` if ``val >= row['drop_upper_bound']``.
+                Else, returns `np.NaN` if ``val > row['drop_upper_bound']``.
+            censor_lower_bound: A lower bound such that if `val` is below this level but above
+                `drop_lower_bound`, `censor_lower_bound` will be returned. If `None` or `np.NaN`, no bound
+                will be applied.
+            censor_upper_bound: An upper bound such that if `val` is above this level but below
+                `drop_upper_bound`, `censor_upper_bound` will be returned. If `None` or `np.NaN`, no bound
+                will be applied.
         """
 
         conditions = []
@@ -412,6 +475,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _validate_id_col(id_col: pl.Series) -> tuple[pl.Series, pl.datatypes.DataTypeClass]:
         """Validate the given ID column.
 
+        This validates that the ID column is unique, integral, strictly positive, and returns it converted to
+        the smallest valid dtype.
+
         Args:
             id_col (pl.Expr): The ID column to validate.
 
@@ -419,7 +485,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             pl.Expr: The validated ID column.
 
         Raises:
-            AssertionError: If the ID column is not unique.
+            ValueError: If the ID column is not unique.
         """
 
         if not id_col.is_unique().all():
@@ -502,18 +568,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         It also casts certain columns to appropriate data types and performs necessary joins.
 
         Args:
-            subjects_df (Optional[DF_T]):
-                A dataframe containing subjects information, with an optional 'subject_id' column.
-            events_df (Optional[DF_T]):
-                A dataframe containing events information, with optional 'event_id', 'event_type', and
+            subjects_df: A dataframe containing subjects information, with an optional 'subject_id' column.
+            events_df: A dataframe containing events information, with optional 'event_id', 'event_type', and
                 'subject_id' columns.
-            dynamic_measurements_df (Optional[DF_T]):
-                A dataframe containing dynamic measurements information, with an optional
+            dynamic_measurements_df: A dataframe containing dynamic measurements information, with an optional
                 'dynamic_measurement_id' column and other measurement-specific columns.
 
         Returns:
-            Tuple[Optional[DF_T], Optional[DF_T], Optional[DF_T]]:
-                A tuple containing the preprocessed subjects, events, and dynamic_measurements dataframes.
+            A tuple containing the preprocessed subjects, events, and dynamic_measurements dataframes.
 
         Raises:
             ValuesError: If any of the required columns are missing or invalid.
@@ -548,18 +610,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @TimeableMixin.TimeAs
     def _sort_events(self):
-        """Sorts events by subject ID and timestamp in ascending order."""
         self.events_df = self.events_df.sort("subject_id", "timestamp", descending=False)
 
     @TimeableMixin.TimeAs
     def _agg_by_time(self):
-        """Aggregates the events_df by subject_id, timestamp, combining event_types into grouped
-        categories, tracking all associated metadata.
-
-        Note that no numerical aggregation (e.g., mean, etc.) happens here; all data is retained,
-        and only dynamic measurement event IDs are updated.
-        """
-
         event_id_dt = self.events_df["event_id"].dtype
 
         if self.config.agg_by_time_scale is None:
@@ -717,16 +771,23 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         vocab_keys_col: str,
         vals_col: str,
     ) -> DF_T:
-        """
-        Infers the appropriate type of the passed metadata column values. Performs the following steps:
-            1. Determines if the column should be dropped for having too few measurements.
-            2. Determines if the column actually contains integral, not floating point values.
-            3. Determines if the column should be partially or fully re-categorized as a categorical column.
+        """Infers the appropriate type of the passed metadata column values. Performs the following
+        steps:
+
+        1. Determines if the column should be dropped for having too few measurements.
+        2. Determines if the column actually contains integral, not floating point values.
+        3. Determines if the column should be partially or fully re-categorized as a categorical column.
 
         Args:
-            `vals` (`pd.Series`): The values to be pre-processed.
-                The total number of column observations that were observed for this metadata column (_not_
-                just this key!)
+            measurement_metadata: The metadata (pre-set or to-be-fit pre-processing parameters) for the
+                numerical measure in question.
+            source_df: The governing source dataframe for this measurement.
+            vocab_keys_col: The column containing the "keys" for this measure. If it is a multivariate
+                regression measure, this column will be the column that indicates to which covariate the value
+                in the values column corresponds. If it is a univariate regression measure, this column will
+                be an artificial column containing a constant key.
+            vals_col: The column containing the numerical values to be assessed.
+
 
         Returns: The appropriate `NumericDataModalitySubtype` for the values.
         """
@@ -811,21 +872,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _fit_measurement_metadata(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
     ) -> pd.DataFrame:
-        """Pre-processes the numerical measurement `measure`.
-
-        Performs the following steps:
-            1. Drops any vocabulary elements that would be removed for insufficiently frequent occurrences.
-            2. Eliminates hard outliers and performs censoring via specified config.
-            3. Infers value types as needed and converts values to the appropriate types.
-            4. Learns an outlier detector as directed.
-            5. Learns a normalizer model as directed.
-
-        Args:
-            `measure` (`str`): The name of the measurement.
-            `config` (`MeasurementConfig`): The configuration object governing this measure.
-            `source_df`
-        """
-
         source_df, vocab_keys_col, vals_col, _, measurement_metadata = self._prep_numerical_source(
             measure, config, source_df
         )
@@ -1026,22 +1072,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _transform_numerical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
     ) -> DF_T:
-        """Transforms the numerical measurement `measure` according to config `config`.
-
-        Performs the following steps:
-            1. Transforms keys to categorical representations for categorical keys.
-            2. Eliminates any values associated with dropped or categorical keys.
-            3. Eliminates hard outliers and performs censoring via specified config.
-            4. Converts values to desired types.
-            5. Adds inlier/outlier indices and remove learned outliers.
-            6. Normalizes values.
-
-        Args:
-            `measure` (`str`): The column name of the governing measurement to transform.
-            `config` (`MeasurementConfig`): The configuration object governing this measure.
-            `source_df` (`DF_T`): The dataframe object containing the measure to be transformed.
-        """
-
         source_df, keys_col_name, vals_col_name, inliers_col_name, _ = self._prep_numerical_source(
             measure, config, source_df
         )
@@ -1141,17 +1171,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _transform_categorical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
     ) -> DF_T:
-        """Transforms the categorical measurement `measure` according to config `config`.
-
-        Performs the following steps:
-            1. Converts the elements to categorical column types according to the learned vocabularies.
-
-        Args:
-            `measure` (`str`): The column name of the governing measurement to transform.
-            `config` (`MeasurementConfig`): The configuration object governing this measure.
-            `source_df` (`DF_T`): The dataframe object containing the measure to be transformed.
-        """
-
         if (config.modality == DataModality.UNIVARIATE_REGRESSION) and (
             config.measurement_metadata.value_type
             not in (
@@ -1188,8 +1207,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return source_df.with_columns(transform_expr)
 
     @TimeableMixin.TimeAs
-    def update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: list[str]):
-        """Updates the attribute `attr` with the dataframe `df`."""
+    def _update_attr_df(self, attr: str, id_col: str, df: DF_T, cols_to_update: list[str]):
         old_df = getattr(self, attr)
 
         old_df = old_df.with_columns(**{c: pl.lit(None).cast(df[c].dtype) for c in cols_to_update})
@@ -1197,7 +1215,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         setattr(self, attr, old_df.update(new_df, on=id_col))
 
-    def melt_df(self, source_df: DF_T, id_cols: Sequence[str], measures: list[str]) -> pl.Expr:
+    def _melt_df(self, source_df: DF_T, id_cols: Sequence[str], measures: list[str]) -> pl.Expr:
+        """Re-formats `source_df` into the desired deep-learning output format."""
         struct_exprs = []
         total_vocab_size = self.vocabulary_config.total_vocab_size
         idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
@@ -1258,27 +1277,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def build_DL_cached_representation(
         self, subject_ids: list[int] | None = None, do_sort_outputs: bool = False
     ) -> DF_T:
-        """
-        Produces a format with the below syntax:
-
-        ```
-        subject_id | start_time | batched_representation
-        1          | 2019-01-01 | batch_1,
-        ...
-
-        Batch Representation:
-          N = number of time points
-          M = maximum number of dynamic measurements at any time point
-          K = number of static measurements
-        batch_1 = {
-          'time': [...] float, (N,), minutes since start_time of event. No missing values.
-          'dynamic_indices': [[...]] int, (N, M), indices of dynamic measurements. 0 Iff missing.
-          'dynamic_values': [[...]] float, (N, M), values of dynamic measurements. 0 If missing.
-          'dynamic_measurement_indices': [[...]] int, (N, M), indices of dynamic measurements. 0 Iff missing.
-          'static_indices': [...] int, (K,), indices of static measurements. No missing values.
-          'static_measurement_indices': [...] int, (K,), indices of static measurements. No missing values.
-        ```
-        """
         # Identify the measurements sourced from each dataframe:
         subject_measures, event_measures, dynamic_measures = [], ["event_type"], []
         for m in self.unified_measurements_vocab[1:]:
@@ -1300,7 +1298,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             subjects_df = self.subjects_df
 
         static_data = (
-            self.melt_df(subjects_df, ["subject_id"], subject_measures)
+            self._melt_df(subjects_df, ["subject_id"], subject_measures)
             .groupby("subject_id")
             .agg(
                 pl.col("measurement_index").alias("static_measurement_indices"),
@@ -1315,7 +1313,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             events_df = self.events_df
             event_ids = None
-        event_data = self.melt_df(events_df, ["subject_id", "timestamp", "event_id"], event_measures)
+        event_data = self._melt_df(events_df, ["subject_id", "timestamp", "event_id"], event_measures)
 
         # 3. Process measurement data into the right base format:
         if event_ids:
@@ -1326,7 +1324,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             dynamic_measurements_df = self.dynamic_measurements_df
 
         dynamic_ids = ["event_id", "measurement_id"] if do_sort_outputs else ["event_id"]
-        dynamic_data = self.melt_df(dynamic_measurements_df, dynamic_ids, dynamic_measures)
+        dynamic_data = self._melt_df(dynamic_measurements_df, dynamic_ids, dynamic_measures)
 
         if do_sort_outputs:
             dynamic_data = dynamic_data.sort("event_id", "measurement_id")
@@ -1362,7 +1360,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         return out
 
-    def denormalize(self, events_df: DF_T, col: str) -> DF_T:
+    def _denormalize(self, events_df: DF_T, col: str) -> DF_T:
         if self.config.normalizer_config is None:
             return events_df
         elif self.config.normalizer_config["cls"] != "standard_scaler":

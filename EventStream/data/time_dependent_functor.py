@@ -135,6 +135,7 @@ class AgeFunctor(TimeDependentFunctor):
     """
 
     OUTPUT_MODALITY: DataModality = DataModality.UNIVARIATE_REGRESSION
+    """This functor outputs a univariate regression measurement."""
 
     def __init__(self, dob_col: str):
         self.dob_col = dob_col
@@ -162,13 +163,42 @@ class AgeFunctor(TimeDependentFunctor):
             prior_indices: Prior timepoint associated indices.
             prior_values: The subject's age (fully pre-processed) as of the last observed prior timepoint.
             new_delta: Delta time in minutes.
-            new_time: Raw time in minutes since 01/01/1970.
-            vocab: Vocabulary config of a dataset.
+            new_time: Raw time in minutes since 01/01/1970. This is not used in this functor.
+            vocab: Vocabulary config of a dataset. This is not used in this functor.
             measurement_metadata: Metadata for the age measurement as determined in pre-processing.
 
         Returns:
             The static index of the univariate age measurement and the new age of the subject at the new
             timepoint.
+
+        Examples:
+            >>> import torch
+            >>> import pandas as pd
+            >>> prior_indices = torch.LongTensor([1, 1, 1])
+            >>> prior_ages = torch.LongTensor([20, 30, 40])
+            >>> age_mean = 30
+            >>> age_std = 10
+            >>> thresh_large = 100
+            >>> thresh_small = 0
+            >>> prior_values = (prior_ages - age_mean) / age_std
+            >>> new_delta = torch.FloatTensor([1, 10, 2]) * (60*24*365.25)
+            >>> measurement_metadata = pd.Series({
+            ...     "normalizer": {"mean_": age_mean, "std_": age_std},
+            ...     "outlier_model": {"thresh_large_": thresh_large, "thresh_small_": thresh_small},
+            ... })
+            >>> functor = AgeFunctor(dob_col="birth_date")
+            >>> new_indices, new_ages = functor.update_from_prior_timepoint(
+            ...     prior_indices=prior_indices,
+            ...     prior_values=prior_values,
+            ...     new_delta=new_delta,
+            ...     new_time=None,
+            ...     vocab=None,
+            ...     measurement_metadata=measurement_metadata,
+            ... )
+            >>> print(new_indices)
+            tensor([1, 1, 1])
+            >>> print(new_ages * age_std + age_mean)
+            tensor([21., 40., 42.])
         """
 
         mean = measurement_metadata["normalizer"]["mean_"]
@@ -214,6 +244,7 @@ class TimeOfDayFunctor(TimeDependentFunctor):
     """
 
     OUTPUT_MODALITY: DataModality = DataModality.SINGLE_LABEL_CLASSIFICATION
+    """This functor outputs a single-label classification task."""
 
     def pl_expr(self) -> pl.Expression:
         return (
@@ -242,15 +273,42 @@ class TimeOfDayFunctor(TimeDependentFunctor):
         the vocabulary information from the `vocab` argument.
 
         Args:
-            prior_indices: Prior timepoint associated indices in the global vocabulary.
-            prior_values: An empty tensor (as this is a categorical measurement).
-            new_delta: Delta time in minutes.
+            prior_indices: Prior timepoint associated indices in the global vocabulary. Not used in this
+                functor.
+            prior_values: An empty tensor (as this is a categorical measurement). This is not used in this
+                functor.
+            new_delta: Delta time in minutes. This is not used in this functor.
             new_time: Raw time in minutes since 01/01/1970.
             vocab: Vocabulary config of a dataset.
-            measurement_metadata: `None`, as this is a categorical measurement.
+            measurement_metadata: `None`, as this is a categorical measurement. Not used in this functor.
 
         Returns:
             Tuple of the new indices of the subsequent time of day, and a tensor of `nan` values.
+
+        Examples:
+            >>> from datetime import datetime
+            >>> from .vocabulary import Vocabulary
+            >>> import torch
+            >>> functor = TimeOfDayFunctor()
+            >>> vocab = Vocabulary(["UNK", "EARLY_AM", "AM", "PM", "LATE_PM"], [0, 4, 3, 2, 1])
+            >>> new_time = torch.tensor([
+            ...     datetime(2020, 1, 1, 0, 0, 0).timestamp() / 60,
+            ...     datetime(2020, 1, 1, 6, 0, 0).timestamp() / 60,
+            ...     datetime(2020, 1, 1, 12, 0, 0).timestamp() / 60,
+            ...     datetime(2020, 1, 1, 21, 0, 0).timestamp() / 60,
+            ... ])
+            >>> new_indices, new_values = functor.update_from_prior_timepoint(
+            ...     prior_indices=None,
+            ...     prior_values=torch.Tensor([1, 1, 1, 1]),
+            ...     new_delta=None,
+            ...     new_time=new_time,
+            ...     vocab=vocab,
+            ...     measurement_metadata=None,
+            ... )
+            >>> print(new_indices)
+            tensor([1, 2, 3, 4])
+            >>> print(new_values)
+            tensor([nan, nan, nan, nan])
         """
 
         hrs_local_at_midnight_epoch = datetime(1970, 1, 1).timestamp() / 60 / 60
