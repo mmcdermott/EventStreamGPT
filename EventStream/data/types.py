@@ -10,43 +10,45 @@ from ..utils import StrEnum
 
 
 class InputDFType(StrEnum):
-    """The kinds of input dataframes that can be used to construct a dataset.
-
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings.
-
-    Members:
-        STATIC: A dataframe such that each row contains static (non-time-varying) data for each subject.
-        EVENT: A dataframe containing event-level data about a subject --- i.e., such that each row contains a
-            timestamp, associated measurements, and subject ID. Timestamps may be duplicated in these input
-            dataframes, but will be deduplicated in the resulting dataset.
-        RANGE: A dataframe containing range-level data about a subject --- i.e., such that each row contains a
-            start and end timestamp, associated measurements, and subject ID. RANGE dataframes are converted
-            into start, end, and equal (start time = end time) event-level dataframes. Timestamps may be
-            duplicated in these input dataframes, but will be deduplicated in the resulting dataset.
-    """
+    """The kinds of input dataframes that can be used to construct a dataset."""
 
     STATIC = enum.auto()
+    """A dataframe such that each row contains static (non-time-varying) data for each subject."""
+
     EVENT = enum.auto()
+    """A dataframe containing event-level data about a subject.
+
+    Each row will contain a timestamp, associated measurements, and subject ID. Timestamps may be
+    duplicated in these input dataframes, but will be deduplicated in the resulting dataset.
+    """
+
     RANGE = enum.auto()
+    """A dataframe containing range-level data about a subject.
+
+    Each row contains a start and end timestamp, associated measurements, and subject ID. RANGE dataframes are
+    converted into start, end, and equal (start time = end time) event-level dataframes. Timestamps may be
+    duplicated in these input dataframes, but will be deduplicated in the resulting dataset.
+    """
 
 
 class InputDataType(StrEnum):
-    """The kinds of data that can be contained in an input dataframe column.
-
-    As a `StrEnum`, can be used interchangeably with the lowercase versions of the member name strings.
-
-    Members:
-        CATEGORICAL: A categorical variable.
-        FLOAT: A floating-point variable.
-        TIMESTAMP: A timestamp variable. This may also be associated with a separate string for timestamp
-            format, if the timestamp is originally presented as a string.
-        BOOLEAN: A boolean variable.
-    """
+    """The kinds of data that can be contained in an input dataframe column."""
 
     CATEGORICAL = enum.auto()
+    """A categorical variable."""
+
     FLOAT = enum.auto()
+    """A floating-point variable."""
+
     TIMESTAMP = enum.auto()
+    """A timestamp variable.
+
+    This may also be associated with a separate string for timestamp format, if the timestamp is
+    originally presented as a string.
+    """
+
     BOOLEAN = enum.auto()
+    """A boolean variable."""
 
 
 @dataclasses.dataclass
@@ -234,74 +236,99 @@ class PytorchBatch:
 
 
 class TemporalityType(StrEnum):
-    """The ways a measurement can vary in time.
-
-    Members:
-        STATIC: This measure is static per-subject. Currently only supported with classificaton data
-            modalities.
-        DYNAMIC: This measure is dynamic with respect to time in a general manner. It will be recorded
-            potentially many times per-event, and can take on either categorical or partially observed
-            regression data modalities.
-        FUNCTIONAL_TIME_DEPENDENT: This measure varies with respect to time and the static measures of a
-            subject in a manner that can be pre-specified in known functional form. The "observations" of this
-            measure will be computed on the basis of that functional form and added to the observed events.
-            Currently only supported with categorical or fully observed regression variables.
-    """
+    """The ways a measurement can vary in time."""
 
     STATIC = enum.auto()
+    """This measure is static per-subject.
+
+    Currently only supported with classificaton data modalities.
+    """
+
     DYNAMIC = enum.auto()
+    """This measure is dynamic with respect to time in a general manner.
+
+    It will be recorded potentially many times per-event, and can take on either categorical or
+    partially observed regression data modalities.
+    """
+
     FUNCTIONAL_TIME_DEPENDENT = enum.auto()
+    """This measure varies predictably with respect to time and the static measures of a subject.
+
+    The "observations" of this measure will be computed on the basis of that functional form and
+    added to the observed events. Currently only supported with categorical or fully observed
+    regression variables.
+    """
 
 
 class DataModality(StrEnum):
     """The modality of a data element.
 
-    Measurement modality dictates pre-processing, embedding, and possible generation of said element.
-    Members:
-        DROPPED: This column was dropped due to occurring too infrequently for use.
-        SINGLE_LABEL_CLASSIFICATION: This data modality must take on a single label in all possible instances
-            in which it can be observed. This will never have an associated data value measured. Element will
-            be generated via single-label, multi-class classification, only applied in valid instances (e.g.,
-            in events of the appropriate type).
-        MULTI_LABEL_CLASSIFICATION: This data modality can occur zero or more times with different labels in
-            valid instances. This will never have an associated data value measured (see
-            MULTIVARIATE_REGRESSION). Element will be generated via multi-label, binary classification.
-        MULTIVARIATE_REGRESSION: A column which can occur zero or more times per event with different labels
-            and associated numerical values, keyed by label. All multivariate regression measures are assumed
-            to be partially observed at present. Element keys will be generated via multi-label, binary
-            classification. Values will be generated via probabilistic regression.
-        UNIVARIATE_REGRESSION: This column is a continuous-valued numerical measure which is fully observed
-            across all dimensions. Currently only supported on static or time-dependent columns, and then only
-            for univariate data.
+    Measurement modality dictates pre-processing, embedding, and possible generation of said
+    element.
     """
 
     DROPPED = enum.auto()
+    """This column was dropped due to occurring too infrequently for use."""
+
     SINGLE_LABEL_CLASSIFICATION = enum.auto()
+    """This data modality must take on a single label in all possible instances where it is
+    observed.
+
+    This will never have an associated data value measured. Element will be generated via
+    consecutive prediction of whether or not the event will be observed at all, followed by single-
+    label, multi-class classification of what label will be observed.
+    """
+
     MULTI_LABEL_CLASSIFICATION = enum.auto()
+    """This data modality can occur zero or more times with different labels.
+
+    This will never have an associated data value measured (see MULTIVARIATE_REGRESSION). Element
+    will be generated via multi-label, binary classification.
+    """
+
     MULTIVARIATE_REGRESSION = enum.auto()
+    """A column which can occur 0+ times per event with different labels and values.
+
+    All multivariate regression measures are assumed to be partially observed at present. Element
+    keys will be generated via multi-label, binary classification. Values will be generated via
+    probabilistic regression.
+    """
+
     UNIVARIATE_REGRESSION = enum.auto()
+    """This column is a continuous-valued, one-dimensional numerical measure which is partially
+    observed.
+
+    The model first predicts whether or not this measurement will be observed, then what value it
+    would take on.
+    """
 
 
 class NumericDataModalitySubtype(StrEnum):
     """Numeric value types.
 
-    These are used to characterize both entire measures (e.g., 'age' takes on integer values) or sub-measures
-    (e.g., within the measure of "vitals signs", observations for the key "heart rate" take on float values).
-
-    Members:
-        DROPPED: The values of this measure (or sub-measure) were dropped.
-        INTEGER: This measure (or sub-measure) takes on integer values.
-        FLOAT: This measure (or sub-measure) takes on floating point values.
-        CATEGORICAL_INTEGER:
-            This formerly integer measure/sub-measure has been converted to take on categorical values.
-            Options can be found in the global vocabulary, with the syntax f"{key_col}__EQ_{orig_val}".
-        CATEGORICAL_FLOAT:
-            This formerly floating point measure/sub-measure has been converted to take on categorical values.
-            Options can be found in the global vocabulary, with the syntax f"{key_col}__EQ_{orig_val}".
+    These are used to characterize both entire measures (e.g., 'age' takes on integer values) or
+    sub-measures (e.g., within the measure of "vitals signs", observations for the key "heart rate"
+    take on float values).
     """
 
     DROPPED = enum.auto()
+    """The values of this measure (or sub-measure) were dropped."""
+
     INTEGER = enum.auto()
+    """This measure (or sub-measure) takes on integer values."""
+
     FLOAT = enum.auto()
+    """This measure (or sub-measure) takes on floating point values."""
+
     CATEGORICAL_INTEGER = enum.auto()
+    """This formerly integer measure/sub-measure has been converted to take on categorical values.
+
+    Options can be found in the global vocabulary, with the syntax ``f"{key_col}__EQ_{orig_val}"``.
+    """
+
     CATEGORICAL_FLOAT = enum.auto()
+    """This formerly floating point measure/sub-measure has been converted to take on categorical
+    values.
+
+    Options can be found in the global vocabulary, with the syntax ``f"{key_col}__EQ_{orig_val}"``.
+    """

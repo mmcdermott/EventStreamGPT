@@ -66,21 +66,21 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
     Upon construction, this class will try to load a number of dataset files from disk. These files should be
     saved in accordance with the `Dataset.save` method; in particular,
-    * There should be pre-cached deep-learning representation parquet dataframes stored in
-      ``config.save_dir / 'DL_reps' / f"{split}*.parquet"``
-    * There should be a vocabulary config object in json form stored in
-      ``config.save_dir / 'vocabulary_config.json'``
-    * There should be a set of inferred measurement configs stored in
-      ``config.save_dir / 'inferred_measurement_configs.json'``
+
+    * There should be pre-cached deep-learning representation parquet dataframes stored in ``config.save_dir /
+      'DL_reps' / f"{split}*.parquet"``
+    * There should be a vocabulary config object in json form stored in ``config.save_dir /
+      'vocabulary_config.json'``
+    * There should be a set of inferred measurement configs stored in ``config.save_dir /
+      'inferred_measurement_configs.json'``
     * If a task dataframe name is specified in the configuration object, then there should be either a
-      pre-cached task-specifid DL representation dataframe in
-      ``config.save_dir / 'DL_reps' / 'for_task' / config.task_df_name / f"{split}.parquet"``, or a "raw"
-      task dataframe, containing subject IDs, start and end times, and labels, stored in
-      ``config.save_dir / task_dfs / f"{config.task_df_name}.parquet"``. In the case that the latter is all
-      that exists, then the former will be constructed by limiting the input cached dataframe down to the
-      appropriate sequences and adding label columns. This newly constructed datafrmae will then be saved in
-      the former filepath for future use. This construction process should happen first on the train split, so
-      that inferred task vocabularies are shared across splits.
+      pre-cached task-specifid DL representation dataframe in ``config.save_dir / 'DL_reps' / 'for_task' /
+      config.task_df_name / f"{split}.parquet"``, or a "raw" task dataframe, containing subject IDs, start and
+      end times, and labels, stored in ``config.save_dir / task_dfs / f"{config.task_df_name}.parquet"``. In
+      the case that the latter is all that exists, then the former will be constructed by limiting the input
+      cached dataframe down to the appropriate sequences and adding label columns. This newly constructed
+      datafrmae will then be saved in the former filepath for future use. This construction process should
+      happen first on the train split, so that inferred task vocabularies are shared across splits.
 
     Args:
         config: Configuration options for the dataset.
