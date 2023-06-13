@@ -1,16 +1,19 @@
+"""This module contains the class for running "structured attention" that respects a dependency
+graph."""
 from typing import Any
 
 import torch
 
 
 class StructuredAttention(torch.nn.Module):
-    """This module performs a dependency-graph structured attention calculation, in which each
-    sequence element is itself composed of objects with internal dependency structures that you want
-    to respect during calculation.
+    """A module for performing dependency-graph structured attention calculations.
 
-    This module is basically just a container for appropriately shuffling the input tensors to pass
-    them to the nested modules for pooling events, processing the event sequences, then processing
-    the intra-event dependency graph objects.
+    This module is a container for shuffling input tensors to pass them to the nested modules
+    for pooling events, processing event sequences, and processing intra-event dependency graph objects.
+
+    Args:
+        seq_module: The module responsible for processing sequences.
+        dep_graph_module: The module responsible for processing dependency graphs.
     """
 
     def __init__(
@@ -33,48 +36,30 @@ class StructuredAttention(torch.nn.Module):
         prepend_graph_with_history_embeddings: bool = True,
         update_last_graph_el_to_history_embedding: bool = True,
     ) -> tuple[torch.Tensor, dict[str, dict[str, torch.Tensor | None] | None]]:
-        """
-        Performs a structured attention forward pass, consistent with the internal sub-modules. E.g., given
-        the notation defined in the hidden_state arg documentation, this module performs the following steps:
-            1. Input events are summarized into event embeddings via their last entry:
-                `x_i = [e_{i, 1}, ..., e_{i, m}, s_i][:, -1, :] = s_i
-            2. These events are contextualized via the history:
-                `h_i = self.seq_module([x_1, ..., x_i], seq_mask, **seq_module_kwargs)`
-            3. Output embeddings are produced by processing the historical context and dep. graph structure:
-                ```
-                e_{i, j}^{out} = self.dep_graph_module(
-                    [h_{i-1}, e_{i, 1}, ..., e_{i, j-1}], **dep_graph_module_kwargs
-                )
-                ```
+        """Performs a structured attention forward pass.
+
+        This method implements several steps, which include summarizing input events into event embeddings,
+        contextualizing these events via the history, and producing output embeddings by processing the
+        historical context and dependency graph structure.
 
         Args:
-            hidden_states (`torch.Tensor` of shape (batch, seq len, dependency graph len, hidden size)):
-                The input embeddings corresponding to the different elements of the structured dependency
-                graph, with the last element of the graph corresponding to a whole-event embedding
-                E.g., if the sequence length is n, then
-                hidden_states = [...[
-                    [e_{1, 1}, e_{2, 1}, ..., e_{n-1, 1}, e_{n, 1}],
-                    [e_{1, 2}, e_{2, 2}, ..., e_{n-1, 2}, e_{n, 2}],
-                    ...
-                    [e_{1, m}, e_{2, m}, ..., e_{n-1, m}, e_{n, m}],
-                    [s_{1},    s_{2},    ..., s_{n-1},    s_{n}],
-                ]...]
-                corresponds to a setting where each sequence element x_i consists of a set
-                (e_{i, 1}, ..., e_{i, m}) such that the generative model states that
-                (x_1, ..., x_{i-1}) -> x_i and, within x_i, the e_{i, j} elements obey dependency
-                relationships specified within the dep_graph_module. and s_i reflects the embedding of the
-                entire element x_i
+            hidden_states: The input embeddings corresponding to the different elements of the structured
+                dependency graph, with the last element of the graph corresponding to a whole-event embedding.
+            seq_attention_mask: Mask to avoid processing on padding token indices.
+            event_mask: Mask to avoid processing on padding token indices.
+            seq_module_kwargs: Additional keyword arguments to pass to the sequence module.
+            dep_graph_module_kwargs: Additional keyword arguments to pass to the dependency graph module.
+            prepend_graph_with_history_embeddings: If true, the history embeddings will be prepended to the
+                dependency graph sequence. Default is True. This is set to false during generation if caching
+                is enabled, as the prepended portion is contained in the cached past history.
+            update_last_graph_el_to_history_embedding: If true, the last element of the dependency graph
+                sequence will be updated with the history embedding. Default is True. This is set to false
+                during generation, when the last element of the dependency graph sequence may not be the final
+                element of the overall chain (if we are generated an internal element).
 
-            seq_mask (`torch.Tensor` of shape `(batch, seq len)`, *optional*):
-                Mask to avoid processing on padding token indices. Mask values selected in `[0, 1]`:
-                - 1 for tokens that are **not masked**,
-                - 0 for tokens that are **masked**.
-
-            seq_module_kwargs (`Dict[str, Any]`, *optional*):
-                additional keyword arguments to pass to the sequence module.
-
-            dep_graph_module_kwargs (`Dict[str, Any]`, *optional*):
-                additional keyword arguments to pass to the dependency graph module.
+        Returns:
+            The dependency graph output and additional return arguments across both the sequence and dep graph
+            modules.
         """
 
         if seq_module_kwargs is None:

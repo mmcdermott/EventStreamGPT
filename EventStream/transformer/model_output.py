@@ -1,3 +1,10 @@
+"""Classes and utilities for model output layers.
+
+Attributes:
+    BERNOULLI_DIST_T: The type of a bernoulli distribution.
+    CATEGORICAL_DIST_T: The type of a categorical distribution.
+    REGRESSION_DIST_T: The type of a regression distribution.
+"""
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -34,10 +41,63 @@ REGRESSION_DIST_T = torch.distributions.Normal
 def get_event_types(
     dynamic_measurement_indices: torch.LongTensor,
     dynamic_indices: torch.LongTensor,
-    event_type_measurment_idx: int,
+    event_type_measurement_idx: int,
     event_type_vocab_offset: int,
 ) -> torch.LongTensor:
-    event_type_mask = dynamic_measurement_indices == event_type_measurment_idx
+    """Identifies the event types from given dynamic measurements and indices.
+
+    Args:
+        dynamic_measurement_indices: Measurement indices to evaluate.
+        dynamic_indices: Dynamic indices related to the measurements.
+        event_type_measurement_idx: Index to determine the event type.
+        event_type_vocab_offset: Offset value applied to dynamic indices.
+
+    Returns:
+        The identified event types.
+
+    Raises:
+        AssertionError: If there is more than one event type per event.
+
+    Examples:
+        >>> import torch
+        >>> dynamic_measurement_indices = torch.LongTensor([
+        ...     [[1, 2, 2, 2], [1, 2, 2, 0], [2, 2, 1, 0], [2, 1, 0, 0]],
+        ...     [[1, 0, 0, 0], [3, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        ... ])
+        >>> dynamic_indices = torch.LongTensor([
+        ...     [[1, 11, 14, 18], [3, 11, 12, 0], [11, 10, 2, 0], [15, 8, 0, 0]],
+        ...     [[3, 0, 0, 0], [31, 9, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        ... ])
+        >>> event_type_measurement_idx = 1
+        >>> event_type_vocab_offset = 1
+        >>> print(get_event_types(
+        ...     dynamic_measurement_indices=dynamic_measurement_indices,
+        ...     dynamic_indices=dynamic_indices,
+        ...     event_type_measurement_idx=event_type_measurement_idx,
+        ...     event_type_vocab_offset=event_type_vocab_offset,
+        ... ))
+        tensor([[0, 2, 1, 7],
+                [2, 8, 0, 0]])
+        >>> dynamic_measurement_indices = torch.LongTensor([
+        ...     [[1, 1, 2, 2], [1, 2, 2, 0], [2, 2, 1, 0], [2, 1, 0, 0]],
+        ...     [[1, 0, 0, 0], [3, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        ... ])
+        >>> dynamic_indices = torch.LongTensor([
+        ...     [[1, 4, 14, 18], [3, 11, 12, 0], [11, 10, 2, 0], [15, 8, 0, 0]],
+        ...     [[3, 0, 0, 0], [31, 9, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        ... ])
+        >>> get_event_types(
+        ...     dynamic_measurement_indices=dynamic_measurement_indices,
+        ...     dynamic_indices=dynamic_indices,
+        ...     event_type_measurement_idx=event_type_measurement_idx,
+        ...     event_type_vocab_offset=event_type_vocab_offset,
+        ... )
+        Traceback (most recent call last):
+            ...
+        AssertionError: Got 2 event types per event!
+    """
+
+    event_type_mask = dynamic_measurement_indices == event_type_measurement_idx
 
     num_event_types = event_type_mask.sum(-1)
     torch._assert((num_event_types <= 1).all().all(), f"Got {num_event_types.max()} event types per event!")
@@ -46,6 +106,45 @@ def get_event_types(
 
 
 def strip_unused_indices(dynamic_indices, *other_tensors):
+    """Rearranges `dynamic_indices` and other passed tensors to minimize the number of padding (0)
+    indices.
+
+    For each slice of `dynamic_indices` in the last dimension, this function re-arranges the elements of that
+    slice (in `dynamic_indices` and all other passed tensors) such that the maximum number of zero-indices are
+    removed and all non-zero indices are at the front of the tensor. This is used during generation, when
+    newly generated elements may fill up the end of the tensor and may have zeros in them which we want to
+    remove to minimize the size of the output tensors.
+
+    Args:
+        dynamic_indices: The indices to be evaluated. This is not the dynamic indices as input to the model,
+            but rather that output during generation for a new event, so it is of shape
+            (batch, num_dynamic_measurements)
+        *other_tensors: Additional tensors to be re-arranged identically to `dynamic_indices`. All such
+            tensors must have the same shape as `dynamic_indices`.
+
+    Returns:
+        The processed indices or a tuple of processed tensors.
+
+    Examples:
+        >>> import torch
+        >>> dynamic_indices = torch.LongTensor([
+        ...     [1, 11, 0, 18], [3, 0, 12, 0], [0, 0, 2, 0], [15, 8, 0, 0],
+        ... ])
+        >>> dynamic_measurement_indices = torch.LongTensor([
+        ...     [1, 2, 3, 4], [1, 2, 3, 0], [2, 2, 1, 0], [2, 1, 0, 0],
+        ... ])
+        >>> for T in strip_unused_indices(dynamic_indices, dynamic_measurement_indices):
+        ...     print(T)
+        tensor([[ 1, 11, 18],
+                [ 3, 12,  0],
+                [ 2,  0,  0],
+                [15,  8,  0]])
+        tensor([[1, 2, 4],
+                [1, 3, 0],
+                [1, 0, 0],
+                [2, 1, 0]])
+    """
+
     is_present = dynamic_indices != 0
 
     present_indices = torch.argwhere(is_present)
@@ -72,6 +171,14 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
 
 
 class NestedIndexableMixin:
+    """Mixin for indexable nested elements.
+
+    Provides a way to slice through nested indexable elements, using a static method and an instance
+    method for slicing. This will index through dictionaries, tuples, torch distributions, and
+    naturally indexable objects. Inputs of `None` will likewise return `None`. This assumes that
+    inhereting classes can be mapped to plain dictionaries via `dataclasses.asdict`.
+    """
+
     @staticmethod
     def _recursive_slice(val: Any, idx: INDEX_SELECT_T):
         match val:
@@ -87,14 +194,31 @@ class NestedIndexableMixin:
                 return val[idx]
 
     def slice(self, idx: INDEX_SELECT_T):
-        """Allows for performing joint index selection option on the nested elements."""
+        """Performs joint index selection on the nested elements.
+
+        Args:
+            idx: The indices to be selected.
+
+        Returns:
+            An instance of the class indexed to the appropriate parameters.
+        """
 
         return self.__class__(**self._recursive_slice(asdict(self), idx))
 
 
 @dataclass
 class TransformerOutputWithPast(ModelOutput):
-    """Transformer Model Outputs, with optional past key values and hidden states."""
+    """Holds output data from a transformer model.
+
+    This class is designed to manage output data from a transformer model,
+    which may include last hidden state, past key values, hidden states, and attentions.
+
+    Args:
+        last_hidden_state: The last hidden state from the model.
+        past_key_values: The past key values from the model.
+        hidden_states: The hidden states from the model.
+        attentions: The attentions from the model.
+    """
 
     last_hidden_state: torch.FloatTensor = None
     past_key_values: tuple[tuple[torch.FloatTensor]] | dict[str, tuple[torch.FloatTensor]] | None = None
@@ -104,7 +228,16 @@ class TransformerOutputWithPast(ModelOutput):
 
 @dataclass
 class GenerativeSequenceModelLosses(ModelOutput):
-    """Losses for the GenerativeSequenceModel head, split by task type."""
+    """Holds losses data for a Generative Sequence Model.
+
+    This class is designed to manage losses from a Generative Sequence Model,
+    which can include classification, regression and time to event losses.
+
+    Args:
+        classification: Losses for the classification task.
+        regression: Losses for the regression task.
+        time_to_event: Loss for the time-to-event task.
+    """
 
     classification: dict[str, torch.FloatTensor] | None = None
     regression: dict[str, torch.FloatTensor] | None = None
@@ -691,7 +824,14 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
 @dataclass
 class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
-    """Predictions for the GenerativeSequenceModel head, split by task type."""
+    """Contains the predictions for the GenerativeSequenceModel head.
+
+    Args:
+        classification: The predicted classification task results.
+        regression: The predicted regression task results.
+        regression_indices: The predicted indices for the regression task.
+        time_to_event: The predicted time-to-event results.
+    """
 
     classification: dict[
         str, tuple[None, BERNOULLI_DIST_T] | tuple[BERNOULLI_DIST_T, CATEGORICAL_DIST_T]
@@ -704,7 +844,18 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
         self,
         event_mask: torch.BoolTensor,
     ) -> GenerativeSequenceModelSamples:
-        """Returns a sample from the nested distributions."""
+        """Generates a sample from the contained predictions.
+
+        Args:
+            event_mask: A boolean tensor representing the event mask. This is used only to provide a source
+                for the sampled event's mask (which is copied from the last sequence dimension of this input).
+
+        Returns:
+            A sample from the GenerativeSequenceModel.
+
+        Raises:
+            ValueError: If the classification or regression distributions are malformed or unrecognized.
+        """
 
         match self.classification:
             case None:
@@ -758,11 +909,19 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
 
 @dataclass
 class GenerativeSequenceModelLabels(ModelOutput):
-    """Labels for the GenerativeSequenceModel head, split by task type."""
+    """Contains the labels for the GenerativeSequenceModel head.
 
-    # Single-label classification task labels will have shape batch X seq and have raw integer labels in
-    # it, whereas multi-label classification task labels will have shape batch X seq X vocab size and have
-    # binary indicators for each label.
+    The labels are split by task type. Single-label classification task labels will have
+    shape batch X seq and have raw integer labels, whereas multi-label classification task labels
+    will have shape batch X seq X vocab size and have binary indicators for each label.
+
+    Args:
+        classification: The classification task labels.
+        regression: The regression task labels.
+        regression_indices: The indices for the regression task.
+        time_to_event: The time-to-event task labels.
+    """
+
     classification: dict[str, torch.LongTensor] | None = None
     regression: dict[str, torch.FloatTensor] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
@@ -771,7 +930,21 @@ class GenerativeSequenceModelLabels(ModelOutput):
 
 @dataclass
 class GenerativeSequenceModelOutput(ModelOutput):
-    """All GenerativeSequenceModel outputs, including losses, predictions, labels, and masks."""
+    """Contains all GenerativeSequenceModel outputs.
+
+    The outputs include losses, predictions, labels, and masks, among others.
+
+    Args:
+        loss: The overall model loss.
+        losses: The specific model losses by task type.
+        preds: The model predictions.
+        labels: The model labels.
+        event_mask: A boolean tensor representing the event mask.
+        dynamic_values_mask: A boolean tensor representing the dynamic values mask.
+        past_key_values: The past key values from the model.
+        hidden_states: The hidden states from the model.
+        attentions: The attentions from the model.
+    """
 
     loss: torch.FloatTensor
     losses: GenerativeSequenceModelLosses | None = None
@@ -787,7 +960,13 @@ class GenerativeSequenceModelOutput(ModelOutput):
 
 @dataclass
 class StreamClassificationModelOutput(ModelOutput):
-    """All GenerativeSequenceModel outputs, including losses, predictions, labels, and masks."""
+    """Contains all outputs for the Stream Classification Model.
+
+    Args:
+        loss: The overall model loss.
+        preds: The model predictions.
+        labels: The model labels.
+    """
 
     loss: torch.FloatTensor
     preds: torch.FloatTensor = None
@@ -795,8 +974,24 @@ class StreamClassificationModelOutput(ModelOutput):
 
 
 class GenerativeOutputLayerBase(torch.nn.Module):
-    # TODO(mmd): Allow for use of NLL-beta throughout?
-    # TODO(mmd): Per-subject, NLL should be averaged over total duration, not # of events?
+    """A base class for the output layer of a generative model.
+
+    This class is responsible for constructing the time-to-event (TTE) layer based on the
+    TTE_generation_layer_type in the given config, along with observation and classification layers. It also
+    establishes the criteria for observation and classification. It does not contain a forward method which
+    actually calls these helper methods, as those are implemented by subclass specific methods depending on
+    how the encoded state is structured.
+
+    This class should not be instantiated directly. Instead, use one of the derived classes.
+
+    Args:
+        config: A configuration object of type StructuredTransformerConfig.
+
+    Raises:
+        ValueError: If the TTE_generation_layer_type in the config is not valid.
+        ValueError: If any measurements are duplicated in the regression layers.
+    """
+
     def __init__(
         self,
         config: StructuredTransformerConfig,
@@ -858,34 +1053,26 @@ class GenerativeOutputLayerBase(torch.nn.Module):
     def get_TTE_outputs(
         self, batch: PytorchBatch, encoded: torch.FloatTensor, is_generation: bool = False
     ) -> tuple[torch.FloatTensor, torch.distributions.Distribution, torch.FloatTensor,]:
-        """Produces time-to-event predictions and log likelihoods (_not NLLs!_) for the model.
+        """Produces time-to-event predictions and log likelihoods (**not NLLs!**) for the model.
 
         Args:
-            `batch` (`PytorchBatch`):
-                The batch of data for which the classification predictions are desired.
-            `encoded` (`torch.FloatTensor`, shape is batch_size X sequence_length X hidden_dim):
-                The final encodings *to be used to predict the time from the event at that position to the
-                subsequent event*. For example, the vector `encoded[i][j]` (which is of size `hidden_dim` and
-                corresponds to event `j` for batch element `i`) is
-                *not* used to predict the time from event `j-1` to event `j`, but rather is used to predict
-                the time from event `j` to event `j+1` (all for batch index `i`, of course). *Note that this
-                is shifted from how `encoded` is used in other functions in this class.*
+            batch: The batch of data for which the classification predictions are desired.
+            encoded: The final encodings used to predict the time from the event at a position to the
+                subsequent event. This tensor is of shape (batch size X sequence length X hidden dim).
+            is_generation: A boolean to indicate if the function is used for generation. Defaults to False. If
+                true, then the model will only return the predicted distribution (as that is all that is used
+                in generative use-cases).
 
         Returns:
-            `TTE_LL` (`torch.FloatTensor`):
-                A torch scalar containing the average log-likelihood of observed time-to-events given the
-                predicted distribution. Averaging is done over all unmasked events per batch element first,
-                then in a macro manner over all batch elements.
-                TODO(mmd): Should probably be NLL, not LL.
-            `TTE_dist` (`torch.distributions.Distribution`):
-                The predicted torch Distribution for modelling time-to-event. The distribution's shape is such
-                that samples drawn from the distribution will have shape `[batch_size, sequence_length]` and
-                `sample[i][j]` will be a prediction for the time between events `j` and `j+1` for batch
-                element `i` (note that this includes a prediction for the time until the event after the end
-                of the sequence, though such an event is naturally not observed).
-            `TTE_true` (`torch.FloatTensor`):
-                A tensor of shape `[batch_size, sequence_length - 1]` such that `TTE_true[i][j]` contains the
-                observed time between events `j` and `j+1` for batch element `i`.
+            A tuple containing the following items:
+                TTE_LL: A torch scalar containing the average log-likelihood of observed time-to-events given
+                the predicted distribution.
+                TTE_dist: The predicted torch Distribution for modelling time-to-event.
+                TTE_true: A tensor containing the observed time between events for each batch element.
+
+        Raises:
+            ValueError: If NaNs are found in TTE_obs_mask_exp, TTE_true_exp or TTE_LL or if there is no
+            observed time-to-event for >= 1 patient in the batch.
         """
         TTE_dist = self.TTE_layer(encoded)
 
