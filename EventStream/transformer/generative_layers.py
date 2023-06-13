@@ -1,3 +1,4 @@
+"""This module implements the TTE and regression generative emission layers used in the model."""
 import torch
 from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 

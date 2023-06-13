@@ -1,3 +1,4 @@
+"""The conditionally independent event stream GPT model."""
 from typing import Any
 
 import torch
@@ -21,8 +22,18 @@ from .transformer import (
 
 
 class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
-    # TODO(mmd): Allow for use of NLL-beta throughout?
-    # TODO(mmd): Per-subject, NLL should be averaged over total duration, not # of events?
+    """The output layer for the conditionally independent event stream model.
+
+    TODO(mmcdermott):
+        Allow for use of NLL-beta throughout? https://github.com/mmcdermott/EventStreamML/issues/26
+
+    Args:
+        config: The overall model configuration.
+
+    Raises:
+        ValueError: If the model configuration does not indicate conditionally independent mode.
+    """
+
     def __init__(
         self,
         config: StructuredTransformerConfig,
@@ -37,6 +48,20 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
         encoded: torch.FloatTensor,
         is_generation: bool = False,
     ) -> GenerativeSequenceModelOutput:
+        """Returns the overall model output for the input batch.
+
+        It takes the final hidden states from the encoder and runs them through various output layers to
+        predict subsequent event timing and contents. It's difference from a nested attention variant is
+        largely in that it predicts everything simultaneously.
+
+        Args:
+            batch: The batch of data to process.
+            encoded: The encoded representation of the input data.
+            is_generation: Whether or not we are in generation mode. If so, the output predictions are for the
+                next event for both time and event contents; if not, then we shift the event contents
+                predictoin back by one event in order to align with the labels.
+        """
+
         # These are the containers we'll use to process the outputs
         classification_dists_by_measurement = {}
         classification_losses_by_measurement = None if is_generation else {}
@@ -137,6 +162,24 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
 
 
 class CIPPTForGenerativeSequenceModeling(StructuredGenerationMixin, StructuredTransformerPreTrainedModel):
+    """The end-to-end model for conditionally independent generative sequence modelling.
+
+    This model is a subclass of :class:`~transformers.StructuredTransformerPreTrainedModel` and is designed
+    for generative pre-training over "event-stream" data, with inputs in the form of `PytorchBatch` objects.
+    It is trained to solve the generative, multivariate, masked temporal point process problem over the
+    defined measurements in the input data.
+
+    This model largely simply passes the input data through a
+    `ConditionallyIndependentPointProcessTransformer` followed by a
+    `ConditionallyIndependentGenerativeOutputLayer`.
+
+    Args:
+        config: The overall model configuration.
+
+    Raises:
+        ValueError: If the model configuration does not indicate conditionally independent mode.
+    """
+
     def __init__(
         self,
         config: StructuredTransformerConfig,
@@ -152,7 +195,25 @@ class CIPPTForGenerativeSequenceModeling(StructuredGenerationMixin, StructuredTr
         # Initialize weights and apply final processing
         self.post_init()
 
-    def prepare_inputs_for_generation(self, batch: PytorchBatch, past=None, **kwargs) -> dict[str, Any]:
+    def prepare_inputs_for_generation(
+        self, batch: PytorchBatch, past: tuple | None = None, **kwargs
+    ) -> dict[str, Any]:
+        """Returns model keyword arguments that have been modified for generation purposes.
+
+        Args:
+            batch: The batch of data to be transformed.
+            past: The past state of the model, if any. If specified, it must be a tuple containing the past
+                values over prior layers and heads.
+
+            **kwargs: Additional keyword arguments. If "use_cache" is set in the kwargs to False, then the
+                past state is ignored. If not, then the past state is passed through the model to accelerate
+                generation, if past is not None then the batch is trimmed to the last element in the sequence,
+                and the sequential attention mask is pre-computed.
+
+        Raises:
+            ValueError: If the past state is malformed or if there is a dep_graph_el_generation_target in the
+                kwargs that is not None.
+        """
         # only last sequence element in the batch if past is defined in kwargs
         batch.time = time_from_deltas(batch)
 
@@ -189,6 +250,19 @@ class CIPPTForGenerativeSequenceModeling(StructuredGenerationMixin, StructuredTr
     def forward(
         self, batch: PytorchBatch, is_generation: bool = False, **kwargs
     ) -> GenerativeSequenceModelOutput:
+        """This runs the full forward pass of the model.
+
+        Args:
+            batch: The batch of data to be transformed.
+            is_generation: Whether or not the model is being used for generation.
+            **kwargs: Additional keyword arguments, which are used for output structuring and are forwarded to
+                the encoder. The model specifically looks for use_cache, output_attentions, and
+                output_hidden_states keyword arguments, which control whether additional properties should be
+                added to the output.
+
+        Returns:
+            The output of the model, which is a `GenerativeSequenceModelOutput` object.
+        """
         use_cache = kwargs.get("use_cache", False)
         output_attentions = kwargs.get("output_attentions", False)
         output_hidden_states = kwargs.get("output_hidden_states", False)

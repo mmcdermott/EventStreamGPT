@@ -1,3 +1,9 @@
+"""Core EventStream GPT model configuration classes.
+
+Attributes:
+    MEAS_INDEX_GROUP_T: The type of acceptable measurement index group option specifications.
+    ATTENTION_TYPES_LIST_T: The type of acceptable attention type configuration options.
+"""
 import dataclasses
 import enum
 import itertools
@@ -17,35 +23,108 @@ MEAS_INDEX_GROUP_T = Union[str, tuple[str, MeasIndexGroupOptions]]
 
 
 class Split(StrEnum):
+    """What data split is being used."""
+
     TRAIN = enum.auto()
+    """The train split."""
+
     TUNING = enum.auto()
+    """The hyperparameter tuning split.
+
+    Also often called "dev", "validation", or "val".
+    """
+
     HELD_OUT = enum.auto()
+    """The held out test set split.
+
+    Also often called "test".
+    """
 
 
 class MetricCategories(StrEnum):
+    """Describes different categories of metrics.
+
+    Used for configuring what metrics to track.
+    """
+
     LOSS_PARTS = enum.auto()
+    """Track the different loss components."""
+
     TTE = "TTE"
+    """Track metrics related to time-to-event prediction."""
+
     CLASSIFICATION = enum.auto()
+    """Track metrics for generative prediction of classification metrics."""
+
     REGRESSION = enum.auto()
+    """Track metrics for generative prediction of regression metrics."""
 
 
 class Metrics(StrEnum):
+    """Describes the different supported metric functions."""
+
     AUROC = "AUROC"
+    """The area under the receiver operating characteristic.
+
+    Also commonly called "AUC".
+    """
+
     AUPRC = "AUPRC"
+    """The area under the precision recall curve.
+
+    Also commonly refferred to as "Average Precision".
+    """
+
     ACCURACY = enum.auto()
+    """Raw accuracy."""
+
     EXPLAINED_VARIANCE = enum.auto()
+    """The extent to which the predicted regression label explains the variance in the true
+    label."""
+
     MSE = "MSE"
+    """The mean squared error between predicted and true regression labels."""
+
     MSLE = "MSLE"
+    """The mean squared log error between predicted and true regression labels."""
 
 
 class Averaging(StrEnum):
+    """Describes the different ways metric values can be averaged in multi-class or multi-label
+    settings."""
+
     MACRO = enum.auto()
+    """Macro-averaging; Metrics across different labels are averaged without regard for label
+    frequency."""
+
     MICRO = enum.auto()
+    """Micro-averaging; Metrics across different labels are averaged without weighting."""
+
     WEIGHTED = enum.auto()
+    """Weighted-averaging; Metrics across different labels are averaged weighted by label/class
+    frequency."""
 
 
 @hydra_dataclass
 class MetricsConfig(JSONableMixin):
+    """An overall configuration for what metrics should be tracked.
+
+    Args:
+        n_auc_thresholds: The number of thresholds to be used when computing AUROCs, for memory efficiency.
+        do_skip_all_metrics: If `True`, all metrics will be skipped by the model. This can save significant
+            time.
+        do_validate_args: If `True`, `torchmetrics` metrics objects will validate their arguments during
+            computation. This costs time.
+        include_metrics: A dictionary detailing what metrics should be tracked over what splits, for what
+            measurements, in what ways. If `do_skip_all_metrics`, this will be silently overwritten with {}.
+            The format for this dictionary is as follows. The outermost level of keys is splits. Within each
+            split, there is another dictionary, whose keys are metric categories that should be tracked in
+            some form on that split. Each metric category maps to either the boolean `True`, in which case
+            that metric category should be tracked across all relevant metrics, or to a dictionary mapping
+            metric functions to either the boolean `True`, indicating they should be tracked over all relevant
+            weightings, or to a list of weightings which should be tracked.
+    """
+
     n_auc_thresholds: int | None = 50
     do_skip_all_metrics: bool = False
     do_validate_args: bool = False
@@ -84,6 +163,7 @@ class MetricsConfig(JSONableMixin):
             self.include_metrics = {}
 
     def do_log_only_loss(self, split: Split) -> bool:
+        """Returns True if only loss should be logged for this split."""
         if (
             self.do_skip_all_metrics
             or split not in self.include_metrics
@@ -98,6 +178,7 @@ class MetricsConfig(JSONableMixin):
             return False
 
     def do_log(self, split: Split, cat: MetricCategories, metric_name: str | None = None) -> bool:
+        """Returns True if `metric_name` should be tracked for `split` and `cat`."""
         if self.do_log_only_loss(split):
             return False
 
@@ -122,6 +203,7 @@ class MetricsConfig(JSONableMixin):
             return False
 
     def do_log_any(self, cat: MetricCategories, metric_name: str | None = None) -> bool:
+        """Returns True if `metric_name` should be tracked for `cat` and any split."""
         for split in Split.values():
             if self.do_log(split, cat, metric_name):
                 return True
@@ -130,45 +212,37 @@ class MetricsConfig(JSONableMixin):
 
 @hydra_dataclass
 class OptimizationConfig(JSONableMixin):
-    """A configuration object for optimization variables for training a `StructuredTransformer`
-    model.
+    """Configuration for optimization variables for training a model.
 
     Args:
-        `init_lr` (`float`, default is 1e-2):
-            The initial learning rate used by the optimizer. Given warmup is used, this will be the peak
+        init_lr: The initial learning rate used by the optimizer. Given warmup is used, this will be the peak
             learning rate after the warmup period.
-        `end_lr` (`float`, default is 1e-7):
-            The final learning rate at the end of all learning rate decay.
-        `max_epochs` (`int`, default is 100):
-            The maximum number of training epochs.
-        `batch_size` (`int`, default is 32):
-            The batch size used during stochastic gradient descent.
-        `validation_batch_size` (`int`, default is 32):
-            The batch size used during evaluation.
-        `lr_frac_warmup_steps` (`Optional[float]`, *optional*, default is 0.01):
-            What fraction of the total training steps should be spent increasing the learning rate during the
-            learning rate warmup period. Should not be set simultaneously with `lr_num_warmup_steps`. This is
-            largely used in the `set_tot_dataset` function which initializes missing parameters given the
-            dataset size, such as inferring the `max_num_training_steps` and setting `lr_num_warmup_steps`
-            given this parameter and the inferred `max_num_training_steps`.
-        `lr_num_warmup_steps` (`Optional[int]`, *optional*, default is None):
-            How many training steps should be spent on learning rate warmup. If this is set then
-            `lr_frac_warmup_steps` should be set to None, and `lr_frac_warmup_steps` will be properly inferred
-            during `set_to_dataset`.
-        `max_training_steps` (`Optional[int]`, *optional*, default is None):
-            The maximum number of training steps the system will run for given `max_epochs`, `batch_size`, and
-            the size of the used dataset (as inferred via `set_to_dataset`). Generally should not be set at
-            initialization.
-        `lr_decay_power` (`float`, default is 1.0):
-            The decay power in the learning rate polynomial decay with warmup. 1.0 corresponds to linear
-            decay.
-        `weight_decay` (`float`, default is 0.01):
-            The L2 weight regularization penalty that is applied during training.
-        `patience` (`Optional[int]`, *optional*, default is None):
-            The number of epochs to wait before early stopping if the validation loss does not improve. If
-            None, early stopping is not used.
-        `gradient_accumulation` (`Optional[int]`, *optional*, default is None):
-            The number of gradient accumulation steps to use. If None, gradient accumulation is not used.
+        end_lr: The final learning rate at the end of all learning rate decay.
+        max_epochs: The maximum number of training epochs.
+        batch_size: The batch size used during stochastic gradient descent.
+        validation_batch_size: The batch size used during evaluation.
+        lr_frac_warmup_steps: What fraction of the total training steps should be spent increasing the
+            learning rate during the learning rate warmup period. Should not be set simultaneously with
+            `lr_num_warmup_steps`. This is largely used in the `set_tot_dataset` function which initializes
+            missing parameters given the dataset size, such as inferring the `max_num_training_steps` and
+            setting `lr_num_warmup_steps` given this parameter and the inferred `max_num_training_steps`.
+        lr_num_warmup_steps: How many training steps should be spent on learning rate warmup. If this is set
+            then `lr_frac_warmup_steps` should be set to None, and `lr_frac_warmup_steps` will be properly
+            inferred during `set_to_dataset`.
+        max_training_steps: The maximum number of training steps the system will run for given `max_epochs`,
+            `batch_size`, and the size of the used dataset (as inferred via `set_to_dataset`). Generally
+            should not be set at initialization.
+        lr_decay_power: The decay power in the learning rate polynomial decay with warmup. 1.0 corresponds to
+            linear decay.
+        weight_decay: The L2 weight regularization penalty that is applied during training.
+        patience: The number of epochs to wait before early stopping if the validation loss does not improve.
+            If None, early stopping is not used.
+        gradient_accumulation: The number of gradient accumulation steps to use. If None, gradient
+            accumulation is not used.
+
+    Raises:
+        ValueError: If `end_lr`, `init_lr`, and `end_lr_frac_of_init_lr` are not consistent, or if `end_lr`
+            and `end_lr_frac_of_init_lr` are both unset.
     """
 
     init_lr: float = 1e-2
@@ -205,8 +279,18 @@ class OptimizationConfig(JSONableMixin):
             self.end_lr_frac_of_init_lr = self.end_lr / self.init_lr
 
     def set_to_dataset(self, dataset: PytorchDataset):
-        """Sets missing parameters in the optimization config to appropriate values given
-        `dataset`'s size."""
+        """Sets parameters in the config to appropriate values given dataset.
+
+        Some parameters for optimization are dependent upon the total size of the dataset (e.g., converting
+        between a fraction of training and a concrete number of steps). This function sets these parameters
+        based on dataset's size.
+
+        Args:
+            dataset: The dataset to set the internal parameters too.
+
+        Raises:
+            ValueError: If the setting process does not yield consistent results.
+        """
 
         steps_per_epoch = int(math.ceil(len(dataset) / self.batch_size))
 
@@ -219,68 +303,47 @@ class OptimizationConfig(JSONableMixin):
         elif self.lr_frac_warmup_steps is None:
             self.lr_frac_warmup_steps = self.lr_num_warmup_steps / self.max_training_steps
 
-        assert (
+        if not (
             math.floor(self.lr_frac_warmup_steps * self.max_training_steps) <= self.lr_num_warmup_steps
-        ) and (math.ceil(self.lr_frac_warmup_steps * self.max_training_steps) >= self.lr_num_warmup_steps), (
-            "`self.lr_frac_warmup_steps`, `self.max_training_steps`, and `self.lr_num_warmup_steps` should "
-            "be consistent, but they aren't! Got\n"
-            f"\tself.max_training_steps = {self.max_training_steps}\n"
-            f"\tself.lr_frac_warmup_steps = {self.lr_frac_warmup_steps}\n"
-            f"\tself.lr_num_warmup_steps = {self.lr_num_warmup_steps}"
-        )
+        ) and (math.ceil(self.lr_frac_warmup_steps * self.max_training_steps) >= self.lr_num_warmup_steps):
+            raise ValueError(
+                "`self.lr_frac_warmup_steps`, `self.max_training_steps`, and `self.lr_num_warmup_steps` "
+                "should be consistent, but they aren't! Got\n"
+                f"\tself.max_training_steps = {self.max_training_steps}\n"
+                f"\tself.lr_frac_warmup_steps = {self.lr_frac_warmup_steps}\n"
+                f"\tself.lr_num_warmup_steps = {self.lr_num_warmup_steps}"
+            )
 
 
 class StructuredEventProcessingMode(StrEnum):
-    """Structured event sequence processing modes. As a `StrEnum`, can be used interchangeably with
-    the lowercase versions of the member name strings (e.g., `CONDITIONALLY_INDEPENDENT` is
-    equivalent to `'conditionally_independent'`).
-
-    Members:
-        `CONDITIONALLY_INDEPENDENT` (`'conditionally_independent'`):
-            Aspects of an event will all be predicted from the prior events independently of one another,
-            conditioned on said prior history.
-
-        `NESTED_ATTENTION` (`'nested_attention'`):
-            Aspects of an event will be predicted in a manner dependent upon one another according to a
-            user-specified intra-event dependency chain, all conditioned on a historical embedding of the
-            sequence.
-    """
-
-    @classmethod
-    def values(cls):
-        return list(map(lambda c: c.value, cls))
+    """Structured event sequence processing modes."""
 
     CONDITIONALLY_INDEPENDENT = enum.auto()
+    """Intra-event covariates are independent of one another, conditioned on history."""
+
     NESTED_ATTENTION = enum.auto()
+    """Intra-event covariates are predicted according to a user-specified intra-event dependency
+    chain."""
 
 
 class TimeToEventGenerationHeadType(StrEnum):
-    """Options for model TTE generation heads. As a `StrEnum`, can be used interchangeably with the
-    lowercase versions of the member name strings (e.g., `EXPONENTIAL` is equivalent to
-    `'exponential'`).
-
-    Members:
-        `EXPONENTIAL` (`'exponential'`):
-            Time-to-event will be characterized by an exponential distribution with a rate parameter
-            determined via an affine transformation of the sequence-history representation.
-
-        `LOG_NORMAL_MIXTURE` (`'log_normal_mixture'`):
-            Time-to-event will be characterized by a mixture of log-normal distributions with number of
-            components determined via hyperparameter and location, log-scale, and log-component-weight
-            parameters determined via an affine transformation of the sequence-history representation.
-    """
-
-    @classmethod
-    def values(cls):
-        return list(map(lambda c: c.value, cls))
+    """Options for model TTE generation heads."""
 
     EXPONENTIAL = enum.auto()
+    """TTE is modeled by an exponential distribution with a model-determined rate parameter."""
+
     LOG_NORMAL_MIXTURE = enum.auto()
+    """TTE is modeled by a mixture of log-normal distribiutions."""
 
 
 class AttentionLayerType(StrEnum):
+    """Attention layer type options."""
+
     GLOBAL = enum.auto()
+    """Attention is global over all sequence elements (respecting a causal mask)."""
+
     LOCAL = enum.auto()
+    """Attention is limited to a local window of a config-determined size."""
 
 
 ATTENTION_TYPES_LIST_T = Union[
@@ -295,155 +358,131 @@ ATTENTION_TYPES_LIST_T = Union[
 
 
 class StructuredTransformerConfig(PretrainedConfig):
-    r"""This is the configuration class to store the configuration of a [`StructuredTransformer`]
-    model and derived model. It is used to instantiate a Transformer model according to the
-    specified arguments. Depending on the use of the model, some parameters will be unused. For
-    example, `measurements_per_generative_mode` and parameters in the Model Output Config section
-    are only used for Multi-variate Marked Point Process (generative sequence model) applications.
+    """The configuration class for Event Stream GPT models.
 
-    Configuration objects inherit from [`PretrainedConfig`] can be used to control the model outputs. Read the
-    documentation from [`PretrainedConfig`] for more information. Of particular interest, note that all
+    It is used to instantiate a Transformer model according to the specified arguments. Depending on the use
+    of the model, some parameters will be unused. For example, `measurements_per_generative_mode` and
+    parameters in the Model Output Config section are only used for generative tasks, not fine-tuning tasks.
+
+    Configuration objects inherit from `PretrainedConfig` can be used to control the model outputs. Read the
+    documentation from `PretrainedConfig` for more information. Of particular interest, note that all
     `PretrainedConfig` objects inherit the following properties, to be used for fine-tuning tasks:
 
-        * finetuning_task (str, optional) — Name of the task used to fine-tune the model. This can be used
-          when converting from an original (TensorFlow or PyTorch) checkpoint.
-        * id2label (Dict[int, str], optional) — A map from index (for instance prediction index, or target
-          index) to label.
-        * label2id (Dict[str, int], optional) — A map from label to index for the model.
-        * num_labels (int, optional) — Number of labels to use in the last layer added to the model, typically
-          for a classification task.
-        * task_specific_params (Dict[str, Any], optional) — Additional keyword arguments to store for the
-          current task.
-        * problem_type (str, optional) — Problem type for XxxForSequenceClassification models. Can be one of
-          "regression", "single_label_classification" or "multi_label_classification".
+    * finetuning_task (str, optional) — Name of the task used to fine-tune the model. This can be used
+      when converting from an original (TensorFlow or PyTorch) checkpoint.
+    * id2label (Dict[int, str], optional) — A map from index (for instance prediction index, or target
+      index) to label.
+    * label2id (Dict[str, int], optional) — A map from label to index for the model.
+    * num_labels (int, optional) — Number of labels to use in the last layer added to the model, typically
+      for a classification task.
+    * task_specific_params (Dict[str, Any], optional) — Additional keyword arguments to store for the
+      current task.
+    * problem_type (str, optional) — Problem type for fine-tuning models. Can be one of
+      "regression", "single_label_classification" or "multi_label_classification".
 
     Args:
-        vocab_sizes_by_measurement (`Dict[str, int]`):
-            The size of the vocabulary per data type.
-        vocab_offsets_by_measurement (`Dict[str, int]'`):
-            The vocab offset per data type.
-        measurements_idxmap (`Dict[str, Dict[Hashable, int]]`):
-            A map per data type of the integer index corresponding to each vocabulary element.
-        measurements_per_generative_mode (`Dict[DataModality, List[str]]`):
-            Which measurements (by str name) are generated in which mode.
-        event_types_idxmap (`Dict[str, int]`, *optional*, defaults to None):
-            A map of the integer index corresponding to each event type.
-        measurements_per_dep_graph_level (`List[List[MEAS_INDEX_GROUP_T]]`, *optional*, defaults to None):
-            A list of the measurements (by name) and whether or not categorical, numerical, or both associated
-            values of that measurement are used in each dependency graph level. At the default, this assumes
-            the dependency graph has exactly one non-whole-event level and uses that to predict the entirety
-            of the event contents.
-        max_seq_len (`int`):
-            The maximum sequence length for the model.
-        categoral_embedding_dim (`Optional[int]`, *optional*, defaults to None):
-            If specified, the input embedding layer will use a split embedding layer, with one embedding for
-            categorical data and one for continuous data.  The embedding dimension for the categorical data
-            will be this value. In this case, numerical_embedding_dim must be specified.
-        numerical_embedding_dim (`Optional[int]`, *optional*, defaults to None):
+        vocab_sizes_by_measurement: The size of the vocabulary per data type.
+        vocab_offsets_by_measurement: The vocab offset per data type.
+        measurement_configs: A map per measurement to the fit, pre-processed configuration object for that
+            measurement. Used only during generation.
+        measurements_idxmap: A map per measurement of the integer index corresponding to that measurement in
+            the unified measurements vocabulary.
+        measurements_per_generative_mode: Which measurements (by str name) are generated in which mode.
+        event_types_idxmap: A map of the integer index corresponding to each event type.
+        measurements_per_dep_graph_level: A list of the measurements (by name) and whether or not categorical,
+            numerical, or both associated values of that measurement are used in each dependency graph level.
+            At the default, this assumes the dependency graph has exactly one non-whole-event level and uses
+            that to predict the entirety of the event contents.
+        max_seq_len: The maximum sequence length for the model.
+        do_split_embeddings: Whether or not embeddings should be split into separate categorical and numerical
+            embedding layers, or all embedded jointly. See `DataEmbeddingLayer` for more information.
+        categoral_embedding_dim: If specified, the input embedding layer will use a split embedding layer,
+            with one embedding for categorical data and one for continuous data.  The embedding dimension for
+            the categorical data will be this value. In this case, numerical_embedding_dim must be specified.
+        numerical_embedding_dim:
             If specified, the input embedding layer will use a split embedding layer, with one embedding for
             categorical data and one for continuous data.  The embedding dimension for the continuous data
             will be this value. In this case, categoral_embedding_dim must be specified.
-        static_embedding_mode (`StaticEmbeddingMode`, *optional*, defaults to StaticEmbeddingMode.SUM_ALL):
+        static_embedding_mode:
             Specifies how the static embeddings are combined with dynamic embeddings. Options and their
             effects are described in the `StaticEmbeddingMode` documentation.
-        static_embedding_weight (`float`, *optional*, defaults to 0.5):
+        static_embedding_weight:
             The relative weight of the static embedding in the combined embedding.  Only used if the
             `static_embedding_mode` is not `StaticEmbeddingMode.DROP`.
-        dynamic_embedding_weight (`float`, *optional*, defaults to 0.5):
+        dynamic_embedding_weight:
             The relative weight of the dynamic embedding in the combined embedding.  Only used if the
             `static_embedding_mode` is not `StaticEmbeddingMode.DROP`.
-        categorical_embedding_weight (`float`, *optional*, defaults to 0.5):
+        categorical_embedding_weight:
             The relative weight of the categorical embedding in the combined embedding.  Only used if
             `categoral_embedding_dim` and `numerical_embedding_dim` are not None.
-        numerical_embedding_weight (`float`, *optional*, defaults to 0.5):
+        numerical_embedding_weight:
             The relative weight of the numerical embedding in the combined embedding.  Only used if
             `categoral_embedding_dim` and `numerical_embedding_dim` are not None.
-        do_normalize_by_measurement_index (`bool`, *optional*, defaults to False):
+        do_normalize_by_measurement_index:
             If True, the input embeddings are normalized such that each unique measurement index contributes
             equally to the embedding.
 
-        structured_event_processing_mode (`StructuredEventProcessingMode`, defaults to 'nested_attention'):
-            Specifies how the internal event is processed internally by the model. Can be either:
+
+        structured_event_processing_mode: Specifies how the internal event is processed internally by the
+            model. Can be either:
+
             1. `StructuredEventProcessingMode.NESTED_ATTENTION`:
-                In this case, the whole-event embeddings are processed via a sequential encoder first into
-                historical embeddings, then the inter-event dependency graph elements are processed via a
-                second sequential encoder alongside the relevant historical embedding.  Sequential processing
-                types are either full attention / MLP blocks or just self attention layers, as controlled by
-                `do_full_block_in_seq_attention` and `do_full_block_in_dep_graph_attention`.
+               In this case, the whole-event embeddings are processed via a sequential encoder first into
+               historical embeddings, then the inter-event dependency graph elements are processed via a
+               second sequential encoder alongside the relevant historical embedding.  Sequential processing
+               types are either full attention / MLP blocks or just self attention layers, as controlled by
+               `do_full_block_in_seq_attention` and `do_full_block_in_dep_graph_attention`.
             2. `StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT`
-                In this case, the input dependency graph embedding elements are all summed and processed as a
-                single event sequence, with each event's output embedding being used to simultaneously predict
-                all elements of the subsequent event (thereby treating them all as conditionally independent).
-                In this case, the following parameters should all be None:
-                    * `measurements_per_dep_graph_level`
-                    * `do_full_block_in_seq_attention`
-                    * `do_full_block_in_dep_graph_attention`
-                    * `dep_graph_attention_types`
-                    * `dep_graph_window_size`
-        hidden_size (`int`, *optional*, defaults to 256):
-            The hidden size of the model. Must be consistent with `head_dim`, if specified.
-        head_dim (`int`, *optional*, defaults to 64):
-            The hidden size per attention head. Useful for hyperparameter tuning to avoid setting infeasible
-            hidden sizes. Must be consistent with hidden_size, if specified.
-        num_hidden_layers (`int`, *optional*, defaults to 2):
-            Number of encoder layers.
-        num_attention_heads (`int`, *optional*, defaults to 4):
-            Number of attention heads for each attention layer in the Transformer encoder.
-        seq_attention_types (`List`, *optional*, defaults to `[[["global", "local"], num_hidden_layers/2]]`):
-            The type of attention for each sequence self attention layer in a `List` of the following format
-            `[[["attention_type"], num_layers]]` e.g. for a 24 layer model `[[["global"], 24]]` or
-            `[[["global", "local"], 12]]` Choose the value of `attention_type` from `["global", "local"]`
-        seq_window_size (`int`, *optional*, defaults to `32`):
-            The window size used in local attention for sequence self attention layers.
-        dep_graph_attention_types
-            (`Optional[List]`, *optional*, defaults to `[[["global"], num_hidden_layers]]`):
-            The type of attention for each dependency graph self attention layer in a `List` of the following
-            format `[[["attention_type"], num_layerss]]` e.g. for a 24 layer model `[[["global"], 24]]` or
-            `[[["global", "local"], 12]]` Choose the value of `attention_type` from `["global", "local"]`.
+               In this case, the input dependency graph embedding elements are all summed and processed as a
+               single event sequence, with each event's output embedding being used to simultaneously predict
+               all elements of the subsequent event (thereby treating them all as conditionally independent).
+               In this case, the following parameters should all be None:
+
+               * `measurements_per_dep_graph_level`
+               * `do_full_block_in_seq_attention`
+               * `do_full_block_in_dep_graph_attention`
+               * `dep_graph_attention_types`
+               * `dep_graph_window_size`
+
+        hidden_size: The hidden size of the model. Must be consistent with `head_dim`, if specified.
+        head_dim: The hidden size per attention head. Useful for hyperparameter tuning to avoid setting
+            infeasible hidden sizes. Must be consistent with hidden_size, if specified.
+        num_hidden_layers: Number of encoder layers.
+        num_attention_heads: Number of attention heads for each attention layer in the Transformer encoder.
+        seq_attention_types: The type of attention for each sequence self attention layer.
+        seq_window_size: The window size used in local attention for sequence self attention layers.
+        dep_graph_attention_types: The type of attention for each dependency graph self attention layer.
             Defaults to global attention as dependency graph sare in general much shorter than sequences.
-        dep_graph_window_size (`Optional[int]`, *optional*, defaults to `2`):
-            The window size used in local attention for dependency graph self attention layers. Default is set
-            much lower as dependency graphs are in general much shorter than sequences.
-        do_full_block_in_seq_attention (`Optional[bool]`, *optional*, defaults to False):
-            If true, use a full attention block (including layer normalization and MLP layers) for the
-            sequence processing module. If false, just use a self attention layer.
-        do_full_block_in_dep_graph_attention (`Optional[bool]`, *optional*, defaults to True):
-            If true, use a full attention block (including layer normalization and MLP layers) for the
-            dependency graph processing module. If false, just use a self attention layer.
+        dep_graph_window_size: The window size used in local attention for dependency graph self attention
+            layers. Default is set much lower as dependency graphs are in general much shorter than sequences.
+        do_full_block_in_seq_attention: If True, use a full attention block (including layer normalization and
+            MLP layers) for the sequence processing module. If false, just use a self attention layer.
+        do_full_block_in_dep_graph_attention: If True, use a full attention block (including layer
+            normalization and MLP layers) for the dependency graph processing module. If false, just use a
+            self attention layer.
+        intermediate_size: Dimension of the "intermediate" (often named feed-forward) layer in encoder.
+        activation_function: The non-linear activation function (function or string) in the encoder. If
+            string, ``"gelu"`` and ``"relu"`` are supported.
+        input_dropout: The dropout probability for the input layer.
+        attention_dropout: The dropout probability for the attention probabilities.
+        resid_dropout: The dropout probability used on the residual connections.
+        layer_norm_epsilon: The epsilon used by the layer normalization layers.
+        init_std: The standard deviation of the truncated normal weight initialization distribution.
+        TTE_generation_layer_type: What kind of TTE generation layer to use.
+        TTE_lognormal_generation_num_components: If the TTE generation layer is ``'log_normal_mixture'``, this
+            specifies the number of mixture components to include. Must be `None` if
+            ``TTE_generation_layer_type == 'exponential'``.
+        mean_log_inter_event_time_min: The mean of the log of the time between events in the underlying data.
+            Used for normalizing TTE predictions. Must be `None` if ``TTE_generation_layer_type ==
+            'exponential'``.
+        std_log_inter_event_time_min: The standard deviation of the log of the time between events in the
+            underlying data. Used for normalizing TTE predictions. Must be `None` if
+            ``TTE_generation_layer_type == 'exponential'``.
+        use_cache: Whether to use the past key/values attentions (if applicable to the model) to speed up
+            decoding.
 
-        intermediate_size (`int`, *optional*, defaults to 32):
-            Dimension of the "intermediate" (often named feed-forward) layer in encoder.
-        activation_function (`str` or `function`, *optional*, defaults to `"gelu"`):
-            The non-linear activation function (function or string) in the encoder. If string,
-            `"gelu"` and `"relu"` are supported.
-        input_dropout (`float`, *optional*, defaults to 0.1):
-            The dropout probability for the input layer.
-        attention_dropout (`float`, *optional*, defaults to 0.1):
-            The dropout probability for the attention probabilities.
-        resid_dropout (`float`, *optional*, defaults to 0.1):
-            The dropout probability used on the residual connections.
-        layer_norm_epsilon (`float`, *optional*, defaults to 1e-5):
-            The epsilon used by the layer normalization layers.
-        init_std (`float`, *optional*, defaults to 0.02):
-            The standard deviation of the truncated normal weight initialization distribution.
-
-        TTE_generation_layer_type (`TimeToEventGenerationHeadType`, defaults to 'exponential'):
-            What kind of TTE generation layer to use.
-        TTE_lognormal_generation_num_components (`Optional[int]`, *optional*, defaults to None):
-            If the TTE generation layer is `'log_normal_mixture'`, this specifies the number of mixture
-            components to include.
-            Must be `None` if `TTE_generation_layer_type == 'exponential'`.
-        mean_log_inter_event_time_min (`float`, *optional*, defaults to `None`):
-            The mean of the log of the time between events in the underlying data. Used for normalizing TTE
-            predictions.
-            Must be `None` if `TTE_generation_layer_type == 'exponential'`.
-        std_log_inter_event_time_min (`float`, *optional*, defaults to `None`):
-            The standard deviation of the log of the time between events in the underlying data. Used for
-            normalizing TTE predictions.
-            Must be `None` if `TTE_generation_layer_type == 'exponential'`.
-
-        use_cache (`bool`, *optional*, defaults to `True`):
-            Whether to use the past key/values attentions (if applicable to the model) to speed up decoding.
+    Raises:
+        ValueError: If configuration parameters are not fully self consistent.
     """
 
     def __init__(
