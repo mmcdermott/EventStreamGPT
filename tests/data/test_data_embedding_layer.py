@@ -18,12 +18,11 @@ from ..utils import MLTypeEqualityCheckableMixin
 
 
 class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
-    """This code tests the `DataEmbeddingLayer` module, which embeds batches output by the
-    `PytorchDataset` object's `collate` function."""
+    """This code tests the `DataEmbeddingLayer` module, which embeds batches output by the `PytorchDataset`
+    object's `collate` function."""
 
     def test_constructs(self):
-        """This tests that the DataEmbeddingLayer can be constructed properly and expects the right
-        types."""
+        """This tests that the DataEmbeddingLayer can be constructed properly and expects the right types."""
 
         valid_params = {
             "n_total_embeddings": 4,
@@ -731,8 +730,7 @@ class TestDataEmbeddingLayer(MLTypeEqualityCheckableMixin, unittest.TestCase):
         self.assertEqual(want_num_mask, got_num_mask)
 
     def test_forward(self):
-        """This tests data embedding layer under conditions in which it should produce an
-        embedding."""
+        """This tests data embedding layer under conditions in which it should produce an embedding."""
 
         valid_params = {
             "n_total_embeddings": 4,

@@ -366,8 +366,8 @@ class JSONableMixin:
 def task_wrapper(task_func: Callable) -> Callable:
     """Optional decorator that controls the failure behavior when executing the task function.
 
-    It ensures that weights and biases finish tracking any runs that were running, even in the case
-    of an exception, to avoid multi-run failures due to weights and biases errors.
+    It ensures that weights and biases finish tracking any runs that were running, even in the case of an
+    exception, to avoid multi-run failures due to weights and biases errors.
     """
 
     @functools.wraps(task_func)

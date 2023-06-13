@@ -1,8 +1,8 @@
 """The base class for Polars friendly data pre-processors.
 
-This file contains the abstract base class for polars pre-processors. It is just used to define the
-interface expected by the data preprocessing pipeline. Subclasses (defined in other files in this
-module) contain actual implementations of algorithms.
+This file contains the abstract base class for polars pre-processors. It is just used to define the interface
+expected by the data preprocessing pipeline. Subclasses (defined in other files in this module) contain actual
+implementations of algorithms.
 """
 
 from abc import ABC, abstractmethod
@@ -13,11 +13,10 @@ import polars as pl
 class Preprocessor(ABC):
     """The base class for Polars friendly data pre-processors.
 
-    This should be sub-classed by implementation classes for concrete implementations. Must define
-    the schema of the output column produced by the pre-processor, the fit method which extracts
-    those parameters from the raw data via a Polars expression, and the predict method which applies
-    the pre-processing to a data column expression using another column containing the model
-    parameters for that data element.
+    This should be sub-classed by implementation classes for concrete implementations. Must define the schema
+    of the output column produced by the pre-processor, the fit method which extracts those parameters from
+    the raw data via a Polars expression, and the predict method which applies the pre-processing to a data
+    column expression using another column containing the model parameters for that data element.
     """
 
     @classmethod

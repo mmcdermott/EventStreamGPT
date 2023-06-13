@@ -1,5 +1,5 @@
-"""Pre-processor that filters data to contain only values within a certain number of standard
-deviations from the mean."""
+"""Pre-processor that filters data to contain only values within a certain number of standard deviations from
+the mean."""
 
 import polars as pl
 
@@ -7,8 +7,7 @@ from .preprocessor import Preprocessor
 
 
 class StddevCutoffOutlierDetector(Preprocessor):
-    """Filters out data elements that are outside a specifiable number of standard deviations of the
-    mean.
+    """Filters out data elements that are outside a specifiable number of standard deviations of the mean.
 
     This is a concrete implementation of the Preprocessor abstract class. It is a pre-processor that
     identifies outliers, here defined to be data points more than a specifiable number of standard deviations
@@ -40,8 +39,7 @@ class StddevCutoffOutlierDetector(Preprocessor):
         return {"thresh_large_": pl.Float64, "thresh_small_": pl.Float64}
 
     def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
-        """Identify the configured large and small extreme value thresholds from the data in
-        `column`.
+        """Identify the configured large and small extreme value thresholds from the data in `column`.
 
         Arguments:
             column: The Polars expression for the column containing the raw data to be pre-processed.

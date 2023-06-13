@@ -4,7 +4,19 @@ from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 
 
 class LogNormalMixtureTTELayer(torch.nn.Module):
-    """Outputs a mixture-of-lognormal distribution for time-to-event."""
+    """A class that outputs a mixture-of-lognormal distribution for time-to-event.
+
+    This class is used to initialize a module and project the input tensor to get a specific
+    LogNormal Mixture distribution.
+
+    Args:
+        in_dim: The dimension of the input tensor.
+        num_components: The number of lognormal components in the mixture distribution.
+        mean_log_inter_time: The mean of the log of the inter-event times. Used to initialize the mean
+                             of the log of the output distribution. Defaults to 0.0.
+        std_log_inter_time: The standard deviation of the log of the inter-event times. Used to initialize
+                            the standard deviation of the logs of the output distributions. Defaults to 1.0.
+    """
 
     def __init__(
         self,
@@ -13,18 +25,6 @@ class LogNormalMixtureTTELayer(torch.nn.Module):
         mean_log_inter_time: float = 0.0,
         std_log_inter_time: float = 1.0,
     ):
-        """Initializes the module.
-
-        Args:
-            `in_dim` (`int`): The dimension of the input tensor.
-            `num_components` (`int`): The number of lognormal components in the mixture distribution.
-            `mean_log_inter_time`: (`float`, defaults to 0.0):
-                The mean of the log of the inter-event times. Used to initialize the mean of the log of the
-                output distribution.
-            `std_log_inter_time`: (`float`, defaults to 1.0):
-                The standard deviation of the log of the inter-event times. Used to initialize the standard
-                deviation of the logs of the output distributions.
-        """
         super().__init__()
 
         # We multiply by 3 in the projections as we need to get the locs, log_scales, and weights for each
@@ -35,10 +35,11 @@ class LogNormalMixtureTTELayer(torch.nn.Module):
         self.std_log_inter_time = std_log_inter_time
 
     def forward(self, T: torch.Tensor) -> LogNormalMixtureDistribution:
-        """Returns the specific LogNormal Mixture distribution given by the input tensor `T`.
+        """Forward pass.
 
         Args:
-            `T` is a float Tensor of shape `(batch_size, sequence_length, in_dim)`.
+            T: The input tensor.
+
         Returns:
             A `LogNormalMixtureDistribution` with parameters specified by `self.proj(T)` which has output
             shape `(batch_size, sequence_length, 1)`.
@@ -59,26 +60,29 @@ class LogNormalMixtureTTELayer(torch.nn.Module):
 
 
 class ExponentialTTELayer(torch.nn.Module):
-    """Outputs an exponential distribution for time-to-event."""
+    """A class that outputs an exponential distribution for time-to-event.
+
+    This class is used to initialize the ExponentialTTELayer and project the input tensor to get the
+    implied exponential distribution.
+
+    Args:
+        in_dim: The dimensionality of the input.
+    """
 
     def __init__(self, in_dim: int):
-        """Initializes the ExponentialTTELayer.
-
-        `in_dim` is the dimensionality of the input.
-        """
         super().__init__()
         self.proj = torch.nn.Linear(in_dim, 1)
 
     def forward(self, T: torch.Tensor) -> torch.distributions.exponential.Exponential:
-        """Returns the implied exponential distribution.
+        """Forward pass.
 
         Args:
-            `T` is a float Tensor of shape `(batch_size, sequence_length, in_dim)`.
-        Returns:
-            An `Exponential` distribution with parameters specified by `self.proj(T)` which has output
-            shape `(batch_size, sequence_length, 1)`.
-        """
+            T: The input tensor.
 
+        Returns:
+            An `Exponential` distribution with parameters specified by `self.proj(T)` which has output shape
+            `(batch_size, sequence_length, 1)`.
+        """
         # torch.nn.functional.elu has Image (-1, 1), but we need our rate parameter to be > 0. So we need to
         # add 1 to the output here. To ensure validity given numerical imprecision, we also add a buffer given
         # by the smallest possible positive value permissible given the type of `T`.
@@ -92,30 +96,17 @@ class ExponentialTTELayer(torch.nn.Module):
 
 
 class GaussianIndexedRegressionLayer(torch.nn.Module):
-    """
-    This module implements an indexed, probabilistic regression layer. Given an input `X`, this module
-    predicts probabilistic regression outputs for each input in `X` for many regression targets, then
-    subselects those down to just the set of regression targets `idx` that are actually needed in practice,
-    and returns those. We can view this as a bilinear matrix multiplication: namely, given the following
-    inputs:
-        * `X`, a dense, batched, per-event input tensor of shape `(batch_size, sequence_len, in_dim)`
-        * `proj`, a dense transformation matrix from the input space to the regression target space of shape
-        `(in_dim, regression_dim)`.
-        * `idx`, a dense, batched, per-event index tensor indicating which regression target each element of
-        `X` corresponds to, of shape `(batch_size, sequence_len, num_predictions)`. Elements of idx are the
-        indices in `[0, regression_dim)`.
-    then this module outputs `(proj @ X).gather(2, idx)`. Note that this requires us to fully compute
-    `Z = proj @ X`, where `Z` is thus of size `(batch_size, sequence_len, regression_dim)`, which may be
-    large, when in reality we actually likely only need a small subset of this (based on the indices in idx).
+    """This module implements an indexed, probabilistic regression layer.
+
+    This module outputs `(proj @ X).gather(2, idx)` after projecting the input tensor and subselecting those
+    down to just the set of regression targets `idx` that are needed.
+
+    Args:
+        n_regression_targets: How many regression targets there are.
+        in_dim: The input dimensionality.
     """
 
     def __init__(self, n_regression_targets: int, in_dim: int):
-        """Initializes the layer.
-
-        Args:
-            `n_regression_targets` (`int`): How many regression targets there are.
-            `in_dim` (`int`): The input dimensionality.
-        """
         super().__init__()
 
         # We multiply `n_regression_targets` by 2 because we need both mean and standard deviation outputs.
@@ -124,12 +115,12 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, idx: torch.LongTensor | None = None
     ) -> torch.distributions.normal.Normal:
-        """Returns the `Normal` distribution according to the indexed regression task on `X` for
-        indices `idx`.
+        """Forward pass.
 
         Args:
-            `X` is a float Tensor of shape `(batch_size, sequence_length, in_dim)`.
-            `idx` is an optional long Tensor of shape `(batch_size, sequence_length, num_predictions)`
+            X: The input tensor.
+            idx: The indices of the regression targets to output. If None, then all regression targets are
+                predicted.
 
         Returns:
             The `torch.distributions.normal.Normal` distribution with parameters `self.proj(X)` on indices
@@ -137,7 +128,6 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
             unless `idx` is None in which case it will have predictions for all indices and have shape
             `(batch_size, sequence_length, n_regression_targets)`.
         """
-
         Z = self.proj(X)
 
         Z_mean = Z[..., 0::2]
@@ -153,7 +143,6 @@ class GaussianIndexedRegressionLayer(torch.nn.Module):
         mean = Z_mean.gather(-1, idx)
         std = Z_std.gather(-1, idx)
 
-        # TODO(mmd): validate args
         return torch.distributions.normal.Normal(loc=mean, scale=std)
 
 
@@ -162,35 +151,27 @@ class GaussianRegressionLayer(torch.nn.Module):
 
     Given an input `X`, this module predicts probabilistic regression outputs for each input in `X`
     for one regression target.
+
+    Args:
+        in_dim: The input dimensionality.
     """
 
     def __init__(self, in_dim: int):
-        """Initializes the layer.
-
-        Args:
-            `n_regression_targets` (`int`): How many regression targets there are.
-            `in_dim` (`int`): The input dimensionality.
-        """
         super().__init__()
 
         # We multiply `n_regression_targets` by 2 because we need both mean and standard deviation outputs.
         self.proj = torch.nn.Linear(in_dim, 2)
 
     def forward(self, X: torch.Tensor) -> torch.distributions.normal.Normal:
-        """Returns the `Normal` distribution according to the indexed regression task on `X` for
-        indices `idx`.
+        """Forward pass.
 
         Args:
-            `X` is a float Tensor of shape `(batch_size, sequence_length, in_dim)`.
-            `idx` is an optional long Tensor of shape `(batch_size, sequence_length, num_predictions)`
+            X: The input tensor of shape `(batch_size, sequence_length, in_dim)`.
 
         Returns:
-            The `torch.distributions.normal.Normal` distribution with parameters `self.proj(X)` on indices
-            specified by `idx`, which will have output shape `(batch_size, sequence_length, num_predictions)`,
-            unless `idx` is None in which case it will have predictions for all indices and have shape
-            `(batch_size, sequence_length, n_regression_targets)`.
+            The `torch.distributions.normal.Normal` distribution with parameters `self.proj(X)`,
+            which will have output shape `(batch_size, sequence_length, 1)`.
         """
-
         Z = self.proj(X)
 
         Z_mean = Z[..., 0::2]

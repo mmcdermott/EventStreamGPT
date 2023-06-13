@@ -1,5 +1,4 @@
-"""This module contains the class for running "structured attention" that respects a dependency
-graph."""
+"""This module contains the class for running "structured attention" that respects a dependency graph."""
 from typing import Any
 
 import torch

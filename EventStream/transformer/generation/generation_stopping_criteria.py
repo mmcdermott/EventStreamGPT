@@ -29,8 +29,8 @@ class StoppingCriteria(ABC):
 
 
 class MaxLengthCriteria(StoppingCriteria):
-    """This class can be used to stop generation whenever the full generated number of events
-    exceeds `max_length`.
+    """This class can be used to stop generation whenever the full generated number of events exceeds
+    `max_length`.
 
     Keep
     in mind for decoder-only type of transformers, this will include the initial prompted events.

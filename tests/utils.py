@@ -57,8 +57,8 @@ class MockModule(Mock, torch.nn.Module):
 
 
 class MLTypeEqualityCheckableMixin:
-    """This mixin provides capability to `unittest.TestCase` submodules to check various common ML
-    types for equality, including:
+    """This mixin provides capability to `unittest.TestCase` submodules to check various common ML types for
+    equality, including:
 
     * `torch.Tensor`, via `torch.testing.assert_close`
     * `pd.DataFrame`, via `pd.testing.assert_frame_equal`
@@ -143,11 +143,10 @@ class MLTypeEqualityCheckableMixin:
             self.assertEqual(want, got, msg=m)
 
     def assertNestedDictEqual(self, want: dict, got: dict, msg: str | None = None, check_like: bool = False):
-        """This assers that two dictionaries are equal using nested assert checks for the internal
-        values.
+        """This assers that two dictionaries are equal using nested assert checks for the internal values.
 
-        It is useful so that we can compare dictionaries of tensors or arrays with the type-
-        specific comparators.
+        It is useful so that we can compare dictionaries of tensors or arrays with the type- specific
+        comparators.
         """
 
         self.assertIsInstance(want, dict, msg)
@@ -242,8 +241,8 @@ class MLTypeEqualityCheckableMixin:
 
 
 class ConfigComparisonsMixin(MLTypeEqualityCheckableMixin):
-    """This mixin provides capability to `unittest.TestCase` submodules to compare configuration
-    objects for equality."""
+    """This mixin provides capability to `unittest.TestCase` submodules to compare configuration objects for
+    equality."""
 
     def assert_vocabulary_equal(self, want: Vocabulary, got: Vocabulary, msg: str | None = None):
         self.assertEqual(type(want), type(got), msg)

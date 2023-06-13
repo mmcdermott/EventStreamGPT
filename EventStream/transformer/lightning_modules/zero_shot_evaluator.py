@@ -145,8 +145,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         skip_metrics: Sequence[str],
         prefix: str,
     ):
-        """This helper function logs the set of named metrics for the predictions `preds` and labels
-        `labels`.
+        """This helper function logs the set of named metrics for the predictions `preds` and labels `labels`.
 
         Args:
             `preds` (`torch.Tensor`): The predictions for this metric calculation.

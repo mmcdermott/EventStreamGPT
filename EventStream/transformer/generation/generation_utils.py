@@ -72,8 +72,8 @@ class SampleDecoderOnlyOutput(ModelOutput):
 
 
 class StructuredGenerationMixin:
-    """A class containing all functions for auto-regressive structured event stream generation, to
-    be used as a mixin in [`PreTrainedModel`].
+    """A class containing all functions for auto-regressive structured event stream generation, to be used as
+    a mixin in [`PreTrainedModel`].
 
     The class exposes [`generate`], which can be used for:
         - *sampling* by calling [`sample`] if `do_sample=True`.

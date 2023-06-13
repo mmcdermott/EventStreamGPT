@@ -18,8 +18,8 @@ class InputDFType(StrEnum):
     EVENT = enum.auto()
     """A dataframe containing event-level data about a subject.
 
-    Each row will contain a timestamp, associated measurements, and subject ID. Timestamps may be
-    duplicated in these input dataframes, but will be deduplicated in the resulting dataset.
+    Each row will contain a timestamp, associated measurements, and subject ID. Timestamps may be duplicated
+    in these input dataframes, but will be deduplicated in the resulting dataset.
     """
 
     RANGE = enum.auto()
@@ -43,8 +43,8 @@ class InputDataType(StrEnum):
     TIMESTAMP = enum.auto()
     """A timestamp variable.
 
-    This may also be associated with a separate string for timestamp format, if the timestamp is
-    originally presented as a string.
+    This may also be associated with a separate string for timestamp format, if the timestamp is originally
+    presented as a string.
     """
 
     BOOLEAN = enum.auto()
@@ -247,68 +247,62 @@ class TemporalityType(StrEnum):
     DYNAMIC = enum.auto()
     """This measure is dynamic with respect to time in a general manner.
 
-    It will be recorded potentially many times per-event, and can take on either categorical or
-    partially observed regression data modalities.
+    It will be recorded potentially many times per-event, and can take on either categorical or partially
+    observed regression data modalities.
     """
 
     FUNCTIONAL_TIME_DEPENDENT = enum.auto()
     """This measure varies predictably with respect to time and the static measures of a subject.
 
-    The "observations" of this measure will be computed on the basis of that functional form and
-    added to the observed events. Currently only supported with categorical or fully observed
-    regression variables.
+    The "observations" of this measure will be computed on the basis of that functional form and added to the
+    observed events. Currently only supported with categorical or fully observed regression variables.
     """
 
 
 class DataModality(StrEnum):
     """The modality of a data element.
 
-    Measurement modality dictates pre-processing, embedding, and possible generation of said
-    element.
+    Measurement modality dictates pre-processing, embedding, and possible generation of said element.
     """
 
     DROPPED = enum.auto()
     """This column was dropped due to occurring too infrequently for use."""
 
     SINGLE_LABEL_CLASSIFICATION = enum.auto()
-    """This data modality must take on a single label in all possible instances where it is
-    observed.
+    """This data modality must take on a single label in all possible instances where it is observed.
 
-    This will never have an associated data value measured. Element will be generated via
-    consecutive prediction of whether or not the event will be observed at all, followed by single-
-    label, multi-class classification of what label will be observed.
+    This will never have an associated data value measured. Element will be generated via consecutive
+    prediction of whether or not the event will be observed at all, followed by single- label, multi-class
+    classification of what label will be observed.
     """
 
     MULTI_LABEL_CLASSIFICATION = enum.auto()
     """This data modality can occur zero or more times with different labels.
 
-    This will never have an associated data value measured (see MULTIVARIATE_REGRESSION). Element
-    will be generated via multi-label, binary classification.
+    This will never have an associated data value measured (see MULTIVARIATE_REGRESSION). Element will be
+    generated via multi-label, binary classification.
     """
 
     MULTIVARIATE_REGRESSION = enum.auto()
     """A column which can occur 0+ times per event with different labels and values.
 
-    All multivariate regression measures are assumed to be partially observed at present. Element
-    keys will be generated via multi-label, binary classification. Values will be generated via
-    probabilistic regression.
+    All multivariate regression measures are assumed to be partially observed at present. Element keys will be
+    generated via multi-label, binary classification. Values will be generated via probabilistic regression.
     """
 
     UNIVARIATE_REGRESSION = enum.auto()
-    """This column is a continuous-valued, one-dimensional numerical measure which is partially
-    observed.
+    """This column is a continuous-valued, one-dimensional numerical measure which is partially observed.
 
-    The model first predicts whether or not this measurement will be observed, then what value it
-    would take on.
+    The model first predicts whether or not this measurement will be observed, then what value it would take
+    on.
     """
 
 
 class NumericDataModalitySubtype(StrEnum):
     """Numeric value types.
 
-    These are used to characterize both entire measures (e.g., 'age' takes on integer values) or
-    sub-measures (e.g., within the measure of "vitals signs", observations for the key "heart rate"
-    take on float values).
+    These are used to characterize both entire measures (e.g., 'age' takes on integer values) or sub-measures
+    (e.g., within the measure of "vitals signs", observations for the key "heart rate" take on float values).
     """
 
     DROPPED = enum.auto()
@@ -327,8 +321,7 @@ class NumericDataModalitySubtype(StrEnum):
     """
 
     CATEGORICAL_FLOAT = enum.auto()
-    """This formerly floating point measure/sub-measure has been converted to take on categorical
-    values.
+    """This formerly floating point measure/sub-measure has been converted to take on categorical values.
 
     Options can be found in the global vocabulary, with the syntax ``f"{key_col}__EQ_{orig_val}"``.
     """

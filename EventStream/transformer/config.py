@@ -79,8 +79,7 @@ class Metrics(StrEnum):
     """Raw accuracy."""
 
     EXPLAINED_VARIANCE = enum.auto()
-    """The extent to which the predicted regression label explains the variance in the true
-    label."""
+    """The extent to which the predicted regression label explains the variance in the true label."""
 
     MSE = "MSE"
     """The mean squared error between predicted and true regression labels."""
@@ -90,19 +89,16 @@ class Metrics(StrEnum):
 
 
 class Averaging(StrEnum):
-    """Describes the different ways metric values can be averaged in multi-class or multi-label
-    settings."""
+    """Describes the different ways metric values can be averaged in multi-class or multi-label settings."""
 
     MACRO = enum.auto()
-    """Macro-averaging; Metrics across different labels are averaged without regard for label
-    frequency."""
+    """Macro-averaging; Metrics across different labels are averaged without regard for label frequency."""
 
     MICRO = enum.auto()
     """Micro-averaging; Metrics across different labels are averaged without weighting."""
 
     WEIGHTED = enum.auto()
-    """Weighted-averaging; Metrics across different labels are averaged weighted by label/class
-    frequency."""
+    """Weighted-averaging; Metrics across different labels are averaged weighted by label/class frequency."""
 
 
 @hydra_dataclass
@@ -322,8 +318,7 @@ class StructuredEventProcessingMode(StrEnum):
     """Intra-event covariates are independent of one another, conditioned on history."""
 
     NESTED_ATTENTION = enum.auto()
-    """Intra-event covariates are predicted according to a user-specified intra-event dependency
-    chain."""
+    """Intra-event covariates are predicted according to a user-specified intra-event dependency chain."""
 
 
 class TimeToEventGenerationHeadType(StrEnum):

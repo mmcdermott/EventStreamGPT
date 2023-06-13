@@ -236,8 +236,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         measurement: str,
         cat: MetricCategories,
     ):
-        """This helper function logs the set of named metrics for the predictions `preds` and labels
-        `labels`.
+        """This helper function logs the set of named metrics for the predictions `preds` and labels `labels`.
 
         Args:
             `preds` (`torch.Tensor`): The predictions for this metric calculation.
@@ -461,10 +460,9 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
     def configure_optimizers(self):
         """Configures optimizer and learning rate scheduler.
 
-        Currently this module uses the AdamW optimizer, with configurable weight_decay, with a
-        learning rate warming up from 0 on a per-step manner to the configurable
-        `self.optimization_config.init_lr`, then undergoes polynomial decay as specified via
-        `self.optimization_config`.
+        Currently this module uses the AdamW optimizer, with configurable weight_decay, with a learning rate
+        warming up from 0 on a per-step manner to the configurable `self.optimization_config.init_lr`, then
+        undergoes polynomial decay as specified via `self.optimization_config`.
         """
         opt = torch.optim.AdamW(
             self.model.parameters(),

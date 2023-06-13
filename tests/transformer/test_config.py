@@ -254,8 +254,7 @@ DEFAULT_LOGNORMAL_MIXTURE_DICT = dict(
 
 class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase):
     def test_construction(self):
-        """Tests the construction and initialization logic of the `StructuredTransformerConfig`
-        object."""
+        """Tests the construction and initialization logic of the `StructuredTransformerConfig` object."""
 
         cases = [
             {
@@ -515,9 +514,9 @@ class TestStructuredTransformerConfig(ConfigComparisonsMixin, unittest.TestCase)
     def test_save_load(self):
         """Tests the saving and loading of these configs.
 
-        While this is largely huggingface functionality, here we test it to ensure that even when
-        set to various modes, with different validity requirements, saving and re-loading is still
-        possible (e.g., ensuring that post-processing doesn't invalidate validation constraints).
+        While this is largely huggingface functionality, here we test it to ensure that even when set to
+        various modes, with different validity requirements, saving and re-loading is still possible (e.g.,
+        ensuring that post-processing doesn't invalidate validation constraints).
         """
         for params in (
             {},

@@ -105,13 +105,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         "normalizer": lambda normalizer_params_schema: pl.Struct(normalizer_params_schema),
         "value_type": pl.Categorical,
     }
-    """The Polars schema of the numerical measurement metadata dataframes which track fit
-    parameters."""
+    """The Polars schema of the numerical measurement metadata dataframes which track fit parameters."""
 
     @staticmethod
     def get_smallest_valid_int_type(num: int | float | pl.Expr) -> pl.DataType:
-        """Returns the smallest valid unsigned integral type for an ID variable with `num` unique
-        options.
+        """Returns the smallest valid unsigned integral type for an ID variable with `num` unique options.
 
         Args:
             num: The number of IDs that must be uniquely expressed.
@@ -354,8 +352,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @classmethod
     def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
-        """Increments the values in a column by a given amount and returns a dataframe with the
-        incremented column."""
+        """Increments the values in a column by a given amount and returns a dataframe with the incremented
+        column."""
         return df.with_columns(pl.col(col) + inc_by).collect()
 
     @classmethod
@@ -416,8 +414,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         censor_upper_bound: pl.Expr | None = None,
         **ignored_kwargs,
     ) -> pl.Expr:
-        """Appropriately either drops (returns np.NaN) or censors (returns the censor value) the
-        value `val` based on the bounds in `row`.
+        """Appropriately either drops (returns np.NaN) or censors (returns the censor value) the value `val`
+        based on the bounds in `row`.
 
         TODO(mmd): could move this code to an outlier model in Preprocessing and have it be one that is
         pre-set in metadata.

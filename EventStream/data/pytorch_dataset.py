@@ -387,8 +387,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
     def _seeded_getitem(self, idx: int) -> dict[str, list]:
         """Returns a Returns a dictionary corresponding to a single subject's data.
 
-        This function is automatically seeded for robustness. See `__getitem__` for a description of
-        the output format.
+        This function is automatically seeded for robustness. See `__getitem__` for a description of the
+        output format.
         """
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}

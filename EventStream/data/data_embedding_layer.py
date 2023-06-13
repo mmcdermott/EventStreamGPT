@@ -11,22 +11,22 @@ class EmbeddingMode(StrEnum):
     """The different ways that the data can be embedded."""
 
     JOINT = enum.auto()
-    """Embed all data jointly via a single embedding layer, weighting observed measurement
-    embdddings by values when present."""
+    """Embed all data jointly via a single embedding layer, weighting observed measurement embdddings by
+    values when present."""
 
     SPLIT_CATEGORICAL_NUMERICAL = enum.auto()
-    """Embed the categorical observations of measurements separately from their numerical values,
-    and combine the two via a specifiable strategy."""
+    """Embed the categorical observations of measurements separately from their numerical values, and combine
+    the two via a specifiable strategy."""
 
 
 class MeasIndexGroupOptions(StrEnum):
     """The different ways that the `split_by_measurement_indices` argument can be interpreted.
 
     If measurements are split, then the final embedding can be seen as a combination of
-    ``emb_cat(measurement_indices)`` and ``emb_num(measurement_indices, measurement_values)``, where
-    ``emb_*`` are embedding layers with sum aggregations that take in indices to be embedded and
-    possible values to use in the output sum. This enumeration controls how those two elements are
-    combined for a given measurement feature.
+    ``emb_cat(measurement_indices)`` and ``emb_num(measurement_indices, measurement_values)``, where ``emb_*``
+    are embedding layers with sum aggregations that take in indices to be embedded and possible values to use
+    in the output sum. This enumeration controls how those two elements are combined for a given measurement
+    feature.
     """
 
     CATEGORICAL_ONLY = enum.auto()
@@ -395,8 +395,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         values_mask: torch.Tensor | None = None,
         cat_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Returns a weighted sum of categorical and numerical embeddings of the input indices and
-        values.
+        """Returns a weighted sum of categorical and numerical embeddings of the input indices and values.
 
         This follows (roughly) the embedding strategy of :footcite:t:`gorishniy2021revisiting` (`link`_) for
         joint embedding of categorical and multi-variate numerical features. In particular, given categorical

@@ -623,8 +623,8 @@ class SeqPaddingSide(StrEnum):
 class SubsequenceSamplingStrategy(StrEnum):
     """Enumeration for subsequence sampling strategies.
 
-    When the maximum allowed sequence length for a PyTorchDataset is shorter than the sequence
-    length of a subject's data, this enumeration dictates how we sample a subsequence to include.
+    When the maximum allowed sequence length for a PyTorchDataset is shorter than the sequence length of a
+    subject's data, this enumeration dictates how we sample a subsequence to include.
     """
 
     TO_END = enum.auto()

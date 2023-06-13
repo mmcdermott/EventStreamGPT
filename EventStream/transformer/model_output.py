@@ -106,8 +106,7 @@ def get_event_types(
 
 
 def strip_unused_indices(dynamic_indices, *other_tensors):
-    """Rearranges `dynamic_indices` and other passed tensors to minimize the number of padding (0)
-    indices.
+    """Rearranges `dynamic_indices` and other passed tensors to minimize the number of padding (0) indices.
 
     For each slice of `dynamic_indices` in the last dimension, this function re-arranges the elements of that
     slice (in `dynamic_indices` and all other passed tensors) such that the maximum number of zero-indices are
@@ -173,10 +172,10 @@ def strip_unused_indices(dynamic_indices, *other_tensors):
 class NestedIndexableMixin:
     """Mixin for indexable nested elements.
 
-    Provides a way to slice through nested indexable elements, using a static method and an instance
-    method for slicing. This will index through dictionaries, tuples, torch distributions, and
-    naturally indexable objects. Inputs of `None` will likewise return `None`. This assumes that
-    inhereting classes can be mapped to plain dictionaries via `dataclasses.asdict`.
+    Provides a way to slice through nested indexable elements, using a static method and an instance method
+    for slicing. This will index through dictionaries, tuples, torch distributions, and naturally indexable
+    objects. Inputs of `None` will likewise return `None`. This assumes that inhereting classes can be mapped
+    to plain dictionaries via `dataclasses.asdict`.
     """
 
     @staticmethod
@@ -249,37 +248,26 @@ class GenerativeSequenceModelSamples(ModelOutput):
     """A single sample (event) of a generative sequence model.
 
     Args:
-        `event_mask` (`torch.BoolTensor`, default: None):
-            Shape: [batch_size,]
-            Is `True` if and only if the event at that batch position truly exists. Is unset (and has the
-            value `None` if all events exist.
-        `time_to_event` (`torch.FloatTensor`, default: None):
-            Shape: [batch_size,]
-            Is 0 if the event does not exist, otherwise quantifies the time between the prior event and this
-            event in the series. Should not be None in practice.
-        `classification` (`Dict[str, torch.LongTensor]`, default: None):
-            Shape: {
-                measurement:
-                    [batch_size,] if measurement is single label classification or [batch_size, vocab_size]
-            }
-            If a prediction for measurement is present, then at that key, the tensor contains either the class
-            index (starting at 0, not the global offset) for the prediction for that data type for this event
-            or per-label binary labels for multi label data types for the prediction for that data type. If
-            the event is not present, all predictions will be zero.
-        `regression` (`Dict[str, torch.FloatTensor]`, default: None):
-            Shape: {
-                measurement:
-                    [batch_size,] if measurement is univariate or [batch_size, n_regression_targets]
-            }
-            If a prediction for measurement is present, then at that key, the tensor contains the
-            floating-point predictions for that measurement. If an event is not present, predictions will be
-            zero. Predictions are ordered in accordance with the index-labels (starting at zero) for the
-            data-type vocabulary contained in regression_indices. If regression_indices is `None`, predictions
-            span the entire vocabulary in vocabulary order.
-        `regression_indices` (`dict[str, torch.LongTensor | None] | None`, default: None):
-            Shape: {measurement: [batch_size, n_regression_targets]}
-            Contains the indices for which `self.regression` contains predictions for each data type. If
-            `None`, self.regression predictions correspond to the entire vocabulary in vocabulary order.
+        event_mask: A boolean tensor of shape [batch_size,] indicating whether events exist.
+        time_to_event: A float tensor of shape [batch_size,]. Is 0 if the event does not exist, otherwise
+            quantifies the time between the prior event and this event in the series.
+        classification: A dictionary with keys as measurements and values as tensors. Shape of value tensor is
+            [batch_size,] if measurement is single label classification or [batch_size, vocab_size] if
+            measurement is multi label classification. The tensor contains either the class index (starting at
+            0, not the global offset) for the prediction for that data type for this event or per-label binary
+            labels for multi label data types for the prediction for that data type. If the event is not
+            present, all predictions will be zero.
+        regression: A dictionary with keys as measurements and values as tensors.
+            Shape of value tensor is [batch_size,] if measurement is univariate or
+            [batch_size, n_regression_targets] if measurement is multivariate.
+            The tensor contains the floating-point predictions for that measurement. If an event is not
+            present, predictions will be zero. Predictions are ordered in accordance with the index-labels
+            (starting at zero) for the data-type vocabulary contained in regression_indices. If
+            regression_indices is None, predictions span the entire vocabulary in vocabulary order.
+        regression_indices: A dictionary with keys as measurements and values as tensors. Shape of value
+            tensor is [batch_size, n_regression_targets] Contains the indices for which regression contains
+            predictions for each data type. If None, regression predictions correspond to the entire
+            vocabulary in vocabulary order.
     """
 
     event_mask: torch.BoolTensor | None = None
@@ -300,8 +288,19 @@ class GenerativeSequenceModelSamples(ModelOutput):
         torch.FloatTensor,
         torch.BoolTensor,
     ]:
-        """This function is used for generation, and builds a new batch element from the prediction
-        sample in this object."""
+        """Builds a new batch element from the prediction sample in this object.
+
+        Args:
+            batch: The current batch.
+            config: The transformer configuration.
+
+        Returns: A tuple containing the time to event, event mask, dynamic indices, dynamic measurement
+            indices, dynamic values, and dynamic values mask. The dynamic attributes are updated using the
+            function provided in the configuration.
+
+        Raises:
+            ValueError: If the input dimensions do not match the expected dimensions.
+        """
 
         # Add data elements (indices, values, types, values_mask)
         dynamic_measurement_indices = []
@@ -396,8 +395,26 @@ class GenerativeSequenceModelSamples(ModelOutput):
         config: StructuredTransformerConfig,
         measurements_to_build: set[MEAS_INDEX_GROUP_T] | None = None,
     ) -> tuple[torch.LongTensor, torch.LongTensor, torch.FloatTensor, torch.BoolTensor]:
-        """This function is used for generation, and builds a new batch element from the prediction
-        sample in this object."""
+        """Generate a new batch element from the prediction sample in the object.
+
+        This function is used for generation. It dynamically builds various elements such as indices,
+        values, types, and values_mask based on the given configuration and measurements.
+
+        Args:
+            batch: The Pytorch batch object.
+            config: The structured transformer configuration object.
+            measurements_to_build: The set of measurements indices group to be built. If None, all are built.
+
+        Returns:
+            A tuple containing four tensors: the new dynamic indices, the new dynamic measurement indices,
+            the new dynamic values, and the new dynamic values mask.
+
+        Raises:
+            ValueError: If measurement is missing in the config's vocab_offsets_by_measurement, or the shape
+            of the prediction does not match the expected shape, or the prediction is greater than or equal to
+            the vocab size.
+            RuntimeError: If the indices cannot be gathered due to mismatch in shape or values.
+        """
 
         # Add data elements (indices, values, types, values_mask)
         dynamic_measurement_indices = []
@@ -606,6 +623,205 @@ class GenerativeSequenceModelSamples(ModelOutput):
         new_dynamic_values: torch.FloatTensor,
         new_dynamic_values_mask: torch.BoolTensor,
     ):
+        """Pads the dimensions of the new batch elements to match the old ones.
+
+        This static method adjusts the shape of the given new dynamic data elements (indices, measurement
+        indices, values, and values mask) to match the shape of those in the given batch. It achieves this
+        by padding the shorter one of the new and old data elements with zeros (for LongTensors and
+        FloatTensors) or with False (for BoolTensors).
+
+        Args:
+            batch: A PytorchBatch object whose data element dimensions are to be matched.
+            new_dynamic_indices: The indices tensor to be resized. This just
+            new_dynamic_measurement_indices: The measurement indices tensor to be resized.
+            new_dynamic_values: The values tensor to be resized.
+            new_dynamic_values_mask: The values mask tensor to be resized.
+
+        Returns:
+            A tuple of two tuples. The first inner tuple contains the possibly-padded dynamic data elements
+            of the given batch. The second inner tuple contains the possibly-padded new dynamic data elements.
+
+        Examples:
+            >>> import torch
+            >>> batch = PytorchBatch(
+            ...     dynamic_indices=torch.tensor([
+            ...         [[1, 2, 3], [4, 5, 6]],
+            ...         [[7, 8, 9], [10, 11, 12]]
+            ...     ]),
+            ...     dynamic_measurement_indices=torch.tensor([
+            ...         [[1, 2, 3], [4, 5, 6]],
+            ...         [[7, 8, 9], [10, 11, 12]]
+            ...     ]),
+            ...     dynamic_values=torch.tensor([
+            ...         [[1., 2., 3.], [4., 5., 6.]],
+            ...         [[7., 8., 9.], [10., 11., 12.]]
+            ...     ]),
+            ...     dynamic_values_mask=torch.tensor([
+            ...         [[True, True, True], [True, True, True]],
+            ...         [[True, True, True], [True, True, True]]
+            ...     ])
+            ... )
+            >>> new_dynamic_indices = torch.tensor([
+            ...     [[1, 2], [3, 4]],
+            ...     [[5, 6], [7, 8]]
+            ... ])
+            >>> new_dynamic_measurement_indices = torch.tensor([
+            ...     [[1, 2], [3, 4]],
+            ...     [[5, 6], [7, 8]]
+            ... ])
+            >>> new_dynamic_values = torch.tensor([
+            ...     [[1., 2.], [3., 4.]],
+            ...     [[5., 6.], [7., 8.]]
+            ... ])
+            >>> new_dynamic_values_mask = torch.tensor([
+            ...     [[True, True], [True, True]],
+            ...     [[True, True], [True, True]]
+            ... ])
+            >>> out = GenerativeSequenceModelSamples.pad_data_elements(
+            ...     batch,
+            ...     new_dynamic_indices,
+            ...     new_dynamic_measurement_indices,
+            ...     new_dynamic_values,
+            ...     new_dynamic_values_mask
+            ... )
+            >>> len(out)
+            2
+            >>> for tensor_tuple in out:
+            ...     print(len(tensor_tuple))
+            ...     for tensor in tensor_tuple:
+            ...         print(tensor)
+            4
+            tensor([[[ 1,  2,  3],
+                     [ 4,  5,  6]],
+            <BLANKLINE>
+                    [[ 7,  8,  9],
+                     [10, 11, 12]]])
+            tensor([[[ 1,  2,  3],
+                     [ 4,  5,  6]],
+            <BLANKLINE>
+                    [[ 7,  8,  9],
+                     [10, 11, 12]]])
+            tensor([[[ 1.,  2.,  3.],
+                     [ 4.,  5.,  6.]],
+            <BLANKLINE>
+                    [[ 7.,  8.,  9.],
+                     [10., 11., 12.]]])
+            tensor([[[True, True, True],
+                     [True, True, True]],
+            <BLANKLINE>
+                    [[True, True, True],
+                     [True, True, True]]])
+            4
+            tensor([[[1, 2, 0],
+                     [3, 4, 0]],
+            <BLANKLINE>
+                    [[5, 6, 0],
+                     [7, 8, 0]]])
+            tensor([[[1, 2, 0],
+                     [3, 4, 0]],
+            <BLANKLINE>
+                    [[5, 6, 0],
+                     [7, 8, 0]]])
+            tensor([[[1., 2., 0.],
+                     [3., 4., 0.]],
+            <BLANKLINE>
+                    [[5., 6., 0.],
+                     [7., 8., 0.]]])
+            tensor([[[ True,  True, False],
+                     [ True,  True, False]],
+            <BLANKLINE>
+                    [[ True,  True, False],
+                     [ True,  True, False]]])
+            >>> batch = PytorchBatch(
+            ...     dynamic_indices=torch.tensor([
+            ...         [[1], [4]],
+            ...         [[7], [10]]
+            ...     ]),
+            ...     dynamic_measurement_indices=torch.tensor([
+            ...         [[1], [4]],
+            ...         [[7], [10]]
+            ...     ]),
+            ...     dynamic_values=torch.tensor([
+            ...         [[1.], [4.]],
+            ...         [[7.], [10.]]
+            ...     ]),
+            ...     dynamic_values_mask=torch.tensor([
+            ...         [[True], [True]],
+            ...         [[True], [True]]
+            ...     ])
+            ... )
+            >>> new_dynamic_indices = torch.tensor([
+            ...     [[1, 2], [3, 4]],
+            ...     [[5, 6], [7, 8]]
+            ... ])
+            >>> new_dynamic_measurement_indices = torch.tensor([
+            ...     [[1, 2], [3, 4]],
+            ...     [[5, 6], [7, 8]]
+            ... ])
+            >>> new_dynamic_values = torch.tensor([
+            ...     [[1., 2.], [3., 4.]],
+            ...     [[5., 6.], [7., 8.]]
+            ... ])
+            >>> new_dynamic_values_mask = torch.tensor([
+            ...     [[True, True], [True, True]],
+            ...     [[True, True], [True, True]]
+            ... ])
+            >>> out = GenerativeSequenceModelSamples.pad_data_elements(
+            ...     batch,
+            ...     new_dynamic_indices,
+            ...     new_dynamic_measurement_indices,
+            ...     new_dynamic_values,
+            ...     new_dynamic_values_mask
+            ... )
+            >>> len(out)
+            2
+            >>> for tensor_tuple in out:
+            ...     print(len(tensor_tuple))
+            ...     for tensor in tensor_tuple:
+            ...         print(tensor)
+            4
+            tensor([[[ 1,  0],
+                     [ 4,  0]],
+            <BLANKLINE>
+                    [[ 7,  0],
+                     [10,  0]]])
+            tensor([[[ 1,  0],
+                     [ 4,  0]],
+            <BLANKLINE>
+                    [[ 7,  0],
+                     [10,  0]]])
+            tensor([[[ 1.,  0.],
+                     [ 4.,  0.]],
+            <BLANKLINE>
+                    [[ 7.,  0.],
+                     [10.,  0.]]])
+            tensor([[[ True, False],
+                     [ True, False]],
+            <BLANKLINE>
+                    [[ True, False],
+                     [ True, False]]])
+            4
+            tensor([[[1, 2],
+                     [3, 4]],
+            <BLANKLINE>
+                    [[5, 6],
+                     [7, 8]]])
+            tensor([[[1, 2],
+                     [3, 4]],
+            <BLANKLINE>
+                    [[5, 6],
+                     [7, 8]]])
+            tensor([[[1., 2.],
+                     [3., 4.]],
+            <BLANKLINE>
+                    [[5., 6.],
+                     [7., 8.]]])
+            tensor([[[True, True],
+                     [True, True]],
+            <BLANKLINE>
+                    [[True, True],
+                     [True, True]]])
+        """
         n_data_elements_old = batch.dynamic_indices.shape[-1]
         n_data_elements_new = new_dynamic_indices.shape[-1]
 
@@ -648,10 +864,19 @@ class GenerativeSequenceModelSamples(ModelOutput):
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
     ) -> PytorchBatch:
-        """This function builds a new batch element from self, then appends it to the end of the
-        input batch.
+        """Appends a new batch element to the input batch.
 
-        TODO(mmd): should this function only append the new event time, every time?
+        This function first constructs a new batch element from the current object, and then appends it to the
+        given batch. It adjusts the time delta and event mask of the batch accordingly, and ensures that the
+        dynamic data elements of the batch and the new element are of the same dimensions by applying padding
+        as needed.
+
+        Args:
+            batch: The PytorchBatch object to which the new element will be added.
+            config: A StructuredTransformerConfig object containing configuration data.
+
+        Returns:
+            A new PytorchBatch object, which includes the original data plus the appended new batch element.
         """
 
         (
@@ -719,7 +944,24 @@ class GenerativeSequenceModelSamples(ModelOutput):
         config: StructuredTransformerConfig,
         measurements_to_fill: set[MEAS_INDEX_GROUP_T] | None = None,
     ) -> PytorchBatch:
-        """This function updates the last batch element from self."""
+        """Updates the last batch element with data from the current object.
+
+        This method modifies the last batch element in the given PytorchBatch object, based on the data
+        available in the current object. The measurements that will be filled in the batch element are
+        determined by the configuration and the 'measurements_to_fill' argument.
+
+        Args:
+            batch: The PytorchBatch object containing the batch element to be updated.
+            config: A StructuredTransformerConfig object containing configuration data.
+            measurements_to_fill: A set of MEAS_INDEX_GROUP_T that specifies which measurements to fill. If
+                not specified, all dynamic measurements from the config that are not dropped will be filled.
+
+        Raises:
+            ValueError: If 'time' is included in the 'measurements_to_fill' set.
+
+        Returns:
+            A new PytorchBatch object that includes the updated batch element.
+        """
 
         if measurements_to_fill is None:
             measurements_to_fill = []
@@ -1126,47 +1368,52 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         """Produces classification predictions and losses for the model.
 
         Args:
-            `batch` (`PytorchBatch`):
-                The batch of data for which the classification predictions are desired.
-            `encoded` (`torch.FloatTensor`, shape is batch_size X sequence_length X hidden_dim):
-                The final encodings *to be used to predict for each position in the sequence*. For example,
-                the vector `encoded[i][j]` (which is of size `hidden_dim`) is *not* the summary encoding of
-                the batch element at batch index `i` and sequence index `j`, but rather is the input to be
-                used to form classification predictions corresponding to batch element `i` at sequence
-                position `j`.
-            `valid_measurements` (`Set[str]`):
-                The classification measurements in the batch that should be predicted from this input
-                `encoded`.
+            batch: The batch of data for which the classification predictions are desired.
+            encoded: The final encodings *to be used to predict for each position in the sequence*. For
+                example, the vector ``encoded[i][j]`` (which is of size ``hidden_dim``) is *not* the summary
+                encoding of the batch element at batch index ``i`` and sequence index ``j``, but rather is the
+                input to be used to form classification predictions corresponding to batch element ``i`` at
+                sequence position ``j``.
+            valid_measurements: The classification measurements in the batch that should be predicted from
+                this input ``encoded``.
 
         Returns:
-            `classification_losses_by_measurement` (`Dict[str, torch.FloatTensor]`):
-                A dictionary from `measurement` to scalar tensors consisting of the average NLL of the data
-                given the classiciation model. Averaging happens via the following procedure:
-                  * For multi-label measurements:
-                    1. NLL is averaged over labels per sequence event, for all unmasked sequence events (as in
-                       theory any event could have observed labels for binary multi-lable predictions).
-                       TODO(mmd): this should likely be specific to events with certain event types.
-                    2. NLL is macro-averaged across unmasked sequence events per batch element.
-                    3. NLL is macro-averaged across batch elements.
-                  * For single-task measurements:
-                    1. NLL is computed on any event that has a label for that task.
-                       TODO(mmd): Maybe should be conditioned on specific event types too?
-                    2. NLL is macro-averaged across events which had a label for that task per sequence.
-                       Sequences without any events with that label receive a loss of zero.
-                    3. NLL is macro-averaged across batch elements.
-            `classification_dists_by_measurement`:
-                A dictionary from `measurement` to classification distributions of shape
-                `[batch_size X sequence_length X vocabulary_size]` or `[batch_size X sequence_length]`
-                reflecting the probabilities for each event for that measurement. Returns scores for all
-                events, even those that are masked, including the final event.
-            `classification_labels_by_measurement` (`Dict[str, Union[torch.LongTensor, torch.FloatTensor]]`):
-                A dictionary from `measurement` to tensors of one of two types:
-                  * For multi-label measurements, returns FloatTensors of shape
-                    `[batch_size X sequence_length X vocabulary_size]` containing binary labels for each
-                    vocabulary element for each event.
-                  * For single-label measurements, returns LongTensors of shape
-                    `[batch_size, sequence_length]` containing label indices for each event with that task
-                    observed, otherwise contains zeros.
+            The following three dictionaries
+
+            1. ``classification_losses_by_measurement``:
+               A dictionary from `measurement` to scalar tensors consisting of the average NLL of the data
+               given the classiciation model. Averaging happens via the following procedure:
+
+               * For multi-label measurements:
+
+                 1. NLL is averaged over labels per sequence event, for all unmasked sequence events (as in
+                    theory any event could have observed labels for binary multi-lable predictions).
+                    TODO(mmd): this should likely be specific to events with certain event types.
+                 2. NLL is macro-averaged across unmasked sequence events per batch element.
+                 3. NLL is macro-averaged across batch elements.
+
+               * For single-task measurements:
+
+                 1. NLL is computed on any event that has a label for that task.
+                    TODO(mmd): Maybe should be conditioned on specific event types too?
+                 2. NLL is macro-averaged across events which had a label for that task per sequence.
+                    Sequences without any events with that label receive a loss of zero.
+                 3. NLL is macro-averaged across batch elements.
+
+            2. ``classification_dists_by_measurement``:
+               A dictionary from `measurement` to classification distributions of shape
+               `[batch_size X sequence_length X vocabulary_size]` or `[batch_size X sequence_length]`
+               reflecting the probabilities for each event for that measurement. Returns scores for all
+               events, even those that are masked, including the final event.
+            3. ``classification_labels_by_measurement``:
+               A dictionary from `measurement` to tensors of one of two types:
+
+               * For multi-label measurements, returns FloatTensors of shape
+                 `[batch_size X sequence_length X vocabulary_size]` containing binary labels for each
+                 vocabulary element for each event.
+               * For single-label measurements, returns LongTensors of shape
+                 `[batch_size, sequence_length]` containing label indices for each event with that task
+                 observed, otherwise contains zeros.
         """
 
         if not valid_measurements:
@@ -1293,43 +1540,40 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         """Produces regression predictions and losses for the model.
 
         Args:
-            `batch` (`PytorchBatch`):
-                The batch of data for which the regression predictions are desired.
-            `encoded` (`torch.FloatTensor`, shape is batch_size X sequence_length X hidden_dim):
-                The final encodings *to be used to predict for each position in the sequence*. For example,
-                the vector `encoded[i][j]` (which is of size `hidden_dim`) is _not_ the summary encoding of
-                the batch element at batch index `i` and sequence index `j`, but rather is the input to be
-                used to form regression predictions corresponding to batch element `i` at sequence
-                position `j`.
-            `valid_measurements` (`Set[str]`):
-                The regression measurements in the batch that should be predicted from this input `encoded`.
+            batch: The batch of data for which the regression predictions are desired.
+            encoded: The final encodings (of shape batch_size X sequence_length X hidden_dim) **to be used to
+                predict for each position in the sequence**. For example, the vector `encoded[i][j]` (which is
+                of size `hidden_dim`) is _not_ the summary encoding of the batch element at batch index `i`
+                and sequence index `j`, but rather is the input to be used to form regression predictions
+                corresponding to batch element `i` at sequence position `j`.
+            valid_measurements: The regression measurements in the batch that should be predicted from this
+                input `encoded`.
 
         Returns:
-            `regression_loss_values` (`Dict[str, torch.FloatTensor]`):
-                A dictionary from `measurement` to scalar tensors consisting of the average NLL of the data
-                given the regression model. Averaging happens via the following procedure:
-                  1. NLL is averaged over data elements of the correct measurement per event.
-                     TODO(mmd): This is likely a bit wrong; if a regression task has no observed value, that
-                     should be taken into account here but I don't think it is currently.
-                  2. Per-event NLLs are averaged over unmasked events with labels per batch element.
-                  3. NLL is macro-averaged over the batch.
-            `regression_dists` (`Dict[str, torch.distributions.Distribution]`):
-                A dictionary from `measurement` to torch distributions modelling the regression targets for
-                each data element in each event. In particular, samples from these distributions will have
-                shape
-                `[batch_size, sequence_length, num_data_elements_per_event]`, such that `sample[i][j][k]` will
-                correspond to a prediction for the regression target indexed by
-                `batch['dynamic_indices'][i][j][k]`.
-            `regression_labels` (`Dict[str, torch.FloatTensor]`):
-                A dictionary from `measurement` to tensors of shape
-                `[batch_size, sequence_length, num_data_elements_per_event]` containing regression targets for
-                each data element, or 0 if that regression target is unobserved.
-            `regression_indices` (`Dict[str, torch.LongTensor]`):
-                A dictionary from `measurement` to tensors of shape
-                `[batch_size, sequence_length, num_data_elements_per_event]` containing the integer index of
-                the regression component observed in that position, or 0 if that regression target is
-                unobserved. E.g., if we have 200 laboratory tests that we are regressing over, these indices
-                state to which laboratory test results the values in `regression_labels` correspond.
+            Four dictionaries:
+
+            * regression_loss_values: A dictionary from `measurement` to scalar tensors consisting of the
+              average NLL of the data given the regression model. Averaging happens via the following
+              procedure:
+
+              1. NLL is averaged over data elements of the correct measurement per event.
+                 TODO(mmd): This is likely a bit wrong; if a regression task has no observed value, that
+                 should be taken into account here but I don't think it is currently.
+              2. Per-event NLLs are averaged over unmasked events with labels per batch element.
+              3. NLL is macro-averaged over the batch.
+            * regression_dists: A dictionary from `measurement` to torch distributions modelling the
+              regression targets for each data element in each event. In particular, samples from these
+              distributions will have shape `[batch_size, sequence_length, num_data_elements_per_event]`, such
+              that `sample[i][j][k]` will correspond to a prediction for the regression target indexed
+              by `batch['dynamic_indices'][i][j][k]`.
+            * regression_labels: A dictionary from `measurement` to tensors of shape
+              `[batch_size, sequence_length, num_data_elements_per_event]` containing regression targets for
+              each data element, or 0 if that regression target is unobserved.
+            * regression_indices: A dictionary from `measurement` to tensors of shape
+              `[batch_size, sequence_length, num_data_elements_per_event]` containing the integer index of
+              the regression component observed in that position, or 0 if that regression target is
+              unobserved. E.g., if we have 200 laboratory tests that we are regressing over, these indices
+              state to which laboratory test results the values in `regression_labels` correspond.
         """
         if not valid_measurements:
             return {}, {}, {}, {}

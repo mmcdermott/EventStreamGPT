@@ -1,9 +1,9 @@
-# Based on "
-# https://raw.githubusercontent.com/huggingface/transformers/
-# e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
-# "
+"""The internal transformer module code.
 
-"""PyTorch StructuredTransformer model."""
+Based on
+https://raw.githubusercontent.com/huggingface/transformers/\
+e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
+"""  # noqa E501
 
 import math
 
@@ -273,8 +273,8 @@ class InnerBlock(nn.Module):
         output_attentions=False,
         static_kv_first: bool = False,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        """Note that attention_mask here is still not expanded; we do that internally here to
-        account for the different mask shapes used in the structured transformer."""
+        """Note that attention_mask here is still not expanded; we do that internally here to account for the
+        different mask shapes used in the structured transformer."""
 
         # If we have a static kv entry first, we don't want to process it in the rest of the block, so we drop
         # it from the residual.
@@ -413,8 +413,8 @@ class TemporalPositionEncoding(torch.nn.Module):
 
 
 class ConditionallyIndependentPointProcessInputLayer(torch.nn.Module):
-    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized
-    embeddings from it."""
+    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized embeddings from
+    it."""
 
     def __init__(
         self,
@@ -595,8 +595,8 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
 
 
 class NestedAttentionPointProcessInputLayer(torch.nn.Module):
-    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized
-    embeddings from it."""
+    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized embeddings from
+    it."""
 
     def __init__(
         self,

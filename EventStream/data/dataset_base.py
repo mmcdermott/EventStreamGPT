@@ -59,8 +59,8 @@ class DatasetBase(
     """
 
     _PICKLER: str = "dill"
-    """Dictates via which pickler the `_save` and `_load` methods will save/load objects of this
-    class, as defined in `SaveableMixin`."""
+    """Dictates via which pickler the `_save` and `_load` methods will save/load objects of this class, as
+    defined in `SaveableMixin`."""
 
     _DEL_BEFORE_SAVING_ATTRS: list[str] = [
         "_subjects_df",
@@ -95,8 +95,7 @@ class DatasetBase(
 
     @classmethod
     def dynamic_measurements_fp(cls, save_dir: Path) -> Path:
-        """Returns the filepath for the ``dynamic_measurements_df`` given `save_dir` and class
-        parameters."""
+        """Returns the filepath for the ``dynamic_measurements_df`` given `save_dir` and class parameters."""
         return save_dir / f"{cls.DYNAMIC_MEASUREMENTS_FN}.{cls.DF_SAVE_FORMAT}"
 
     @classmethod
@@ -348,9 +347,9 @@ class DatasetBase(
     def subjects_df(self) -> DF_T:
         """Lazily loads and/or returns the subjects dataframe from the implicit filepath.
 
-        This will return the `_subjects_df` attribute, if defined and not `None`; otherwise, it will
-        attempt to load the subjects dataframe from the implicit filepath defined by
-        `config.save_dir` and `SUBJECTS_FN`.
+        This will return the `_subjects_df` attribute, if defined and not `None`; otherwise, it will attempt
+        to load the subjects dataframe from the implicit filepath defined by `config.save_dir` and
+        `SUBJECTS_FN`.
         """
         if (not hasattr(self, "_subjects_df")) or self._subjects_df is None:
             subjects_fp = self.subjects_fp(self.config.save_dir)
@@ -367,9 +366,8 @@ class DatasetBase(
     def events_df(self) -> DF_T:
         """Lazily loads and/or returns the events dataframe from the implicit filepath.
 
-        This will return the `_events_df` attribute, if defined and not `None`; otherwise, it will
-        attempt to load the events dataframe from the implicit filepath defined by `config.save_dir`
-        and `EVENTS_FN`.
+        This will return the `_events_df` attribute, if defined and not `None`; otherwise, it will attempt to
+        load the events dataframe from the implicit filepath defined by `config.save_dir` and `EVENTS_FN`.
         """
         if (not hasattr(self, "_events_df")) or self._events_df is None:
             events_fp = self.events_fp(self.config.save_dir)
@@ -386,9 +384,9 @@ class DatasetBase(
     def dynamic_measurements_df(self) -> DF_T:
         """Lazily loads and/or returns the measurements dataframe from the implicit filepath.
 
-        This will return the `_dynamic_measurements_df` attribute, if defined and not `None`;
-        otherwise, it will attempt to load the dynamic measurements dataframe from the implicit
-        filepath defined by `config.save_dir` and `DYNAMIC_MEASUREMENTS_FN`.
+        This will return the `_dynamic_measurements_df` attribute, if defined and not `None`; otherwise, it
+        will attempt to load the dynamic measurements dataframe from the implicit filepath defined by
+        `config.save_dir` and `DYNAMIC_MEASUREMENTS_FN`.
         """
         if (not hasattr(self, "_dynamic_measurements_df")) or self._dynamic_measurements_df is None:
             dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
@@ -587,20 +585,17 @@ class DatasetBase(
     def _validate_initial_dfs(
         self, subjects_df: DF_T, events_df: DF_T, dynamic_measurements_df: DF_T
     ) -> tuple[DF_T, DF_T, DF_T]:
-        """Validates input dataframes and massages their internal types to minimize memory
-        requirements."""
+        """Validates input dataframes and massages their internal types to minimize memory requirements."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @abc.abstractmethod
     def _update_subject_event_properties(self):
-        """Updates the `subject_ids`, `event_types`, and `n_events_per_subject` internal
-        properties."""
+        """Updates the `subject_ids`, `event_types`, and `n_events_per_subject` internal properties."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @TimeableMixin.TimeAs
     def _filter_subjects(self):
-        """Filters the internal subjects dataframe to only those who have a minimum number of
-        events."""
+        """Filters the internal subjects dataframe to only those who have a minimum number of events."""
         if self.config.min_events_per_subject is None:
             return
 
@@ -621,8 +616,8 @@ class DatasetBase(
         Aggregates the events_df by subject_id and timestamp (into buckets of size
         `self.config.agg_by_time_scale`), combining event_types into grouped categories with names
         concatenated with a separator of '&', then re-aligns measurements into the new event IDs in
-        `dynamic_measurements_df`. Note that no numerical aggregation (e.g., mean, etc.) happens
-        here; all data is retained, and only dynamic measurement event IDs are updated.
+        `dynamic_measurements_df`. Note that no numerical aggregation (e.g., mean, etc.) happens here; all
+        data is retained, and only dynamic measurement event IDs are updated.
         """
         raise NotImplementedError("This method must be implemented by a subclass.")
 
@@ -698,8 +693,7 @@ class DatasetBase(
     @classmethod
     @abc.abstractmethod
     def _filter_col_inclusion(cls, df: DF_T, col_inclusion_targets: dict[str, bool | Sequence[Any]]) -> DF_T:
-        """Filters `df` via the mapping of column names to allowed values in
-        `col_inclusion_targets`."""
+        """Filters `df` via the mapping of column names to allowed values in `col_inclusion_targets`."""
         raise NotImplementedError("This method must be implemented by a subclass.")
 
     @property
@@ -1121,8 +1115,8 @@ class DatasetBase(
     def vocabulary_config(self) -> VocabularyConfig:
         """Returns the implied `VocabularyConfig` object corresponding to this (fit) dataset.
 
-        This property collates vocabulary information across all measurements into a format that is
-        concise, but complete for downstream DL applications.
+        This property collates vocabulary information across all measurements into a format that is concise,
+        but complete for downstream DL applications.
         """
         measurements_per_generative_mode = defaultdict(list)
         measurements_per_generative_mode[DataModality.SINGLE_LABEL_CLASSIFICATION].append("event_type")
@@ -1166,8 +1160,7 @@ class DatasetBase(
 
     @property
     def unified_vocabulary_idxmap(self) -> dict[str, dict[str, int]]:
-        """Provides a unified idxmap spanning all measurements' vocabularies (concatenated via
-        offsets)."""
+        """Provides a unified idxmap spanning all measurements' vocabularies (concatenated via offsets)."""
         idxmaps = {}
         for m, offset in self.unified_vocabulary_offsets.items():
             if m in self.measurement_idxmaps:
