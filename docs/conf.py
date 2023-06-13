@@ -184,8 +184,8 @@ html_theme_options = {
     # "color_primary": "",
     # "color_accent": "",
     # Set the repo location to get a badge with stats
-    "repo_url": "https://github.com/mmcdermott/EventStreamML",
-    "repo_name": "EventStreamML",
+    "repo_url": "https://github.com/mmcdermott/EventStreamGPT",
+    "repo_name": "EventStreamGPT",
     # Visible levels of the global TOC; -1 means unlimited
     "globaltoc_depth": 3,
     # If False, expand all TOC entries

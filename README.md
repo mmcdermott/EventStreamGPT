@@ -1,17 +1,17 @@
-# Event Stream ML
+# Event Stream GPT
 
 [![python](https://img.shields.io/badge/-Python_3.10-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![pytorch](https://img.shields.io/badge/PyTorch_2.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
 [![lightning](https://img.shields.io/badge/-Lightning_2.0+-792ee5?logo=pytorchlightning&logoColor=white)](https://pytorchlightning.ai/)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
-[![tests](https://github.com/mmcdermott/EventStreamML/actions/workflows/tests.yml/badge.svg)](https://github.com/mmcdermott/EventStreamML/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/mmcdermott/EventStreamML/branch/main/graph/badge.svg?token=F9NYFEN5FX)](https://codecov.io/gh/mmcdermott/EventStreamML)
-[![code-quality](https://github.com/mmcdermott/EventStreamML/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/EventStreamML/actions/workflows/code-quality-main.yaml)
-[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/EventStreamML#license)
-[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamML/pulls)
-[![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamML.svg)](https://github.com/mmcdermott/EventStreamML/graphs/contributors)
+[![tests](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/tests.yml/badge.svg)](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/mmcdermott/EventStreamGPT/branch/main/graph/badge.svg?token=F9NYFEN5FX)](https://codecov.io/gh/mmcdermott/EventStreamGPT)
+[![code-quality](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/code-quality-main.yaml)
+[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/EventStreamGPT#license)
+[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamGPT/pulls)
+[![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamGPT.svg)](https://github.com/mmcdermott/EventStreamGPT/graphs/contributors)
 
-EventStream is a codebase for managing and modeling "event stream" datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](EventStream/data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](EventStream/transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
+Event Stream GPT is a codebase for managing and modeling "event stream" datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](EventStream/data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](EventStream/transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
 
 ## Installation
 

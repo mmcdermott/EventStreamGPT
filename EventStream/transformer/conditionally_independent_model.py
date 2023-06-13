@@ -25,7 +25,7 @@ class ConditionallyIndependentGenerativeOutputLayer(GenerativeOutputLayerBase):
     """The output layer for the conditionally independent event stream model.
 
     TODO(mmcdermott):
-        Allow for use of NLL-beta throughout? https://github.com/mmcdermott/EventStreamML/issues/26
+        Allow for use of NLL-beta throughout? https://github.com/mmcdermott/EventStreamGPT/issues/26
 
     Args:
         config: The overall model configuration.

@@ -3,12 +3,12 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="EventStreamML",
+    name="EventStreamGPT",
     version="0.0.1",
-    description="EventStreamML",
+    description="EventStreamGPT",
     author="Matthew McDermott",
     author_email="mattmcdermott8@gmail.com",
-    url="https://github.com/mmcdermott/EventStreamML",
+    url="https://github.com/mmcdermott/EventStreamGPT",
     install_requires=[
         "pytorch-lightning",
         "hydra-core",

@@ -166,7 +166,7 @@ class StrEnum(str, enum.Enum):
 
     Todo:
         TODO(mattmcdermott8@gmail.com): Upgrade to python 3.11 and eliminate this class. See
-            https://github.com/mmcdermott/EventStreamML/issues/23
+            https://github.com/mmcdermott/EventStreamGPT/issues/23
     """
 
     def __new__(cls, value, *args, **kwargs):
@@ -221,7 +221,7 @@ class JSONableMixin:
     Todo:
         TODO(mattmcdermott8@gmail.com): Investigate removing in favor of
         [OmegaConf](https://omegaconf.readthedocs.io/en/latest/index.html) throughout. See
-        https://github.com/mmcdermott/EventStreamML/issues/24
+        https://github.com/mmcdermott/EventStreamGPT/issues/24
     """
 
     @classmethod
