@@ -1,3 +1,4 @@
+"""A model for fine-tuning on classification tasks."""
 import torch
 
 from ..data.types import PytorchBatch
@@ -12,6 +13,13 @@ from .utils import safe_masked_max, safe_weighted_avg
 
 
 class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
+    """A model for fine-tuning on classification tasks.
+
+    Args:
+        config: The model configuration class to use. This must contain the relevant fine-tuning task
+            information (e.g., `num_labels`, `finetuning_task`, `pooling_method`, and `id2label`).
+    """
+
     def __init__(
         self,
         config: StructuredTransformerConfig,
@@ -20,7 +28,7 @@ class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
 
         self.task = config.finetuning_task
 
-        if self.uses_dep_graph:
+        if self._uses_dep_graph:
             self.encoder = NestedAttentionPointProcessTransformer(config)
         else:
             self.encoder = ConditionallyIndependentPointProcessTransformer(config)
@@ -40,12 +48,21 @@ class ESTForStreamClassification(StructuredTransformerPreTrainedModel):
         self.post_init()
 
     @property
-    def uses_dep_graph(self):
+    def _uses_dep_graph(self):
         return self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION
 
-    def forward(self, batch: PytorchBatch, **kwargs):
+    def forward(self, batch: PytorchBatch, **kwargs) -> StreamClassificationModelOutput:
+        """Runs the forward pass through the fine-tuning label prediction.
+
+        Args:
+            batch: The batch of data to model.
+
+        Returns:
+            A `StreamClassificationModelOutput` object capturing loss, predictions, and labels for the
+            fine-tuning task in question.
+        """
         encoded = self.encoder(batch, **kwargs).last_hidden_state
-        event_encoded = encoded[:, :, -1, :] if self.uses_dep_graph else encoded
+        event_encoded = encoded[:, :, -1, :] if self._uses_dep_graph else encoded
 
         # `event_encoded` is of shape [batch X seq X hidden_dim]. For pooling, I want to put the sequence
         # dimension as last, so we'll transpose.
