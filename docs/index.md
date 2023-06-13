@@ -1,4 +1,4 @@
-# Event Flow GPT
+# Event Stream GPT
 
 ## Contents
 

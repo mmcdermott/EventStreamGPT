@@ -22,7 +22,7 @@ sys.path.insert(0, str(__src__))
 
 # -- Project information -----------------------------------------------------
 
-project = "Event Flow GPT"
+project = "Event Stream GPT"
 copyright = "2023, Matthew McDermott"
 author = "Matthew McDermott"
 
@@ -169,7 +169,7 @@ html_theme = "sphinx_material"
 # Material theme options (see theme.conf for more information)
 html_theme_options = {
     # Set the name of the project to appear in the navigation.
-    "nav_title": "Event Flow GPT",
+    "nav_title": "Event Stream GPT",
     # Icon,
     "logo_icon": "timelapse",  # TODO: Remove once the actual logo is fixed.
     # Set you GA account ID to enable tracking
@@ -276,7 +276,9 @@ latex_elements = {  # type: ignore
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
-latex_documents = [("index", "user_guide.tex", "EventFlowGPT Documentation", "Matthew McDermott", "manual")]
+latex_documents = [
+    ("index", "user_guide.tex", "Event Stream GPT Documentation", "Matthew McDermott", "manual")
+]
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.
