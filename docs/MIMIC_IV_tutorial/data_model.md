@@ -54,4 +54,49 @@ three visits will all be recorded as separate measurements, and occupy unique ro
 
 ### Pre-processing
 
+During pre-processing, the EFGPT pipeline, in general, performances the following steps:
+
+1. Converts input data types into minimal memory equivalents (e.g., strings to categorical data types,
+   64-bit signed integers for ID-spaces into \*-bit unsigned integer types, etc.).
+2. Applies pre-set censoring, outlier removal, and filtering over infrequently observed measurements to
+   limit the input space.
+3. Fits measurement vocabularies, outlier detection parameters, and normalization parameters over the
+   categorical and numerical values observed in the train set.
+4. Universally filters out infrequently observed categorical variables and outliers, normalizes numerical
+   variables, and converts categorical variables to indices.
+5. Produces deep-learning friendly representations for downstream use via the [PytorchDataset](<>) class.
+
+In this way, we can view the input of the entire EFGPT pipeline as the raw, pre-extraction input dataset, and
+the output as a pre-cached PyTorch Dataset ready-made for deep-learning use.
+
 ### Deep-learning Representations
+
+The deep learning representation is a polars dataframe written to disk. This dataframe has one row per
+subject, a set of sentinel columns that contain all observed information about each subject in a highly sparse
+format. In particular, this dataframe contains the following columns:
+
+- `subject_id`: This column will be an unsigned integer type, and will have the ID of the subject
+  for each row.
+- `start_time`: This column will be a `datetime` type, and will contain the start time of the
+  subject's record.
+- `static_indices`: This column is a ragged, sparse representation of the categorical static
+  measurements observed for this subject. Each element of this column will itself be a list of
+  unsigned integers corresponding to indices into the unified vocabulary for the static measurements
+  observed for that subject.
+- `static_measurement_indices`: This column corresponds in shape to `static_indices`, but contains
+  unsigned integer indices into the unified measurement vocabulary, defining to which measurement each
+  observation corresponds. It is of the same shape and of a consistent order as `static_indices.`
+- `time`: This column is a ragged array of the time in minutes from the start time at which each
+  event takes place. For a given row, the length of the array within this column corresponds to the
+  number of events that subject has.
+- `dynamic_indices`: This column is a doubly ragged array containing the indices of the observed
+  values within the unified vocabulary per event per subject. Each subject's data for this column
+  consists of an array of arrays, each containing only the indices observed at each event.
+- `dynamic_measurement_indices` This column is a doubly ragged array containing the indices of the
+  observed measurements per event per subject. Each subject's data for this column consists of an
+  array of arrays, each containing only the indices of measurements observed at each event. It is of
+  the same shape and of a consistent order as `dynamic_indices`.
+- `dynamic_values` This column is a doubly ragged array containing the indices of the
+  observed measurements per event per subject. Each subject's data for this column consists of an
+  array of arrays, each containing only the indices of measurements observed at each event. It is of
+  the same shape and of a consistent order as `dynamic_indices`.

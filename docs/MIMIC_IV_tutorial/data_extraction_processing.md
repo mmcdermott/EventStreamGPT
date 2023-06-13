@@ -94,7 +94,8 @@ patients:
     ... # Omitted for brevity
 ```
 
-This allows us to overwrite those parameters in a given run on the command line, with, for example, `... min_los=1 min_admissions=2`.
+This allows us to overwrite those parameters in a given run on the command line, with, for example,
+`... min_los=1 min_admissions=2`.
 
 ##### Per-input Blocks:
 
@@ -121,7 +122,35 @@ raw column names in the input dataset.
 
 The `functional_time_dependent` key has a similar, but slightly different structure. Rather than having a
 nested dictionary of measurements by input sources by modalities, it has an inner dictionary which has the
-desired output \`functional_time_dependent\`\`measurement names as keys and whose values store the configuration
+desired output `functional_time_dependent` measurement names as keys and whose values store the configuration
 options for those measurement's configuration files.
 
 #### Core configuration parameters
+
+The core configuration block, reporduced below, contains any speciality `DatasetConfig` parameters.
+
+```yaml
+save_dir: ${oc.env:PROJECT_DATA_DIR}/${cohort_name}
+outlier_detector_config:
+  stddev_cutoff: 4.0
+min_valid_vocab_element_observations: 25
+min_valid_column_observations: 50
+min_true_float_frequency: 0.1
+min_unique_numerical_observations: 25
+min_events_per_subject: 20
+agg_by_time_scale: 2h
+```
+
+These parameters showcase several aspects of the configuration language. Firstly, the `save_dir` specification
+showcases [Hydra/OmegaConfg's Interpolation Capabilities](https://omegaconf.readthedocs.io/en/2.3_branch/usage.html#variable-interpolation).
+
+Secondly, we can see in addition several other aspects of the configuration being specialized; this
+configuration specifies that variables more than 4 standard deviations away from the mean should be considered
+outliers, that columns/measurements must be observed 50 times to be included at all, that there must be at
+least 10% of values actually being floating point for a numerical measure to not be re-cast as integer-valued,
+for a numerical column to need at least 25 unique values to not be re-cast as categorical, to only retain
+subjects who have at least 20 subjects, and to aggregate all events together into 2-hour buckets.
+
+Outside of the core measurements and input blocks, any remaining parameters that are elements of the
+[`DatasetConfig`](../api/EventStream.data.config.html) object will be incorporated into the final config and
+reflected in pre-processing, etc.
