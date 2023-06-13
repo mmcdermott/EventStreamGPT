@@ -244,6 +244,17 @@ def main(cfg: DictConfig):
                 continue
             cols = source_schema[cols_n]
             data_schema = {}
+
+            match source_schema.get("event_type", None):
+                case list():
+                    for et in source_schema["event_type"]:
+                        if et.startswith("COL:"):
+                            event_type_col = et[len("COL:") :]
+                            data_schema[event_type_col] = (event_type_col, InputDataType.CATEGORICAL)
+                case str() as et if et.startswith("COL:"):
+                    event_type_col = et[len("COL:") :]
+                    data_schema[event_type_col] = (event_type_col, InputDataType.CATEGORICAL)
+
             if type(cols) is dict:
                 cols = [list(t) for t in cols.items()]
 
