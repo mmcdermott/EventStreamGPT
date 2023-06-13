@@ -1,5 +1,7 @@
 """The internal transformer module code.
 
+TODO(mmcdermott): Can use `transformers.apply_chunking_to_forward` to save memory.
+
 Based on
 https://raw.githubusercontent.com/huggingface/transformers/\
 e3cc4487fe66e03ec85970ea2db8e5fb34c455f4/src/transformers/models/gpt_neo/modeling_gpt_neo.py
@@ -22,11 +24,37 @@ from .structured_attention import StructuredAttention
 
 logger = logging.get_logger(__name__)
 
-# TODO(mmd): Can use `transformers.apply_chunking_to_forward` to save memory.
 
+def expand_mask(mask: torch.BoolTensor, dtype: torch.dtype) -> torch.Tensor:
+    """Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, 1, seq_len]` and converts to float.
 
-def expand_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
-    """Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`."""
+    This enables broadcasting to [bsz, num_heads, from_seq_len, to_seq_len] by converting the size [bsz,
+    seq_len] to [bsz, 1, 1, seq_len] and converts from a boolean form to an attention weights masking form,
+    which has 0 where the original mask was True and the minimum possible floating point expressible value
+    where it was False.
+
+    Args:
+        mask: The event presence/absence mask of shape `[bsz, seq_len]`.
+        dtype: The target dtype of the attention mask.
+
+    Returns:
+        The passed event indicator mask reshaped and type converted, unless mask is `None` in which case
+        returns `None`.
+
+    Examples:
+        >>> import torch
+        >>> assert expand_mask(None, None) is None
+        >>> mask = torch.BoolTensor([
+        ...     [True, True, False, False],
+        ...     [True, True, True, False],
+        ... ])
+        >>> dtype = torch.float16
+        >>> print(expand_mask(mask, dtype))
+        tensor([[[[    -0.,     -0., -65504., -65504.]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[    -0.,     -0.,     -0., -65504.]]]], dtype=torch.float16)
+    """
     if mask is None:
         return None
 
@@ -49,6 +77,25 @@ def expand_mask(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
 
 
 class InnerSelfAttention(nn.Module):
+    """This class implements the inner self-attention mechanism.
+
+    This involves
+    performing the self-attention operation and returning the result along with
+    some optional additional outputs. The constructor of this class accepts three arguments, which determine
+    the configuration of the self-attention mechanism.
+
+    Args:
+        config: An instance of StructuredTransformerConfig which contains various
+            configuration parameters.
+        attention_type: A string indicating the type of attention to be applied.
+            Currently, only "local" is implemented.
+        window_size: An integer specifying the size of the attention window.
+
+    Raises:
+        ValueError: If the product of `num_heads` and `head_dim` from the config
+            does not match `embed_dim`.
+    """
+
     def __init__(
         self,
         config: StructuredTransformerConfig,
@@ -90,18 +137,51 @@ class InnerSelfAttention(nn.Module):
         self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=True)
 
     def _split_heads(self, tensor, num_heads, attn_head_size):
-        """Splits hidden_size dim into attn_head_size and num_heads."""
+        """Splits the last dimension of a tensor into `num_heads` and `attn_head_size`.
+
+        Args:
+            tensor: The input tensor.
+            num_heads: Number of attention heads.
+            attn_head_size: The size of each attention head.
+
+        Returns:
+            The re-shaped tensor.
+        """
+
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
         tensor = tensor.view(new_shape)
         return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
 
     def _merge_heads(self, tensor, num_heads, attn_head_size):
-        """Merges attn_head_size dim and num_attn_heads dim into hidden_size."""
+        """Merges the last two dimensions of a tensor into a single dimension.
+
+        Args:
+            tensor: The input tensor.
+            num_heads: Number of attention heads.
+            attn_head_size: The size of each attention head.
+
+        Returns:
+            The re-shaped tensor.
+        """
+
         tensor = tensor.permute(0, 2, 1, 3).contiguous()
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
+        """Performs the attention operation.
+
+        Args:
+            query: The query tensor.
+            key: The key tensor.
+            value: The value tensor.
+            attention_mask: A mask to be applied on the attention weights.
+            head_mask: A mask to be applied on the attention heads.
+
+        Returns:
+            A tuple containing the output of the attention operation and the attention weights.
+        """
+
         # Keep the attention weights computation in fp32 to avoid overflow issues
         query = query.to(torch.float32)
         key = key.to(torch.float32)
@@ -146,9 +226,21 @@ class InnerSelfAttention(nn.Module):
         output_attentions=False,
         static_kv_first: bool = False,
     ):
-        # In the case of attention over the dependency graph, the history embedding is dropped after
-        # processing, so we want to only use it as a KV, not as a query. This is captured in the
-        # `static_kv_first` arg.
+        """Applies the attention mechanism to the input hidden states.
+
+        Args:
+            hidden_states: The input hidden states.
+            attention_mask: A mask to be applied on the attention weights.
+            layer_past: The past layer states.
+            head_mask: A mask to be applied on the attention heads.
+            use_cache: A flag indicating whether to cache the layer's past states.
+            output_attentions: A flag indicating whether to output the attention weights.
+            static_kv_first: In the case of attention over the dependency graph, the history embedding is
+                dropped after processing, so we want to only use it as a KV, not as a query.
+
+        Returns:
+            A tuple containing the output of the attention mechanism and a dictionary of optional outputs.
+        """
 
         # TODO(mmd): Flash attention
         query = self.q_proj(hidden_states)
@@ -191,6 +283,20 @@ class InnerSelfAttention(nn.Module):
 
 
 class InnerAttention(nn.Module):
+    """The inner attention module used by the GPTs in this codebase.
+
+    This module largely just selects what kind of attention computation should be used in this layer, and
+    offloads computation therein.
+
+    Args:
+        config: The model configuration object.
+        layer_id: Which layer is this attention computation in (by integer index)?
+        is_seq: Is this a sequence or dependency-graph attention layer?
+
+    Raises:
+        ValueError: If an invalid attention type is provided.
+    """
+
     def __init__(self, config: StructuredTransformerConfig, layer_id: int = 0, is_seq: bool = True):
         super().__init__()
         self.layer_id = layer_id
@@ -207,7 +313,7 @@ class InnerAttention(nn.Module):
                 config, attention_type=self.attention_type, window_size=self.window_size
             )
         else:
-            raise NotImplementedError(
+            raise ValueError(
                 "Only attn layer types 'global' and 'local' exist, but got `config.attention_layers`: "
                 f"{config.attention_layers}. Select attn layer types from ['global', 'local'] only."
             )
@@ -226,6 +332,21 @@ class InnerAttention(nn.Module):
         output_attentions=False,
         static_kv_first: bool = False,
     ):
+        """Forward pass.
+
+        This returns the pre-selected attention calculation over the inputs (run through a layer norm).
+
+        Args:
+            hidden_states: The input hidden states.
+            attention_mask: A mask to be applied on the attention weights.
+            layer_past: The past layer states.
+            head_mask: A mask to be applied on the attention heads.
+            use_cache: A flag indicating whether to cache the layer's past states.
+            output_attentions: A flag indicating whether to output the attention weights.
+            static_kv_first: In the case of attention over the dependency graph, the history embedding is
+                dropped after processing, so we want to only use it as a KV, not as a query.
+        """
+
         return self.attention(
             self.layer_norm(hidden_states),
             attention_mask=attention_mask,
@@ -238,6 +359,12 @@ class InnerAttention(nn.Module):
 
 
 class InnerMLP(nn.Module):
+    """Applies a multilayer perceptron (MLP) to the `hidden_states`.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+    """
+
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__()
         embed_dim = config.hidden_size
@@ -249,6 +376,14 @@ class InnerMLP(nn.Module):
         self.dropout = nn.Dropout(float(config.resid_dropout))
 
     def forward(self, hidden_states):
+        """Conducts forward pass for the MLP.
+
+        Args:
+            hidden_states: Input tensor.
+
+        Returns:
+            Modified hidden states after applying MLP.
+        """
         hidden_states = self.c_fc(hidden_states)
         hidden_states = self.act(hidden_states)
         hidden_states = self.c_proj(hidden_states)
@@ -257,6 +392,14 @@ class InnerMLP(nn.Module):
 
 
 class InnerBlock(nn.Module):
+    """An inner block in a transformer architecture that consists of attention and MLP layers.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+        layer_id: Unique identifier for the layer.
+        is_seq: Flag indicating whether the block is sequential.
+    """
+
     def __init__(self, config: StructuredTransformerConfig, layer_id: int, is_seq: bool):
         super().__init__()
         self.attn = InnerAttention(config, layer_id, is_seq)
@@ -273,8 +416,21 @@ class InnerBlock(nn.Module):
         output_attentions=False,
         static_kv_first: bool = False,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        """Note that attention_mask here is still not expanded; we do that internally here to account for the
-        different mask shapes used in the structured transformer."""
+        """Conducts the forward pass for the inner block.
+
+        Args:
+            hidden_states: Input tensor.
+            attention_mask: Mask to avoid attending to padded token positions.
+            layer_past: Cache of past hidden states for more efficient decoding.
+            head_mask: Mask to nullify selected heads of the self-attention module.
+            use_cache: Whether to use caching.
+            output_attentions: Whether to return attention probabilities in the output.
+            static_kv_first: Whether the static key-value pair comes first.
+
+        Returns:
+            tuple: Modified hidden states and a dictionary containing present key-value pair and
+            attention weights (if `output_attentions=True`).
+        """
 
         # If we have a static kv entry first, we don't want to process it in the rest of the block, so we drop
         # it from the residual.
@@ -306,6 +462,13 @@ class InnerBlock(nn.Module):
 
 
 class StructuredTransformerBlock(nn.Module):
+    """A block for structured attention with both sequential and dependency graph modules.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+        layer_id: Unique identifier (depth index) for the layer.
+    """
+
     def __init__(self, config: StructuredTransformerConfig, layer_id: int):
         super().__init__()
 
@@ -327,11 +490,22 @@ class StructuredTransformerBlock(nn.Module):
     def forward(
         self, *args, **kwargs
     ) -> tuple[torch.Tensor, dict[str, dict[str, torch.Tensor | None] | None]]:
+        """Conducts the forward pass for the structured transformer block.
+
+        Args:
+            args: Variable length argument list.
+            kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            tuple: Modified input tensor and a dictionary containing present key-value pair and
+            attention weights.
+        """
+
         return self.block(*args, **kwargs)
 
 
 class StructuredTransformerPreTrainedModel(PreTrainedModel):
-    """The pre-trained model class for Transformer models."""
+    """The base pre-trained model class for Transformer models."""
 
     config_class = StructuredTransformerConfig
     base_model_prefix = "transformer"
@@ -363,6 +537,22 @@ class StructuredTransformerPreTrainedModel(PreTrainedModel):
 
 
 def time_from_deltas(batch: PytorchBatch) -> torch.Tensor:
+    """Given a batch of time deltas, compute the relative time-since-start for each event.
+
+    Args:
+        batch: The input batch
+
+    Examples:
+        >>> batch = PytorchBatch(
+        ...     event_mask=torch.BoolTensor([
+        ...         [True, True, True], [True, True, False]
+        ...     ]),
+        ...     time_delta=torch.Tensor([[1.0, 3.2, 0.0], [1.4, 0.0, 1.0]])
+        ... )
+        >>> print(time_from_deltas(batch))
+        tensor([[0.0000, 1.0000, 4.2000],
+                [0.0000, 1.4000, 1.4000]])
+    """
     t_deltas = batch["time_delta"]
 
     if batch.event_mask is not None:
@@ -371,8 +561,17 @@ def time_from_deltas(batch: PytorchBatch) -> torch.Tensor:
     return torch.hstack([torch.zeros_like(t_deltas[:, :1]), t_deltas.cumsum(-1)[:, :-1]])
 
 
-# Copied from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class TemporalPositionEncoding(torch.nn.Module):
+    """A module for applying time-based position encodings to a PytorchBatch.
+
+    Adapted from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+
+    Args:
+        embedding_dim: The desired size of the output embedding. Unlike many position embedding
+            implementations, this does not need to be even.
+        max_timepoint: The maximum observed timepoint, used to initialize the frequency space.
+    """
+
     def __init__(
         self,
         embedding_dim: int,
@@ -393,7 +592,15 @@ class TemporalPositionEncoding(torch.nn.Module):
             self.cos_div_term = torch.nn.Parameter(div_term[:-1], requires_grad=False)
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
-        """t is the tensor of input timepoints, with shape (batch size, sequence length)"""
+        """Forward pass.
+
+        Args:
+            batch: The input batch to process.
+
+        Returns:
+            The temporal position embeddings tensor of shape (bsz, seq_len)
+        """
+
         t = time_from_deltas(batch) if batch.get("time", None) is None else batch["time"]
         bsz, seq_len = t.shape
         device = t.device
@@ -413,8 +620,15 @@ class TemporalPositionEncoding(torch.nn.Module):
 
 
 class ConditionallyIndependentPointProcessInputLayer(torch.nn.Module):
-    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized embeddings from
-    it."""
+    """Processes input batch and produces event embeddings.
+
+    This layer accepts a batch from an event-stream PyTorch dataset and returns input embeddings from it. This
+    is designed for conditionally independent models, as it does not split the input embeddings into different
+    components corresponding to different dependency graph positions. Combines time and data embeddings.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+    """
 
     def __init__(
         self,
@@ -440,6 +654,12 @@ class ConditionallyIndependentPointProcessInputLayer(torch.nn.Module):
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
+        """Returns input event embeddings for the provided batch.
+
+        Args:
+            batch: A PytorchBatch instance containing input data.
+        """
+
         data_embed = self.data_embedding_layer(batch)
         time_embed = self.time_embedding_layer(batch)
         embed = data_embed + time_embed
@@ -453,6 +673,19 @@ class ConditionallyIndependentPointProcessInputLayer(torch.nn.Module):
 
 
 class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTrainedModel):
+    """A transformer model specifically for conditionally independent point processes.
+
+    This model uses an input layer to generate embeddings from an event-stream PyTorch dataset, and
+    an InnerBlock layer for non-structured processing. As a conditionally independent model, all event
+    covariates are predicted simultaneously from the history embedding.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+
+    Raises:
+        ValueError: If the provided configuration indicates a nested attention model.
+    """
+
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__(config)
 
@@ -484,6 +717,23 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
         output_hidden_states: bool | None = None,
         return_dict: bool | None = None,
     ) -> tuple[torch.Tensor] | TransformerOutputWithPast:
+        """Performs a forward pass on the transformer model.
+
+        Args:
+            batch: A PytorchBatch instance containing input data.
+            input_embeds: Precomputed embeddings for the input data. Currently unused.
+            past: Past hidden states for more efficient decoding.
+            seq_attention_mask: Mask for the sequential attention mechanism.
+            head_mask: Mask to nullify selected heads of the self-attention module.
+            use_cache: Specifies whether caching should be used.
+            output_attentions: Specifies whether attention probabilities should be returned in the output.
+            output_hidden_states: Specifies whether hidden states should be returned in the output.
+            return_dict: Specifies whether the output should be an object with key names (True) or a tuple.
+
+        Returns:
+            A tuple containing hidden states, or a TransformerOutputWithPast object if return_dict is True.
+        """
+
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
@@ -595,8 +845,15 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
 
 
 class NestedAttentionPointProcessInputLayer(torch.nn.Module):
-    """Takes as input a batch from an event-stream pytorch dataset and produces contextualized embeddings from
-    it."""
+    """Processes input batch and produces input dependency graph element embeddings.
+
+    This layer accepts a batch from an event-stream PyTorch dataset and returns input embeddings from it. This
+    is designed for nested attention models, as it splits the input embeddings into different components
+    corresponding to different dependency graph positions. Combines time and data embeddings.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+    """
 
     def __init__(
         self,
@@ -640,6 +897,12 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
     def forward(self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None) -> torch.Tensor:
+        """Returns input dependency graph element embeddings for the provided batch.
+
+        Args:
+            batch: A PytorchBatch instance containing input data.
+        """
+
         embed = self.data_embedding_layer(batch)
         # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len config.hidden_size).
 
@@ -670,6 +933,21 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
 
 
 class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedModel):
+    """A transformer model specifically for nested attention point processes.
+
+    This model uses an input layer to generate embeddings from an event-stream PyTorch dataset, and
+    an InnerBlock layer for non-structured processing. As a nested attention model, event covariates are
+    predicted in the sequence of the dependency graph elements, specified in the config's
+    `measurements_per_dep_graph_level` parameter, depending on both the historical event embeddings and the
+    prior dependency graph elements.
+
+    Args:
+        config: Configuration parameters for the structured transformer.
+
+    Raises:
+        ValueError: If the provided configuration indicates a conditionally independent model.
+    """
+
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__(config)
 
@@ -704,6 +982,23 @@ class NestedAttentionPointProcessTransformer(StructuredTransformerPreTrainedMode
         dep_graph_past: tuple[torch.FloatTensor] | None = None,
         dep_graph_el_generation_target: int | None = None,
     ) -> tuple[torch.Tensor] | TransformerOutputWithPast:
+        """Performs a forward pass on the transformer model.
+
+        Args:
+            batch: A PytorchBatch instance containing input data.
+            input_embeds: Precomputed embeddings for the input data. Currently unused.
+            past: Past hidden states for more efficient decoding.
+            seq_attention_mask: Mask for the sequential attention mechanism.
+            head_mask: Mask to nullify selected heads of the self-attention module.
+            use_cache: Specifies whether caching should be used.
+            output_attentions: Specifies whether attention probabilities should be returned in the output.
+            output_hidden_states: Specifies whether hidden states should be returned in the output.
+            return_dict: Specifies whether the output should be an object with key names (True) or a tuple.
+
+        Returns:
+            A tuple containing hidden states, or a TransformerOutputWithPast object if return_dict is True.
+        """
+
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
