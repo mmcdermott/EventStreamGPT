@@ -231,7 +231,11 @@ def main(cfg: DictConfig):
             input_schema_kwargs["type"] = InputDFType.STATIC
 
         if input_schema_kwargs["type"] != InputDFType.STATIC and "event_type" not in input_schema_kwargs:
-            input_schema_kwargs["event_type"] = inflect.singular_noun(schema_name).upper()
+            if not inflect.singular_noun(schema_name):
+                event_type = schema_name
+            else:
+                event_type = inflect.singular_noun(schema_name)
+            input_schema_kwargs["event_type"] = event_type.upper()
 
         cols_covered = []
         any_schemas_present = False
