@@ -89,7 +89,12 @@ class ESTForEmbedding(L.LightningModule):
 def get_embeddings(cfg: FinetuneConfig):
     """Gets embeddings.
 
-    TODO
+    Writes embeddings to
+    ``cfg.load_from_model_dir / "embeddings" / cfg.task_df_name / "{split}_embeddings.pt"``.
+
+    Args:
+        cfg: The fine-tuning configuration object specifying the cohort for which and model from which you
+            wish to get embeddings.
     """
 
     torch.multiprocessing.set_sharing_strategy("file_system")

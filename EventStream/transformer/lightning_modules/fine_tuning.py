@@ -383,9 +383,11 @@ class FinetuneConfig:
 
 @task_wrapper
 def train(cfg: FinetuneConfig):
-    """Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
+    """Runs the end to end training procedure for the fine-tuning model.
 
-    Args: TODO
+    Args:
+        cfg: The fine-tuning configuration object specifying the cohort and task for which and model from
+            which you wish to fine-tune.
     """
 
     L.seed_everything(cfg.seed)

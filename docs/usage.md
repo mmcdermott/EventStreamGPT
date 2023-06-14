@@ -15,7 +15,7 @@
 ```{include} ../configs/README.md
 ```
 
-## Script Endpoints
+## Scripts
 
 ```{include} ../scripts/README.md
 ```

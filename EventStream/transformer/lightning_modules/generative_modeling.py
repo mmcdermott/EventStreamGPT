@@ -554,9 +554,10 @@ class PretrainConfig:
 
 @task_wrapper
 def train(cfg: PretrainConfig):
-    """Runs the end to end training procedure for the ESTForGenerativeSequenceModelingLM model.
+    """Runs the end to end training procedure for the pre-training model.
 
-    Args: TODO
+    Args:
+        cfg: The pre-training config defining the generative modeling task.
     """
 
     L.seed_everything(cfg.seed)
