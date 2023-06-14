@@ -40,6 +40,41 @@ the following:
 
 ### Building Task DataFrames (& Labelers!)
 
+In order to assess performance on downstream tasks over these data, we need to define "task dataframes" that
+describe these downstream targets. This takes two forms: first, a simple task dataframe which defines a task
+schema and cohort, and second, a zero-shot labeling function that can infer empirical task labels from
+generated batches. We describe both options here.
+
 #### Task DataFrames
 
+Task dataframes in our setting are built using Polars queries over the internal dataframes of the dataset
+object. These can be seen in the tutorial repository notebook,
+[here](https://github.com/mmcdermott/MIMICIV_FMs_private/blob/main/notebooks/Build%20Task%20DataFrames.ipynb).
+
+The logic to construct these task dataframes is relatively simple, and we hope to soon add functionality to
+allow these to be configurable without needing to write explicit code. In this example, we define two tasks:
+30-day readmission risk prediction and in-hospital mortality prediction. Both can be found in the notebook
+linked above, but we will show a sample here demonstrating the construction, and final schema, of the task
+dataframe for readmission risk prediction below.
+
+```{include} readmission_risk_stats.py
+---
+language: python
+---
+```
+
 #### Zero-shot Labelers
+
+Zero-shot labelers are user-defined functors that can compute an empirical label for a generated batch of
+data, to enable zero-shot evaluation of an Event Stream GPT. These are fully documented in the
+[source code](https://github.com/mmcdermott/MIMICIV_FMs_private/tree/main/task_labelers) for this working
+example, but we also highlight one example labeler below, for in-hospital mortality prediction.
+
+```{include} in_hosp_mort_labeler.py
+---
+language: python
+---
+```
+
+After defining these labelers, one simply needs to copy them into the task dataframes folder for the
+corresponding dataset, and they can be used for evaluation with no issue.

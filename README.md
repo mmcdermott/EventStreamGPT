@@ -328,7 +328,7 @@ generated = M.generate(
 You can use generation to perform zero-shot predictions for a given fine-tuning task by following the
 following steps:
 
-1. Make a new python file which contains a \`\`labeler'': a python object subclassing the
+1. Make a new python file which contains a "labeler": a python object subclassing the
    [`Labeler`](EventStream/transformer/zero_shot_labeler.py) interface which implements a `__call__` method
    taking as input a batch of data, an input sequence length, and a configuration file and predict your task's
    label. from that batch, if possible, and otherwise indicate that it is not possible. For example, if your
@@ -337,20 +337,8 @@ following steps:
 2. You need to copy this labeling class definition file (all necessary functions and such used by the class
    must live in that single file) into the data directories task dataframes subfolder with the name
    `${task_df_name}_labeler.py`.
-3. You can then use the [`zeroshot.py`](scripts/zeroshot.py) script to run a zero-shot evaluation via a Hydra
+3. You can then use the `scripts/zeroshot.py` script to run a zero-shot evaluation via a Hydra
    config on that task labeler and any pre-trained model.
-
-### Foundation Model Evaluation
-
-Our suggested evaluation suite focuses on assessing the emergence of foundation model capabilities. To that
-end, it consists of the following steps:
-
-1. Determine appropriate hyperparameters for your pretraining setup. In our current evaluation suite, we
-   leverage a single set of hyperparameters across all pretraining dataset subset sizes, though this is
-   likely sub-optimal in practice.
-2. Pre-train models at optimal hyperparameters on a robust range of pretraining dataset subset sizes, with
-   multiple random seeds being run over smaller subsets to ameliorate variance.
-3. ...
 
 ## Examples
 
