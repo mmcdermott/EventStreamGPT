@@ -276,7 +276,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
     regression: dict[str, torch.FloatTensor] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
 
-    def build_new_batch_element(
+    def _build_new_batch_element(
         self,
         batch: PytorchBatch,
         config: StructuredTransformerConfig,
@@ -353,8 +353,8 @@ class GenerativeSequenceModelSamples(ModelOutput):
             new_measurement_indices = config.measurements_idxmap[m] * torch.ones_like(new_indices)
 
             dynamic_indices.append(new_indices)
-            dynamic_values_mask.append(~torch.isnan(new_values))
-            dynamic_values.append(torch.nan_to_num(new_values, 0))
+            dynamic_values_mask.append(~torch.isfinite(new_values))
+            dynamic_values.append(torch.nan_to_num(new_values, nan=0, posinf=0, neginf=0))
             dynamic_measurement_indices.append(new_measurement_indices)
 
         if dynamic_indices:
@@ -886,7 +886,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             new_dynamic_measurement_indices,
             new_dynamic_values,
             new_dynamic_values_mask,
-        ) = self.build_new_batch_element(batch, config)
+        ) = self._build_new_batch_element(batch, config)
 
         # Combine everything
         seq_dim = 1
@@ -1140,12 +1140,20 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
             case _:
                 raise ValueError(f"self.regression is malformed! Got\n{self.regression}")
 
+        if self.time_to_event is not None:
+            time_to_event = self.time_to_event.sample()
+            # This is wrong!
+            # TODO(mmd): Make this correct.
+            time_to_event = torch.nan_to_num(time_to_event, nan=None, posinf=1000)
+        else:
+            time_to_event = None
+
         return GenerativeSequenceModelSamples(
             event_mask=event_mask[:, -1].detach(),
             classification=sampled_classification,
             regression=sampled_regression,
             regression_indices=self.regression_indices,
-            time_to_event=self.time_to_event.sample() if self.time_to_event is not None else None,
+            time_to_event=time_to_event,
         )
 
 
@@ -1419,8 +1427,15 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         if not valid_measurements:
             return {}, {}, {}
 
+        torch._assert(~torch.isnan(encoded).any(), f"{torch.isnan(encoded).sum()} NaNs in encoded")
+
         # Classification of what elements are going to occur:
         is_observed_score = self.IsObservedLayer(encoded)
+        torch._assert(
+            ~torch.isnan(is_observed_score).any(),
+            f"{torch.isnan(is_observed_score).sum()} NaNs in is_observed_score"
+        )
+
         classification_scores = self.ClassificationLayer(encoded)
 
         classification_losses_by_measurement = {}

@@ -753,6 +753,8 @@ class ConditionallyIndependentPointProcessTransformer(StructuredTransformerPreTr
         else:
             assert batch is None, "Can't specify both input_embeds and batch."
 
+        torch._assert(~torch.isnan(input_embeds).any(), f"{torch.isnan(input_embeds).sum()} NaNs in input_embeds")
+
         if seq_attention_mask is None and batch is not None and batch.get("event_mask", None) is not None:
             seq_attention_mask = expand_mask(batch["event_mask"], input_embeds.dtype)
 

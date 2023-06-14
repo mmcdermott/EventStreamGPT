@@ -78,6 +78,10 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                 f"If dep_graph_el_generation_target ({dep_graph_el_generation_target}) is not None, "
                 f"is_generation ({is_generation}) must be True!"
             )
+        torch._assert(
+            ~torch.isnan(encoded).any(),
+            f"{torch.isnan(encoded).sum()} NaNs in encoded (target={dep_graph_el_generation_target})"
+        )
 
         # These are the containers we'll use to process the outputs
         classification_dists_by_measurement = {}
@@ -151,6 +155,13 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     regression_measurements
                 )
 
+                torch._assert(
+                    ~torch.isnan(dep_graph_level_encoded).any(),
+                    (
+                        f"{torch.isnan(dep_graph_level_encoded).sum()} NaNs in dep_graph_level_encoded "
+                        f"({target_idx}, {i})"
+                    )
+                )
                 classification_out = self.get_classification_outputs(
                     batch,
                     dep_graph_level_encoded,

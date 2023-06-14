@@ -336,13 +336,11 @@ class FinetuneConfig:
                 if self.data_config_overrides.get("train_subset_size", None) in (None, "FULL"):
                     self.save_dir = self.load_from_model_dir / "finetuning" / self.task_df_name
                 else:
-                    self.data_config_overrides["train_subset_size"]
-                    self.data_config_overrides["train_subset_seed"]
-                    if self.data_config_overrides["train_subset_seed"] is None:
+                    if self.data_config_overrides.get("train_subset_seed", None) is None:
                         self.data_config_overrides["train_subset_seed"] = int(random.randint(1, int(1e6)))
                         print(
-                            f"WARNING: train_subset_size={self.train_subset_size} but seed is unset. Setting "
-                            f"to {self.data_config_overrides['train_subset_seed']}"
+                            f"WARNING: train_subset_size={self.data_config_overrides.train_subset_size} but "
+                            f"seed is unset. Setting to {self.data_config_overrides['train_subset_seed']}"
                         )
                     self.save_dir = (
                         self.load_from_model_dir

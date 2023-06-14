@@ -268,6 +268,20 @@ class StructuredGenerationMixin:
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
 
+            for key in (
+                'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices', 'time_delta', 'time'
+            ):
+                vals = batch[key]
+                if vals is not None and torch.isnan(vals).any():
+                    raise ValueError(
+                        f"{torch.isnan(vals).sum()} NaNs detected in {key} on index {generated_event_index}!"
+                    )
+                if vals is not None and (~torch.isfinite(vals)).any():
+                    raise ValueError(
+                        f"{(~torch.isfinite(vals)).sum()} Non-finites detected in {key} on index {generated_event_index} "
+                        f"for dep_graph_el_target {dep_graph_el_target} (is_first={is_first})!"
+                    )
+
             # forward pass to get next token
             batch, scores, attentions, hidden_states, model_kwargs = sample_fn(
                 batch,
@@ -363,6 +377,22 @@ class StructuredGenerationMixin:
             # forward pass to get next token
             if is_first and dep_graph_el_target == 0:
                 dep_graph_el_target = None
+
+            for key in (
+                'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices', 'time_delta', 'time'
+            ):
+                vals = batch[key]
+                if vals is not None and torch.isnan(vals).any():
+                    raise ValueError(
+                        f"{torch.isnan(vals).sum()} NaNs detected in {key} on index {generated_event_index} "
+                        f"for dep_graph_el_target {dep_graph_el_target} (is_first={is_first})!"
+                    )
+                if vals is not None and (~torch.isfinite(vals)).any():
+                    raise ValueError(
+                        f"{(~torch.isfinite(vals)).sum()} Non-finites detected in {key} on index {generated_event_index} "
+                        f"for dep_graph_el_target {dep_graph_el_target} (is_first={is_first})!"
+                    )
+
             model_inputs = self.prepare_inputs_for_generation(
                 batch, dep_graph_el_generation_target=dep_graph_el_target, **model_kwargs
             )
