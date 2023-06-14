@@ -146,10 +146,9 @@ Of course, this module isn't merely intended for you to be able to run this clas
 also enable you to easily test your own, huggingface API compatible models. To make your own model, you can
 follow the below steps:
 
-1. Write your own model class. Structure it to follow the interface (inputs and outputs) of
-   [`ESTForGenerativeSequenceModeling`](EventStream/transformer/model.py).
+1. Write your own model class. Structure it to follow the interface of the pre-built model architectures.
 2. Copy the
-   [.../EventStream/transformer/generative_sequence_model_lightning.py](EventStream/transformer/generative_sequence_model_lightning.py)
+   [generative_modeling.py](https://github.com/mmcdermott/EventStreamGPT/blob/main/EventStream/transformer/lightning_modules/generative_modeling.py)
    file into your own repository. Adjust imports as necessary to refer to the installed EventStream Package
    and your new model.
 3. Adjust the internals of your new lightning class so the internal model used is your model class.
