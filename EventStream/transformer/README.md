@@ -79,7 +79,7 @@ To reflect intra-event causal dependencies, this model breaks each attention lay
    outputs of this layer is then used as the input to the subsequent layer.
 
 This process can be seen pictorally here:
-![Dependency-aware Attention](https://user-images.githubusercontent.com/470751/217272929-0b972d7f-793a-46f8-ac01-74d428bd7fcb.png)
+![Dependency-aware Attention](https://github.com/mmcdermott/EventStreamGPT/assets/470751/36e271f7-2101-4bfb-a4fb-ebe51d944e26)
 
 ##### Output Layer
 
