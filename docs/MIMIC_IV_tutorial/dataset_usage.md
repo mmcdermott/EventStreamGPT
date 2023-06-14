@@ -49,7 +49,7 @@ generated batches. We describe both options here.
 
 Task dataframes in our setting are built using Polars queries over the internal dataframes of the dataset
 object. These can be seen in the tutorial repository notebook,
-[here](https://github.com/mmcdermott/MIMICIV_FMs_private/blob/main/notebooks/Build%20Task%20DataFrames.ipynb).
+[here](https://github.com/mmcdermott/MIMICIV_FMs_public/blob/main/notebooks/Build%20Task%20DataFrames.ipynb).
 
 The logic to construct these task dataframes is relatively simple, and we hope to soon add functionality to
 allow these to be configurable without needing to write explicit code. In this example, we define two tasks:
@@ -67,7 +67,7 @@ language: python
 
 Zero-shot labelers are user-defined functors that can compute an empirical label for a generated batch of
 data, to enable zero-shot evaluation of an Event Stream GPT. These are fully documented in the
-[source code](https://github.com/mmcdermott/MIMICIV_FMs_private/tree/main/task_labelers) for this working
+[source code](https://github.com/mmcdermott/MIMICIV_FMs_public/tree/main/task_labelers) for this working
 example, but we also highlight one example labeler below, for in-hospital mortality prediction.
 
 ```{literalinclude} in_hosp_mort_labeler.py
