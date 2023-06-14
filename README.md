@@ -298,7 +298,7 @@ If you wish to pursue a few-shot fine-tuning experiment, you can use the paramet
 
 Building on the existing HuggingFace API, you can also generate future values given a generative model very
 easily. In particular, given a
-[`FinetuneConfig`](https://github.com/mmcdermott/EventStreamGPT/blob/main/EventStream/transformer/lightning/finetuning.py)
+[`FinetuneConfig`](https://github.com/mmcdermott/EventStreamGPT/blob/main/EventStream/transformer/lightning_modules/fine_tuning.py)
 object describing the data/model you wish to use for generation, you can simply do the following:
 
 ```python
