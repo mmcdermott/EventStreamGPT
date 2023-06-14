@@ -354,10 +354,6 @@ following steps:
 3. You can then use the `scripts/zeroshot.py` script to run a zero-shot evaluation via a Hydra
    config on that task labeler and any pre-trained model.
 
-## Examples
-
-You can see examples of this codebase at work via the tests.
-
 ## Testing
 
 EventStream code is tested in the global tests folder. These tests can be run via `python -m unittest` in the global directory. These tests are not exhaustive, particularly in covering the operation of EventStreamTransformer, but they are relatively comprehensive over core EventStreamData functionality.

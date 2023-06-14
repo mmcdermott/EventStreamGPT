@@ -56,7 +56,8 @@ config:
 
 The default hydra config for this object is a structured config stored in the configstore with name
 `pretrain_config`, defined in the `PretrainConfig` dataclass object in
-`generative_sequence_modeling_lightning.py` file:
+[`generative_modeling.py`](https://github.com/mmcdermott/EventStreamGPT/blob/main/EventStream/transformer/lightning_modules/generative_modeling.py)
+file:
 
 ```python
 @hydra_dataclass
