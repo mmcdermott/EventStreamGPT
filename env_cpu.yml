@@ -397,6 +397,7 @@ dependencies:
       - ruamel-yaml-clib==0.2.7
       - sparklines==0.4.2
       - sphinx-material==0.0.35
+      - sphinx-subfigure==0.2.4
       - sphinxcontrib-bibtex==2.5.0
       - sphinxcontrib-jquery==4.1
       - text-unidecode==1.3

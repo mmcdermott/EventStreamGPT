@@ -10,6 +10,7 @@
 [![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/EventStreamGPT#license)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamGPT/pulls)
 [![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamGPT.svg)](https://github.com/mmcdermott/EventStreamGPT/graphs/contributors)
+[![Documentation Status](https://readthedocs.org/projects/eventstreamml/badge/?version=latest)](https://eventstreamml.readthedocs.io/en/latest/?badge=latest)
 
 Event Stream GPT is a codebase for managing and modeling "event stream" datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](EventStream/data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](EventStream/transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
 

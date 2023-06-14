@@ -66,6 +66,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "myst_parser",
     "sphinxcontrib.bibtex",
+    "sphinx_subfigure",
 ]
 
 bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib", "api_refs.bib"]
@@ -171,7 +172,7 @@ html_theme_options = {
     # Set the name of the project to appear in the navigation.
     "nav_title": "Event Stream GPT",
     # Icon,
-    "logo_icon": "timelapse",  # TODO: Remove once the actual logo is fixed.
+    "logo_icon": "timeline",  # TODO(mmcdermott): Set actual logo icon.
     # Set you GA account ID to enable tracking
     # "google_analytics_account": "UA-XXXXX",
     #
