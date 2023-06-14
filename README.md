@@ -22,7 +22,7 @@ Installation of the requisite packages can be done via conda with the `env.yml` 
 
 This codebase contains utilities for working with event stream datasets, meaning datasets where any given sample consists of a sequence of continuous-time events. Each event can consist of various categorical or continuous measurements of various structures.
 
-### [`data`](EventStream/data)
+### [`data`](https://github.com/mmcdermott/EventStreamGPT/tree/main/EventStream/data)
 
 Event stream datasets are represented via a dataframe of events (containing event times, types, and subject ids), subjects (containing subject ids and per-subject static measurements), and per-event dynamic measurements (containing event ids, types, subject ids, and arbitrary metadata columns). Many dynamic measurements can belong to a single event. This class can also take in a functional specification for measurements that can be computed in a fixed manner dependent only on event time and per-subject static data.
 
@@ -30,9 +30,9 @@ A `EventStream.data.Dataset` can automatically pre-process train-set metadata, l
 
 It can also be processed into an `EventStream.data.PytorchDataset`, which represents these data via batches.
 
-Please see the [`data/README.md`](EventStream/data/README.md) file for more information.
+Please see the [`data/README.md`](https://github.com/mmcdermott/EventStreamGPT/tree/main/EventStream/data) file for more information.
 
-### [`transformer`](EventStream/transformer)
+### [`transformer`](https://github.com/mmcdermott/EventStreamGPT/tree/main/EventStream/transformer)
 
 Functionally, there are three areas of differences between a traditional GPT model and an `EventStream.transformer` model: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
 
@@ -51,8 +51,9 @@ overrides and local configuration options in `yaml` files.
 
 ### Dataset Building
 
-The script endpoint to build a dataset is in `scripts/build_dataset.py`. To run this script, simply call it
-and override its parameters via hydra:
+The script endpoint to build a dataset is in
+[`scripts/build_dataset.py`](https://github.com/mmcdermott/EventStreamGPT/blob/main/scripts/build_dataset.py).
+To run this script, simply call it and override its parameters via hydra:
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python \
@@ -65,8 +66,8 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python \
 ### Pre-training
 
 The script endpoint to launch a pre-training run, with the built in transformer model class here, is in
-[scripts/pretrain.py](scripts/pretrain.py). To run this script, simply call it and override its parameters
-via hydra:
+[scripts/pretrain.py](https://github.com/mmcdermott/EventStreamGPT/blob/main/scripts/pretrain.py).
+To run this script, simply call it and override its parameters via hydra:
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pretrain.py \
@@ -99,7 +100,8 @@ config:
 
 The default hydra config for this object is a structured config stored in the configstore with name
 `pretrain_config`, defined in the `PretrainConfig` dataclass object in
-`generative_sequence_modeling_lightning.py` file:
+[`generative_modeling.py`](https://github.com/mmcdermott/EventStreamGPT/blob/main/EventStream/transformer/lightning_modules/generative_modeling.py)
+file:
 
 ```python
 @hydra_dataclass
@@ -141,7 +143,8 @@ class PretrainConfig:
 #### Hyperparameter Tuning
 
 To launch a weights and biases hyperparameter sweep, you can use the
-[scripts/launch_wandb_hp_sweep.py](scripts/launch_wandb_hp_sweep.py) file.
+[scripts/launch_wandb_hp_sweep.py](https://github.com/mmcdermott/EventStreamGPT/blob/main/scripts/launch_wandb_hp_sweep.py)
+file.
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/launch_wandb_hp_sweep.py \
@@ -188,10 +191,10 @@ Of course, this module isn't merely intended for you to be able to run this clas
 also enable you to easily test your own, huggingface API compatible models. To make your own model, you can
 follow the below steps:
 
-1. Write your own model class. Structure it to follow the interface (inputs and outputs) of
-   [`ESTForGenerativeSequenceModeling`](EventStream/transformer/model.py).
+1. Write your own model class. Structure it to follow the interface (inputs and outputs) of EventStream
+   models.
 2. Copy the
-   [.../EventStream/transformer/generative_sequence_model_lightning.py](EventStream/transformer/generative_sequence_model_lightning.py)
+   [generative_modeling.py](https://github.com/mmcdermott/EventStreamGPT/blob/main/EventStream/transformer/lightning_modules/generative_modeling.py)
    file into your own repository. Adjust imports as necessary to refer to the installed EventStream Package
    and your new model.
 3. Adjust the internals of your new lightning class so the internal model used is your model class.
@@ -208,8 +211,9 @@ copied from this repository; stay tuned for further updates on that front!
 
 ### Fine-tuning
 
-To fine-tune a model, use the `scripts/finetune.py` script. Much like pre-training, this script
-leverages hydra to run, but now using the `FinetuneConfig`
+To fine-tune a model, use the
+[`scripts/finetune.py`](https://github.com/mmcdermott/EventStreamGPT/blob/main/scripts/finetune.py)
+script. Much like pre-training, this script leverages hydra to run, but now using the `FinetuneConfig`
 configuration object:
 
 ```python
@@ -293,8 +297,9 @@ If you wish to pursue a few-shot fine-tuning experiment, you can use the paramet
 ### Zero-shot Generation
 
 Building on the existing HuggingFace API, you can also generate future values given a generative model very
-easily. In particular, given a [`FinetuneConfig`](transformer/stream_classification_lightning.py) object
-describing the data/model you wish to use for generation, you can simply do the following:
+easily. In particular, given a
+[`FinetuneConfig`](https://github.com/mmcdermott/EventStreamGPT/blob/main/transformers/lightning/finetuning.py)
+object describing the data/model you wish to use for generation, you can simply do the following:
 
 ```python
 # Initialize the config, overwriting the `max_seq_len` argument to a smaller value for the `data_config` to
@@ -337,11 +342,12 @@ You can use generation to perform zero-shot predictions for a given fine-tuning 
 following steps:
 
 1. Make a new python file which contains a "labeler": a python object subclassing the
-   [`Labeler`](EventStream/transformer/zero_shot_labeler.py) interface which implements a `__call__` method
-   taking as input a batch of data, an input sequence length, and a configuration file and predict your task's
-   label. from that batch, if possible, and otherwise indicate that it is not possible. For example, if your
-   task is to predict in-hospital mortality, your class would need to look at the elements of the batch after
-   the input sequence length and see if any death events happen before the first discharge event.
+   [`Labeler`](https://github.com/mmcdermott/EventStreamGPT/blob/main/transformer/zero_shot_labeler.py)
+   interface which implements a `__call__` method taking as input a batch of data, an input sequence length,
+   and a configuration file and predict your task's label. from that batch, if possible, and otherwise
+   indicate that it is not possible. For example, if your task is to predict in-hospital mortality, your class
+   would need to look at the elements of the batch after the input sequence length and see if any death events
+   happen before the first discharge event.
 2. You need to copy this labeling class definition file (all necessary functions and such used by the class
    must live in that single file) into the data directories task dataframes subfolder with the name
    `${task_df_name}_labeler.py`.
@@ -369,4 +375,5 @@ Please ensure that your contributions are well-documented and include tests wher
 
 ## License
 
-This project is licensed under the [LICENSE](LICENSE) file provided in the repository.
+This project is licensed under the [LICENSE](https://github.com/mmcdermott/EventStreamGPT/blob/main/LICENSE)
+file provided in the repository.
