@@ -153,6 +153,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             task_df_fp = task_dir / f"{split}.parquet"
             task_info_fp = task_dir / "task_info.json"
 
+            self.has_task = True
+
             if task_df_fp.is_file():
                 print(f"Re-loading task data for {self.config.task_df_name} from {task_df_fp}...")
                 self.cached_data = pl.scan_parquet(task_df_fp)
@@ -161,8 +163,6 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     self.tasks = sorted(task_info["tasks"])
                     self.task_vocabs = task_info["vocabs"]
                     self.task_types = task_info["types"]
-
-                self.has_task = True
 
             elif raw_task_df_fp.is_file():
                 print(f"Loading raw task df from {raw_task_df_fp}")
