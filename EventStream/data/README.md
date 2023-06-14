@@ -160,14 +160,10 @@ A subset of notable fields include:
    stored, and vocabularies can be filtered to only elements occurring sufficiently frequently via a
    function and "idxmaps" (maps from vocabulary elements to their integer index) are also available via an
    accessor. These can be built from observations during pre-processing dynamically.
-6. `present_in_event_types` stores which for which types of events this measurement can be observed. This is
-   only valid for `DYNAMIC` measurements, as `STATIC` measurements are not associated with events and
-   `FUNCTIONAL_TIME_DEPENDENT` measurements are only dependent on timestamps among event variables, so can
-   exist for all events.
-7. `observation_frequency` stores how frequently that measurement was observed with a non-null value (or a
+6. `observation_frequency` stores how frequently that measurement was observed with a non-null value (or a
    non-null key in the case of `MULTIVARIATE_REGRESSION` measurements) among all possible instances it could
    have been observed (e.g., all possible subjects for `STATIC` measurements, or otherwise all possible
-   events of the valid type).
+   events).
 
 This configuration file is readable from and writable to JSON files. Full details of the options for this
 configuration object can be found in its source documentation.
@@ -198,6 +194,10 @@ configuration object can be found in its source documentation.
 One can construct an `EventStream.data.Dataset` by passing a configuration object and a `subjects_df`, an
 `events_df`, and a `measurements_df`. There are several mandatory columns for each dataframe, which can be
 found in the source documentation.
+
+Alternatively, one can leverage the
+[`scripts/build\_dataset.py`](https://github.com/mmcdermott/EventStreamGPT/blob/main/scripts/build_dataset.pyI)
+to extract a raw dataset and build it from the undrerlying data source.
 
 #### Saving / Loading
 
