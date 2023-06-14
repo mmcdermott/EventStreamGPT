@@ -54,12 +54,13 @@ overrides and local configuration options in `yaml` files.
 The script endpoint to build a dataset is in `scripts/build_dataset.py`. To run this script, simply call it
 and override its parameters via hydra:
 
-````bash
+```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python \
-  $EVENT_STREAM_PATH/scripts/build_dataset.py \
-  --config-path=$(pwd)/configs \
-  --config-name=dataset \
-  "hydra.searchpath=[$EVENT_STREAM_PATH/configs]" # put more args here...
+	$EVENT_STREAM_PATH/scripts/build_dataset.py \
+	--config-path=$(pwd)/configs \
+	--config-name=dataset \
+	"hydra.searchpath=[$EVENT_STREAM_PATH/configs]" # put more args here...
+```
 
 ### Pre-training
 
@@ -72,7 +73,7 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pr
 	--config-path='/path/to/local/configs' \
 	--config-name='local_config_name' \
 	optimization_config.batch_size=24 optimization_config.num_dataloader_workers=64 # hydra overrides...
-````
+```
 
 In your local config file (or via the command line), you can override various parameters, e.g.
 
