@@ -57,7 +57,7 @@ allow these to be configurable without needing to write explicit code. In this e
 linked above, but we will show a sample here demonstrating the construction, and final schema, of the task
 dataframe for readmission risk prediction below.
 
-```{include} readmission_risk_stats.py
+```{literalinclude} readmission_risk_stats.py
 ---
 language: python
 ---
@@ -70,7 +70,7 @@ data, to enable zero-shot evaluation of an Event Stream GPT. These are fully doc
 [source code](https://github.com/mmcdermott/MIMICIV_FMs_private/tree/main/task_labelers) for this working
 example, but we also highlight one example labeler below, for in-hospital mortality prediction.
 
-```{include} in_hosp_mort_labeler.py
+```{literalinclude} in_hosp_mort_labeler.py
 ---
 language: python
 ---
