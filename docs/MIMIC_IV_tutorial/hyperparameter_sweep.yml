@@ -1,0 +1,177 @@
+defaults:
+  - hyperparameter_sweep_base
+  - _self_
+
+cohort_name: ???
+project: ${oc.env:PROJECT_NAME}
+program: ${oc.env:EVENT_STREAM_PATH}/scripts/pretrain.py
+
+parameters:
+  experiment_dir:
+    value: ${oc.env:PROJECT_DIR}/models/hyperparameter_search/${cohort_name}/sweep_${now:%m-%d-%y_%H-%M-%S}
+  num_dataloader_workers:
+    value: 15
+  data_config:
+    save_dir:
+      value: ${oc.env:PROJECT_DIR}/data/MIMIC_IV/${cohort_name}
+  config:
+    measurements_per_dep_graph_level:
+      values:
+        - - ["age", "time_of_day"]
+          - ["event_type"]
+          - [
+              "patientweight",
+              "admission_type",
+              "admission_location",
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "careunit",
+              ["lab_itemid", "categorical_only"],
+              ["infusion_itemid", "categorical_only"],
+            ]
+          - [
+              ["lab_itemid", "numerical_only"],
+              ["infusion_itemid", "numerical_only"],
+            ]
+          - ["procedure_itemid", "medication", "icd_code", "discharge_location"]
+        - - ["age", "time_of_day"]
+          - ["event_type"]
+          - [
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "admission_type",
+            ]
+          - ["admission_location", "careunit"]
+          - [
+              ["lab_itemid", "categorical_only"],
+              ["infusion_itemid", "categorical_only"],
+              "patientweight",
+            ]
+          - [
+              ["lab_itemid", "numerical_only"],
+              ["lab_itemid", "numerical_only"],
+              "procedure_itemid",
+              "medication",
+              "icd_code",
+              "discharge_location",
+            ]
+        - - ["age", "time_of_day"]
+          - ["event_type"]
+          - [
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "admission_type",
+            ]
+          - ["admission_location", "careunit"]
+          - [
+              "lab_itemid",
+              "infusion_itemid",
+              "patientweight",
+              "procedure_itemid",
+              "medication",
+              "icd_code",
+              "discharge_location",
+            ]
+        - - ["age", "time_of_day"]
+          - ["event_type"]
+          - [
+              "lab_itemid",
+              "infusion_itemid",
+              "patientweight",
+              "procedure_itemid",
+              "medication",
+              "icd_code",
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "admission_type",
+              "admission_location",
+              "careunit",
+              "discharge_location",
+            ]
+        - - ["age", "time_of_day"]
+          - [
+              "event_type",
+              "patientweight",
+              "admission_type",
+              "admission_location",
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "careunit",
+              ["lab_itemid", "categorical_only"],
+              ["infusion_itemid", "categorical_only"],
+            ]
+          - [
+              ["lab_itemid", "numerical_only"],
+              ["infusion_itemid", "numerical_only"],
+            ]
+          - ["procedure_itemid", "medication", "icd_code", "discharge_location"]
+        - - ["age", "time_of_day"]
+          - [
+              "event_type",
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "admission_type",
+            ]
+          - ["admission_location", "careunit"]
+          - [
+              ["lab_itemid", "categorical_only"],
+              ["infusion_itemid", "categorical_only"],
+              "patientweight",
+            ]
+          - [
+              ["lab_itemid", "numerical_only"],
+              ["lab_itemid", "numerical_only"],
+              "procedure_itemid",
+              "medication",
+              "icd_code",
+              "discharge_location",
+            ]
+        - - ["age", "time_of_day"]
+          - [
+              "event_type",
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "admission_type",
+            ]
+          - ["admission_location", "careunit"]
+          - [
+              "lab_itemid",
+              "infusion_itemid",
+              "patientweight",
+              "procedure_itemid",
+              "medication",
+              "icd_code",
+              "discharge_location",
+            ]
+        - - ["age", "time_of_day"]
+          - [
+              "event_type",
+              "lab_itemid",
+              "infusion_itemid",
+              "patientweight",
+              "procedure_itemid",
+              "medication",
+              "icd_code",
+              "race",
+              "language",
+              "marital_status",
+              "insurance",
+              "admission_type",
+              "admission_location",
+              "careunit",
+              "discharge_location",
+            ]

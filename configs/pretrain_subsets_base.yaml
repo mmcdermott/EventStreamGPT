@@ -1,0 +1,39 @@
+initial_model_path: ???
+subset_sizes: ???
+experiment_dir: null
+experiment_name: "subset_experiments/${now:%Y-%m-%d_%H-%M-%S}"
+seeds: 5
+do_include_PT_commands: True
+project: ${oc.env:PROJECT_NAME}
+
+few_shot_commands:
+  fine_tuning_task_names: [] # Add fine-tuning task_DF names here.
+  fine_tuning_subset_sizes: [5, 10, 50, 100, 250, 500, 1000, "FULL"]
+  optimization_config:
+    init_lr: 1e-2
+    end_lr: null
+    end_lr_frac_of_init_lr: 1e-3
+    max_epochs: 100
+    batch_size: 32
+    validation_batch_size: 32
+    lr_frac_warmup_steps: 0.01
+    lr_num_warmup_steps: null
+    lr_decay_power: 1.0
+    weight_decay: 0.01
+    patience: 5
+    gradient_accumulation: null
+    num_dataloader_workers: 10
+
+zero_shot_commands:
+  fine_tuning_task_names: [] # Add fine-tuning task_DF names here.
+  optimization_config:
+    validation_batch_size: 8 # small b/c num_samples multiplies by this.
+    num_dataloader_workers: 10
+  num_samples: 10
+  input_seq_len: 32
+
+get_embeddings_commands:
+  fine_tuning_task_names: [] # Add fine-tuning task_DF names to get embeddings for those input records here.
+  optimization_config:
+    validation_batch_size: 8 # small b/c num_samples multiplies by this.
+    num_dataloader_workers: 10

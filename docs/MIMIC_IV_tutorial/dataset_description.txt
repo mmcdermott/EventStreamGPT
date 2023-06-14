@@ -1,0 +1,186 @@
+Loading subjects from /n/data1/hms/dbmi/zaklab/RAMMS/data/MIMIC_IV/ESD_06-13-23_150GB_10cpu-1/subjects_df.parquet...
+Loading events from /n/data1/hms/dbmi/zaklab/RAMMS/data/MIMIC_IV/ESD_06-13-23_150GB_10cpu-1/events_df.parquet...
+Loading dynamic_measurements from /n/data1/hms/dbmi/zaklab/RAMMS/data/MIMIC_IV/ESD_06-13-23_150GB_10cpu-1/dynamic_measurements_df.parquet...
+Dataset has 12.1 thousand subjects, with 2.8 million events and 222.4 million measurements.
+Dataset has 17 measurements:
+gender: static, single_label_classification observed 100.0%
+Vocabulary:
+  3 elements, 0.0% UNKs
+  Frequencies: █▁
+  Elements:
+    (55.2%) M
+    (44.8%) F
+
+admission_type: dynamic, multi_label_classification [...]
+Vocabulary:
+  10 elements, 0.0% UNKs
+  Frequencies: █▃▃▂▂▂▁▁▁
+  Examples:
+    (44.2%) EW EMER.
+    (14.5%) OBSERVATION ADMIT
+    (10.7%) EU OBSERVATION
+    ...
+    (2.8%) ELECTIVE
+    (1.5%) AMBULATORY OBSERVATION
+
+admission_location: dynamic, [...]
+Vocabulary:
+  12 elements, 0.0% UNKs
+  Frequencies: █▄▂▁▁▁▁▁▁▁▁
+  Examples:
+    (53.4%) EMERGENCY ROOM
+    (23.5%) PHYSICIAN REFERRAL
+    (11.0%) TRANSFER FROM HOSPITAL
+    ...
+    (0.1%) INFORMATION NOT AVAILABLE
+    (0.1%) AMBULATORY SURGERY TRANSFER
+
+language: dynamic, multi_label_classification observed 2.5%
+Vocabulary:
+  3 elements, 0.0% UNKs
+  Frequencies: █▁
+  Elements:
+    (89.1%) ENGLISH
+    (10.9%) ?
+
+race: dynamic, multi_label_classification observed 2.5%
+Vocabulary:
+  34 elements, 0.0% UNKs
+  Frequencies: █▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+  Examples:
+    (64.6%) WHITE
+    (15.0%) BLACK/AFRICAN AMERICAN
+    (2.7%) OTHER
+    ...
+    (0.1%) NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER
+    (0.0%) HISPANIC/LATINO - HONDURAN
+
+marital_status: dynamic, multi_label_classification [...]
+Vocabulary:
+  5 elements, 0.0% UNKs
+  Frequencies: █▆▂▁
+  Elements:
+    (45.7%) MARRIED
+    (33.6%) SINGLE
+    (12.6%) WIDOWED
+    (8.1%) DIVORCED
+
+insurance: dynamic, multi_label_classification observed 2.5%
+Vocabulary:
+  4 elements, 0.0% UNKs
+  Frequencies: █▇▁
+  Elements:
+    (49.4%) Medicare
+    (42.0%) Other
+    (8.5%) Medicaid
+
+discharge_location: dynamic, [...]
+Vocabulary:
+  13 elements, 0.0% UNKs
+  Frequencies: █▇▅▂▂▂▁▁▁▁▁▁
+  Examples:
+    (31.9%) HOME
+    (29.1%) HOME HEALTH CARE
+    (18.7%) SKILLED NURSING FACILITY
+    ...
+    (0.4%) OTHER FACILITY
+    (0.1%) ASSISTED LIVING
+
+careunit: dynamic, multi_label_classification observed 1.9%
+Vocabulary:
+  10 elements, 0.0% UNKs
+  Frequencies: █▆▅▄▄▃▁▁▁
+  Examples:
+    (25.7%) Medical Intensive Care Unit (MICU)
+    (17.6%) Medical/Surgical Intensive Care Unit (MICU/SICU)
+    (15.5%) Surgical Intensive Care Unit (SICU)
+    ...
+    (1.9%) Neuro Surgical Intensive Care Unit (Neuro SICU)
+    (1.4%) Neuro Stepdown
+
+icd_code: dynamic, multi_label_classification observed 2.5%
+Vocabulary:
+  2993 elements, 6.0% UNKs
+  Frequencies: █▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+  Examples:
+    (1.5%) ICD_9 4019
+    (1.2%) ICD_9 2724
+    (1.1%) ICD_9 4280
+    ...
+    (0.0%) ICD_10 D594
+    (0.0%) ICD_10 C775
+
+procedure_itemid: dynamic, multi_label_classification [...]
+Vocabulary:
+  141 elements, 0.0% UNKs
+  Frequencies: █▄▃▂▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+  Examples:
+    (11.5%) 225459
+    (10.6%) 224275
+    (6.0%) 224277
+    ...
+    (0.0%) 226237
+    (0.0%) 228228
+
+medication: dynamic, multi_label_classification [...]
+Vocabulary:
+  795 elements, 0.3% UNKs
+  Frequencies: █▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+  Examples:
+    (9.0%) Sodium Chloride 0.9% Flush
+    (7.7%) Insulin
+    (4.5%) Heparin
+    ...
+    (0.0%) ChlordiazePOXIDE
+    (0.0%) Basiliximab
+
+lab_itemid: dynamic, multivariate_regression observed 94.8%
+Value Types:
+  396 integer
+  279 float
+  179 dropped
+  94 categorical_integer
+  39 categorical_float
+Vocabulary:
+  1152 elements, 0.0% UNKs
+  Frequencies: █▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+  Examples:
+    (5.3%) 220045 (bpm)
+    (5.2%) 220210 (insp/min)
+    (5.2%) 220277 (%)
+    ...
+    (0.0%) 228624 (cm)__EQ_3.0
+    (0.0%) 227645 (min)__EQ_15
+
+infusion_itemid: dynamic, multivariate_regression [...]
+Value Types:
+  137 categorical_integer
+  81 integer
+  64 dropped
+  1 categorical_float
+Vocabulary:
+  527 elements, 0.1% UNKs
+  Frequencies: █▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+  Examples:
+    (15.9%) 225158
+    (12.9%) 220949
+    (6.9%) 225943
+    ...
+    (0.0%) 221289__EQ_247
+    (0.0%) 221036__EQ_840
+
+patientweight: dynamic, univariate_regression observed 47.0%
+Value is a float
+
+age: functional_time_dependent, univariate_regression [...]
+Value is a float
+
+time_of_day: functional_time_dependent, [...]
+Vocabulary:
+  5 elements, 0.0% UNKs
+  Frequencies: █▆▅▁
+  Elements:
+    (36.9%) PM
+    (28.1%) AM
+    (24.9%) EARLY_AM
+    (10.0%) LATE_PM

@@ -1,43 +1,3 @@
-# Event Stream GPT
-
-[![python](https://img.shields.io/badge/-Python_3.10-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![pytorch](https://img.shields.io/badge/PyTorch_2.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
-[![lightning](https://img.shields.io/badge/-Lightning_2.0+-792ee5?logo=pytorchlightning&logoColor=white)](https://pytorchlightning.ai/)
-[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
-[![tests](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/tests.yml/badge.svg)](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/mmcdermott/EventStreamGPT/branch/main/graph/badge.svg?token=F9NYFEN5FX)](https://codecov.io/gh/mmcdermott/EventStreamGPT)
-[![code-quality](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/code-quality-main.yaml)
-[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/EventStreamGPT#license)
-[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamGPT/pulls)
-[![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamGPT.svg)](https://github.com/mmcdermott/EventStreamGPT/graphs/contributors)
-[![Documentation Status](https://readthedocs.org/projects/eventstreamml/badge/?version=latest)](https://eventstreamml.readthedocs.io/en/latest/?badge=latest)
-
-Event Stream GPT is a codebase for managing and modeling "event stream" datasets, which consist of sequences of continuous-time events containing categorical or continuous measurements with complex internal dependencies. Examples of such data include electronic health records, financial transactions, and sensor data. The repo contains two major sub-modules: [`data`](EventStream/data), for handling event stream datasets in raw form and with Pytorch for modeling, and [`transformer`](EventStream/transformer), which includes Hugging Face-compatible transformer models, generative layers for marked point-process and continuous-time sequence modeling, Lightning wrappers for training these models, and utilities for performing zero-shot evaluation with these models through an analog of prompting applied to event stream data.
-
-## Installation
-
-Installation of the requisite packages can be done via conda with the `env.yml` file: `conda env create -n ${ENV_NAME} -f env.yml`
-
-## Overview
-
-This codebase contains utilities for working with event stream datasets, meaning datasets where any given sample consists of a sequence of continuous-time events. Each event can consist of various categorical or continuous measurements of various structures.
-
-### [`data`](EventStream/data)
-
-Event stream datasets are represented via a dataframe of events (containing event times, types, and subject ids), subjects (containing subject ids and per-subject static measurements), and per-event dynamic measurements (containing event ids, types, subject ids, and arbitrary metadata columns). Many dynamic measurements can belong to a single event. This class can also take in a functional specification for measurements that can be computed in a fixed manner dependent only on event time and per-subject static data.
-
-A `EventStream.data.Dataset` can automatically pre-process train-set metadata, learning categorical vocabularies, handling numerical data type conversion, rule-based outlier removal, and training of outlier detection and normalization models.
-
-It can also be processed into an `EventStream.data.PytorchDataset`, which represents these data via batches.
-
-Please see the [`data/README.md`](EventStream/data/README.md) file for more information.
-
-### [`transformer`](EventStream/transformer)
-
-Functionally, there are three areas of differences between a traditional GPT model and an `EventStream.transformer` model: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
-
-## Scripts
-
 You can use several scripts from this repository. These scripts are built using
 [hydra](https://hydra.cc/docs/intro/), so generally you will use them by specifying a mixture of command line
 overrides and local configuration options in `yaml` files.
@@ -47,17 +7,22 @@ overrides and local configuration options in `yaml` files.
 The script endpoint to build a dataset is in `scripts/build_dataset.py`. To run this script, simply call it
 and override its parameters via hydra:
 
-````bash
+```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python \
-  $EVENT_STREAM_PATH/scripts/build_dataset.py \
-  --config-path=$(pwd)/configs \
-  --config-name=dataset \
-  "hydra.searchpath=[$EVENT_STREAM_PATH/configs]" # put more args here...
+	$EVENT_STREAM_PATH/scripts/build_dataset.py \
+	--config-path=$(pwd)/configs \
+	--config-name=dataset \
+	"hydra.searchpath=[$EVENT_STREAM_PATH/configs]" arg1 arg2
+```
+
+In your local config file (which in the above command will be located at `$(pwd)/configs/dataset.yml`), you
+specify the input sources, measurements to extract, and configuration parameters in accordance with
+`configs/dataset_base.yml`. See the MIMIC-IV tutorial for examples.
 
 ### Pre-training
 
 The script endpoint to launch a pre-training run, with the built in transformer model class here, is in
-[scripts/pretrain.py](scripts/pretrain.py). To run this script, simply call it and override its parameters
+`scripts/pretrain.py`. To run this script, simply call it and override its parameters
 via hydra:
 
 ```bash
@@ -65,7 +30,7 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pr
 	--config-path='/path/to/local/configs' \
 	--config-name='local_config_name' \
 	optimization_config.batch_size=24 optimization_config.num_dataloader_workers=64 # hydra overrides...
-````
+```
 
 In your local config file (or via the command line), you can override various parameters, e.g.
 
@@ -133,7 +98,7 @@ class PretrainConfig:
 #### Hyperparameter Tuning
 
 To launch a weights and biases hyperparameter sweep, you can use the
-[scripts/launch_wandb_hp_sweep.py](scripts/launch_wandb_hp_sweep.py) file.
+`scripts/launch_wandb_hp_sweep.py` file.
 
 ```bash
 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/launch_wandb_hp_sweep.py \
@@ -285,7 +250,7 @@ If you wish to pursue a few-shot fine-tuning experiment, you can use the paramet
 ### Zero-shot Generation
 
 Building on the existing HuggingFace API, you can also generate future values given a generative model very
-easily. In particular, given a [`FinetuneConfig`](transformer/stream_classification_lightning.py) object
+easily. In particular, given a `FinetuneConfig` object
 describing the data/model you wish to use for generation, you can simply do the following:
 
 ```python
@@ -339,26 +304,3 @@ following steps:
    `${task_df_name}_labeler.py`.
 3. You can then use the `scripts/zeroshot.py` script to run a zero-shot evaluation via a Hydra
    config on that task labeler and any pre-trained model.
-
-## Examples
-
-You can see examples of this codebase at work via the tests.
-
-## Testing
-
-EventStream code is tested in the global tests folder. These tests can be run via `python -m unittest` in the global directory. These tests are not exhaustive, particularly in covering the operation of EventStreamTransformer, but they are relatively comprehensive over core EventStreamData functionality.
-
-## Contributing
-
-Contributions to the EventStream project are welcome! If you encounter any issues, have feature requests, or would like to submit improvements, please follow these steps:
-
-1. Open a new issue to report the problem or suggest a new feature.
-2. Fork the repository and create a new branch for your changes.
-3. Make your changes, ensuring that they follow the existing code style and structure.
-4. Submit a pull request for review and integration into the main repository.
-
-Please ensure that your contributions are well-documented and include tests where necessary.
-
-## License
-
-This project is licensed under the [LICENSE](LICENSE) file provided in the repository.

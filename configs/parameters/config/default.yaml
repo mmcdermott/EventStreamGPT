@@ -1,0 +1,60 @@
+head_dim:
+  min: 2
+  max: 64
+hidden_size:
+  value: "null"
+num_attention_heads:
+  min: 1
+  max: 16
+num_hidden_layers:
+  min: 1
+  max: 16
+resid_dropout:
+  min: 0.0
+  max: 0.5
+input_dropout:
+  min: 0.0
+  max: 0.5
+attention_dropout:
+  min: 0.0
+  max: 0.5
+
+structured_event_processing_mode:
+  values: ["conditionally_independent", "nested_attention"]
+seq_attention_types:
+  values: [["global"], ["global", "local"]]
+seq_window_size:
+  min: 2
+  max: 64
+do_full_block_in_seq_attention:
+  values: [True, False]
+do_full_block_in_dep_graph_attention:
+  values: [True, False]
+
+TTE_generation_layer_type:
+  values: ["exponential", "log_normal_mixture"]
+TTE_lognormal_generation_num_components:
+  min: 1
+  max: 16
+
+static_embedding_mode:
+  values: ["sum_all", "drop"]
+do_normalize_by_measurement_index:
+  values: [True, False]
+do_split_embeddings:
+  values: [True, False]
+categorical_embedding_dim:
+  min: 16
+  max: 128
+numerical_embedding_dim:
+  min: 16
+  max: 128
+static_embedding_weight:
+  min: 0.0
+  max: 1.0
+categorical_embedding_weight:
+  min: 0.0
+  max: 1.0
+
+measurements_per_dep_graph_level:
+  values: ???

@@ -1,0 +1,15 @@
+defaults:
+  - parameters: default
+  - _self_
+
+entity: null
+project: null
+program: pretrain.py
+method: bayes
+name: EST_sweep
+metric:
+  goal: minimize
+  name: tuning_loss
+early_terminate:
+  type: hyperband
+  min_iter: 1000

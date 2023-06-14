@@ -1,0 +1,10 @@
+name:
+  value: "generative_event_stream_transformer"
+project:
+  value: ${project}
+entity:
+  value: ${entity}
+do_log_graph:
+  value: False
+log_model:
+  value: False
