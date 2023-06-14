@@ -243,6 +243,11 @@ categorical data element.
 
 This applies both to static and dynamic data elements.
 
+Currently, the only supported outlier detection model is a standard-deviation cutoff algorithm, which filters
+out elements that are more than a fixed number of standard deviations away from the mean. The only currently
+supported normalizer model is a standard scaler model which centers data to have zero mean and scales it to
+have unit variance. More models are in progress, and we always welcome further contributions.
+
 ##### Pre-process categorical data elements
 
 The system can fit vocabularies to categorical columns and filter out elements that happen insufficiently

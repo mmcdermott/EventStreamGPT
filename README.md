@@ -42,6 +42,18 @@ You can use several scripts from this repository. These scripts are built using
 [hydra](https://hydra.cc/docs/intro/), so generally you will use them by specifying a mixture of command line
 overrides and local configuration options in `yaml` files.
 
+### Dataset Building
+
+The script endpoint to build a dataset is in `scripts/build_dataset.py`. To run this script, simply call it
+and override its parameters via hydra:
+
+````bash
+PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python \
+  $EVENT_STREAM_PATH/scripts/build_dataset.py \
+  --config-path=$(pwd)/configs \
+  --config-name=dataset \
+  "hydra.searchpath=[$EVENT_STREAM_PATH/configs]" # put more args here...
+
 ### Pre-training
 
 The script endpoint to launch a pre-training run, with the built in transformer model class here, is in
@@ -53,7 +65,7 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/pr
 	--config-path='/path/to/local/configs' \
 	--config-name='local_config_name' \
 	optimization_config.batch_size=24 optimization_config.num_dataloader_workers=64 # hydra overrides...
-```
+````
 
 In your local config file (or via the command line), you can override various parameters, e.g.
 
@@ -188,14 +200,15 @@ copied from this repository; stay tuned for further updates on that front!
 
 ### Fine-tuning
 
-To fine-tune a model, use the [finetune.py](scripts/finetune.py) script. Much like pre-training, this script
-leverages hydra to run, but now using the [`FinetuneConfig`](transformer/stream_classification_lightning.py)
+To fine-tune a model, use the `scripts/finetune.py` script. Much like pre-training, this script
+leverages hydra to run, but now using the `FinetuneConfig`
 configuration object:
 
 ```python
 @hydra_dataclass
 class FinetuneConfig:
     load_from_model_dir: str | Path = omegaconf.MISSING
+    seed: int = 1
 
     pretrained_weights_fp: Path | None = None
     save_dir: str | None = None
@@ -205,8 +218,13 @@ class FinetuneConfig:
     optimization_config: OptimizationConfig = OptimizationConfig()
 
     task_df_name: str | None = omegaconf.MISSING
-    train_subset_size: int | str | None = "FULL"
-    train_subset_seed: int | None = 1
+
+    data_config_overrides: dict[str, Any] | None = dataclasses.field(
+        default_factory=lambda: {
+            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+            "seq_padding_side": SeqPaddingSide.RIGHT,
+        }
+    )
 
     trainer_config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -220,17 +238,27 @@ class FinetuneConfig:
     task_specific_params: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "pooling_method": "last",
+            "num_samples": None,
         }
     )
 
     config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
-    wandb_name: str | None = "${task_df_name}_finetuning"
-    wandb_project: str | None = None
-    wandb_team: str | None = None
-    extra_wandb_log_params: dict[str, Any] | None = None
+    wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "name": "${task_df_name}_finetuning",
+            "project": None,
+            "team": None,
+            "log_model": True,
+            "do_log_graph": True,
+        }
+    )
 
-    num_dataloader_workers: int = 1
+    wandb_experiment_config_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "save_dir": "${save_dir}",
+        }
+    )
 ```
 
 The hydra integration is not quite as smooth at fine-tuning time as it is during pre-training; namely, this is

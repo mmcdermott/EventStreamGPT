@@ -10,14 +10,12 @@
 ```{include} ../EventStream/transformer/README.md
 ```
 
-## Script Endpoints
-
-### Hydra Configs
+## Hydra Configs
 
 ```{include} ../configs/README.md
 ```
 
-### Scripts
+## Script Endpoints
 
 ```{include} ../scripts/README.md
 ```
