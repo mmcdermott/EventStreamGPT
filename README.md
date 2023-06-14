@@ -36,6 +36,13 @@ Please see the [`data/README.md`](EventStream/data/README.md) file for more info
 
 Functionally, there are three areas of differences between a traditional GPT model and an `EventStream.transformer` model: the input, how attention is processed in a per-event manner, and how generative output layers work. Please see EventStreamTransformer's `README` file for more information.
 
+### Example
+
+For an end to end example over MIMIC-IV, see the
+[tutorial](https://eventstreamml.readthedocs.io/en/latest/MIMIC_IV_tutorial/index.html)
+and the
+[companion repository](https://github.com/mmcdermott/MIMICIV_FMs_public)
+
 ## Scripts
 
 You can use several scripts from this repository. These scripts are built using
