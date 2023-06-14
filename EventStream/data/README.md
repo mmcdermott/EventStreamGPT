@@ -355,7 +355,7 @@ Let us define the following variables:
   # Control variables
   # These aren't used directly in actual computation, but rather are used to define losses, positional
   # embeddings, dependency graph positions, etc.
-  'time': [L],
+  'time_delta': [L],
 
   # Static Embedding Variables
   # These variables are static --- they are constant throughout the entire sequence of events.
@@ -376,8 +376,7 @@ the following kinds of features:
 
 - `'static_*'` corresponds to features of the subject that are static over the duration of the sequence.
   E.g., in a medical dataset, a patient's polygenic risk score is unchanging throughout their life.
-- `'time'` corresponds to the number of minutes since the start of the day (in local time) of the first
-  event of the sequence.
+- `'time_delta'` corresponds to the number of minutes until the next event in the sequence.
 - `'dynamic_*'` corresponds to event specific metadata elements describing each sequence event.
 - `'*_indices'` corresponds to the categorical index of the data element. E.g., in a medical dataset, the
   index of a particular laboratory test.
@@ -409,7 +408,7 @@ EventStream.data.PytorchBatch(**{
   # Control variables
   # These aren't used directly in actual computation, but rather are used to define losses, positional
   # embeddings, dependency graph positions, etc.
-  'time': [B X L], # (FloatTensor, normalized such that the first entry for each sequence is 0)
+  'time_delta': [B X L], # (FloatTensor)
   'event_mask': [B X L], # (BoolTensor, capturing whether an event was observed at an index)
   'dynamic_values_mask': [B X L X M], # (BoolTensor, indicates whether a dynamic value was observed)
 
