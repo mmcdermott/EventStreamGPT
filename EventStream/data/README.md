@@ -11,7 +11,7 @@ There are several classes and functions in this module that may be useful, which
 ### Overall Data Model
 
 The overall data model for the Event Stream GPT package is shown visually below:
-![Overall Data Model](../../docs/MIMIC_IV_tutorial/Data_Overview.svg)
+![Overall Data Model](https://github.com/mmcdermott/EventStreamGPT/assets/470751/76669316-8560-4ee7-b0ac-d52e886e089f)
 
 We assume any "event stream dataset" consists of 3 fundamental data units:
 
