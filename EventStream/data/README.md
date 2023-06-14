@@ -11,7 +11,23 @@ There are several classes and functions in this module that may be useful, which
 ### Overall Data Model
 
 The overall data model for the Event Stream GPT package is shown visually below:
+
 ![Overall Data Model](https://github.com/mmcdermott/EventStreamGPT/assets/470751/76669316-8560-4ee7-b0ac-d52e886e089f)
+**Figure:** Event Stream GPT's end-to-end data pipeline, which spans raw data extraction from source all the
+way to production of a PyTorch dataset and pre-built embedder suitable for use in any deep learning pipeline.
+**(a)** An example of our data modality; for a single subject $\vec S_1$, the data consists of a series of
+events at continuous timestamps $\vec e_1, \vec e_2, \ldots$ (such as medical visits), with each event being
+composed of inter-related internal covariate measurements $\vec m_1, \vec m_2, \ldots$ (such as laboratory
+test results, medication perscripts, infusions, etc.).
+**(b)** These data elements can be distributed among many input data sources in raw form. From a simple YAML
+configuration file, \\pkgAbbr can extract these data elements from source and compile them into an internal
+data model consisting of three key dataframes: `subjects_df` for static data, `events_df` containing event
+timestamps and types per subject, and `dynamic_measurements_df`, storing all observed measurements.
+**(c)** ESGPT pre-processes these data-frames across several critical axes, doing so efficiently through the
+use of the Polars library.
+**(d)** ESGPT produces a PyTorch dataset which yields batches whose size scales with the number of observed
+data element per event, not with the input vocabulary size.
+**(e)** ESGPT provides a default embedding layer capable of embedding these sparse batches efficiently.
 
 We assume any "event stream dataset" consists of 3 fundamental data units:
 
