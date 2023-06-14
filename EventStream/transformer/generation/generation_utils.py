@@ -269,17 +269,21 @@ class StructuredGenerationMixin:
                 continue  # don't waste resources running the code we don't need
 
             for key in (
-                'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices', 'time_delta', 'time'
+                "dynamic_indices",
+                "dynamic_values",
+                "dynamic_measurement_indices",
+                "time_delta",
+                "time",
             ):
                 vals = batch[key]
-                if vals is not None and torch.isnan(vals).any():
+                if isinstance(vals, torch.Tensor) and torch.isnan(vals).any():
                     raise ValueError(
                         f"{torch.isnan(vals).sum()} NaNs detected in {key} on index {generated_event_index}!"
                     )
-                if vals is not None and (~torch.isfinite(vals)).any():
+                if isinstance(vals, torch.Tensor) and (~torch.isfinite(vals)).any():
                     raise ValueError(
-                        f"{(~torch.isfinite(vals)).sum()} Non-finites detected in {key} on index {generated_event_index} "
-                        f"for dep_graph_el_target {dep_graph_el_target} (is_first={is_first})!"
+                        f"{(~torch.isfinite(vals)).sum()} Non-finites detected in {key} on index "
+                        f"{generated_event_index}."
                     )
 
             # forward pass to get next token
@@ -379,18 +383,23 @@ class StructuredGenerationMixin:
                 dep_graph_el_target = None
 
             for key in (
-                'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices', 'time_delta', 'time'
+                "dynamic_indices",
+                "dynamic_values",
+                "dynamic_measurement_indices",
+                "time_delta",
+                "time",
             ):
                 vals = batch[key]
-                if vals is not None and torch.isnan(vals).any():
+                if isinstance(vals, torch.Tensor) and torch.isnan(vals).any():
                     raise ValueError(
                         f"{torch.isnan(vals).sum()} NaNs detected in {key} on index {generated_event_index} "
                         f"for dep_graph_el_target {dep_graph_el_target} (is_first={is_first})!"
                     )
-                if vals is not None and (~torch.isfinite(vals)).any():
+                if isinstance(vals, torch.Tensor) and (~torch.isfinite(vals)).any():
                     raise ValueError(
-                        f"{(~torch.isfinite(vals)).sum()} Non-finites detected in {key} on index {generated_event_index} "
-                        f"for dep_graph_el_target {dep_graph_el_target} (is_first={is_first})!"
+                        f"{(~torch.isfinite(vals)).sum()} Non-finites detected in {key} on index "
+                        f"{generated_event_index} for dep_graph_el_target {dep_graph_el_target} "
+                        f"(is_first={is_first})!"
                     )
 
             model_inputs = self.prepare_inputs_for_generation(

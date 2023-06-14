@@ -12,7 +12,7 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python \
 	$EVENT_STREAM_PATH/scripts/build_dataset.py \
 	--config-path=$(pwd)/configs \
 	--config-name=dataset \
-	"hydra.searchpath=[$EVENT_STREAM_PATH/configs]"
+	"hydra.searchpath=[$EVENT_STREAM_PATH/configs]" arg1 arg2
 ```
 
 In your local config file (which in the above command will be located at `$(pwd)/configs/dataset.yml`), you

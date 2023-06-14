@@ -353,7 +353,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             new_measurement_indices = config.measurements_idxmap[m] * torch.ones_like(new_indices)
 
             dynamic_indices.append(new_indices)
-            dynamic_values_mask.append(~torch.isfinite(new_values))
+            dynamic_values_mask.append(~torch.isnan(new_values))
             dynamic_values.append(torch.nan_to_num(new_values, nan=0, posinf=0, neginf=0))
             dynamic_measurement_indices.append(new_measurement_indices)
 
@@ -1433,7 +1433,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         is_observed_score = self.IsObservedLayer(encoded)
         torch._assert(
             ~torch.isnan(is_observed_score).any(),
-            f"{torch.isnan(is_observed_score).sum()} NaNs in is_observed_score"
+            f"{torch.isnan(is_observed_score).sum()} NaNs in is_observed_score",
         )
 
         classification_scores = self.ClassificationLayer(encoded)

@@ -80,7 +80,7 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
             )
         torch._assert(
             ~torch.isnan(encoded).any(),
-            f"{torch.isnan(encoded).sum()} NaNs in encoded (target={dep_graph_el_generation_target})"
+            f"{torch.isnan(encoded).sum()} NaNs in encoded (target={dep_graph_el_generation_target})",
         )
 
         # These are the containers we'll use to process the outputs
@@ -160,7 +160,7 @@ class NestedAttentionGenerativeOutputLayer(GenerativeOutputLayerBase):
                     (
                         f"{torch.isnan(dep_graph_level_encoded).sum()} NaNs in dep_graph_level_encoded "
                         f"({target_idx}, {i})"
-                    )
+                    ),
                 )
                 classification_out = self.get_classification_outputs(
                     batch,
