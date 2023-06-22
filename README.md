@@ -381,6 +381,11 @@ Contributions to the EventStream project are welcome! If you encounter any issue
 
 Please ensure that your contributions are well-documented and include tests where necessary.
 
+## Citation
+
+Please cite the following paper if this library is useful in your research work!
+[https://arxiv.org/abs/2306.11547](https://arxiv.org/abs/2306.11547)
+
 ## License
 
 This project is licensed under the [LICENSE](https://github.com/mmcdermott/EventStreamGPT/blob/main/LICENSE)
