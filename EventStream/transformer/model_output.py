@@ -964,7 +964,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         """
 
         if measurements_to_fill is None:
-            measurements_to_fill = []
+            measurements_to_fill = ["event_type"]
             for m, cfg in config.measurement_configs.items():
                 if not cfg.is_dropped and cfg.temporality == TemporalityType.DYNAMIC:
                     measurements_to_fill.append(m)
