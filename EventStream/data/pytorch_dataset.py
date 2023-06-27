@@ -416,6 +416,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                             f"Invalid sampling strategy: {self.config.subsequence_sampling_strategy}!"
                         )
 
+                if self.config.do_include_start_time_min:
+                    full_subj_data["start_time"] += sum(full_subj_data["time_delta"][:start_idx])
+
                 for k in (
                     "time_delta",
                     "dynamic_indices",
@@ -423,9 +426,6 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     "dynamic_measurement_indices",
                 ):
                     full_subj_data[k] = full_subj_data[k][start_idx : start_idx + self.max_seq_len]
-
-                if self.config.do_include_start_time_min:
-                    full_subj_data["start_time"] += sum(full_subj_data["time_delta"][:start_idx])
 
         return full_subj_data
 
