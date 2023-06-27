@@ -423,6 +423,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 ):
                     full_subj_data[k] = full_subj_data[k][start_idx : start_idx + self.max_seq_len]
 
+                if self.config.do_include_start_time_min:
+                    full_subj_data["start_time"] += sum(full_subj_data["time_delta"][:start_idx])
+
         return full_subj_data
 
     def __static_and_dynamic_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
