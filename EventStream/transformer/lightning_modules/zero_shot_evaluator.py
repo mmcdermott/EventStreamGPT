@@ -317,8 +317,12 @@ def zero_shot_evaluation(cfg: FinetuneConfig):
     num_dataloader_workers = cfg.optimization_config.num_dataloader_workers
 
     orig_max_seq_len = config.max_seq_len
+    orig_mean_log_inter_event_time = config.mean_log_inter_event_time_min
+    orig_std_log_inter_event_time = config.std_log_inter_event_time_min
     config.set_to_dataset(tuning_pyd)
     config.max_seq_len = orig_max_seq_len
+    config.mean_log_inter_event_time_min = orig_mean_log_inter_event_time
+    config.std_log_inter_event_time_min = orig_std_log_inter_event_time
 
     # Load the labeler
     labeler_fp = cfg.data_config.save_dir / "task_dfs" / f"{cfg.task_df_name}_labeler.py"
