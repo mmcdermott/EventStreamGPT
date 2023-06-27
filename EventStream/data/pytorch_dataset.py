@@ -274,6 +274,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
         with self._time_as("convert_to_rows"):
+            self.subject_ids = self.cached_data["subject_id"].to_list()
             self.cached_data = self.cached_data.drop("subject_id")
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
