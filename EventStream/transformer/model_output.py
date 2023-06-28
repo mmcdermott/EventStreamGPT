@@ -1078,7 +1078,9 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
     classification: dict[
         str, tuple[None, BERNOULLI_DIST_T] | tuple[BERNOULLI_DIST_T, CATEGORICAL_DIST_T]
     ] | None = None
-    regression: dict[str, torch.distributions.Distribution] | None = None
+    regression: dict[
+        str, tuple[None, REGRESSION_DIST_T] | tuple[BERNOULLI_DIST_T, REGRESSION_DIST_T]
+    ] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
     time_to_event: torch.distributions.Distribution | None = None
 
