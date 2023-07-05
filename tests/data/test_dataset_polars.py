@@ -1659,15 +1659,15 @@ WANT_DL_REP_DF = pl.DataFrame(
         "dynamic_values": pl.List(pl.List(pl.Float64)),
     },
 ).with_columns(
-    pl.when(pl.col("dynamic_indices").arr.lengths() == 0)
+    pl.when(pl.col("dynamic_indices").list.lengths() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_indices"))
     .alias("dynamic_indices"),
-    pl.when(pl.col("dynamic_measurement_indices").arr.lengths() == 0)
+    pl.when(pl.col("dynamic_measurement_indices").list.lengths() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_measurement_indices"))
     .alias("dynamic_measurement_indices"),
-    pl.when(pl.col("dynamic_values").arr.lengths() == 0)
+    pl.when(pl.col("dynamic_values").list.lengths() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_values"))
     .alias("dynamic_values"),
@@ -1702,7 +1702,7 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
         got_DL_rep = E.build_DL_cached_representation(do_sort_outputs=True)
         self.assertEqual(WANT_DL_REP_DF.drop("dynamic_values"), got_DL_rep.drop("dynamic_values"))
 
-        exploded_expr = pl.col("dynamic_values").arr.explode().arr.explode().alias("dynamic_values")
+        exploded_expr = pl.col("dynamic_values").list.explode().list.explode().alias("dynamic_values")
         want_expl = WANT_DL_REP_DF.select(exploded_expr)
         got_expl = got_DL_rep.select(exploded_expr)
 

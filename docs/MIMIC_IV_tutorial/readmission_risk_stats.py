@@ -21,7 +21,7 @@ ESD = Dataset.load(DATA_DIR)
 
 def has_event_type(type_str: str) -> pl.Expr:
     event_types = pl.col("event_type").cast(pl.Utf8).str.split("&")
-    return event_types.arr.contains(type_str)
+    return event_types.list.contains(type_str)
 
 
 events_df = ESD.events_df.lazy()
