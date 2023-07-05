@@ -379,7 +379,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                     # Like above, the assumption here is that preds and labels correspond to predictions for
                     # and labels of the events at their indexed position; not for the subsequent event. So we
                     # don't need to shift `results['event_mask']` here to account for that.
-                    dist = results["preds"]["regression"][measurement]
+                    _, dist = results["preds"]["regression"][measurement]
                     preds = dist.sample()[mask]
                     labels = results["labels"]["regression"][measurement][mask]
 
