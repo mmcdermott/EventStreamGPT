@@ -266,6 +266,16 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             return df.select(col_exprs)
 
     @classmethod
+    def _rename_cols(cls, df: DF_T, to_rename: dict[str, str]) -> DF_T:
+        """Renames the columns in df according to the {in_name: out_name}s specified in to_rename."""
+
+        for in_col, out_col in to_rename.items():
+            if in_col != out_col:
+                df = df.with_columns(pl.col(in_col).alias(out_col)).drop(in_col)
+
+        return df
+
+    @classmethod
     def _resolve_ts_col(cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp") -> DF_T:
         match ts_col:
             case list():

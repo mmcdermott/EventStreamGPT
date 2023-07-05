@@ -134,8 +134,11 @@ def main(cfg: DictConfig):
                             raise ValueError(f"{m}, {modality} invalid! Must be in {DataModality.values()}!")
 
                     if m in measurement_configs:
-                        if measurement_configs[m].to_dict() != measurement_config_kwargs:
-                            raise ValueError(f"{m} differs across input sources!")
+                        old = {k: v for k, v in measurement_configs[m].to_dict().items() if v is not None}
+                        if old != measurement_config_kwargs:
+                            raise ValueError(
+                                f"{m} differs across input sources!\n{old}\nvs.\n{measurement_config_kwargs}"
+                            )
                     else:
                         measurement_configs[m] = MeasurementConfig(**measurement_config_kwargs)
 
@@ -171,8 +174,12 @@ def main(cfg: DictConfig):
 
                 static_col_schema[schema_key] = schema_val
 
-        if m in measurement_configs and measurement_configs[m].to_dict() != measurement_config_kwargs:
-            raise ValueError(f"{m} differs across input sources!")
+        if m in measurement_configs:
+            old = {k: v for k, v in measurement_configs[m].to_dict().items() if v is not None}
+            if old != measurement_config_kwargs:
+                raise ValueError(
+                    f"{m} differs across input sources!\n{old}\nvs.\n{measurement_config_kwargs}"
+                )
         measurement_configs[m] = MeasurementConfig(**measurement_config_kwargs)
 
     # 1. Build DatasetSchema
