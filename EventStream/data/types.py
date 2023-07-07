@@ -2,6 +2,7 @@
 
 import dataclasses
 import enum
+from collections import defaultdict
 from typing import Any, Union
 
 import torch
@@ -218,6 +219,43 @@ class PytorchBatch:
             raise KeyError(f"Key {item} not found")
         setattr(self, item, val)
 
+    def __eq__(self, other: "PytorchBatch") -> bool:
+        """Checks for equality between self and other."""
+        if self.keys() != other.keys():
+            return False
+
+        for k in self.keys():
+            self_v = self[k]
+            other_v = other[k]
+
+            if type(self_v) != type(other_v):
+                return False
+
+            match self_v:
+                case dict() if k == "stream_labels":
+                    if self_v.keys() != other_v.keys():
+                        return False
+                    for kk in self_v.keys():
+                        self_vv = self_v[kk]
+                        other_vv = other_v[kk]
+
+                        if self_vv.shape != other_vv.shape:
+                            return False
+                        if (self_vv != other_vv).any():
+                            return False
+
+                case torch.Tensor():
+                    if self_v.shape != other_v.shape:
+                        return False
+                    if (self_v != other_v).any():
+                        return False
+                case None if k in ("time", "stream_labels"):
+                    if other_v is not None:
+                        return False
+                case _:
+                    raise ValueError(f"{k}: {type(self_v)} not supported in batch!")
+        return True
+
     def items(self):
         """A dictionary like items` method for the elements of this batch, by attribute."""
         return dataclasses.asdict(self).items()
@@ -233,6 +271,354 @@ class PytorchBatch:
     def last_sequence_element_unsqueezed(self) -> "PytorchBatch":
         """Filters the batch down to just the last event, while retaining the same # of dims."""
         return self[:, -1:]
+
+    def repeat_batch_elements(self, expand_size: int) -> "PytorchBatch":
+        """Repeats each batch element expand_size times in order. Used for generation.
+
+        Args:
+            expand_size: The number of times each batch elements data should be repeated.
+
+        Returns: A new PytorchBatch object with each batch element's data repeated expand_size times.
+
+        Examples:
+            >>> import torch
+            >>> batch = PytorchBatch(
+            ...     event_mask=torch.tensor([[True, True, True], [True, True, False]]),
+            ...     time_delta=torch.tensor([[1.0, 2.0, 3.0], [1.0, 5.0, 0.0]]),
+            ...     static_indices=torch.tensor([[0, 1], [1, 2]]),
+            ...     static_measurement_indices=torch.tensor([[0, 1], [1, 1]]),
+            ...     dynamic_indices=torch.tensor([[[0, 1], [1, 2], [2, 3]], [[0, 1], [1, 5], [0, 0]]]),
+            ...     dynamic_measurement_indices=torch.tensor(
+            ...         [[[0, 1], [1, 2], [2, 3]], [[0, 1], [1, 2], [0, 0]]]
+            ...     ),
+            ...     dynamic_values=torch.tensor(
+            ...         [[[0.0, 1.0], [1.0, 2.0], [0, 0]], [[0.0, 1.0], [1.0, 0.0], [0, 0]]]
+            ...     ),
+            ...     dynamic_values_mask=torch.tensor([
+            ...         [[False, True], [True, True], [False, False]],
+            ...         [[False, True], [True, False], [False, False]]
+            ...     ]),
+            ...     start_time=torch.tensor([0.0, 10.0]),
+            ...     stream_labels={"a": torch.tensor([0, 1]), "b": torch.tensor([1, 2])},
+            ...     time=None,
+            ... )
+            >>> repeated_batch = batch.repeat_batch_elements(2)
+            >>> for k, v in repeated_batch.items():
+            ...     print(k)
+            ...     print(v)
+            event_mask
+            tensor([[ True,  True,  True],
+                    [ True,  True,  True],
+                    [ True,  True, False],
+                    [ True,  True, False]])
+            time_delta
+            tensor([[1., 2., 3.],
+                    [1., 2., 3.],
+                    [1., 5., 0.],
+                    [1., 5., 0.]])
+            time
+            None
+            static_indices
+            tensor([[0, 1],
+                    [0, 1],
+                    [1, 2],
+                    [1, 2]])
+            static_measurement_indices
+            tensor([[0, 1],
+                    [0, 1],
+                    [1, 1],
+                    [1, 1]])
+            dynamic_indices
+            tensor([[[0, 1],
+                     [1, 2],
+                     [2, 3]],
+            <BLANKLINE>
+                    [[0, 1],
+                     [1, 2],
+                     [2, 3]],
+            <BLANKLINE>
+                    [[0, 1],
+                     [1, 5],
+                     [0, 0]],
+            <BLANKLINE>
+                    [[0, 1],
+                     [1, 5],
+                     [0, 0]]])
+            dynamic_measurement_indices
+            tensor([[[0, 1],
+                     [1, 2],
+                     [2, 3]],
+            <BLANKLINE>
+                    [[0, 1],
+                     [1, 2],
+                     [2, 3]],
+            <BLANKLINE>
+                    [[0, 1],
+                     [1, 2],
+                     [0, 0]],
+            <BLANKLINE>
+                    [[0, 1],
+                     [1, 2],
+                     [0, 0]]])
+            dynamic_values
+            tensor([[[0., 1.],
+                     [1., 2.],
+                     [0., 0.]],
+            <BLANKLINE>
+                    [[0., 1.],
+                     [1., 2.],
+                     [0., 0.]],
+            <BLANKLINE>
+                    [[0., 1.],
+                     [1., 0.],
+                     [0., 0.]],
+            <BLANKLINE>
+                    [[0., 1.],
+                     [1., 0.],
+                     [0., 0.]]])
+            dynamic_values_mask
+            tensor([[[False,  True],
+                     [ True,  True],
+                     [False, False]],
+            <BLANKLINE>
+                    [[False,  True],
+                     [ True,  True],
+                     [False, False]],
+            <BLANKLINE>
+                    [[False,  True],
+                     [ True, False],
+                     [False, False]],
+            <BLANKLINE>
+                    [[False,  True],
+                     [ True, False],
+                     [False, False]]])
+            start_time
+            tensor([ 0.,  0., 10., 10.])
+            stream_labels
+            {'a': tensor([0, 0, 1, 1]), 'b': tensor([1, 1, 2, 2])}
+        """
+
+        expanded_return_idx = (
+            torch.arange(self.batch_size).view(-1, 1).repeat(1, expand_size).view(-1).to(self.device)
+        )
+
+        out_batch = {}
+
+        for k, v in self.items():
+            match v:
+                case dict():
+                    out_batch[k] = {kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()}
+                case torch.Tensor():
+                    out_batch[k] = v.index_select(0, expanded_return_idx)
+                case None if k in ("time", "stream_labels"):
+                    out_batch[k] = None
+                case _:
+                    raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
+
+        return PytorchBatch(**out_batch)
+
+    def split_repeated_batch(self, n_splits: int) -> list["PytorchBatch"]:
+        """Split a batch into a list of batches by chunking batch elements into groups.
+
+        This is the inverse of `PytorchBatch.repeat_batch_elements`. It is used for taking a generated batch
+        that has been expanded and splitting it into separate list elements with independent generations for
+        each batch element in the original batch.
+
+        Args:
+            n_splits: The number of splits to make.
+
+        Returns: A list of length `n_splits` of PytorchBatch objects, such that the list element i contains
+            batch elements [i, i+self.batch_size/n_splits).
+
+        Raises:
+            ValueError: if `n_splits` is not a positive integer divisor of `self.batch_size`.
+
+        Examples:
+            >>> import torch
+            >>> batch = PytorchBatch(
+            ...     event_mask=torch.tensor([
+            ...         [True, True, True],
+            ...         [True, True, False],
+            ...         [True, False, False],
+            ...         [False, False, False]
+            ...     ]),
+            ...     time_delta=torch.tensor([
+            ...         [1.0, 2.0, 3.0],
+            ...         [1.0, 5.0, 0.0],
+            ...         [2.3, 0.0, 0.0],
+            ...         [0.0, 0.0, 0.0],
+            ...     ]),
+            ...     static_indices=torch.tensor([[0, 1], [1, 2], [1, 3], [0, 5]]),
+            ...     static_measurement_indices=torch.tensor([[0, 1], [1, 1], [1, 1], [0, 2]]),
+            ...     dynamic_indices=torch.tensor([
+            ...         [[0, 1], [1, 2], [2, 3]],
+            ...         [[0, 1], [1, 5], [0, 0]],
+            ...         [[0, 2], [0, 0], [0, 0]],
+            ...         [[0, 0], [0, 0], [0, 0]],
+            ...     ]),
+            ...     dynamic_measurement_indices=torch.tensor([
+            ...         [[0, 1], [1, 2], [2, 3]],
+            ...         [[0, 1], [1, 2], [0, 0]],
+            ...         [[0, 2], [0, 0], [0, 0]],
+            ...         [[0, 0], [0, 0], [0, 0]],
+            ...     ]),
+            ...     dynamic_values=torch.tensor([
+            ...         [[0.0, 1.0], [1.0, 2.0], [0.0, 0.0]],
+            ...         [[0.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            ...         [[0.0, 1.0], [0.0, 0.0], [0.0, 0.0]],
+            ...         [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+            ...     ]),
+            ...     dynamic_values_mask=torch.tensor([
+            ...         [[False, True], [True, True], [False, False]],
+            ...         [[False, True], [True, False], [False, False]],
+            ...         [[False, True], [False, False], [False, False]],
+            ...         [[False, False], [False, False], [False, False]],
+            ...     ]),
+            ...     start_time=torch.tensor([0.0, 10.0, 3.0, 2.2]),
+            ...     stream_labels={"a": torch.tensor([0, 1, 0, 1]), "b": torch.tensor([1, 2, 4, 3])},
+            ...     time=None,
+            ... )
+            >>> batch.split_repeated_batch(3)
+            Traceback (most recent call last):
+                ...
+            ValueError: n_splits (3) must be a positive integer divisor of batch_size (4)
+            >>> for i, T in enumerate(batch.split_repeated_batch(2)):
+            ...     print(f"Returned batch {i}:")
+            ...     for k, v in T.items():
+            ...         print(k)
+            ...         print(v)
+            Returned batch 0:
+            event_mask
+            tensor([[ True,  True,  True],
+                    [ True, False, False]])
+            time_delta
+            tensor([[1.0000, 2.0000, 3.0000],
+                    [2.3000, 0.0000, 0.0000]])
+            time
+            None
+            static_indices
+            tensor([[0, 1],
+                    [1, 3]])
+            static_measurement_indices
+            tensor([[0, 1],
+                    [1, 1]])
+            dynamic_indices
+            tensor([[[0, 1],
+                     [1, 2],
+                     [2, 3]],
+            <BLANKLINE>
+                    [[0, 2],
+                     [0, 0],
+                     [0, 0]]])
+            dynamic_measurement_indices
+            tensor([[[0, 1],
+                     [1, 2],
+                     [2, 3]],
+            <BLANKLINE>
+                    [[0, 2],
+                     [0, 0],
+                     [0, 0]]])
+            dynamic_values
+            tensor([[[0., 1.],
+                     [1., 2.],
+                     [0., 0.]],
+            <BLANKLINE>
+                    [[0., 1.],
+                     [0., 0.],
+                     [0., 0.]]])
+            dynamic_values_mask
+            tensor([[[False,  True],
+                     [ True,  True],
+                     [False, False]],
+            <BLANKLINE>
+                    [[False,  True],
+                     [False, False],
+                     [False, False]]])
+            start_time
+            tensor([0., 3.])
+            stream_labels
+            {'a': tensor([0, 0]), 'b': tensor([1, 4])}
+            Returned batch 1:
+            event_mask
+            tensor([[ True,  True, False],
+                    [False, False, False]])
+            time_delta
+            tensor([[1., 5., 0.],
+                    [0., 0., 0.]])
+            time
+            None
+            static_indices
+            tensor([[1, 2],
+                    [0, 5]])
+            static_measurement_indices
+            tensor([[1, 1],
+                    [0, 2]])
+            dynamic_indices
+            tensor([[[0, 1],
+                     [1, 5],
+                     [0, 0]],
+            <BLANKLINE>
+                    [[0, 0],
+                     [0, 0],
+                     [0, 0]]])
+            dynamic_measurement_indices
+            tensor([[[0, 1],
+                     [1, 2],
+                     [0, 0]],
+            <BLANKLINE>
+                    [[0, 0],
+                     [0, 0],
+                     [0, 0]]])
+            dynamic_values
+            tensor([[[0., 1.],
+                     [1., 0.],
+                     [0., 0.]],
+            <BLANKLINE>
+                    [[0., 0.],
+                     [0., 0.],
+                     [0., 0.]]])
+            dynamic_values_mask
+            tensor([[[False,  True],
+                     [ True, False],
+                     [False, False]],
+            <BLANKLINE>
+                    [[False, False],
+                     [False, False],
+                     [False, False]]])
+            start_time
+            tensor([10.0000,  2.2000])
+            stream_labels
+            {'a': tensor([1, 1]), 'b': tensor([2, 3])}
+            >>> repeat_batch = batch.repeat_batch_elements(5)
+            >>> split_batches = repeat_batch.split_repeated_batch(5)
+            >>> for i, v in enumerate(split_batches):
+            ...     assert v == batch, f"Batch {i} ({v}) not equal to original batch {batch}!"
+        """
+
+        if not isinstance(n_splits, int) or n_splits <= 0 or self.batch_size % n_splits != 0:
+            raise ValueError(
+                f"n_splits ({n_splits}) must be a positive integer divisor of batch_size ({self.batch_size})"
+            )
+
+        self.batch_size // n_splits
+        out_batches = [defaultdict(dict) for _ in range(n_splits)]
+        for k, v in self.items():
+            match v:
+                case dict():
+                    for kk, vv in v.items():
+                        reshaped = vv.reshape(vv.shape[0] // n_splits, n_splits, *vv.shape[1:])
+                        for i in range(n_splits):
+                            out_batches[i][k][kk] = reshaped[:, i, ...]
+                case torch.Tensor():
+                    reshaped = v.reshape(v.shape[0] // n_splits, n_splits, *v.shape[1:])
+                    for i in range(n_splits):
+                        out_batches[i][k] = reshaped[:, i, ...]
+                case None if k in ("time", "stream_labels"):
+                    pass
+                case _:
+                    raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
+
+        return [PytorchBatch(**B) for B in out_batches]
 
 
 class TemporalityType(StrEnum):
