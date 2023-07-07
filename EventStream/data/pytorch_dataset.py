@@ -394,6 +394,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
         if self.config.do_include_start_time_min:
+            # Note that this is using the python datetime module's `timestamp` function which differs from
+            # some dataframe libraries' timestamp functions (e.g., polars).
             full_subj_data["start_time"] = full_subj_data["start_time"].timestamp() / 60.0
         else:
             full_subj_data.pop("start_time")
