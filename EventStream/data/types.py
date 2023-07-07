@@ -5,9 +5,40 @@ import enum
 from collections import defaultdict
 from typing import Any, Union
 
+import polars as pl
 import torch
 
 from ..utils import StrEnum
+
+
+def de_pad(L: list[int], *other_L) -> list[int] | tuple[list[int]]:
+    """Filters down all passed lists to only the indices where the first arg is non-zero.
+
+    Args:
+        L: The list whose entries denote padding (0) or non-padding (non-zero).
+        *other_L: Any other lists that should be de-padded in the same way as L.
+
+    Examples:
+        >>> de_pad([1, 3, 0, 4, 0, 0], [10, 0, 5, 8, 1, 0])
+        ([1, 3, 4], [10, 0, 8])
+        >>> de_pad([1, 3, 0, 4, 0, 0])
+        [1, 3, 4]
+    """
+
+    out_L = []
+    out_other = [None if x is None else [] for x in other_L]
+
+    for i, v in enumerate(L):
+        if v != 0:
+            out_L.append(v)
+            for j, LL in enumerate(other_L):
+                if LL is not None:
+                    out_other[j].append(LL[i])
+
+    if other_L:
+        return tuple([out_L] + out_other)
+    else:
+        return out_L
 
 
 class InputDFType(StrEnum):
@@ -619,6 +650,125 @@ class PytorchBatch:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
 
         return [PytorchBatch(**B) for B in out_batches]
+
+    def convert_to_DL_DF(self) -> pl.DataFrame:
+        """Converts the batch data into a sparse DataFrame representation.
+
+        Examples:
+            >>> import torch
+            >>> batch = PytorchBatch(
+            ...     event_mask=torch.tensor([
+            ...         [True, True, True],
+            ...         [True, True, False],
+            ...         [True, False, False],
+            ...         [False, False, False]
+            ...     ]),
+            ...     time_delta=torch.tensor([
+            ...         [1.0, 2.0, 3.0],
+            ...         [1.0, 5.0, 0.0],
+            ...         [2.3, 0.0, 0.0],
+            ...         [0.0, 0.0, 0.0],
+            ...     ]),
+            ...     static_indices=torch.tensor([[0, 1], [1, 2], [1, 3], [0, 5]]),
+            ...     static_measurement_indices=torch.tensor([[0, 1], [1, 1], [1, 1], [0, 2]]),
+            ...     dynamic_indices=torch.tensor([
+            ...         [[0, 1], [1, 2], [2, 3]],
+            ...         [[0, 1], [1, 5], [0, 0]],
+            ...         [[0, 2], [0, 0], [0, 0]],
+            ...         [[0, 0], [0, 0], [0, 0]],
+            ...     ]),
+            ...     dynamic_measurement_indices=torch.tensor([
+            ...         [[0, 1], [1, 2], [2, 3]],
+            ...         [[0, 1], [1, 2], [0, 0]],
+            ...         [[0, 2], [0, 0], [0, 0]],
+            ...         [[0, 0], [0, 0], [0, 0]],
+            ...     ]),
+            ...     dynamic_values=torch.tensor([
+            ...         [[0.0, 1.0], [1.0, 2.0], [0.0, 0.0]],
+            ...         [[0.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            ...         [[0.0, 1.0], [0.0, 0.0], [0.0, 0.0]],
+            ...         [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+            ...     ]),
+            ...     dynamic_values_mask=torch.tensor([
+            ...         [[False, True], [True, True], [False, False]],
+            ...         [[False, True], [True, False], [False, False]],
+            ...         [[False, True], [False, False], [False, False]],
+            ...         [[False, False], [False, False], [False, False]],
+            ...     ]),
+            ...     start_time=torch.tensor([0.0, 10.0, 3.0, 2.2]),
+            ...     stream_labels={"a": torch.tensor([0, 1, 0, 1]), "b": torch.tensor([1, 2, 4, 3])},
+            ...     time=None,
+            ... )
+            >>> pl.Config.set_tbl_width_chars(80)
+            <class 'polars.config.Config'>
+            >>> batch.convert_to_DL_DF()
+            shape: (4, 7)
+            ┌──────────┬────────────┬────────────┬────────────┬────────────┬────────────┬──────────┐
+            │ time_del ┆ static_ind ┆ static_mea ┆ dynamic_in ┆ dynamic_me ┆ dynamic_va ┆ start_ti │
+            │ ta       ┆ ices       ┆ surement_i ┆ dices      ┆ asurement_ ┆ lues       ┆ me       │
+            │ ---      ┆ ---        ┆ ndices     ┆ ---        ┆ indices    ┆ ---        ┆ ---      │
+            │ list[f64 ┆ list[i64]  ┆ ---        ┆ list[list[ ┆ ---        ┆ list[list[ ┆ f64      │
+            │ ]        ┆            ┆ list[i64]  ┆ i64]]      ┆ list[list[ ┆ i64]]      ┆          │
+            │          ┆            ┆            ┆            ┆ i64]]      ┆            ┆          │
+            ╞══════════╪════════════╪════════════╪════════════╪════════════╪════════════╪══════════╡
+            │ [1.0,    ┆ [1]        ┆ [1]        ┆ [[1], [1,  ┆ [[1], [1,  ┆ [[1], [1,  ┆ 0.0      │
+            │ 2.0,     ┆            ┆            ┆ 2], [2,    ┆ 2], [2,    ┆ 1], [null, ┆          │
+            │ 3.0]     ┆            ┆            ┆ 3]]        ┆ 3]]        ┆ null]]     ┆          │
+            │ [1.0,    ┆ [1, 2]     ┆ [1, 1]     ┆ [[1], [1,  ┆ [[1], [1,  ┆ [[1], [1,  ┆ 10.0     │
+            │ 5.0]     ┆            ┆            ┆ 5]]        ┆ 2]]        ┆ null]]     ┆          │
+            │ [2.3]    ┆ [1, 3]     ┆ [1, 1]     ┆ [[2]]      ┆ [[2]]      ┆ [[1]]      ┆ 3.0      │
+            │ []       ┆ [5]        ┆ [2]        ┆ []         ┆ []         ┆ []         ┆ 2.2      │
+            └──────────┴────────────┴────────────┴────────────┴────────────┴────────────┴──────────┘
+        """
+
+        df = {
+            k: []
+            for k, v in self.items()
+            if k not in ("stream_labels", "event_mask", "dynamic_values_mask") and v is not None
+        }
+
+        if self.start_time is not None:
+            df["start_time"] = list(self.start_time)
+
+        for i in range(self.batch_size):
+            idx, measurement_idx = de_pad(self.static_indices[i], self.static_measurement_indices[i])
+            df["static_indices"].append(idx)
+            df["static_measurement_indices"].append(measurement_idx)
+
+            def i_or_None(x):
+                if x is None:
+                    return None
+                else:
+                    return x[i]
+
+            _, time_delta, time, idx, measurement_idx, vals, vals_mask = de_pad(
+                self.event_mask[i],
+                None if self.time_delta is None else self.time_delta[i],
+                None if self.time is None else self.time[i],
+                self.dynamic_indices[i],
+                self.dynamic_measurement_indices[i],
+                self.dynamic_values[i],
+                self.dynamic_values_mask[i],
+            )
+
+            if time_delta is not None:
+                df["time_delta"].append(time_delta)
+            if time is not None:
+                df["time"].append(time)
+
+            names = ("dynamic_indices", "dynamic_measurement_indices", "dynamic_values")
+            for n in names:
+                df[n].append([])
+
+            for j in range(len(idx)):
+                de_padded_vals = de_pad(idx[j], measurement_idx[j], vals[j], vals_mask[j])
+                # Now we add the indices and measurement indices
+                for n, v in zip(names[:-1], de_padded_vals[:-2]):
+                    df[n][i].append(v)
+
+                df["dynamic_values"][i].append([None if not m else v for m, v in zip(*de_padded_vals[-2:])])
+
+        return pl.DataFrame(df)
 
 
 class TemporalityType(StrEnum):
