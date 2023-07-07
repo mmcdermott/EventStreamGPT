@@ -171,6 +171,12 @@ class DatasetBase(
         raise NotImplementedError("Must be implemented by subclass.")
 
     @classmethod
+    @abc.abstractmethod
+    def _rename_cols(cls, df: DF_T, to_rename: dict[str, str]) -> DF_T:
+        """Renames the columns in df according to the {in_name: out_name}s specified in to_rename."""
+        raise NotImplementedError("Must be implemented by subclass.")
+
+    @classmethod
     def build_subjects_dfs(cls, schema: InputDFSchema) -> tuple[DF_T, dict[Hashable, int]]:
         """Builds and returns the subjects dataframe from `schema`.
 
@@ -182,12 +188,16 @@ class DatasetBase(
             Both the built `subjects_df` as well as a dictionary from the raw subject ID column values to the
             inferred numeric subject IDs.
         """
-        return cls._load_input_df(
+        subjects_df, ID_map = cls._load_input_df(
             schema.input_df,
             [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
             filter_on=schema.filter_on,
             subject_id_source_col=schema.subject_id_col,
         )
+
+        subjects_df = cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schmea.items()})
+
+        return subjects_df, ID_map
 
     @classmethod
     def build_event_and_measurement_dfs(
