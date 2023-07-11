@@ -268,8 +268,8 @@ class Visualizer(JSONableMixin):
             on="subject_id",
         )
 
-        time_points = pl.DataFrame(
-            {"timestamp": pl.date_range(start_time, end_time, interval=self.time_unit)}
+        time_points = pl.select(pl.date_range(start_time, end_time, interval=self.time_unit)).select(
+            pl.col("date").list.explode().alias("timestamp")
         )
         n_time_bins = len(time_points) + 1
 
