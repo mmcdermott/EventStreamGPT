@@ -347,7 +347,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         for t in self.tasks:
             if task_type == "multi_class_classification":
-                self.task_vocabs[t] = list(range(self.task_df.select(pl.col(t).max()).item()))
+                self.task_vocabs[t] = list(range(task_df.select(pl.col(t).max()).item()))
 
     def __len__(self):
         return len(self.cached_data)
