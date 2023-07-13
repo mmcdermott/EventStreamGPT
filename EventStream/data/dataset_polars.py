@@ -224,6 +224,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         col_exprs = []
 
+        df = df.select(pl.all().shrink_dtype())
+
         if filter_on:
             df = cls._filter_col_inclusion(df, filter_on)
 
