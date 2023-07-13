@@ -310,17 +310,99 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
     @staticmethod
     def _build_task_cached_df(task_df: pl.LazyFrame, cached_data: pl.LazyFrame) -> pl.LazyFrame:
-        """Builds the task-specific cached dataset and infers task properties from the task labels.
-
-        Currently, this builds new task vocabularies and types regardless of split (though they are checked
-        against the train split for consistency). In the future, this should be updated to rely on the prior
-        built parameters. TODO(mmd)
-        TODO(mmd): this should be a static method.
+        """Restricts the data in a cached dataframe to only contain data for the passed task dataframe.
 
         Args:
-            task_df: A polars `LazyFrame`, which must have columns ``subject_id``, ``start_time`` and
+            task_df: A polars LazyFrame, which must have columns ``subject_id``, ``start_time`` and
                 ``end_time``. These three columns define the schema of the task (the inputs). The remaining
                 columns in the task dataframe will be interpreted as labels.
+            cached_data: A polars LazyFrame containing the data to be restricted to the task dataframe. Must
+                have the columns ``subject_id``, ``start_time``, ``time`` or ``time_delta``,
+                ``dynamic_indices``, ``dynamic_values``, and ``dynamic_measurement_indices``. These columns
+                will all be restricted to just contain those events whose time values are in the specified
+                task specific time range.
+
+        Returns:
+            The restricted cached dataframe, which will have the same columns as the input cached dataframe
+            plus the task label columns, and will be limited to just those subjects and time-periods specified
+            in the task dataframe.
+
+        Examples:
+            >>> import polars as pl
+            >>> from datetime import datetime
+            >>> cached_data = pl.DataFrame({
+            ...     "subject_id": [0, 1, 2, 3],
+            ...     "start_time": [
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 2, 1),
+            ...         datetime(2020, 3, 1),
+            ...         datetime(2020, 1, 2)
+            ...     ],
+            ...     "time": [
+            ...         [0.0, 60*24.0, 2*60*24., 3*60*24., 4*60*24.],
+            ...         [0.0, 7*60*24.0, 2*7*60*24., 3*7*60*24., 4*7*60*24.],
+            ...         [0.0, 60*12.0, 2*60*12.],
+            ...         [0.0, 60*24.0, 2*60*24., 3*60*24., 4*60*24.],
+            ...     ],
+            ...     "dynamic_measurement_indices": [
+            ...         [[0, 1, 1], [0, 2], [0], [0, 3], [0]],
+            ...         [[0, 1, 1], [0, 4], [0], [0, 1], [0]],
+            ...         [[0, 1, 1], [0], [0, 4]],
+            ...         [[0, 1, 1], [0, 4], [0], [0, 2], [0]],
+            ...     ],
+            ...     "dynamic_indices": [
+            ...         [[6, 11, 12], [1, 40], [5], [1, 55], [5]],
+            ...         [[2, 11, 13], [1, 84], [8], [1, 19], [5]],
+            ...         [[1, 18, 21], [1], [5, 87]],
+            ...         [[3, 20, 21], [1, 94], [8], [1, 33], [9]],
+            ...     ],
+            ...     "dynamic_values": [
+            ...         [[None, 0.2, 1.0], [None, 0.0], [None], [None, None], [None]],
+            ...         [[None, -0.1, 0.0], [None, None], [None], [None, -4.2], [None]],
+            ...         [[None, 0.9, 1.2], [None], [None, None]],
+            ...         [[None, 3.2, -1.0], [None, None], [None], [None, 0.5], [None]],
+            ...     ],
+            ... })
+            >>> task_df = pl.DataFrame({
+            ...     "subject_id": [0, 1, 2, 5],
+            ...     "start_time": [
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 1, 11),
+            ...         datetime(2020, 3, 1, 13),
+            ...         datetime(2020, 1, 2)
+            ...     ],
+            ...     "end_time": [
+            ...         datetime(2020, 1, 3),
+            ...         datetime(2020, 1, 21),
+            ...         datetime(2020, 3, 4),
+            ...         datetime(2020, 1, 3)
+            ...     ],
+            ...     "label1": [0, 1, 0, 1],
+            ...     "label2": [0, 1, 5, 1]
+            ... })
+            >>> pl.Config.set_tbl_width_chars(88)
+            <class 'polars.config.Config'>
+            >>> PytorchDataset._build_task_cached_df(task_df, cached_data)
+            shape: (3, 8)
+            ┌──────────┬──────────┬───────┬────────────┬────────────┬────────────┬────────┬────────┐
+            │ subject_ ┆ start_ti ┆ time  ┆ dynamic_me ┆ dynamic_in ┆ dynamic_va ┆ label1 ┆ label2 │
+            │ id       ┆ me       ┆ ---   ┆ asurement_ ┆ dices      ┆ lues       ┆ ---    ┆ ---    │
+            │ ---      ┆ ---      ┆ list[ ┆ indices    ┆ ---        ┆ ---        ┆ i64    ┆ i64    │
+            │ i64      ┆ datetime ┆ f64]  ┆ ---        ┆ list[list[ ┆ list[list[ ┆        ┆        │
+            │          ┆ [μs]     ┆       ┆ list[list[ ┆ i64]]      ┆ f64]]      ┆        ┆        │
+            │          ┆          ┆       ┆ i64]]      ┆            ┆            ┆        ┆        │
+            ╞══════════╪══════════╪═══════╪════════════╪════════════╪════════════╪════════╪════════╡
+            │ 0        ┆ 2020-01- ┆ [0.0, ┆ [[0, 1,    ┆ [[6, 11,   ┆ [[null,    ┆ 0      ┆ 0      │
+            │          ┆ 01       ┆ 1440. ┆ 1], [0,    ┆ 12], [1,   ┆ 0.2, 1.0], ┆        ┆        │
+            │          ┆ 00:00:00 ┆ 0]    ┆ 2]]        ┆ 40]]       ┆ [null,     ┆        ┆        │
+            │          ┆          ┆       ┆            ┆            ┆ 0.0]]      ┆        ┆        │
+            │ 1        ┆ 2020-02- ┆ []    ┆ []         ┆ []         ┆ []         ┆ 1      ┆ 1      │
+            │          ┆ 01       ┆       ┆            ┆            ┆            ┆        ┆        │
+            │          ┆ 00:00:00 ┆       ┆            ┆            ┆            ┆        ┆        │
+            │ 2        ┆ 2020-03- ┆ [1440 ┆ [[0, 4]]   ┆ [[5, 87]]  ┆ [[null,    ┆ 0      ┆ 5      │
+            │          ┆ 01       ┆ .0]   ┆            ┆            ┆ null]]     ┆        ┆        │
+            │          ┆ 00:00:00 ┆       ┆            ┆            ┆            ┆        ┆        │
+            └──────────┴──────────┴───────┴────────────┴────────────┴────────────┴────────┴────────┘
         """
         time_dep_cols = [c for c in ("time", "time_delta") if c in cached_data.columns]
         time_dep_cols.extend(["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"])
