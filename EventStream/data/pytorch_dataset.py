@@ -343,7 +343,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         self.cached_data = self.cached_data.sort("task_row_num").drop("task_row_num")
 
         for t in self.tasks:
-            if task_type == "multi_class_classification":
+            if self.task_types[t] == "multi_class_classification":
                 self.task_vocabs[t] = list(range(task_df.select(pl.col(t).max()).collect().item()))
 
     def __len__(self):
