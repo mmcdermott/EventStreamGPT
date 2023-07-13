@@ -320,8 +320,10 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         elif "time_delta" in self.cached_data.columns:
             time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
-        start_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("start_time_min").first())
-        end_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("end_time_min").first())
+        start_idx_expr = (
+            time_col_expr.list.explode().search_sorted(pl.col("start_time_min")).over("subject_id")
+        )
+        end_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("end_time_min")).over("subject_id")
 
         self.cached_data = (
             self.cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
@@ -329,18 +331,13 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
             )
-            .with_row_count("__id")
-            .groupby("__id")
-            .agg(
-                pl.col("task_row_num").first(),
-                **{c: pl.col(c).first() for c in self.cached_data.columns if c not in time_dep_cols},
-                **{c: pl.col(c).first() for c in self.tasks},
+            .with_columns(
                 **{
-                    t: pl.col(t).list.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr)
+                    t: pl.col(t).list.slice(start_idx_expr, end_idx_expr - start_idx_expr)
                     for t in time_dep_cols
                 },
             )
-            .drop("__id")
+            .drop("start_time_task", "end_time_min", "start_time_min", "end_time")
         )
 
         self.cached_data = self.cached_data.sort("task_row_num").drop("task_row_num")
