@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -145,19 +146,19 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         self.split = split
 
-        self.cached_data = pl.scan_parquet(self.config.save_dir / "DL_reps" / f"{split}*.parquet")
-
         if self.config.task_df_name is not None:
             task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
             raw_task_df_fp = self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
-            task_df_fp = task_dir / f"{split}.parquet"
             task_info_fp = task_dir / "task_info.json"
 
             self.has_task = True
 
-            if task_df_fp.is_file():
-                print(f"Re-loading task data for {self.config.task_df_name} from {task_df_fp}...")
-                self.cached_data = pl.scan_parquet(task_df_fp)
+            if len(list(task_dir.glob("{split}*.parquet"))) > 0:
+                print(
+                    f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
+                    f"{', '.join([str(fp) for fp in task_dir.glob('{split}*.parquet')])}"
+                )
+                self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
                 with open(task_info_fp) as f:
                     task_info = json.load(f)
                     self.tasks = sorted(task_info["tasks"])
@@ -165,19 +166,30 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     self.task_types = task_info["types"]
 
             elif raw_task_df_fp.is_file():
-                print(f"Loading raw task df from {raw_task_df_fp}")
-                self._build_task_cached_df(pl.scan_parquet(raw_task_df_fp))
+                task_df = pl.scan_parquet(raw_task_df_fp)
 
-                task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
-                task_df_fp = task_dir / f"{split}.parquet"
+                self.tasks = sorted(
+                    [c for c in task_df.columns if c not in ["subject_id", "start_time", "end_time"]]
+                )
+
+                normalized_cols = []
+                for t in self.tasks:
+                    task_type, normalized_vals = self.normalize_task(col=pl.col(t), dtype=task_df.schema[t])
+                    self.task_types[t] = task_type
+                    normalized_cols.append(normalized_vals.alias(t))
+
+                task_df = task_df.with_columns(normalized_cols)
+
+                for t in self.tasks:
+                    match self.task_types[t]:
+                        case "binary_classification":
+                            self.task_vocabs[t] = [False, True]
+                        case "multi_class_classification":
+                            self.task_vocabs[t] = list(
+                                range(task_df.select(pl.col(t).max()).collect().item())
+                            )
+
                 task_info_fp = task_dir / "task_info.json"
-
-                if task_df_fp.is_file():
-                    print(f"Re-built existent {task_df_fp} dataset! Not overwriting...")
-                else:
-                    task_df_fp.parent.mkdir(exist_ok=True, parents=True)
-                    self.cached_data.collect().write_parquet(task_df_fp)
-
                 task_info = {
                     "tasks": sorted(self.tasks),
                     "vocabs": self.task_vocabs,
@@ -196,12 +208,29 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     task_info_fp.parent.mkdir(exist_ok=True, parents=True)
                     with open(task_info_fp, mode="w") as f:
                         json.dump(task_info, f)
+
+                if self.split != "train":
+                    print(f"WARNING: Constructing task-specific dataset on non-train split {self.split}!")
+                for cached_data_fp in Path(self.config.save_dir / "DL_reps").glob(f"{split}*.parquet"):
+                    task_df_fp = task_dir / cached_data_fp.name
+                    if task_df_fp.is_file():
+                        continue
+
+                    print("Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}...")
+
+                    task_cached_data = self._build_task_cached_df(task_df, pl.scan_parquet(cached_data_fp))
+
+                    task_df_fp.parent.mkdir(exist_ok=True, parents=True)
+                    task_cached_data.collect().write_parquet(task_df_fp)
+
+                self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
             else:
                 raise FileNotFoundError(
                     f"Neither {task_df_fp} nor {raw_task_df_fp} exist, but config.task_df_name = "
                     f"{config.task_df_name}!"
                 )
         else:
+            self.cached_data = pl.scan_parquet(self.config.save_dir / "DL_reps" / f"{split}*.parquet")
             self.has_task = False
             self.tasks = None
             self.task_vocabs = None
@@ -279,45 +308,26 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
 
-    def _build_task_cached_df(self, task_df: pl.LazyFrame):
+    @staticmethod
+    def _build_task_cached_df(task_df: pl.LazyFrame, cached_data: pl.LazyFrame) -> pl.LazyFrame:
         """Builds the task-specific cached dataset and infers task properties from the task labels.
 
         Currently, this builds new task vocabularies and types regardless of split (though they are checked
         against the train split for consistency). In the future, this should be updated to rely on the prior
         built parameters. TODO(mmd)
+        TODO(mmd): this should be a static method.
 
         Args:
             task_df: A polars `LazyFrame`, which must have columns ``subject_id``, ``start_time`` and
                 ``end_time``. These three columns define the schema of the task (the inputs). The remaining
                 columns in the task dataframe will be interpreted as labels.
         """
-        print("Constructing task-specific cached dataset!")
-        if self.split != "train":
-            print(f"WARNING: Constructing task-specific dataset on non-train split {self.split}!")
-
-        self.tasks = sorted([c for c in task_df.columns if c not in ["subject_id", "start_time", "end_time"]])
-
-        normalized_cols = []
-        for t in self.tasks:
-            task_type, normalized_vals = self.normalize_task(col=pl.col(t), dtype=task_df.schema[t])
-            self.task_types[t] = task_type
-            normalized_cols.append(normalized_vals.alias(t))
-
-            if task_type == "binary_classification":
-                self.task_vocabs[t] = [False, True]
-
-        task_df = (
-            task_df.with_columns(normalized_cols)
-            .join(self.cached_data.select("subject_id"), on="subject_id", how="inner")
-            .with_row_count("task_row_num")
-        )
-
-        time_dep_cols = [c for c in ("time", "time_delta") if c in self.cached_data.columns]
+        time_dep_cols = [c for c in ("time", "time_delta") if c in cached_data.columns]
         time_dep_cols.extend(["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"])
 
-        if "time" in self.cached_data.columns:
+        if "time" in cached_data.columns:
             time_col_expr = pl.col("time")
-        elif "time_delta" in self.cached_data.columns:
+        elif "time_delta" in cached_data.columns:
             time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
         start_idx_expr = (
@@ -325,8 +335,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         )
         end_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("end_time_min")).over("subject_id")
 
-        self.cached_data = (
-            self.cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
+        return (
+            cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
             .with_columns(
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
@@ -340,11 +350,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             .drop("start_time_task", "end_time_min", "start_time_min", "end_time")
         )
 
-        self.cached_data = self.cached_data.sort("task_row_num").drop("task_row_num")
-
-        for t in self.tasks:
-            if self.task_types[t] == "multi_class_classification":
-                self.task_vocabs[t] = list(range(task_df.select(pl.col(t).max()).collect().item()))
+        return cached_data
 
     def __len__(self):
         return len(self.cached_data)
