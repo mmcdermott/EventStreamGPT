@@ -35,6 +35,7 @@ measurement (eye color), and a continuous static measurement (height):
 ```{literalinclude} ../../sample_data/raw/subjects.csv
 ---
 lines: 1-3
+language: csv
 ---
 ```
 
@@ -48,6 +49,7 @@ signs measured for those subjects.
 ```{literalinclude} ../../sample_data/raw/admit_vitals.csv
 ---
 lines: 1-3
+language: csv
 ---
 ```
 
@@ -63,6 +65,7 @@ This file contains dynamic data quantifying fictional subject laboratory test me
 ```{literalinclude} ../../sample_data/raw/labs.csv
 ---
 lines: 1-3
+language: csv
 ---
 ```
 
@@ -164,7 +167,150 @@ parameters for the dataset pipeline. This is largely set from the input `dataset
 ###### `inferred_measurement_configs.json` & `inferred_measurement_metadata`
 
 These represent the inferred pre-processing parameters for the inferred measurements. This is stored in two
-forms:
+forms: First, most data about the inferred measurements is stored in a flat JSON file,
+`inferred_measurement_configs.json`. This file contains an object whose keys are measurement names and whose
+values are configuration objects describing the measurements.
+
+The full file looks like this:
+
+```{literalinclude} ../../sample_data/processed/sample/inferred_measurement_configs.json
+---
+language: json
+---
+```
+
+To isolate a single measurement, we can examine the configuration for `'eye_color'`:
+
+```json
+{
+  "eye_color": {
+    "name": "eye_color",
+    "temporality": "static",
+    "modality": "single_label_classification",
+    "observation_frequency": 1.0,
+    "functor": null,
+    "vocabulary": {
+      "vocabulary": [
+        "UNK",
+        "BROWN",
+        "BLUE",
+        "HAZEL",
+        "GREEN"
+      ],
+      "obs_frequencies": [
+        0.0,
+        0.5125,
+        0.2125,
+        0.175,
+        0.1
+      ]
+    },
+    "values_column": null,
+    "_measurement_metadata": null
+  }
+}
+```
+
+We can see that this configuration object details several facts about the eye color measurement:
+
+- That it is a static, single-label classification measurement (these were specified in the input config)
+- That this is observed on 100% of subjects.
+- That the relative frequencies of the categories "Brown", "Blue", "Hazel", "Green" are 51.25%, 21.25%,
+  17.5%, and 10%, respectively.
+
+To see a different measurement, one that is a multivariate regression measurement, we can inspect the lab
+tests measurement configs:
+
+```json
+{
+  "lab_name": {
+    "name": "lab_name",
+    "temporality": "dynamic",
+    "modality": "multivariate_regression",
+    "observation_frequency": 0.9953452513588434,
+    "functor": null,
+    "vocabulary": {
+      "vocabulary": [
+        "UNK",
+        "SpO2",
+        "creatinine",
+        "potassium",
+        "SOFA__EQ_1",
+        "GCS__EQ_1",
+        "SOFA__EQ_2",
+        "SOFA__EQ_3",
+        "GCS__EQ_4",
+        "GCS__EQ_3",
+        "GCS__EQ_2",
+        "GCS__EQ_5",
+        "GCS__EQ_6",
+        "GCS__EQ_7",
+        "SOFA__EQ_4",
+        "GCS__EQ_8",
+        "GCS__EQ_9",
+        "GCS__EQ_10",
+        "GCS__EQ_11",
+        "GCS__EQ_15",
+        "GCS__EQ_12",
+        "GCS__EQ_13",
+        "GCS__EQ_14",
+        "SOFA__EQ_1000000",
+        "GCS__EQ_1000000"
+      ],
+      "obs_frequencies": [
+        0.0,
+        0.8259984895186395,
+        0.04326148962598335,
+        0.042245556731226326,
+        0.027447439849105214,
+        0.013256007422060696,
+        0.01155863274600911,
+        0.004522818236187147,
+        0.0045065249727806655,
+        0.004329215929827789,
+        0.003943928171627486,
+        0.0029251199950928526,
+        0.0027363098250295197,
+        0.0023232276763122785,
+        0.0022705141770560182,
+        0.0018171780834521783,
+        0.0015440263145788287,
+        0.001292918372667188,
+        0.0010964407845302172,
+        0.0009066721872076797,
+        0.000854917115210624,
+        0.0006613148088512674,
+        0.0004907147567128245,
+        5.750563555228412e-06,
+        4.792136296023677e-06
+      ]
+    },
+    "values_column": "lab_value",
+    "_measurement_metadata": "/home/mmd/Projects/EventStreamGPT/sample_data/processed/sample/inferred_measurement_metadata/lab_name.csv"
+  }
+}
+```
+
+Here, in addition to the same information we see for eye color, we also see listed the associated values
+column for this multivariate regression, and also a path to a measurement metadata object that contains more
+statistics for this measurement. In addition, we can also see that under this configuration, the system has
+expanded the two laboratory tests `'SOFA'` and `'GCS'` into categorical options.
+
+We can inspect the detailed measurement metadata linked in this config object by looking at the csv file in
+question.
+
+```{literalinclude} ../../sample_data/processed/sample/inferred_measurement_metadata/lab_name.csv
+---
+language: csv
+---
+```
+
+Within this file, we see a dataframe containing information about the different laboratory tests that the
+system has processed, including their value type, information about the learned outlier model, and information
+learned about their normalization variables. For example, the system has inferred that the GCS and SOFA scores
+are categorical, integer variables, the SpO2 lab is an integer variable, and the potassium and creatinine labs
+are floating point labs. Further, it has learned outlier bounds for the various continuous laboratory tests
+and has fit the mean and standard deviation of the laboratory test values for these as well.
 
 ##### Processed DataFrames
 
@@ -174,6 +320,14 @@ These files are the output, processed, internally represented versions of the ra
 according to the event-stream data model (see the Usage Guide for more information on that data model).
 
 ###### `DL_reps`
+
+This directory contains the deep-learning formatted representtaions of the data. It is suitable for rapidly
+iterating through batches of subject time-series, but less well suited towards querying and data manipulation.
+
+```bash
+[mmd:~/Projects/EventStreamGPT/sample_data/processed/sample] [base] running_local_example+ ± ls DL_reps/
+held_out_0.parquet train_0.parquet tuning_0.parquet
+```
 
 ##### Overall Class File
 
