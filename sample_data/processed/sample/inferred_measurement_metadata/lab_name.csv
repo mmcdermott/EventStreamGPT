@@ -1,0 +1,6 @@
+lab_name,value_type,outlier_model,normalizer
+GCS,categorical_integer,"{'thresh_large_': None, 'thresh_small_': None}","{'mean_': None, 'std_': None}"
+potassium,float,"{'thresh_large_': 17640.16566765494, 'thresh_small_': -17359.137726725094}","{'mean_': 4.392239747523321, 'std_': 1.2536768384327484}"
+SOFA,categorical_integer,"{'thresh_large_': None, 'thresh_small_': None}","{'mean_': None, 'std_': None}"
+creatinine,float,"{'thresh_large_': 15898.493777575817, 'thresh_small_': -15674.467640397457}","{'mean_': 1.241794030496769, 'std_': 0.9194623769306359}"
+SpO2,integer,"{'thresh_large_': 13939.533259539241, 'thresh_small_': -13668.304785611179}","{'mean_': 50.914774982187495, 'std_': 2.5249861778929987}"

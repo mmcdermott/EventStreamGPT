@@ -1,0 +1,4 @@
+,age
+value_type,float
+outlier_model,"{'thresh_large_': 39.38672474703563, 'thresh_small_': 22.853212376159806}"
+normalizer,"{'mean_': 31.31992914951196, 'std_': 4.459586878552883}"

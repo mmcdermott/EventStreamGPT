@@ -195,7 +195,7 @@ class DatasetBase(
             subject_id_source_col=schema.subject_id_col,
         )
 
-        subjects_df = cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schmea.items()})
+        subjects_df = cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
 
         return subjects_df, ID_map
 

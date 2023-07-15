@@ -327,7 +327,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         cols_select_exprs = [
             "timestamp",
             "subject_id",
-            "event_id",
         ]
         if event_type.startswith("COL:"):
             event_type_col = event_type[len("COL:") :]
@@ -340,8 +339,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         df = (
             df.filter(pl.col("timestamp").is_not_null() & pl.col("subject_id").is_not_null())
-            .with_row_count("event_id")
             .select(cols_select_exprs)
+            .unique()
+            .with_row_count("event_id")
         )
 
         events_df = df.select("event_id", "subject_id", "timestamp", "event_type")

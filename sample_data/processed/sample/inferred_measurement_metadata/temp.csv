@@ -1,0 +1,4 @@
+,temp
+value_type,float
+outlier_model,"{'thresh_large_': 102.32155582531782, 'thresh_small_': 92.98006303440563}"
+normalizer,"{'mean_': 97.76216958328423, 'std_': 2.307799011255562}"

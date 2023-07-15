@@ -1165,7 +1165,7 @@ class MeasurementConfig(JSONableMixin):
 
         fp.parent.mkdir(exist_ok=True, parents=True)
         self.measurement_metadata.to_csv(fp)
-        self._measurement_metadata = str(fp)
+        self._measurement_metadata = str(fp.resolve())
 
     def uncache_measurement_metadata(self):
         if self._measurement_metadata is None:
@@ -1583,7 +1583,7 @@ class DatasetConfig(JSONableMixin):
         """
         as_dict = dataclasses.asdict(self)
         if self.save_dir is not None:
-            as_dict["save_dir"] = str(self.save_dir)
+            as_dict["save_dir"] = str(self.save_dir.absolute())
         as_dict["measurement_configs"] = {k: v.to_dict() for k, v in self.measurement_configs.items()}
         return as_dict
 
