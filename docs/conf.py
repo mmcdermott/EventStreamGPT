@@ -106,8 +106,6 @@ myst_enable_extensions = [
     "smartquotes",
     "substitution",
     "tasklist",
-    "attrs_inline",
-    "attrs_block",
 ]
 
 # MyST URL schemes.
