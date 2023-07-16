@@ -22,7 +22,7 @@ drwxrwxr-x 5 mmd mmd 4.0K Jul 14 16:39 ..
 ```
 
 ```{note}
-To see how those files are generated, look at [sample_data/Generate Synthetic Data.ipynb]().
+To see how those files are generated, look at [sample_data/generate_synthetic_data.ipynb]().
 ```
 
 These files contain the following data:
@@ -343,3 +343,9 @@ Currently, this lazy saving/loading uses absolute paths, which makes transferrin
 more challenging! Paths can be modified in the class and config object locally to fix this problem, but it is
 a challenge.
 ```
+
+### Inspecting the Dataset Class Object
+
+To Inspect the Dataset Class and its associated dataframes and class members, we can load the dataset from
+disk via the [`EventStream.data.dataset_polars.Dataset.load`](<>) class method. To do this, you can follow along
+in the Jupyter notebook [`sample_data/examine_synthetic_data.ipynb`](<>).

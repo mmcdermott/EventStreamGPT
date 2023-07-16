@@ -10,7 +10,7 @@ maxdepth: 1
 Overview <overview>
 Usage Guide <usage>
 MIMIC-IV Tutorial <MIMIC_IV_tutorial/index>
-Local Data Tutorial <local_tutorial/index>
+Local Data Tutorial <_collections/local_tutorial_notebook.ipynb>
 License <license>
 Module Reference <api/modules>
 ```

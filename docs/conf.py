@@ -64,10 +64,19 @@ extensions = [
     "sphinx.ext.ifconfig",
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
-    "myst_parser",
     "sphinxcontrib.bibtex",
     "sphinx_subfigure",
+    "myst_nb",
+    "sphinxcontrib.collections",
 ]
+
+collections = {
+    "local_tutorial_notebook": {
+        "driver": "copy_file",
+        "source": "../sample_data/examine_synthetic_data.ipynb",
+        "target": "local_tutorial_notebook.ipynb",
+    },
+}
 
 bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib", "api_refs.bib"]
 
@@ -78,6 +87,9 @@ templates_path = ["_templates"]
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# Control options for included jupyter notebooks.
+nb_execution_mode = "off"
 
 
 # -- Options for HTML output -------------------------------------------------
