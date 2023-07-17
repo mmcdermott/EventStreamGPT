@@ -12,15 +12,15 @@ hydra:
     params: null
   help:
     app_name: ${hydra.job.name}
-    header: "${hydra.help.app_name} is powered by Hydra.
+    header: '${hydra.help.app_name} is powered by Hydra.
 
-      "
-    footer: "Powered by Hydra (https://hydra.cc)
+      '
+    footer: 'Powered by Hydra (https://hydra.cc)
 
       Use --hydra-help to view Hydra specific help
 
-      "
-    template: "${hydra.help.header}
+      '
+    template: '${hydra.help.header}
 
       == Configuration groups ==
 
@@ -40,9 +40,9 @@ hydra:
 
       ${hydra.help.footer}
 
-      "
+      '
   hydra_help:
-    template: "Hydra (${hydra.runtime.version})
+    template: 'Hydra (${hydra.runtime.version})
 
       See https://hydra.cc for more info.
 
@@ -61,15 +61,15 @@ hydra:
       $HYDRA_CONFIG_GROUPS
 
 
-      Use '--cfg hydra' to Show the Hydra config.
+      Use ''--cfg hydra'' to Show the Hydra config.
 
-      "
+      '
     hydra_help: ???
   hydra_logging:
     version: 1
     formatters:
       simple:
-        format: "[%(asctime)s][HYDRA] %(message)s"
+        format: '[%(asctime)s][HYDRA] %(message)s'
     handlers:
       console:
         class: logging.StreamHandler
@@ -78,7 +78,7 @@ hydra:
     root:
       level: INFO
       handlers:
-        - console
+      - console
     loggers:
       logging_example:
         level: DEBUG
@@ -87,7 +87,7 @@ hydra:
     version: 1
     formatters:
       simple:
-        format: "[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"
+        format: '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
     handlers:
       console:
         class: logging.StreamHandler
@@ -100,24 +100,24 @@ hydra:
     root:
       level: INFO
       handlers:
-        - console
-        - file
+      - console
+      - file
     disable_existing_loggers: false
   env: {}
   mode: RUN
   searchpath:
-    - /home/mmd/Projects/EventStreamGPT/configs
+  - /home/mmd/Projects/EventStreamGPT/configs
   callbacks: {}
   output_subdir: .hydra
   overrides:
     hydra:
-      - hydra.searchpath=[/home/mmd/Projects/EventStreamGPT/configs]
-      - hydra.mode=RUN
+    - hydra.searchpath=[/home/mmd/Projects/EventStreamGPT/configs]
+    - hydra.mode=RUN
     task: []
   job:
     name: build_${cohort_name}
     chdir: null
-    override_dirname: ""
+    override_dirname: ''
     id: ???
     num: ???
     config_name: dataset
@@ -125,26 +125,26 @@ hydra:
     env_copy: []
     config:
       override_dirname:
-        kv_sep: "="
-        item_sep: ","
+        kv_sep: '='
+        item_sep: ','
         exclude_keys: []
   runtime:
     version: 1.3.2
-    version_base: "1.3"
+    version_base: '1.3'
     cwd: /home/mmd/Projects/EventStreamGPT
     config_sources:
-      - path: hydra.conf
-        schema: pkg
-        provider: hydra
-      - path: /home/mmd/Projects/EventStreamGPT/sample_data/
-        schema: file
-        provider: main
-      - path: /home/mmd/Projects/EventStreamGPT/configs
-        schema: file
-        provider: hydra.searchpath in command-line
-      - path: ""
-        schema: structured
-        provider: schema
+    - path: hydra.conf
+      schema: pkg
+      provider: hydra
+    - path: /home/mmd/Projects/EventStreamGPT/sample_data/
+      schema: file
+      provider: main
+    - path: /home/mmd/Projects/EventStreamGPT/configs
+      schema: file
+      provider: hydra.searchpath in command-line
+    - path: ''
+      schema: structured
+      provider: schema
     output_dir: /home/mmd/Projects/EventStreamGPT/sample_data/processed/sample/.logs
     choices:
       normalizer_config: standard_scaler
