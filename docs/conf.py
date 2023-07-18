@@ -70,8 +70,12 @@ extensions = [
     "sphinxcontrib.collections",
 ]
 
+collections_dir = __location__ / "_collections"
+if not collections_dir.is_dir():
+    os.mkdir(collections_dir)
+
 collections = {
-    "local_tutorial_notebook": {
+    "local_tutorial_files": {
         "driver": "copy_file",
         "source": "../sample_data/examine_synthetic_data.ipynb",
         "target": "local_tutorial_notebook.ipynb",
