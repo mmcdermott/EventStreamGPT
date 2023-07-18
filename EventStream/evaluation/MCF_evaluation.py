@@ -141,12 +141,15 @@ def get_MCF(
     return np.stack(censor_slices, axis=0), np.stack(MCF_slices, axis=0)
 
 
-def get_aligned_timestamps(control_T: pl.Series, *sample_Ts: list[pl.Series]) -> list[float]:
+def get_aligned_timestamps(
+    control_T: pl.Series, *sample_Ts: list[pl.Series], n_timestamps: int | None = None
+) -> list[float]:
     """Gets the aligned timestamps given the input raw timestamps.
 
     Args:
         control_T: the timestamps from the control population, as a series of lists.
         sample_Ts: any sample timestamps to also be included.
+        n_timestamps: If specified, downsample the provided timestamps to no more than this many.
 
     Returns:
         A sorted list of time values.
@@ -163,12 +166,22 @@ def get_aligned_timestamps(control_T: pl.Series, *sample_Ts: list[pl.Series]) ->
         ... ])
         >>> get_aligned_timestamps(control_T, sample_T_1, sample_T_2)
         [-105.0, -10.0, 0.0, 1.0, 1.1, 2.0, 4.0, 8.0, 21.1, 46.0, 132.0, 188.0, 200.0]
+        >>> get_aligned_timestamps(control_T, sample_T_1, sample_T_2, n_timestamps=40)
+        [-105.0, -10.0, 0.0, 1.0, 1.1, 2.0, 4.0, 8.0, 21.1, 46.0, 132.0, 188.0, 200.0]
+        >>> import numpy as np
+        >>> np.random.seed(1)
+        >>> get_aligned_timestamps(control_T, sample_T_1, sample_T_2, n_timestamps=4)
+        [1.1, 2.0, 4.0, 46.0]
     """
 
     def get_Ts(S: pl.Series) -> list:
         return S.explode().drop_nulls().to_list()
 
-    return sorted(list(set(get_Ts(control_T)).union(*[get_Ts(T) for T in sample_Ts])))
+    all_Ts = list(set(get_Ts(control_T)).union(*[get_Ts(T) for T in sample_Ts]))
+    if n_timestamps is not None and len(all_Ts) > n_timestamps:
+        all_Ts = list(np.random.choice(all_Ts, size=n_timestamps, replace=False))
+
+    return sorted(all_Ts)
 
 
 def eval_range(
@@ -342,6 +355,7 @@ def get_MCF_coordinates(
     control_df: pl.DataFrame,
     sample_dfs: list[pl.DataFrame],
     measurement_predicates: dict[int, bool | RANGE_T | list[RANGE_T]],
+    n_timestamps: int | None = None,
 ) -> tuple[list[int], list[float], list[int], np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Returns aligned MCF coordinates per subject comparing the control and sample dataframes.
 
@@ -361,6 +375,8 @@ def get_MCF_coordinates(
             bound on that side), a floating point value (in which case the bound is considered to be
             exclusive), or a tuple of a floating point value and a boolean value where the boolean value
             indicates an inclusive or exclusive bound.
+        n_timestamps: Downsample (without replacement) the set of possible aligned timepoints to this number
+            if specified.
 
     Returns:
         1. The subject IDs in order of the rows of the returned coordinates.
@@ -379,6 +395,7 @@ def get_MCF_coordinates(
     Examples:
         >>> control_df = pl.DataFrame({
         ...     'subject_id': [1, 2, 3],
+        ...     'control_align_idx': [1, 1, 0],
         ...     'time': [
         ...         [0., 10, 20],
         ...         [0., 100],
@@ -397,7 +414,6 @@ def get_MCF_coordinates(
         ... })
         >>> sample_df_1 = pl.DataFrame({
         ...     'subject_id': [2, 1, 3],
-        ...     'control_align_idx': [1, 1, 0],
         ...     'time': [
         ...         [200, 300, 400],
         ...         [18, 24, 33],
@@ -416,7 +432,6 @@ def get_MCF_coordinates(
         ... })
         >>> sample_df_2 = pl.DataFrame({
         ...     'subject_id': [3, 1, 2],
-        ...     'control_align_idx': [0, 1, 1],
         ...     'time': [
         ...         [5.1, 6, 7.1],
         ...         [11, 14, 23],
@@ -459,26 +474,24 @@ def get_MCF_coordinates(
         (2, 3, 21, 2)
     """
 
-    align_idx = sample_dfs[0].select("subject_id", "control_align_idx")
-    with_align_idx = control_df.join(align_idx, on=["subject_id"], how="inner")
     align_time_expr = pl.col("time").list.get(pl.col("control_align_idx")).alias("align_time")
 
-    with_align_idx = with_align_idx.with_columns(align_time_expr)
+    with_align_time = control_df.with_columns(align_time_expr)
     aligned_sample_dfs = []
     for df in sample_dfs:
         aligned_sample_dfs.append(
             align_time_and_eval_predicates(
-                df.join(with_align_idx.select("subject_id", "align_time"), on=["subject_id"], how="inner"),
+                df.join(with_align_time.select("subject_id", "align_time"), on=["subject_id"], how="inner"),
                 measurement_predicates,
             )
         )
 
-    control_df = align_time_and_eval_predicates(with_align_idx, measurement_predicates)
+    control_df = align_time_and_eval_predicates(with_align_time, measurement_predicates)
 
     subject_ids = control_df["subject_id"].to_list()
 
     aligned_timestamps = get_aligned_timestamps(
-        control_df["time"], *[df["time"] for df in aligned_sample_dfs]
+        control_df["time"], *[df["time"] for df in aligned_sample_dfs], n_timestamps=n_timestamps
     )
 
     dynamic_indices = list(measurement_predicates.keys())
