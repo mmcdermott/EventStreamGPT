@@ -388,7 +388,7 @@ dependencies:
       - ml-mixins==0.0.3
       - mpmath==1.2.1
       - myst-nb==0.17.2
-      - myst-parser==1.0.0
+      - myst-parser==0.18.1
       - nodeenv==1.7.0
       - olefile==0.46
       - omegaconf==2.3.0
