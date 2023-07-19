@@ -242,7 +242,7 @@ def generate_trajectories(cfg: GenerateConfig):
     trainer = L.Trainer(**cfg.trainer_config)
     tuning_trajectories = trainer.predict(model=LM, dataloaders=tuning_dataloader)
 
-    for samp_idx, dfs in enumerate(zip(*tuning_trajectoreis)):
+    for samp_idx, dfs in enumerate(zip(*tuning_trajectories)):
         out_fp = output_dir / "tuning" / f"sample_{samp_idx}.parquet"
         out_fp.parent.mkdir(exist_ok=True, parents=True)
 
