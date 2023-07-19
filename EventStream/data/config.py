@@ -668,6 +668,9 @@ class PytorchDatasetConfig(JSONableMixin):
         task_df_name: If the raw dataset should be limited to a task dataframe view, this specifies the name
             of the task dataframe, and indirectly the path on disk from where that task dataframe will be
             read (save_dir / "task_dfs" / f"{task_df_name}.parquet").
+        do_include_subsequence_indices: Whether or not to include the start and end indices of the sampled
+            subsequence for the individual from their full dataset for this batch. This is sometimes used
+            during generative-based evaluation.
         do_include_start_time_min: Whether or not to include the start time of the individual's sequence in
             minutes since the epoch (1/1/1970) in the output data. This is necessary during generation, and
             not used anywhere else currently.
@@ -738,6 +741,7 @@ class PytorchDatasetConfig(JSONableMixin):
 
     task_df_name: str | None = None
 
+    do_include_subsequence_indices: bool = False
     do_include_start_time_min: bool = False
 
     def __post_init__(self):

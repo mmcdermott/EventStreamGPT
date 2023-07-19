@@ -236,6 +236,8 @@ BASE_BATCH = {
         ]
     ),
     "time": None,
+    "start_idx": None,
+    "end_idx": None,
     "static_indices": torch.LongTensor(
         [
             [UNIFIED_IDXMAP["static_clf"]["static_clf_1"]],
@@ -402,6 +404,8 @@ WANT_APPENDED_BATCH = {
         ]
     ),
     "time": None,
+    "start_idx": None,
+    "end_idx": None,
     "static_indices": copy.deepcopy(BASE_BATCH["static_indices"]),
     "static_measurement_indices": copy.deepcopy(BASE_BATCH["static_measurement_indices"]),
     "dynamic_measurement_indices": torch.LongTensor(

@@ -107,6 +107,8 @@ class GenerateConfig:
     data_config_overrides: dict[str, Any] | None = dataclasses.field(
         default_factory=lambda: {
             "seq_padding_side": SeqPaddingSide.LEFT,
+            "do_include_start_time_min": True,
+            "do_include_subsequence_indices": True,
         }
     )
 

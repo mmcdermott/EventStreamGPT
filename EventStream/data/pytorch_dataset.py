@@ -505,6 +505,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
                 if self.config.do_include_start_time_min:
                     full_subj_data["start_time"] += sum(full_subj_data["time_delta"][:start_idx])
+                if self.config.do_include_subsequence_indices:
+                    full_subj_data["start_idx"] = start_idx
+                    full_subj_data["end_idx"] = start_idx + self.max_seq_len
 
                 for k in (
                     "time_delta",
@@ -513,6 +516,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     "dynamic_measurement_indices",
                 ):
                     full_subj_data[k] = full_subj_data[k][start_idx : start_idx + self.max_seq_len]
+        elif self.config.do_include_subsequence_indices:
+            full_subj_data["start_idx"] = 0
+            full_subj_data["end_idx"] = seq_len
 
         return full_subj_data
 
@@ -637,6 +643,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         if self.config.do_include_start_time_min:
             out_batch["start_time"] = torch.FloatTensor([e["start_time"] for e in batch])
+        if self.config.do_include_subsequence_indices:
+            out_batch["start_idx"] = torch.LongTensor([e["start_idx"] for e in batch])
+            out_batch["end_idx"] = torch.LongTensor([e["end_idx"] for e in batch])
 
         out_batch = PytorchBatch(**out_batch)
         self._register_end("collate_post_padding_processing")

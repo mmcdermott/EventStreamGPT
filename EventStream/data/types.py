@@ -128,6 +128,10 @@ class PytorchBatch:
         start_time: A float tensor of shape (batch_size,) indicating the start time in minutes since the epoch
             of each subject's sequence in the batch. This is often unset, as it is only used in generation
             when we may need to know the actual time of day of any generated event.
+        start_idx: A long tensor of shape (batch_size,) indicating the start index of the sampled sub-sequence
+            for each subject in the batch relative to their raw data.
+        end_idx: A long tensor of shape (batch_size,) indicating the end index of the sampled sub-sequence
+            for each subject in the batch relative to their raw data.
         stream_labels: A dictionary mapping task names to label LongTensors of shape (batch_size,) providing
             labels for the associated tasks for the sequences in the batch. Is only used during fine-tuning or
             zero-shot evaluation runs.
@@ -150,6 +154,8 @@ class PytorchBatch:
     dynamic_values_mask: torch.BoolTensor | None = None
 
     start_time: torch.FloatTensor | None = None
+    start_idx: torch.LongTensor | None = None
+    end_idx: torch.LongTensor | None = None
 
     stream_labels: dict[str, torch.FloatTensor | torch.LongTensor] | None = None
 
@@ -280,7 +286,7 @@ class PytorchBatch:
                         return False
                     if (self_v != other_v).any():
                         return False
-                case None if k in ("time", "stream_labels"):
+                case None if k in ("time", "stream_labels", "start_idx", "end_idx"):
                     if other_v is not None:
                         return False
                 case _:
@@ -425,6 +431,10 @@ class PytorchBatch:
                      [False, False]]])
             start_time
             tensor([ 0.,  0., 10., 10.])
+            start_idx
+            None
+            end_idx
+            None
             stream_labels
             {'a': tensor([0, 0, 1, 1]), 'b': tensor([1, 1, 2, 2])}
         """
@@ -441,7 +451,7 @@ class PytorchBatch:
                     out_batch[k] = {kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()}
                 case torch.Tensor():
                     out_batch[k] = v.index_select(0, expanded_return_idx)
-                case None if k in ("time", "stream_labels"):
+                case None if k in ("time", "stream_labels", "start_idx", "end_idx"):
                     out_batch[k] = None
                 case _:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
@@ -567,6 +577,10 @@ class PytorchBatch:
                      [False, False]]])
             start_time
             tensor([0., 3.])
+            start_idx
+            None
+            end_idx
+            None
             stream_labels
             {'a': tensor([0, 0]), 'b': tensor([1, 4])}
             Returned batch 1:
@@ -618,6 +632,10 @@ class PytorchBatch:
                      [False, False]]])
             start_time
             tensor([10.0000,  2.2000])
+            start_idx
+            None
+            end_idx
+            None
             stream_labels
             {'a': tensor([1, 1]), 'b': tensor([2, 3])}
             >>> repeat_batch = batch.repeat_batch_elements(5)
@@ -644,7 +662,7 @@ class PytorchBatch:
                     reshaped = v.reshape(v.shape[0] // n_splits, n_splits, *v.shape[1:])
                     for i in range(n_splits):
                         out_batches[i][k] = reshaped[:, i, ...]
-                case None if k in ("time", "stream_labels"):
+                case None if k in ("time", "stream_labels", "start_idx", "end_idx"):
                     pass
                 case _:
                     raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
@@ -730,8 +748,9 @@ class PytorchBatch:
             if k not in ("stream_labels", "event_mask", "dynamic_values_mask") and v is not None
         }
 
-        if self.start_time is not None:
-            df["start_time"] = list(self.start_time)
+        for k in ("start_time", "start_idx", "end_idx"):
+            if self[k] is not None:
+                df[k] = list(self[k])
 
         for i in range(self.batch_size):
             idx, measurement_idx = de_pad(self.static_indices[i], self.static_measurement_indices[i])
