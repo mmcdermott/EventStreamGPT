@@ -55,6 +55,7 @@ BASE_BATCH = {
     "time": None,
     "start_idx": None,
     "end_idx": None,
+    "subject_id": None,
 }
 
 EXPANDED_BATCH_2 = {
@@ -146,6 +147,7 @@ EXPANDED_BATCH_2 = {
     "time": None,
     "start_idx": None,
     "end_idx": None,
+    "subject_id": None,
 }
 
 

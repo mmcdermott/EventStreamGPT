@@ -1,6 +1,7 @@
 import dataclasses
 from pathlib import Path
 from typing import Any
+from datetime import datetime
 
 import lightning as L
 import omegaconf
@@ -63,11 +64,7 @@ class ESTForTrajectoryGeneration(L.LightningModule):
                 pretrained_weights_fp, config=config
             )
 
-    @property
-    def output_dir(self) -> Path:
-        return self.config.save_dir / "generated_trajectories" / self.split
-
-    def predict_step(self, batch: PytorchBatch, batch_idx: int):
+    def predict_step(self, batch: PytorchBatch, batch_idx: int) -> list[PytorchBatch]:
         """Prediction step.
 
         Generates new samples and writes them out.
@@ -84,11 +81,7 @@ class ESTForTrajectoryGeneration(L.LightningModule):
             output_hidden_states=False,
             use_cache=True,
         )
-
-        for samp_idx, generated_batch in enumerate(generated_expanded_batch.split(self.num_samples)):
-            generated_df = generated_batch.convert_to_DL_df()
-            generated_df.to_parquet(self.output_dir / f"sample_{samp_idx}" / f"batch_{batch_idx}.parquet")
-
+        return generated_expanded_batch.split_repeated_batch(self.num_samples)
 
 @hydra_dataclass
 class GenerateConfig:
@@ -109,6 +102,7 @@ class GenerateConfig:
             "seq_padding_side": SeqPaddingSide.LEFT,
             "do_include_start_time_min": True,
             "do_include_subsequence_indices": True,
+            "do_include_subject_id": True,
         }
     )
 
@@ -176,12 +170,20 @@ class GenerateConfig:
             print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
             setattr(self.config, param, val)
 
+        if self.task_specific_params is None:
+            raise ValueError("Must specify num samples to generate")
+
+        if (
+            self.data_config_overrides.get('max_seq_len', None) is None and
+            self.task_specific_params.get("max_new_events", None) is not None
+        ):
+            self.data_config.max_seq_len = (
+                self.config.max_seq_len - self.task_specific_params['max_new_events']
+            )
+
         implied_max_new_events = self.config.max_seq_len - self.data_config.max_seq_len
         if implied_max_new_events <= 0:
             raise ValueError("Implied to not be generating any new events!")
-
-        if self.task_specific_params is None:
-            raise ValueError("Must specify num samples to generate")
 
         if self.config.task_specific_params is None:
             self.config.task_specific_params = {}
@@ -214,8 +216,12 @@ def generate_trajectories(cfg: GenerateConfig):
     config.mean_log_inter_event_time_min = orig_mean_log_inter_event_time
     config.std_log_inter_event_time_min = orig_std_log_inter_event_time
 
+    output_dir = cfg.save_dir / "generated_trajectories"
+
     # Model
-    LM = ESTForTrajectoryGeneration(config=config, pretrained_weights_fp=cfg.pretrained_weights_fp)
+    LM = ESTForTrajectoryGeneration(
+        config=config, pretrained_weights_fp=cfg.pretrained_weights_fp, 
+    )
 
     # Setting up torch dataloader
     tuning_dataloader = torch.utils.data.DataLoader(
@@ -234,7 +240,19 @@ def generate_trajectories(cfg: GenerateConfig):
     )
 
     trainer = L.Trainer(**cfg.trainer_config)
-    LM.split = "tuning"
-    trainer.predict(model=LM, dataloaders=tuning_dataloader)
-    LM.split = "held_out"
-    trainer.predict(model=LM, dataloaders=held_out_dataloader)
+    tuning_trajectories = trainer.predict(model=LM, dataloaders=tuning_dataloader)
+
+    for samp_idx, dfs in enumerate(zip(*tuning_trajectoreis)):
+        out_fp = output_dir / "tuning" / f"sample_{samp_idx}.parquet"
+        out_fp.parent.mkdir(exist_ok=True, parents=True)
+
+        print(f"Writing DF to {out_fp}")
+        pl.concat(dfs).write_parquet(out_fp)
+
+    held_out_trajectories = trainer.predict(model=LM, dataloaders=held_out_dataloader)
+    for samp_idx, dfs in enumerate(zip(*held_out_trajectories)):
+        out_fp = output_dir / "held_out" / f"sample_{samp_idx}.parquet"
+        out_fp.parent.mkdir(exist_ok=True, parents=True)
+
+        print(f"Writing DF to {out_fp}")
+        pl.concat(dfs).write_parquet(out_fp)

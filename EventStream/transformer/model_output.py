@@ -936,6 +936,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
             static_measurement_indices=batch.static_measurement_indices,
             start_time=batch.start_time,
             stream_labels=batch.stream_labels,
+            start_idx=batch.start_idx,
+            end_idx=batch.end_idx,
+            subject_id=batch.subject_id,
         )
 
     def update_last_event_data(
@@ -1061,6 +1064,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
             static_measurement_indices=batch.static_measurement_indices,
             start_time=batch.start_time,
             stream_labels=batch.stream_labels,
+            start_idx=batch.start_idx,
+            end_idx=batch.end_idx,
+            subject_id=batch.subject_id,
         )
 
 

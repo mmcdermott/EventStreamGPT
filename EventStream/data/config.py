@@ -668,6 +668,7 @@ class PytorchDatasetConfig(JSONableMixin):
         task_df_name: If the raw dataset should be limited to a task dataframe view, this specifies the name
             of the task dataframe, and indirectly the path on disk from where that task dataframe will be
             read (save_dir / "task_dfs" / f"{task_df_name}.parquet").
+        do_include_subject_id: Whether or not to include the subject ID of the individual for this batch.
         do_include_subsequence_indices: Whether or not to include the start and end indices of the sampled
             subsequence for the individual from their full dataset for this batch. This is sometimes used
             during generative-based evaluation.
@@ -742,6 +743,7 @@ class PytorchDatasetConfig(JSONableMixin):
     task_df_name: str | None = None
 
     do_include_subsequence_indices: bool = False
+    do_include_subject_id: bool = False
     do_include_start_time_min: bool = False
 
     def __post_init__(self):

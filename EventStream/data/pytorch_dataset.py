@@ -478,6 +478,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         """
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
+        if self.config.do_include_subject_id:
+            full_subj_data["subject_id"] = self.subject_ids[idx]
         if self.config.do_include_start_time_min:
             # Note that this is using the python datetime module's `timestamp` function which differs from
             # some dataframe libraries' timestamp functions (e.g., polars).
@@ -646,6 +648,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         if self.config.do_include_subsequence_indices:
             out_batch["start_idx"] = torch.LongTensor([e["start_idx"] for e in batch])
             out_batch["end_idx"] = torch.LongTensor([e["end_idx"] for e in batch])
+        if self.config.do_include_subject_id:
+            out_batch["subject_id"] = torch.LongTensor([e["subject_id"] for e in batch])
 
         out_batch = PytorchBatch(**out_batch)
         self._register_end("collate_post_padding_processing")
