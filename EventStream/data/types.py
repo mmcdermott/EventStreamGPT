@@ -769,12 +769,6 @@ class PytorchBatch:
             df["static_indices"].append(idx)
             df["static_measurement_indices"].append(measurement_idx)
 
-            def i_or_None(x):
-                if x is None:
-                    return None
-                else:
-                    return x[i]
-
             _, time_delta, time, idx, measurement_idx, vals, vals_mask = de_pad(
                 self.event_mask[i],
                 None if self.time_delta is None else self.time_delta[i],

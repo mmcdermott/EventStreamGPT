@@ -1,4 +1,6 @@
 import dataclasses
+import os
+import polars as pl
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -242,17 +244,34 @@ def generate_trajectories(cfg: GenerateConfig):
     trainer = L.Trainer(**cfg.trainer_config)
     tuning_trajectories = trainer.predict(model=LM, dataloaders=tuning_dataloader)
 
-    for samp_idx, dfs in enumerate(zip(*tuning_trajectories)):
-        out_fp = output_dir / "tuning" / f"sample_{samp_idx}.parquet"
-        out_fp.parent.mkdir(exist_ok=True, parents=True)
+    if os.environ.get("LOCAL_RANK", "0") == "0":
+        for samp_idx, gen_batches in enumerate(zip(*tuning_trajectories)):
+            out_fp = output_dir / "tuning" / f"sample_{samp_idx}.parquet"
+            out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-        print(f"Writing DF to {out_fp}")
-        pl.concat(dfs).write_parquet(out_fp)
+            st_convert = datetime.now()
+            print(f"Converting to DFs for sample {samp_idx}...")
+            dfs = [B.convert_to_DL_DF() for B in gen_batches]
+            print(f"Conversion done in {datetime.now() - st_convert}")
+
+            st_write = datetime.now()
+            print(f"Writing DF to {out_fp}...")
+            pl.concat(dfs).write_parquet(out_fp)
+            print(f"Writing done in {datetime.now() - st_write}")
 
     held_out_trajectories = trainer.predict(model=LM, dataloaders=held_out_dataloader)
-    for samp_idx, dfs in enumerate(zip(*held_out_trajectories)):
-        out_fp = output_dir / "held_out" / f"sample_{samp_idx}.parquet"
-        out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-        print(f"Writing DF to {out_fp}")
-        pl.concat(dfs).write_parquet(out_fp)
+    if os.environ.get("LOCAL_RANK", "0") == "0":
+        for samp_idx, gen_batches in enumerate(zip(*held_out_trajectories)):
+            out_fp = output_dir / "held_out" / f"sample_{samp_idx}.parquet"
+            out_fp.parent.mkdir(exist_ok=True, parents=True)
+
+            st_convert = datetime.now()
+            print(f"Converting to DFs for sample {samp_idx}...")
+            dfs = [B.convert_to_DL_DF() for B in gen_batches]
+            print(f"Conversion done in {datetime.now() - st_convert}")
+
+            st_write = datetime.now()
+            print(f"Writing DF to {out_fp}...")
+            pl.concat(dfs).write_parquet(out_fp)
+            print(f"Writing done in {datetime.now() - st_write}")
