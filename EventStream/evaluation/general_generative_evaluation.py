@@ -1,12 +1,12 @@
 import dataclasses
 import os
-import polars as pl
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from datetime import datetime
 
 import lightning as L
 import omegaconf
+import polars as pl
 import torch
 import torch.multiprocessing
 
@@ -84,6 +84,7 @@ class ESTForTrajectoryGeneration(L.LightningModule):
             use_cache=True,
         )
         return generated_expanded_batch.split_repeated_batch(self.num_samples)
+
 
 @hydra_dataclass
 class GenerateConfig:
@@ -176,11 +177,11 @@ class GenerateConfig:
             raise ValueError("Must specify num samples to generate")
 
         if (
-            self.data_config_overrides.get('max_seq_len', None) is None and
-            self.task_specific_params.get("max_new_events", None) is not None
+            self.data_config_overrides.get("max_seq_len", None) is None
+            and self.task_specific_params.get("max_new_events", None) is not None
         ):
             self.data_config.max_seq_len = (
-                self.config.max_seq_len - self.task_specific_params['max_new_events']
+                self.config.max_seq_len - self.task_specific_params["max_new_events"]
             )
 
         implied_max_new_events = self.config.max_seq_len - self.data_config.max_seq_len
@@ -222,7 +223,8 @@ def generate_trajectories(cfg: GenerateConfig):
 
     # Model
     LM = ESTForTrajectoryGeneration(
-        config=config, pretrained_weights_fp=cfg.pretrained_weights_fp, 
+        config=config,
+        pretrained_weights_fp=cfg.pretrained_weights_fp,
     )
 
     # Setting up torch dataloader

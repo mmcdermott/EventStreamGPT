@@ -15,7 +15,10 @@ import hydra
 import torch
 from omegaconf import OmegaConf
 
-from EventStream.evaluation.general_generative_evaluation import GenerateConfig, generate_trajectories
+from EventStream.evaluation.general_generative_evaluation import (
+    GenerateConfig,
+    generate_trajectories,
+)
 
 torch.set_float32_matmul_precision("high")
 
