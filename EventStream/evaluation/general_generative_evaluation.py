@@ -1,6 +1,7 @@
 import dataclasses
 import os
 from datetime import datetime
+from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
 
@@ -126,6 +127,8 @@ class GenerateConfig:
     )
 
     config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
+
+    parallelize_conversion: int | None = None
 
     def __post_init__(self):
         if isinstance(self.save_dir, str):
@@ -253,7 +256,11 @@ def generate_trajectories(cfg: GenerateConfig):
 
             st_convert = datetime.now()
             print(f"Converting to DFs for sample {samp_idx}...")
-            dfs = [B.convert_to_DL_DF() for B in gen_batches]
+            if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
+                with Pool(cfg.parallelize_conversion) as p:
+                    dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
+            else:
+                dfs = [B.convert_to_DL_DF() for B in gen_batches]
             print(f"Conversion done in {datetime.now() - st_convert}")
 
             st_write = datetime.now()
@@ -270,7 +277,12 @@ def generate_trajectories(cfg: GenerateConfig):
 
             st_convert = datetime.now()
             print(f"Converting to DFs for sample {samp_idx}...")
-            dfs = [B.convert_to_DL_DF() for B in gen_batches]
+            if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
+                with Pool(cfg.parallelize_conversion) as p:
+                    dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
+            else:
+                dfs = [B.convert_to_DL_DF() for B in gen_batches]
+            print(f"Conversion done in {datetime.now() - st_convert}")
             print(f"Conversion done in {datetime.now() - st_convert}")
 
             st_write = datetime.now()
