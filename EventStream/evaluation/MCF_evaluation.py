@@ -6,7 +6,7 @@ import polars as pl
 RANGE_T = tuple[None | tuple[float, bool] | float, None | tuple[float, bool]]
 
 
-def crps(empirical_dist: np.ndarray, true: np.ndarray) -> np.ndarray:
+def crps(samples: np.ndarray, true: np.ndarray) -> np.ndarray:
     """Computes the Continuous Ranked Probability Score (CRPS) [1].
 
     Given an empirical distribution and a true observation, this computes the CRPS between the two. For a
@@ -20,7 +20,7 @@ def crps(empirical_dist: np.ndarray, true: np.ndarray) -> np.ndarray:
         https://www.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf
 
     Args:
-        empirical_dist: A numpy array of shape (n_samples, ...) containing the drawn empirical samples for the
+        samples: A numpy array of shape (n_samples, ...) containing the drawn empirical samples for the
             distribution in question. May contain NaNs, which represents missing or censored samples.
         true: A numpy array of shape (...) containing true observations. May contain NaNs, which represent
             missing or censored true observations.
@@ -31,21 +31,25 @@ def crps(empirical_dist: np.ndarray, true: np.ndarray) -> np.ndarray:
             at that position or if all sampled observations were NaN at that position.
 
     Raises:
-        ValueError: If the shape of ``true`` does not match the shape of ``empirical_dist`` absent the first
+        ValueError: If the shape of ``true`` does not match the shape of ``samples`` absent the first
             dimension.
 
     Examples:
         >>> import numpy as np
         >>> true = np.array([0])
-        >>> empirical_dist = np.array([[-2]])
-        >>> crps(empirical_dist, true)
+        >>> samples = np.array([[-2]])
+        >>> crps(samples, true)
         array([2])
         >>> true = np.array([0])
-        >>> empirical_dist = np.array([[-2], [-1], [0], [1], [2]])
-        >>> crps(empirical_dist, true)
+        >>> samples = np.array([[-2], [np.NaN], [np.NaN], [1], [2]])
+        >>> crps(samples, true)
+        array([0.77777778])
+        >>> true = np.array([0])
+        >>> samples = np.array([[-2], [-1], [0], [1], [2]])
+        >>> crps(samples, true)
         array([0.4])
         >>> true = np.array([-2, 0, -2, np.NaN])
-        >>> empirical_dist = np.array([
+        >>> samples = np.array([
         ...     [-1, 1,  -1,      -1],
         ...     [1, -2,   1,       1],
         ...     [2, -20,  np.NaN,  2],
@@ -53,31 +57,36 @@ def crps(empirical_dist: np.ndarray, true: np.ndarray) -> np.ndarray:
         ...     [3,  1,   3,       3],
         ...     [1,  1,   1,       1]
         ... ])
-        >>> crps(empirical_dist, true)
-        array([2.27777778, 1.41666667, 2.08       ,        nan])
+        >>> crps(samples, true)
+        array([2.27777778, 1.41666667, 2.08      ,        nan])
         >>> crps(np.array([-2, -1, 0, 1, 2]), true)
         Traceback (most recent call last):
             ...
-        ValueError: The shape of true (2,) must match that of empirical_dist (5,) after the 1st dimension.
+        ValueError: The shape of true (4,) must match that of samples (5,) after the 1st dimension.
     """
 
-    if true.shape != empirical_dist.shape[1:]:
+    if true.shape != samples.shape[1:]:
         raise ValueError(
-            f"The shape of true {true.shape} must match that of empirical_dist {empirical_dist.shape} after "
+            f"The shape of true {true.shape} must match that of samples {samples.shape} after "
             "the 1st dimension."
         )
 
-    if empirical_dist.shape[0] == 1:
-        return np.abs(empirical_dist[0] - true)
+    if samples.shape[0] == 1:
+        return np.abs(samples[0] - true)
 
-    n_samples = (~np.isnan(empirical_dist)).sum(0)
+    n_samples = (~np.isnan(samples)).sum(0)
 
-    empirical_dist = np.sort(empirical_dist, axis=0)
-    diff = empirical_dist[1:] - empirical_dist[:-1]
-    weight = np.arange(1, empirical_dist.shape[0]) * np.arange(empirical_dist.shape[0] - 1, 0, -1)
-    weight = weight.reshape(weight.shape + (1,) * (len(diff.shape) - 1))
+    samples = np.sort(samples, axis=0)
+    diff = samples[1:] - samples[:-1]
 
-    abs_error = np.nanmean(np.abs(true - empirical_dist), 0)
+    counting_up = np.ones_like(samples).cumsum(0)[:-1]
+    lhs = counting_up - (np.isnan(samples).sum(0))
+    lhs = np.where(lhs > 0, lhs, np.NaN)
+
+    rhs = np.where(~np.isnan(lhs), np.flip(counting_up, 0), np.NaN)
+    weight = np.flip(lhs * rhs, 0)
+
+    abs_error = np.nanmean(np.abs(true - samples), 0)
     return abs_error - (np.nansum(diff * weight, axis=0) / n_samples**2)
 
 
