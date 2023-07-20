@@ -249,43 +249,43 @@ def generate_trajectories(cfg: GenerateConfig):
     trainer = L.Trainer(**cfg.trainer_config)
     tuning_trajectories = trainer.predict(model=LM, dataloaders=tuning_dataloader)
 
-    if os.environ.get("LOCAL_RANK", "0") == "0":
-        for samp_idx, gen_batches in enumerate(zip(*tuning_trajectories)):
-            out_fp = output_dir / "tuning" / f"sample_{samp_idx}.parquet"
-            out_fp.parent.mkdir(exist_ok=True, parents=True)
+    local_rank = os.environ.get("LOCAL_RANK", "0")
 
-            st_convert = datetime.now()
-            print(f"Converting to DFs for sample {samp_idx}...")
-            if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
-                with Pool(cfg.parallelize_conversion) as p:
-                    dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
-            else:
-                dfs = [B.convert_to_DL_DF() for B in gen_batches]
-            print(f"Conversion done in {datetime.now() - st_convert}")
+    for samp_idx, gen_batches in enumerate(zip(*tuning_trajectories)):
+        out_fp = output_dir / "tuning" / f"sample_{samp_idx}_local_rank_{local_rank}.parquet"
+        out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-            st_write = datetime.now()
-            print(f"Writing DF to {out_fp}...")
-            pl.concat(dfs).write_parquet(out_fp)
-            print(f"Writing done in {datetime.now() - st_write}")
+        st_convert = datetime.now()
+        print(f"Converting to DFs for sample {samp_idx}...")
+        if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
+            with Pool(cfg.parallelize_conversion) as p:
+                dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
+        else:
+            dfs = [B.convert_to_DL_DF() for B in gen_batches]
+        print(f"Conversion done in {datetime.now() - st_convert}")
+
+        st_write = datetime.now()
+        print(f"Writing DF to {out_fp}...")
+        pl.concat(dfs).write_parquet(out_fp)
+        print(f"Writing done in {datetime.now() - st_write}")
 
     held_out_trajectories = trainer.predict(model=LM, dataloaders=held_out_dataloader)
 
-    if os.environ.get("LOCAL_RANK", "0") == "0":
-        for samp_idx, gen_batches in enumerate(zip(*held_out_trajectories)):
-            out_fp = output_dir / "held_out" / f"sample_{samp_idx}.parquet"
-            out_fp.parent.mkdir(exist_ok=True, parents=True)
+    for samp_idx, gen_batches in enumerate(zip(*held_out_trajectories)):
+        out_fp = output_dir / "held_out" / f"sample_{samp_idx}_local_rank_{local_rank}.parquet"
+        out_fp.parent.mkdir(exist_ok=True, parents=True)
 
-            st_convert = datetime.now()
-            print(f"Converting to DFs for sample {samp_idx}...")
-            if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
-                with Pool(cfg.parallelize_conversion) as p:
-                    dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
-            else:
-                dfs = [B.convert_to_DL_DF() for B in gen_batches]
-            print(f"Conversion done in {datetime.now() - st_convert}")
-            print(f"Conversion done in {datetime.now() - st_convert}")
+        st_convert = datetime.now()
+        print(f"Converting to DFs for sample {samp_idx}...")
+        if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
+            with Pool(cfg.parallelize_conversion) as p:
+                dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
+        else:
+            dfs = [B.convert_to_DL_DF() for B in gen_batches]
+        print(f"Conversion done in {datetime.now() - st_convert}")
+        print(f"Conversion done in {datetime.now() - st_convert}")
 
-            st_write = datetime.now()
-            print(f"Writing DF to {out_fp}...")
-            pl.concat(dfs).write_parquet(out_fp)
-            print(f"Writing done in {datetime.now() - st_write}")
+        st_write = datetime.now()
+        print(f"Writing DF to {out_fp}...")
+        pl.concat(dfs).write_parquet(out_fp)
+        print(f"Writing done in {datetime.now() - st_write}")
