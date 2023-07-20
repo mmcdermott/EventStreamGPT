@@ -6,6 +6,81 @@ import polars as pl
 RANGE_T = tuple[None | tuple[float, bool] | float, None | tuple[float, bool]]
 
 
+def crps(empirical_dist: np.ndarray, true: np.ndarray) -> np.ndarray:
+    """Computes the Continuous Ranked Probability Score (CRPS) [1].
+
+    Given an empirical distribution and a true observation, this computes the CRPS between the two. For a
+    single sample, this reduces to absolute error. The empirical distribution should be arranged such that
+    independent samples of the distribution are on the first axis, and all other axes should be equal.
+
+    Initial Source: https://docs.pyro.ai/en/stable/_modules/pyro/ops/stats.html#crps_empirical
+
+    [1] Tilmann Gneiting, Adrian E. Raftery (2007)
+        `Strictly Proper Scoring Rules, Prediction, and Estimation`
+        https://www.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf
+
+    Args:
+        empirical_dist: A numpy array of shape (n_samples, ...) containing the drawn empirical samples for the
+            distribution in question. May contain NaNs, which represents missing or censored samples.
+        true: A numpy array of shape (...) containing true observations. May contain NaNs, which represent
+            missing or censored true observations.
+
+    Returns:
+        A numpy array of shape (...) containing the CRPS score results for the true observations and empirical
+            distributions corresponding to each position. Will be NaN if either the true observation was NaN
+            at that position or if all sampled observations were NaN at that position.
+
+    Raises:
+        ValueError: If the shape of ``true`` does not match the shape of ``empirical_dist`` absent the first
+            dimension.
+
+    Examples:
+        >>> import numpy as np
+        >>> true = np.array([0])
+        >>> empirical_dist = np.array([[-2]])
+        >>> crps(empirical_dist, true)
+        array([2])
+        >>> true = np.array([0])
+        >>> empirical_dist = np.array([[-2], [-1], [0], [1], [2]])
+        >>> crps(empirical_dist, true)
+        array([0.4])
+        >>> true = np.array([-2, 0, -2, np.NaN])
+        >>> empirical_dist = np.array([
+        ...     [-1, 1,  -1,      -1],
+        ...     [1, -2,   1,       1],
+        ...     [2, -20,  np.NaN,  2],
+        ...     [0,  10,  0,       0],
+        ...     [3,  1,   3,       3],
+        ...     [1,  1,   1,       1]
+        ... ])
+        >>> crps(empirical_dist, true)
+        array([2.27777778, 1.41666667, 2.08       ,        nan])
+        >>> crps(np.array([-2, -1, 0, 1, 2]), true)
+        Traceback (most recent call last):
+            ...
+        ValueError: The shape of true (2,) must match that of empirical_dist (5,) after the 1st dimension.
+    """
+
+    if true.shape != empirical_dist.shape[1:]:
+        raise ValueError(
+            f"The shape of true {true.shape} must match that of empirical_dist {empirical_dist.shape} after "
+            "the 1st dimension."
+        )
+
+    if empirical_dist.shape[0] == 1:
+        return np.abs(empirical_dist[0] - true)
+
+    n_samples = (~np.isnan(empirical_dist)).sum(0)
+
+    empirical_dist = np.sort(empirical_dist, axis=0)
+    diff = empirical_dist[1:] - empirical_dist[:-1]
+    weight = np.arange(1, empirical_dist.shape[0]) * np.arange(empirical_dist.shape[0] - 1, 0, -1)
+    weight = weight.reshape(weight.shape + (1,) * (len(diff.shape) - 1))
+
+    abs_error = np.nanmean(np.abs(true - empirical_dist), 0)
+    return abs_error - (np.nansum(diff * weight, axis=0) / n_samples**2)
+
+
 def get_MCF(
     aligned_Ts: list[float], MCF_cols: list[str], *dfs: list[pl.DataFrame]
 ) -> tuple[np.ndarray, np.ndarray]:
