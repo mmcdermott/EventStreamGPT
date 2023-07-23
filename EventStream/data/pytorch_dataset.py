@@ -216,7 +216,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     if task_df_fp.is_file():
                         continue
 
-                    print("Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}...")
+                    print(f"Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}...")
 
                     task_cached_data = self._build_task_cached_df(task_df, pl.scan_parquet(cached_data_fp))
 
