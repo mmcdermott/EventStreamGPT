@@ -416,6 +416,9 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_normalize_by_measurement_index:
             If True, the input embeddings are normalized such that each unique measurement index contributes
             equally to the embedding.
+        do_use_learnable_sinusoidal_ATE:
+            If True, then the model will produce temporal position embeddings via a sinnusoidal position
+            embedding such that the frequencies are learnable, rather than fixed and regular.
 
 
         structured_event_processing_mode: Specifies how the internal event is processed internally by the
@@ -500,6 +503,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         categorical_embedding_weight: float = 0.5,
         numerical_embedding_weight: float = 0.5,
         do_normalize_by_measurement_index: bool = False,
+        do_use_learnable_sinusoidal_ATE: bool = False,
         # Model configuration
         structured_event_processing_mode: StructuredEventProcessingMode = (
             StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
@@ -530,6 +534,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         use_cache: bool = True,
         **kwargs,
     ):
+        self.do_use_learnable_sinusoidal_ATE = do_use_learnable_sinusoidal_ATE
         # Resetting default values to appropriate types
         if vocab_sizes_by_measurement is None:
             vocab_sizes_by_measurement = {}
