@@ -183,7 +183,9 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         self.vocabulary = ["UNK"] + [vocab[i] for i in idx]
         self.obs_frequencies = list(np.concatenate(([unk_freq], obs_frequencies[idx])))
 
-    def filter(self, total_observations: int, min_valid_element_freq: COUNT_OR_PROPORTION) -> Vocabulary:
+    def filter(
+        self, total_observations: int | None, min_valid_element_freq: COUNT_OR_PROPORTION
+    ) -> Vocabulary:
         """Filters the vocabulary elements to only those occurring sufficiently often.
 
         Filters out infrequent elements from the vocabulary, pushing the dropped elements into the UNK
