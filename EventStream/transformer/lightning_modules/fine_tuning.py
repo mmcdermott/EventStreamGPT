@@ -179,7 +179,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
                 continue
 
             try:
-                metric(preds, labels)
+                metric(preds, labels.long())
                 self.log(f"{prefix}_{metric_name}", metric)
             except (ValueError, IndexError) as e:
                 print(
