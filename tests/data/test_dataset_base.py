@@ -30,6 +30,11 @@ class ESDMock(DatasetBase[dict, dict]):
     def _reset_functions_called(self):
         self.functions_called = defaultdict(list)
 
+    @classmethod
+    def _rename_cols(self, df: dict, mapping: dict[str, str]) -> dict:
+        self.FUNCTIONS_CALLED["_rename_cols"].append((df, mapping))
+        return df
+
     def _validate_initial_dfs(
         self, subjects_df: dict, events_df: dict, dynamic_measurements_df: dict
     ) -> tuple[dict, dict, dict]:

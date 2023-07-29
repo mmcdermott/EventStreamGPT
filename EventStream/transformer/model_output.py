@@ -936,6 +936,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
             static_measurement_indices=batch.static_measurement_indices,
             start_time=batch.start_time,
             stream_labels=batch.stream_labels,
+            start_idx=batch.start_idx,
+            end_idx=batch.end_idx,
+            subject_id=batch.subject_id,
         )
 
     def update_last_event_data(
@@ -964,7 +967,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
         """
 
         if measurements_to_fill is None:
-            measurements_to_fill = []
+            measurements_to_fill = ["event_type"]
             for m, cfg in config.measurement_configs.items():
                 if not cfg.is_dropped and cfg.temporality == TemporalityType.DYNAMIC:
                     measurements_to_fill.append(m)
@@ -1061,6 +1064,9 @@ class GenerativeSequenceModelSamples(ModelOutput):
             static_measurement_indices=batch.static_measurement_indices,
             start_time=batch.start_time,
             stream_labels=batch.stream_labels,
+            start_idx=batch.start_idx,
+            end_idx=batch.end_idx,
+            subject_id=batch.subject_id,
         )
 
 
@@ -1078,7 +1084,9 @@ class GenerativeSequenceModelPredictions(ModelOutput, NestedIndexableMixin):
     classification: dict[
         str, tuple[None, BERNOULLI_DIST_T] | tuple[BERNOULLI_DIST_T, CATEGORICAL_DIST_T]
     ] | None = None
-    regression: dict[str, torch.distributions.Distribution] | None = None
+    regression: dict[
+        str, tuple[None, REGRESSION_DIST_T] | tuple[BERNOULLI_DIST_T, REGRESSION_DIST_T]
+    ] | None = None
     regression_indices: dict[str, torch.LongTensor] | None = None
     time_to_event: torch.distributions.Distribution | None = None
 

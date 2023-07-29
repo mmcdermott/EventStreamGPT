@@ -19,7 +19,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import logging
 import warnings
 from dataclasses import dataclass
@@ -81,24 +80,7 @@ class StructuredGenerationMixin:
 
     @staticmethod
     def _expand_inputs_for_generation(batch: PytorchBatch, expand_size: int = 1) -> PytorchBatch:
-        expanded_return_idx = (
-            torch.arange(batch.batch_size).view(-1, 1).repeat(1, expand_size).view(-1).to(batch.device)
-        )
-
-        batch = copy.deepcopy(batch)
-
-        for k, v in batch.items():
-            match v:
-                case dict():
-                    batch[k] = {kk: vv.index_select(0, expanded_return_idx) for kk, vv in v.items()}
-                case torch.Tensor():
-                    batch[k] = v.index_select(0, expanded_return_idx)
-                case None if k in ("time", "stream_labels"):
-                    pass
-                case _:
-                    raise TypeError(f"{k}: {type(v)} not supported in batch for generation!")
-
-        return batch
+        return batch.repeat_batch_elements(expand_size)
 
     @staticmethod
     def _update_model_kwargs_for_generation(

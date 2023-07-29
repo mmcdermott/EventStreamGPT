@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -145,19 +146,19 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         self.split = split
 
-        self.cached_data = pl.scan_parquet(self.config.save_dir / "DL_reps" / f"{split}*.parquet")
-
         if self.config.task_df_name is not None:
             task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
             raw_task_df_fp = self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
-            task_df_fp = task_dir / f"{split}.parquet"
             task_info_fp = task_dir / "task_info.json"
 
             self.has_task = True
 
-            if task_df_fp.is_file():
-                print(f"Re-loading task data for {self.config.task_df_name} from {task_df_fp}...")
-                self.cached_data = pl.scan_parquet(task_df_fp)
+            if len(list(task_dir.glob("{split}*.parquet"))) > 0:
+                print(
+                    f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
+                    f"{', '.join([str(fp) for fp in task_dir.glob('{split}*.parquet')])}"
+                )
+                self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
                 with open(task_info_fp) as f:
                     task_info = json.load(f)
                     self.tasks = sorted(task_info["tasks"])
@@ -165,19 +166,30 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     self.task_types = task_info["types"]
 
             elif raw_task_df_fp.is_file():
-                print(f"Loading raw task df from {raw_task_df_fp}")
-                self._build_task_cached_df(pl.scan_parquet(raw_task_df_fp))
+                task_df = pl.scan_parquet(raw_task_df_fp)
 
-                task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
-                task_df_fp = task_dir / f"{split}.parquet"
+                self.tasks = sorted(
+                    [c for c in task_df.columns if c not in ["subject_id", "start_time", "end_time"]]
+                )
+
+                normalized_cols = []
+                for t in self.tasks:
+                    task_type, normalized_vals = self.normalize_task(col=pl.col(t), dtype=task_df.schema[t])
+                    self.task_types[t] = task_type
+                    normalized_cols.append(normalized_vals.alias(t))
+
+                task_df = task_df.with_columns(normalized_cols)
+
+                for t in self.tasks:
+                    match self.task_types[t]:
+                        case "binary_classification":
+                            self.task_vocabs[t] = [False, True]
+                        case "multi_class_classification":
+                            self.task_vocabs[t] = list(
+                                range(task_df.select(pl.col(t).max()).collect().item())
+                            )
+
                 task_info_fp = task_dir / "task_info.json"
-
-                if task_df_fp.is_file():
-                    print(f"Re-built existent {task_df_fp} dataset! Not overwriting...")
-                else:
-                    task_df_fp.parent.mkdir(exist_ok=True, parents=True)
-                    self.cached_data.collect().write_parquet(task_df_fp)
-
                 task_info = {
                     "tasks": sorted(self.tasks),
                     "vocabs": self.task_vocabs,
@@ -196,12 +208,29 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     task_info_fp.parent.mkdir(exist_ok=True, parents=True)
                     with open(task_info_fp, mode="w") as f:
                         json.dump(task_info, f)
+
+                if self.split != "train":
+                    print(f"WARNING: Constructing task-specific dataset on non-train split {self.split}!")
+                for cached_data_fp in Path(self.config.save_dir / "DL_reps").glob(f"{split}*.parquet"):
+                    task_df_fp = task_dir / cached_data_fp.name
+                    if task_df_fp.is_file():
+                        continue
+
+                    print(f"Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}...")
+
+                    task_cached_data = self._build_task_cached_df(task_df, pl.scan_parquet(cached_data_fp))
+
+                    task_df_fp.parent.mkdir(exist_ok=True, parents=True)
+                    task_cached_data.collect().write_parquet(task_df_fp)
+
+                self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
             else:
                 raise FileNotFoundError(
                     f"Neither {task_df_fp} nor {raw_task_df_fp} exist, but config.task_df_name = "
                     f"{config.task_df_name}!"
                 )
         else:
+            self.cached_data = pl.scan_parquet(self.config.save_dir / "DL_reps" / f"{split}*.parquet")
             self.has_task = False
             self.tasks = None
             self.task_vocabs = None
@@ -210,14 +239,14 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
-        length_constraint = pl.col("dynamic_indices").arr.lengths() >= config.min_seq_len
+        length_constraint = pl.col("dynamic_indices").list.lengths() >= config.min_seq_len
         self.cached_data = self.cached_data.filter(length_constraint)
 
         if "time_delta" not in self.cached_data.columns:
             self.cached_data = self.cached_data.with_columns(
-                (pl.col("start_time") + pl.duration(minutes=pl.col("time").arr.first())).alias("start_time"),
+                (pl.col("start_time") + pl.duration(minutes=pl.col("time").list.first())).alias("start_time"),
                 pl.col("time")
-                .arr.eval(
+                .list.eval(
                     # We fill with 1 here as it will be ignored in the code anyways as the next event's
                     # event mask will be null.
                     # TODO(mmd): validate this in a test.
@@ -237,7 +266,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         )
 
         if stats["min"].item() <= 0:
-            bad_inter_event_times = self.cached_data.filter(pl.col("time_delta").arr.min() <= 0).collect()
+            bad_inter_event_times = self.cached_data.filter(pl.col("time_delta").list.min() <= 0).collect()
             bad_subject_ids = [str(x) for x in list(bad_inter_event_times["subject_id"])]
             warning_strs = [
                 f"WARNING: Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
@@ -252,7 +281,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             print("\n".join(warning_strs))
 
-            self.cached_data = self.cached_data.filter(pl.col("time_delta").arr.min() > 0)
+            self.cached_data = self.cached_data.filter(pl.col("time_delta").list.min() > 0)
 
         self.mean_log_inter_event_time_min = stats["mean_log"].item()
         self.std_log_inter_event_time_min = stats["std_log"].item()
@@ -274,79 +303,136 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
         with self._time_as("convert_to_rows"):
+            self.subject_ids = self.cached_data["subject_id"].to_list()
             self.cached_data = self.cached_data.drop("subject_id")
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
 
-    def _build_task_cached_df(self, task_df: pl.LazyFrame):
-        """Builds the task-specific cached dataset and infers task properties from the task labels.
-
-        Currently, this builds new task vocabularies and types regardless of split (though they are checked
-        against the train split for consistency). In the future, this should be updated to rely on the prior
-        built parameters. TODO(mmd)
+    @staticmethod
+    def _build_task_cached_df(task_df: pl.LazyFrame, cached_data: pl.LazyFrame) -> pl.LazyFrame:
+        """Restricts the data in a cached dataframe to only contain data for the passed task dataframe.
 
         Args:
-            task_df: A polars `LazyFrame`, which must have columns ``subject_id``, ``start_time`` and
+            task_df: A polars LazyFrame, which must have columns ``subject_id``, ``start_time`` and
                 ``end_time``. These three columns define the schema of the task (the inputs). The remaining
                 columns in the task dataframe will be interpreted as labels.
+            cached_data: A polars LazyFrame containing the data to be restricted to the task dataframe. Must
+                have the columns ``subject_id``, ``start_time``, ``time`` or ``time_delta``,
+                ``dynamic_indices``, ``dynamic_values``, and ``dynamic_measurement_indices``. These columns
+                will all be restricted to just contain those events whose time values are in the specified
+                task specific time range.
+
+        Returns:
+            The restricted cached dataframe, which will have the same columns as the input cached dataframe
+            plus the task label columns, and will be limited to just those subjects and time-periods specified
+            in the task dataframe.
+
+        Examples:
+            >>> import polars as pl
+            >>> from datetime import datetime
+            >>> cached_data = pl.DataFrame({
+            ...     "subject_id": [0, 1, 2, 3],
+            ...     "start_time": [
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 2, 1),
+            ...         datetime(2020, 3, 1),
+            ...         datetime(2020, 1, 2)
+            ...     ],
+            ...     "time": [
+            ...         [0.0, 60*24.0, 2*60*24., 3*60*24., 4*60*24.],
+            ...         [0.0, 7*60*24.0, 2*7*60*24., 3*7*60*24., 4*7*60*24.],
+            ...         [0.0, 60*12.0, 2*60*12.],
+            ...         [0.0, 60*24.0, 2*60*24., 3*60*24., 4*60*24.],
+            ...     ],
+            ...     "dynamic_measurement_indices": [
+            ...         [[0, 1, 1], [0, 2], [0], [0, 3], [0]],
+            ...         [[0, 1, 1], [0, 4], [0], [0, 1], [0]],
+            ...         [[0, 1, 1], [0], [0, 4]],
+            ...         [[0, 1, 1], [0, 4], [0], [0, 2], [0]],
+            ...     ],
+            ...     "dynamic_indices": [
+            ...         [[6, 11, 12], [1, 40], [5], [1, 55], [5]],
+            ...         [[2, 11, 13], [1, 84], [8], [1, 19], [5]],
+            ...         [[1, 18, 21], [1], [5, 87]],
+            ...         [[3, 20, 21], [1, 94], [8], [1, 33], [9]],
+            ...     ],
+            ...     "dynamic_values": [
+            ...         [[None, 0.2, 1.0], [None, 0.0], [None], [None, None], [None]],
+            ...         [[None, -0.1, 0.0], [None, None], [None], [None, -4.2], [None]],
+            ...         [[None, 0.9, 1.2], [None], [None, None]],
+            ...         [[None, 3.2, -1.0], [None, None], [None], [None, 0.5], [None]],
+            ...     ],
+            ... })
+            >>> task_df = pl.DataFrame({
+            ...     "subject_id": [0, 1, 2, 5],
+            ...     "start_time": [
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 1, 11),
+            ...         datetime(2020, 3, 1, 13),
+            ...         datetime(2020, 1, 2)
+            ...     ],
+            ...     "end_time": [
+            ...         datetime(2020, 1, 3),
+            ...         datetime(2020, 1, 21),
+            ...         datetime(2020, 3, 4),
+            ...         datetime(2020, 1, 3)
+            ...     ],
+            ...     "label1": [0, 1, 0, 1],
+            ...     "label2": [0, 1, 5, 1]
+            ... })
+            >>> pl.Config.set_tbl_width_chars(88)
+            <class 'polars.config.Config'>
+            >>> PytorchDataset._build_task_cached_df(task_df, cached_data)
+            shape: (3, 8)
+            ┌──────────┬──────────┬───────┬────────────┬────────────┬────────────┬────────┬────────┐
+            │ subject_ ┆ start_ti ┆ time  ┆ dynamic_me ┆ dynamic_in ┆ dynamic_va ┆ label1 ┆ label2 │
+            │ id       ┆ me       ┆ ---   ┆ asurement_ ┆ dices      ┆ lues       ┆ ---    ┆ ---    │
+            │ ---      ┆ ---      ┆ list[ ┆ indices    ┆ ---        ┆ ---        ┆ i64    ┆ i64    │
+            │ i64      ┆ datetime ┆ f64]  ┆ ---        ┆ list[list[ ┆ list[list[ ┆        ┆        │
+            │          ┆ [μs]     ┆       ┆ list[list[ ┆ i64]]      ┆ f64]]      ┆        ┆        │
+            │          ┆          ┆       ┆ i64]]      ┆            ┆            ┆        ┆        │
+            ╞══════════╪══════════╪═══════╪════════════╪════════════╪════════════╪════════╪════════╡
+            │ 0        ┆ 2020-01- ┆ [0.0, ┆ [[0, 1,    ┆ [[6, 11,   ┆ [[null,    ┆ 0      ┆ 0      │
+            │          ┆ 01       ┆ 1440. ┆ 1], [0,    ┆ 12], [1,   ┆ 0.2, 1.0], ┆        ┆        │
+            │          ┆ 00:00:00 ┆ 0]    ┆ 2]]        ┆ 40]]       ┆ [null,     ┆        ┆        │
+            │          ┆          ┆       ┆            ┆            ┆ 0.0]]      ┆        ┆        │
+            │ 1        ┆ 2020-02- ┆ []    ┆ []         ┆ []         ┆ []         ┆ 1      ┆ 1      │
+            │          ┆ 01       ┆       ┆            ┆            ┆            ┆        ┆        │
+            │          ┆ 00:00:00 ┆       ┆            ┆            ┆            ┆        ┆        │
+            │ 2        ┆ 2020-03- ┆ [1440 ┆ [[0, 4]]   ┆ [[5, 87]]  ┆ [[null,    ┆ 0      ┆ 5      │
+            │          ┆ 01       ┆ .0]   ┆            ┆            ┆ null]]     ┆        ┆        │
+            │          ┆ 00:00:00 ┆       ┆            ┆            ┆            ┆        ┆        │
+            └──────────┴──────────┴───────┴────────────┴────────────┴────────────┴────────┴────────┘
         """
-        print("Constructing task-specific cached dataset!")
-        if self.split != "train":
-            print(f"WARNING: Constructing task-specific dataset on non-train split {self.split}!")
-
-        self.tasks = sorted([c for c in task_df.columns if c not in ["subject_id", "start_time", "end_time"]])
-
-        normalized_cols = []
-        for t in self.tasks:
-            task_type, normalized_vals = self.normalize_task(col=pl.col(t), dtype=task_df.schema[t])
-            self.task_types[t] = task_type
-            normalized_cols.append(normalized_vals.alias(t))
-
-            if task_type == "binary_classification":
-                self.task_vocabs[t] = [False, True]
-
-        task_df = (
-            task_df.with_columns(normalized_cols)
-            .join(self.cached_data.select("subject_id"), on="subject_id", how="inner")
-            .with_row_count("task_row_num")
-        )
-
-        time_dep_cols = [c for c in ("time", "time_delta") if c in self.cached_data.columns]
+        time_dep_cols = [c for c in ("time", "time_delta") if c in cached_data.columns]
         time_dep_cols.extend(["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"])
 
-        if "time" in self.cached_data.columns:
+        if "time" in cached_data.columns:
             time_col_expr = pl.col("time")
-        elif "time_delta" in self.cached_data.columns:
+        elif "time_delta" in cached_data.columns:
             time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
-        start_idx_expr = time_col_expr.arr.explode().search_sorted(pl.col("start_time_min").first())
-        end_idx_expr = time_col_expr.arr.explode().search_sorted(pl.col("end_time_min").first())
+        start_idx_expr = (
+            time_col_expr.list.explode().search_sorted(pl.col("start_time_min")).over("subject_id")
+        )
+        end_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("end_time_min")).over("subject_id")
 
-        self.cached_data = (
-            self.cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
+        return (
+            cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
             .with_columns(
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
             )
-            .with_row_count("__id")
-            .groupby("__id")
-            .agg(
-                pl.col("task_row_num").first(),
-                **{c: pl.col(c).first() for c in self.cached_data.columns if c not in time_dep_cols},
-                **{c: pl.col(c).first() for c in self.tasks},
+            .with_columns(
                 **{
-                    t: pl.col(t).arr.explode().slice(start_idx_expr, end_idx_expr - start_idx_expr)
+                    t: pl.col(t).list.slice(start_idx_expr, end_idx_expr - start_idx_expr)
                     for t in time_dep_cols
                 },
             )
-            .drop("__id")
+            .drop("start_time_task", "end_time_min", "start_time_min", "end_time")
         )
 
-        self.cached_data = self.cached_data.sort("task_row_num").drop("task_row_num")
-
-        for t in self.tasks:
-            if task_type == "multi_class_classification":
-                self.task_vocabs[t] = list(range(self.task_df.select(pl.col(t).max()).item()))
+        return cached_data
 
     def __len__(self):
         return len(self.cached_data)
@@ -392,7 +478,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         """
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
+        if self.config.do_include_subject_id:
+            full_subj_data["subject_id"] = self.subject_ids[idx]
         if self.config.do_include_start_time_min:
+            # Note that this is using the python datetime module's `timestamp` function which differs from
+            # some dataframe libraries' timestamp functions (e.g., polars).
             full_subj_data["start_time"] = full_subj_data["start_time"].timestamp() / 60.0
         else:
             full_subj_data.pop("start_time")
@@ -415,6 +505,12 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                             f"Invalid sampling strategy: {self.config.subsequence_sampling_strategy}!"
                         )
 
+                if self.config.do_include_start_time_min:
+                    full_subj_data["start_time"] += sum(full_subj_data["time_delta"][:start_idx])
+                if self.config.do_include_subsequence_indices:
+                    full_subj_data["start_idx"] = start_idx
+                    full_subj_data["end_idx"] = start_idx + self.max_seq_len
+
                 for k in (
                     "time_delta",
                     "dynamic_indices",
@@ -422,6 +518,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     "dynamic_measurement_indices",
                 ):
                     full_subj_data[k] = full_subj_data[k][start_idx : start_idx + self.max_seq_len]
+        elif self.config.do_include_subsequence_indices:
+            full_subj_data["start_idx"] = 0
+            full_subj_data["end_idx"] = seq_len
 
         return full_subj_data
 
@@ -546,6 +645,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         if self.config.do_include_start_time_min:
             out_batch["start_time"] = torch.FloatTensor([e["start_time"] for e in batch])
+        if self.config.do_include_subsequence_indices:
+            out_batch["start_idx"] = torch.LongTensor([e["start_idx"] for e in batch])
+            out_batch["end_idx"] = torch.LongTensor([e["end_idx"] for e in batch])
+        if self.config.do_include_subject_id:
+            out_batch["subject_id"] = torch.LongTensor([e["subject_id"] for e in batch])
 
         out_batch = PytorchBatch(**out_batch)
         self._register_end("collate_post_padding_processing")

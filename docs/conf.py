@@ -54,20 +54,32 @@ except Exception as e:  # pylint: disable=broad-except
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
-    "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.coverage",
     "sphinx.ext.doctest",
     "sphinx.ext.ifconfig",
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
-    "myst_parser",
     "sphinxcontrib.bibtex",
     "sphinx_subfigure",
+    "myst_parser",
+    "sphinxcontrib.collections",
+    "nbsphinx",
 ]
+
+collections_dir = __location__ / "_collections"
+if not collections_dir.is_dir():
+    os.mkdir(collections_dir)
+
+collections = {
+    "local_tutorial_files": {
+        "driver": "copy_file",
+        "source": "../sample_data/examine_synthetic_data.ipynb",
+        "target": "local_tutorial_notebook.ipynb",
+    },
+}
 
 bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib", "api_refs.bib"]
 
@@ -78,6 +90,9 @@ templates_path = ["_templates"]
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# Control options for included jupyter notebooks.
+nb_execution_mode = "off"
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -94,9 +109,9 @@ myst_enable_extensions = [
     "smartquotes",
     "substitution",
     "tasklist",
-    "attrs_inline",
-    "attrs_block",
 ]
+
+myst_update_mathjax = True
 
 # MyST URL schemes.
 myst_url_schemes = {
@@ -104,7 +119,7 @@ myst_url_schemes = {
     "https": None,
     "ftp": None,
     "mailto": None,
-    "repo-code": "https://github.com/vanderschaarlab/temporai/tree/main/{{path}}#{{fragment}}",
+    "repo-code": "https://github.com/mmcdermott/EventStreamGPT/tree/main/{{path}}#{{fragment}}",
     # "doi": "https://doi.org/{{path}}",
     # "gh-issue": {
     #     "url": "https://github.com/executablebooks/MyST-Parser/issue/{{path}}#{{fragment}}",
@@ -148,15 +163,6 @@ pygments_style = "tango"
 
 # If this is True, todo emits a warning for each TODO entries. The default is False.
 todo_emit_warnings = True
-
-
-# -- Configure autodoc ---------------------------------------------
-
-autoclass_content = "both"
-
-# autodoc_member_order = "bysource"
-
-# -- Configure autodoc (end) ---------------------------------------
 
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

@@ -1,6 +1,8 @@
 default_language_version:
   python: python3
 
+exclude: "sample_data"
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
@@ -17,6 +19,7 @@ repos:
       - id: check-case-conflict
       - id: check-added-large-files
         args: [--maxkb, "800"]
+        exclude: "sample_data"
 
   # python code formatting
   - repo: https://github.com/psf/black

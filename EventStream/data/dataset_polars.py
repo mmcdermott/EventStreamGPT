@@ -224,6 +224,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         col_exprs = []
 
+        df = df.select(pl.all().shrink_dtype())
+
         if filter_on:
             df = cls._filter_col_inclusion(df, filter_on)
 
@@ -266,6 +268,34 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             return df.select(col_exprs)
 
     @classmethod
+    def _rename_cols(cls, df: DF_T, to_rename: dict[str, str]) -> DF_T:
+        """Renames the columns in df according to the {in_name: out_name}s specified in to_rename.
+
+        Args:
+            df: The dataframe whose columns should be renamed.
+            to_rename: A mapping of in column names to out column names.
+
+        Returns: The dataframe with columns renamed.
+
+        Examples:
+            >>> import polars as pl
+            >>> df = pl.DataFrame({'a': [1, 2, 3], 'b': ['foo', None, 'bar'], 'c': [1., 2.0, float('inf')]})
+            >>> Dataset._rename_cols(df, {'a': 'a', 'b': 'biz'})
+            shape: (3, 3)
+            ┌─────┬──────┬─────┐
+            │ a   ┆ biz  ┆ c   │
+            │ --- ┆ ---  ┆ --- │
+            │ i64 ┆ str  ┆ f64 │
+            ╞═════╪══════╪═════╡
+            │ 1   ┆ foo  ┆ 1.0 │
+            │ 2   ┆ null ┆ 2.0 │
+            │ 3   ┆ bar  ┆ inf │
+            └─────┴──────┴─────┘
+        """
+
+        return df.rename(to_rename)
+
+    @classmethod
     def _resolve_ts_col(cls, df: DF_T, ts_col: str | list[str], out_name: str = "timestamp") -> DF_T:
         match ts_col:
             case list():
@@ -297,7 +327,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         cols_select_exprs = [
             "timestamp",
             "subject_id",
-            "event_id",
         ]
         if event_type.startswith("COL:"):
             event_type_col = event_type[len("COL:") :]
@@ -310,8 +339,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         df = (
             df.filter(pl.col("timestamp").is_not_null() & pl.col("subject_id").is_not_null())
-            .with_row_count("event_id")
             .select(cols_select_exprs)
+            .unique()
+            .with_row_count("event_id")
         )
 
         events_df = df.select("event_id", "subject_id", "timestamp", "event_type")
@@ -636,8 +666,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .with_columns(
                 pl.col("event_id").cast(event_id_dt),
                 pl.col("event_type")
-                .arr.eval(pl.col("").cast(pl.Utf8))
-                .arr.join("&")
+                .list.eval(pl.col("").cast(pl.Utf8))
+                .list.join("&")
                 .cast(pl.Categorical)
                 .alias("event_type"),
             )

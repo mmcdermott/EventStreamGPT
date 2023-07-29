@@ -138,3 +138,5 @@ sbatch_logs/
 logfile
 
 tags
+
+docs/_collections/*
