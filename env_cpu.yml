@@ -377,6 +377,7 @@ dependencies:
       - inflect==6.0.4
       - iniconfig==2.0.0
       - isodate==0.6.1
+      - kaleido==0.2.1
       - latexcodec==2.0.1
       - lazy-object-proxy==1.9.0
       - leather==0.3.4

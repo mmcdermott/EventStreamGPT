@@ -25,9 +25,3 @@ Local Data Tutorial <_collections/local_tutorial_notebook.ipynb>
 License <license>
 Module Reference <api/modules>
 ```
-
-## Indices and tables
-
-- {ref}`genindex`
-- {ref}`modindex`
-- {ref}`search`
