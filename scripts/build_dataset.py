@@ -105,17 +105,25 @@ def main(cfg: DictConfig):
                     measurements = [measurements]
                 for m in measurements:
                     measurement_config_kwargs = {
-                        "name": m,
                         "temporality": temporality,
                         "modality": modality,
                     }
                     if type(m) is dict:
                         m_dict = m
+                        measurement_config_kwargs["name"] = m_dict.pop("name")
                         if m.get("values_column", None):
                             values_column = m_dict.pop("values_column")
-                            m = [m_dict.pop("name"), values_column]
+                            m = [measurement_config_kwargs["name"], values_column]
                         else:
-                            m = m_dict.pop("name")
+                            m = measurement_config_kwargs["name"]
+
+                        if "modifiers" in m_dict:
+                            modifiers_list = m_dict.pop("modifiers")
+                            m_dict["modifiers"] = []
+                            for mod_col, dt in modifiers_list:
+                                add_to_container(mod_col, dt, data_schema)
+                                m_dict["modifiers"].append(mod_col)
+
                         measurement_config_kwargs.update(m_dict)
 
                     match m, modality:
