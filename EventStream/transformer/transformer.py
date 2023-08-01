@@ -965,7 +965,12 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
             categorical_weight=config.categorical_embedding_weight,
             numerical_weight=config.numerical_embedding_weight,
         )
-        self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
+        if config.do_use_learnable_sinusoidal_ATE:
+            self.time_embedding_layer = LearnableFrequencySinusoidalTemporalPositionEncoding(
+                embedding_dim=config.hidden_size
+            )
+        else:
+            self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
     def forward(self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None) -> torch.Tensor:
