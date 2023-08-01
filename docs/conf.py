@@ -54,10 +54,8 @@ except Exception as e:  # pylint: disable=broad-except
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
-    "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.coverage",
     "sphinx.ext.doctest",
@@ -66,8 +64,9 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinxcontrib.bibtex",
     "sphinx_subfigure",
-    "myst_nb",
+    "myst_parser",
     "sphinxcontrib.collections",
+    "nbsphinx",
 ]
 
 collections_dir = __location__ / "_collections"
@@ -112,13 +111,15 @@ myst_enable_extensions = [
     "tasklist",
 ]
 
+myst_update_mathjax = True
+
 # MyST URL schemes.
 myst_url_schemes = {
     "http": None,
     "https": None,
     "ftp": None,
     "mailto": None,
-    "repo-code": "https://github.com/vanderschaarlab/temporai/tree/main/{{path}}#{{fragment}}",
+    "repo-code": "https://github.com/mmcdermott/EventStreamGPT/tree/main/{{path}}#{{fragment}}",
     # "doi": "https://doi.org/{{path}}",
     # "gh-issue": {
     #     "url": "https://github.com/executablebooks/MyST-Parser/issue/{{path}}#{{fragment}}",
@@ -162,15 +163,6 @@ pygments_style = "tango"
 
 # If this is True, todo emits a warning for each TODO entries. The default is False.
 todo_emit_warnings = True
-
-
-# -- Configure autodoc ---------------------------------------------
-
-autoclass_content = "both"
-
-# autodoc_member_order = "bysource"
-
-# -- Configure autodoc (end) ---------------------------------------
 
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

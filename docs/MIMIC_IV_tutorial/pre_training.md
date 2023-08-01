@@ -25,7 +25,7 @@ analysis. Samples of its outputs can be found below.
 .. subfigure:: A|B
    :gap: 8px
    :subcaptions: below
-   :name: sample_visualizations
+   :name: sample_wandb_outputs
    :class-grid: outline
 
    .. image:: wandb_reports/hyperparameter_sweep_losses.png

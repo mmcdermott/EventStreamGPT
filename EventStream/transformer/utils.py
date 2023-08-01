@@ -63,11 +63,13 @@ def safe_masked_max(X: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
 
     This function takes the max over all elements of the last dimension of `X` where `mask` is True. `mask`
     can take one of two forms:
+
         * An element-wise mask, in which case it must have the same shape as `X`.
-        * A column-wise mask, in which case it must have the same shape as `X` _excluding the second to last
-            dimension, which should be omitted_, This case is used when you wish to, for example, take the
-            maximum of the hidden states of a network over the sequence length, while respecting an event
-            mask.
+        * A column-wise mask, in which case it must have the same shape as `X` excluding the second to last
+          dimension, which should be omitted, This case is used when you wish to, for example, take the
+          maximum of the hidden states of a network over the sequence length, while respecting an event
+          mask.
+
     If `mask` is uniformly False for a row, the output is zero.
 
     Args:
@@ -135,17 +137,19 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Ten
     Args:
         X: A tensor containing elements to take the weighted average over.
         weights: The weights for the weighted average. Must be >= 0, and can take one of two forms:
+
             * Element-wise, in which case it must have the same shape as `X`.
-            * Column-wise, in which case it must have the same shape as `X` _excluding the second to last
-                dimension, which should be omitted_, This case is used when you wish to, for example, take the
-                average of the hidden states of a network over the sequence length, while respecting an event
-                mask.
+            * Column-wise, in which case it must have the same shape as `X` excluding the second to last
+              dimension, which should be omitted, This case is used when you wish to, for example, take the
+              average of the hidden states of a network over the sequence length, while respecting an event
+              mask.
 
 
     Returns:
         For each index in the last dimension of `X`, returns a tuple containing:
+
             * The weighted average of the last dimension of `X` weighted by `weights` for that index, unless
-                the weights for that index sum to 0, in which case the output returned is zero.
+              the weights for that index sum to 0, in which case the output returned is zero.
             * The sum of the weights for that index (the denominator of the weighted average).
 
     Raises:

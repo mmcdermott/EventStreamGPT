@@ -42,7 +42,6 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         config: StructuredTransformerConfig | dict[str, Any],
         pretrained_weights_fp: Path,
         labeling_function: Labeler,
-        num_samples: int = 10,
         max_new_events: int = 10,
     ):
         """Initializes the Lightning Module.
@@ -70,7 +69,6 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
         self.save_hyperparameters(
             {
                 "config": config.to_dict(),
-                "num_samples": num_samples,
                 "max_new_events": max_new_events,
             }
         )

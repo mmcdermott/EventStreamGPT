@@ -274,6 +274,22 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             Examples:
               (40.0%) banana
               ...
+            >>> vocab.describe(n_head=1, n_tail=0, wrap_lines=False, line_width=10)
+            4 [...]
+            [...]
+            Examples:
+              [...]
+              ...
+            >>> vocab.describe(n_head=1, n_tail=0, wrap_lines=True, line_width=10)
+            4
+            elements,
+            20.0% UNKs
+            Frequencie
+            s:
+            Examples:
+              (40.0%)
+              banana
+              ...
         """
 
         lines = []
@@ -302,10 +318,12 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
 
         line_indents = [num_initial_spaces(line) for line in lines]
         if wrap_lines:
-            lines = [
-                wrap(line, width=line_width, initial_indent="", subsequent_indent=(" " * ind))
-                for line, ind in zip(lines, line_indents)
-            ]
+            new_lines = []
+            for line, ind in zip(lines, line_indents):
+                new_lines.extend(
+                    wrap(line, width=line_width, initial_indent="", subsequent_indent=(" " * ind))
+                )
+            lines = new_lines
         else:
             lines = [
                 shorten(line, width=line_width, initial_indent=(" " * ind))
