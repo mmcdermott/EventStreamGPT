@@ -7,6 +7,7 @@ Attributes:
         series.
 """
 
+import copy
 import dataclasses
 import multiprocessing
 from collections.abc import Sequence
@@ -16,6 +17,7 @@ from typing import Any, Union
 import numpy as np
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 from mixins import TimeableMixin
 
 from ..utils import lt_count_or_proportion
@@ -1387,6 +1389,301 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             out = out.sort("subject_id")
 
         return out
+
+    def _summarize_static_measurements(
+        self,
+        feature_inclusion_frequency: float | dict[str, float],
+        include_only_measurements: set[str] | None = None,
+        include_only_subjects: set[int] | None = None,
+    ) -> pl.LazyFrame:
+        if include_only_measurements is None:
+            if isinstance(feature_inclusion_frequency, dict):
+                include_only_measurements = set(feature_inclusion_frequency.keys())
+            else:
+                include_only_measurements = set(self.measurement_configs.keys())
+
+        if isinstance(feature_inclusion_frequency, float):
+            feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
+
+        if include_only_subjects is None:
+            df = self.subjects_df
+        else:
+            df = self.subjects_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
+
+        out_dfs = {}
+        for m, cfg in self.measurement_configs.items():
+            if m not in include_only_measurements:
+                continue
+            if cfg.temporality != "static":
+                continue
+            if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                out_dfs[m] = (
+                    df.lazy()
+                    .filter(pl.col(m).is_not_null())
+                    .select("subject_id", pl.col(m).alias(f"static/{m}"))
+                )
+                continue
+            elif cfg.modality == "multivariate_regression":
+                raise ValueError(f"{cfg.modality} is not supported for {cfg.temporality} measures.")
+
+            vocab = copy.deepcopy(cfg.vocabulary)
+            vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m])
+            allowed_vocab = vocab.vocabulary
+
+            ID_cols = ["subject_id"]
+            df = (
+                df.select(*ID_cols, m)
+                .filter(pl.col(m).is_in(allowed_vocab))
+                .with_columns(pl.lit(1).alias("__indicator"))
+                .pivot(
+                    index=ID_cols,
+                    columns=m,
+                    values="__indicator",
+                    aggregate_function=None,
+                )
+            )
+
+            remap_cols = [c for c in df.columns if c not in ID_cols]
+            out_dfs[m] = df.lazy().select(*[pl.col(c).alias(f"static/{m}{c}") for c in remap_cols])
+
+        return pl.concat(list(out_dfs.values()), how="align")
+
+    def _summarize_time_dependent_measurements(
+        self,
+        feature_inclusion_frequency: float | dict[str, float],
+        include_only_measurements: set[str] | None = None,
+        include_only_subjects: set[int] | None = None,
+    ) -> pl.LazyFrame:
+        if include_only_measurements is None:
+            if isinstance(feature_inclusion_frequency, dict):
+                include_only_measurements = set(feature_inclusion_frequency.keys())
+            else:
+                include_only_measurements = set(self.measurement_configs.keys())
+
+        if isinstance(feature_inclusion_frequency, float):
+            feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
+
+        if include_only_subjects is None:
+            df = self.events_df
+        else:
+            df = self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
+
+        out_dfs = {}
+        for m, cfg in self.measurement_configs.items():
+            if m not in include_only_measurements:
+                continue
+            if cfg.temporality != "functional_time_dependent":
+                continue
+            if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                out_dfs[m] = (
+                    df.lazy()
+                    .filter(pl.col(m).is_not_null())
+                    .select(
+                        "event_id",
+                        "subject_id",
+                        "timestamp",
+                        pl.lit(1, dtype=pl.UInt32).alias(f"dynamic/{m}/{m}/count"),
+                        pl.col(m).is_not_nan().cast(pl.UInt32).alias(f"dynamic/{m}/{m}/has_values_count"),
+                        pl.col(m).alias(f"dynamic/{m}/{m}/sum"),
+                        (pl.col(m) ** 2).sum().alias(f"dynamic/{m}/{m}/sum_sqd"),
+                        pl.col(m).drop_nans().alias(f"dynamic/{m}/{m}/min"),
+                        pl.col(m).drop_nans().alias(f"dynamic/{m}/{m}/max"),
+                    )
+                )
+                continue
+            elif cfg.modality == "multivariate_regression":
+                raise ValueError(f"{cfg.modality} is not supported for {cfg.temporality} measures.")
+
+            vocab = copy.deepcopy(cfg.vocabulary)
+            vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m])
+            allowed_vocab = vocab.vocabulary
+
+            ID_cols = ["event_id", "subject_id", "timestamp"]
+            df = (
+                df.select(*ID_cols, m)
+                .filter(pl.col(m).is_in(allowed_vocab))
+                .with_columns(pl.lit(1).alias("__indicator"))
+                .pivot(
+                    index=ID_cols,
+                    columns=m,
+                    values="__indicator",
+                    aggregate_function=None,
+                )
+            )
+
+            remap_cols = [c for c in df.columns if c not in ID_cols]
+            out_dfs[m] = df.lazy().select(
+                *[pl.col(c).cast(pl.UInt32).alias(f"dynamic/{m}/{c}/count") for c in remap_cols]
+            )
+
+        return pl.concat(list(out_dfs.values()), how="align")
+
+    def _summarize_dynamic_measurements(
+        self,
+        feature_inclusion_frequency: float | dict[str, float],
+        include_only_measurements: set[str] | None = None,
+        include_only_subjects: set[int] | None = None,
+    ) -> pl.LazyFrame:
+        if include_only_measurements is None:
+            if isinstance(feature_inclusion_frequency, dict):
+                include_only_measurements = set(feature_inclusion_frequency.keys())
+            else:
+                include_only_measurements = set(self.measurement_configs.keys())
+
+        if isinstance(feature_inclusion_frequency, float):
+            feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
+
+        if include_only_subjects is None:
+            df = self.dynamic_measurements_df
+        else:
+            df = self.dynamic_measurements_df.join(
+                self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects))).select(
+                    "event_id"
+                ),
+                on="event_id",
+                how="inner",
+            )
+
+        out_dfs = {}
+        for m, cfg in self.measurement_configs.items():
+            if m not in include_only_measurements:
+                continue
+            if cfg.temporality != "dynamic":
+                continue
+            if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                out_dfs[m] = (
+                    df.lazy()
+                    .select("measurement_id", "event_id", m)
+                    .filter(pl.col(m).is_not_null())
+                    .groupby("event_id")
+                    .agg(
+                        pl.col(m).count().alias(f"dynamic/{m}/{m}/count"),
+                        pl.col(m).is_not_nan().sum().alias(f"dynamic/{m}/{m}/has_values_count"),
+                        pl.col(m).drop_nans().sum().alias(f"dynamic/{m}/{m}/sum"),
+                        (pl.col(m).drop_nans() ** 2).sum().alias(f"dynamic/{m}/{m}/sum_sqd"),
+                        pl.col(m).drop_nans().min().alias(f"dynamic/{m}/{m}/min"),
+                        pl.col(m).drop_nans().max().alias(f"dynamic/{m}/{m}/max"),
+                    )
+                    .select(pl.all().shrink_dtype())
+                )
+                continue
+            elif cfg.modality == "multivariate_regression":
+                column_cols = [m, m]
+                values_cols = [m, cfg.values_column]
+                key_prefix = f"{m}_{m}_"
+                val_prefix = f"{cfg.values_column}_{m}_"
+                aggs = [
+                    cs.starts_with(key_prefix)
+                    .is_not_null()
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(key_prefix, '')}/count"),
+                    cs.starts_with(val_prefix)
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum"),
+                    (cs.starts_with(val_prefix) ** 2)
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum_sqd"),
+                    cs.starts_with(val_prefix)
+                    .min()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/min"),
+                    cs.starts_with(val_prefix)
+                    .max()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/max"),
+                    (
+                        (cs.starts_with(val_prefix).is_not_null() & cs.starts_with(val_prefix).is_not_nan())
+                        .sum()
+                        .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/has_values_count")
+                    ),
+                ]
+            else:
+                column_cols = [m]
+                values_cols = [m]
+                aggs = [pl.all().is_not_null().sum().map_alias(lambda c: f"dynamic/{m}/{c}/count")]
+
+            vocab = copy.deepcopy(cfg.vocabulary)
+            vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m])
+            allowed_vocab = vocab.vocabulary
+
+            ID_cols = ["measurement_id", "event_id"]
+            out_dfs[m] = (
+                df.select(*ID_cols, *set(column_cols + values_cols))
+                .filter(pl.col(m).is_in(allowed_vocab))
+                .pivot(
+                    index=ID_cols,
+                    columns=column_cols,
+                    values=values_cols,
+                    aggregate_function=None,
+                )
+                .lazy()
+                .drop("measurement_id")
+                .groupby("event_id")
+                .agg(*aggs)
+                .select(pl.all().shrink_dtype())
+            )
+
+        return pl.concat(list(out_dfs.values()), how="align")
+
+    def _get_flat_rep(
+        self,
+        **kwargs,
+    ) -> pl.LazyFrame:
+        return (
+            self._summarize_static_measurements(**kwargs)
+            .join(
+                self._summarize_time_dependent_measurements(**kwargs),
+                on="subject_id",
+                how="inner",
+            )
+            .join(
+                self._summarize_dynamic_measurements(**kwargs),
+                on="event_id",
+                how="inner",
+            )
+            .drop("event_id")
+            .sort(by=["subject_id", "timestamp"])
+        )
+
+    @classmethod
+    def _summarize_over_window(cls, df: DF_T, window_size: str) -> pl.LazyFrame:
+        static_cols = cs.starts_with("static/")
+        dynamic_sum_cols = cs.starts_with("dynamic/") & cs.ends_with("sum")
+        dynamic_count_cols = cs.starts_with("dynamic/") & cs.ends_with("count")
+        dynamic_sum_sqd_cols = cs.starts_with("dynamic/") & cs.ends_with("sum_sqd")
+        dynamic_min_cols = cs.starts_with("dynamic/") & cs.ends_with("min")
+        dynamic_max_cols = cs.starts_with("dynamic/") & cs.ends_with("max")
+
+        def dynamic_col_alias(c: str):
+            return f"{window_size}/{c[len('dynamic/'):]}"
+
+        if window_size == "FULL":
+            return df.select(
+                "subject_id",
+                "timestamp",
+                static_cols,
+                (
+                    (dynamic_count_cols | dynamic_sum_cols | dynamic_sum_sqd_cols)
+                    .cumsum()
+                    .over("subject_id")
+                    .map_alias(dynamic_col_alias)
+                ),
+                dynamic_min_cols.cummin().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_max_cols.cummax().over("subject_id").map_alias(dynamic_col_alias),
+            )
+        else:
+            return df.groupby_rolling(
+                index_column="timestamp",
+                by="subject_id",
+                period=window_size,
+            ).agg(
+                static_cols.first(),
+                (
+                    (dynamic_count_cols | dynamic_sum_cols | dynamic_sum_sqd_cols)
+                    .sum()
+                    .map_alias(dynamic_col_alias)
+                ),
+                dynamic_min_cols.min().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_max_cols.max().over("subject_id").map_alias(dynamic_col_alias),
+            )
 
     def _denormalize(self, events_df: DF_T, col: str) -> DF_T:
         if self.config.normalizer_config is None:

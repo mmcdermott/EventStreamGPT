@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
 from plotly.graph_objs._figure import Figure
+from tqdm.auto import tqdm
 
 from ..utils import lt_count_or_proportion
 from .config import (
@@ -1058,6 +1059,102 @@ class DatasetBase(
             if config.vocabulary is not None:
                 vocabs[m] = config.vocabulary.vocabulary
         return vocabs
+
+    @abc.abstractmethod
+    def _get_flat_rep(self, **kwargs) -> DF_T:
+        raise NotImplementedError("Must be overwritten in base class.")
+
+    @classmethod
+    @abc.abstractmethod
+    def _summarize_over_window(self, df: DF_T, window_size: str):
+        raise NotImplementedError("Must be overwritten in base class.")
+
+    @TimeableMixin.TimeAs
+    def cache_flat_representation(
+        self,
+        subjects_per_output_file: int | None = None,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        window_sizes: list[str] | None = None,
+        include_only_measurements: set[str] | None = None,
+        do_overwrite: bool = False,
+    ):
+        """Writes a flat (historically summarized) representation of the dataset to disk.
+
+        This file caches a set of files useful for building flat representations of the dataset to disk,
+        suitable for, e.g., sklearn style modeling for downstream tasks. It will produce a few sets of files:
+
+        * A new directory ``self.config.save_dir / "flat_reps"`` which contains the following:
+        * A subdirectory ``raw`` which contains: (1) a json file with the configuration arguments and (2) a
+          set of parquet files containing flat (e.g., wide) representations of summarized events per subject,
+          broken out by split and subject chunk.
+        * A set of subdirectories ``past/*`` which contains summarized views over the past ``*`` time period
+          per subject per event.
+
+        Args:
+            TODO
+        """
+
+        flat_dir = self.config.save_dir / "flat_reps"
+
+        sp_subjects = {}
+        for split, split_subjects in tqdm(list(self.split_subjects.items()), desc="Splits"):
+            if subjects_per_output_file is None:
+                sp_subjects[split] = [list(split_subjects)]
+            else:
+                sp_subjects[split] = [
+                    list(x)
+                    for x in np.array_split(
+                        np.random.permutation(list(split_subjects)),
+                        len(split_subjects) // subjects_per_output_file,
+                    )
+                ]
+
+        # 1. Produce raw representation
+        raw_subdir = flat_dir / "raw"
+        raw_subdir.mkdir(exist_ok=True, parents=True)
+
+        with open(raw_subdir / "params.json", mode="w") as f:
+            params = {
+                "subjects_per_output_file": subjects_per_output_file,
+                "feature_inclusion_frequency": feature_inclusion_frequency,
+                "include_only_measurements": include_only_measurements,
+            }
+            json.dump(params, f)
+        with open(raw_subdir / "split_subjects.json", mode="w") as f:
+            json.dump(sp_subjects, f)
+
+        raw_dfs = {}
+        for split, subjects in tqdm(list(sp_subjects.items()), desc="Splits"):
+            raw_dfs[split] = []
+            sp_dir = raw_subdir / split
+            sp_dir.mkdir(exist_ok=True, parents=True)
+
+            for i, subjects_list in tqdm(list(enumerate(subjects)), desc="Subject chunks", leave=False):
+                df = self._get_flat_rep(
+                    feature_inclusion_frequency=feature_inclusion_frequency,
+                    include_only_measurements=include_only_measurements,
+                    include_only_subjects=subjects_list,
+                )
+
+                self._write_df(df, sp_dir / f"{i}.parquet", do_overwrite=do_overwrite)
+
+                raw_dfs[split].append(df)
+
+        # 2. Window Sizes
+        windowed_dfs = {}
+        past_subdir = flat_dir / "past"
+        past_subdir.mkdir(exist_ok=True, parents=True)
+
+        for window_size in tqdm(window_sizes, desc="History window sizes"):
+            window_subdir = past_subdir / window_size
+            windowed_dfs[window_size] = {}
+
+            for sp, dfs in tqdm(list(raw_dfs.items()), desc="Splits", leave=False):
+                windowed_dfs[window_size][sp] = []
+                for i, df in tqdm(enumerate(dfs), desc="Subject chunks", leave=False):
+                    df = self._summarize_over_window(df, window_size)
+                    self._write_df(df, window_subdir / sp / f"{i}.parquet")
+                    windowed_dfs[window_size][sp].append(df)
 
     @TimeableMixin.TimeAs
     def cache_deep_learning_representation(
