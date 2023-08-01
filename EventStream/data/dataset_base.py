@@ -1069,6 +1069,23 @@ class DatasetBase(
     def _summarize_over_window(self, df: DF_T, window_size: str):
         raise NotImplementedError("Must be overwritten in base class.")
 
+    def _resolve_flat_rep_cache_params(
+        self,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        include_only_measurements: Sequence[str] | None = None,
+    ) -> tuple[dict[str, float] | None, set[str]]:
+        if include_only_measurements is None:
+            if isinstance(feature_inclusion_frequency, dict):
+                include_only_measurements = list(feature_inclusion_frequency.keys())
+            else:
+                include_only_measurements = list(self.measurement_configs.keys())
+        else:
+            include_only_measurements = list(set(include_only_measurements))
+
+        if isinstance(feature_inclusion_frequency, float):
+            feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
+        return feature_inclusion_frequency, include_only_measurements
+
     @TimeableMixin.TimeAs
     def cache_flat_representation(
         self,
@@ -1077,6 +1094,7 @@ class DatasetBase(
         window_sizes: list[str] | None = None,
         include_only_measurements: set[str] | None = None,
         do_overwrite: bool = False,
+        do_update: bool = True,
     ):
         """Writes a flat (historically summarized) representation of the dataset to disk.
 
@@ -1094,67 +1112,90 @@ class DatasetBase(
             TODO
         """
 
+        self._seed(1, "cache_flat_representation")
+
+        feature_inclusion_frequency, include_only_measurements = self._resolve_flat_rep_cache_params(
+            feature_inclusion_frequency, include_only_measurements
+        )
+
         flat_dir = self.config.save_dir / "flat_reps"
+        flat_dir.mkdir(exist_ok=True, parents=True)
 
         sp_subjects = {}
-        for split, split_subjects in tqdm(list(self.split_subjects.items()), desc="Splits"):
+        for split, split_subjects in self.split_subjects.items():
             if subjects_per_output_file is None:
-                sp_subjects[split] = [list(split_subjects)]
+                sp_subjects[split] = [[int(x) for x in split_subjects]]
             else:
                 sp_subjects[split] = [
-                    list(x)
+                    [int(e) for e in x]
                     for x in np.array_split(
                         np.random.permutation(list(split_subjects)),
                         len(split_subjects) // subjects_per_output_file,
                     )
                 ]
 
+        params = {
+            "subjects_per_output_file": subjects_per_output_file,
+            "feature_inclusion_frequency": feature_inclusion_frequency,
+            "include_only_measurements": include_only_measurements,
+            "subject_chunks_by_split": sp_subjects,
+        }
+        params_fp = flat_dir / "params.json"
+        if params_fp.exists():
+            if do_update:
+                with open(params_fp) as f:
+                    old_params = json.load(f)
+                if old_params != params:
+                    raise ValueError("Asked to update but parameters differ!")
+            elif not do_overwrite:
+                raise FileExistsError(f"do_overwrite is {do_overwrite} and {params_fp} exists!")
+
+        with open(params_fp, mode="w") as f:
+            json.dump(params, f)
+
         # 1. Produce raw representation
         raw_subdir = flat_dir / "raw"
-        raw_subdir.mkdir(exist_ok=True, parents=True)
-
-        with open(raw_subdir / "params.json", mode="w") as f:
-            params = {
-                "subjects_per_output_file": subjects_per_output_file,
-                "feature_inclusion_frequency": feature_inclusion_frequency,
-                "include_only_measurements": include_only_measurements,
-            }
-            json.dump(params, f)
-        with open(raw_subdir / "split_subjects.json", mode="w") as f:
-            json.dump(sp_subjects, f)
 
         raw_dfs = {}
-        for split, subjects in tqdm(list(sp_subjects.items()), desc="Splits"):
+        for split, subjects in tqdm(list(sp_subjects.items()), desc="Flattening Splits"):
             raw_dfs[split] = []
             sp_dir = raw_subdir / split
-            sp_dir.mkdir(exist_ok=True, parents=True)
 
             for i, subjects_list in tqdm(list(enumerate(subjects)), desc="Subject chunks", leave=False):
+                fp = sp_dir / f"{i}.parquet"
+                raw_dfs[split].append(fp)
+                if fp.exists():
+                    if do_update:
+                        continue
+                    elif not do_overwrite:
+                        raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
+
                 df = self._get_flat_rep(
                     feature_inclusion_frequency=feature_inclusion_frequency,
                     include_only_measurements=include_only_measurements,
                     include_only_subjects=subjects_list,
                 )
 
-                self._write_df(df, sp_dir / f"{i}.parquet", do_overwrite=do_overwrite)
+                self._write_df(df, fp, do_overwrite=do_overwrite)
 
-                raw_dfs[split].append(df)
+        if window_sizes is None:
+            return
 
         # 2. Window Sizes
-        windowed_dfs = {}
         past_subdir = flat_dir / "past"
-        past_subdir.mkdir(exist_ok=True, parents=True)
 
         for window_size in tqdm(window_sizes, desc="History window sizes"):
-            window_subdir = past_subdir / window_size
-            windowed_dfs[window_size] = {}
+            for sp, df_fps in tqdm(list(raw_dfs.items()), desc="Windowing Splits", leave=False):
+                for i, df_fp in tqdm(enumerate(df_fps), desc="Subject chunks", leave=False):
+                    fp = past_subdir / sp / window_size / f"{i}.parquet"
+                    if fp.exists():
+                        if do_update:
+                            continue
+                        elif not do_overwrite:
+                            raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
 
-            for sp, dfs in tqdm(list(raw_dfs.items()), desc="Splits", leave=False):
-                windowed_dfs[window_size][sp] = []
-                for i, df in tqdm(enumerate(dfs), desc="Subject chunks", leave=False):
-                    df = self._summarize_over_window(df, window_size)
-                    self._write_df(df, window_subdir / sp / f"{i}.parquet")
-                    windowed_dfs[window_size][sp].append(df)
+                    df = self._summarize_over_window(df_fp, window_size)
+                    self._write_df(df, fp)
 
     @TimeableMixin.TimeAs
     def cache_deep_learning_representation(

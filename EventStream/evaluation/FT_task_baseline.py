@@ -1,8 +1,13 @@
 """Utilities for collecting baseline performance of fine-tuning tasks defined over ESGPT datasets."""
 
+import copy
+import json
 from pathlib import Path
 
 import polars as pl
+import polars.selectors as cs
+
+from ..data.dataset_polars import Dataset
 
 pl.enable_string_cache(True)
 
@@ -168,3 +173,81 @@ def summarize_binary_task(task_df: pl.LazyFrame):
         )
         .collect()
     )
+
+
+def load_flat_rep(
+    ESD: Dataset,
+    window_sizes: list[str],
+    feature_inclusion_frequency: float | dict[str, float] | None = None,
+    include_only_measurements: set[str] | None = None,
+    do_update_if_missing: bool = True,
+) -> pl.LazyFrame:
+    flat_dir = ESD.config.save_dir / "flat_reps"
+
+    feature_inclusion_frequency, include_only_measurements = ESD._resolve_flat_rep_cache_params(
+        feature_inclusion_frequency, include_only_measurements
+    )
+
+    cache_kwargs = dict(
+        feature_inclusion_frequency=feature_inclusion_frequency,
+        window_sizes=window_sizes,
+        include_only_measurements=include_only_measurements,
+        do_overwrite=False,
+        do_update=True,
+    )
+
+    params_fp = flat_dir / "params.json"
+    if not params_fp.is_file():
+        if not do_update_if_missing:
+            raise FileNotFoundError("Flat representation files haven't been written!")
+        else:
+            ESD.cache_flat_representation(**cache_kwargs)
+
+    with open(params_fp) as f:
+        params = json.load(f)
+
+    needs_more_measurements = not set(include_only_measurements).issubset(params["include_only_measurements"])
+    needs_more_features = params["feature_inclusion_frequency"] is not None and (
+        (feature_inclusion_frequency is None)
+        or any(
+            params["feature_inclusion_frequency"].get(m, float("inf")) > m_freq
+            for m, m_freq in feature_inclusion_frequency.items()
+        )
+    )
+    needs_more_windows = False
+    for window_size in window_sizes:
+        if not (flat_dir / "past" / "train" / window_size).is_dir():
+            needs_more_windows = True
+
+    if needs_more_measurements or needs_more_features or needs_more_windows:
+        ESD.cache_flat_representation(**cache_kwargs)
+        with open(params_fp) as f:
+            params = json.load(f)
+
+    allowed_features = []
+    for meas, cfg in ESD.measurement_configs.items():
+        if meas not in include_only_measurements:
+            continue
+
+        if cfg.vocabulary is None or feature_inclusion_frequency is None:
+            allowed_features.append(meas)
+            continue
+
+        vocab = copy.deepcopy(cfg.vocabulary)
+        vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[meas])
+        allowed_vocab = vocab.vocabulary
+        for e in allowed_vocab:
+            allowed_features.append(f"{meas}/{e}")
+
+    by_split = {}
+    for sp in ESD.split_subjects.keys():
+        dfs = []
+        for window_size in window_sizes:
+            allowed_columns = cs.starts_with("static")
+            for feat in allowed_features:
+                allowed_columns = allowed_columns | cs.starts_with(f"{window_size}/{feat}")
+
+            fp = flat_dir / "past" / sp / window_size / "*.parquet"
+            dfs.append(pl.scan_parquet(fp).select("subject_id", "timestamp", allowed_columns))
+        by_split[sp] = pl.concat(dfs, how="align")
+    return by_split
