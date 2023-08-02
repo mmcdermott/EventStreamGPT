@@ -1076,11 +1076,11 @@ class DatasetBase(
     ) -> tuple[dict[str, float] | None, set[str]]:
         if include_only_measurements is None:
             if isinstance(feature_inclusion_frequency, dict):
-                include_only_measurements = list(feature_inclusion_frequency.keys())
+                include_only_measurements = sorted(list(feature_inclusion_frequency.keys()))
             else:
-                include_only_measurements = list(self.measurement_configs.keys())
+                include_only_measurements = sorted(list(self.measurement_configs.keys()))
         else:
-            include_only_measurements = list(set(include_only_measurements))
+            include_only_measurements = sorted(list(set(include_only_measurements)))
 
         if isinstance(feature_inclusion_frequency, float):
             feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
@@ -1145,8 +1145,38 @@ class DatasetBase(
             if do_update:
                 with open(params_fp) as f:
                     old_params = json.load(f)
+
+                if old_params["subjects_per_output_file"] != params["subjects_per_output_file"]:
+                    print(
+                        "Standardizing chunk size to existing record "
+                        f"({old_params['subjects_per_output_file']})."
+                    )
+                    params["subjects_per_output_file"] = old_params["subjects_per_output_file"]
+                    params["subject_chunks_by_split"] = old_params["subject_chunks_by_split"]
+
+                old_params["include_only_measurements"] = sorted(old_params["include_only_measurements"])
+
                 if old_params != params:
-                    raise ValueError("Asked to update but parameters differ!")
+                    err_strings = ["Asked to update but parameters differ:"]
+                    old = set(old_params.keys())
+                    new = set(params.keys())
+                    if old != new:
+                        err_strings.append("Keys differ: ")
+                        if (old - new):
+                            err_strings.append(f"  old - new = {old - new}")
+                        if (new - old):
+                            err_strings.append(f"  new - old = {old - new}")
+
+                    for k in (old & new):
+                        old_val = old_params[k]
+                        new_val = params[k]
+
+                        if old_val != new_val:
+                            err_strings.append(f"Values differ for {k}:")
+                            err_strings.append(f"  Old: {old_val}")
+                            err_strings.append(f"  New: {new_val}")
+
+                    raise ValueError('\n'.join(err_strings))
             elif not do_overwrite:
                 raise FileExistsError(f"do_overwrite is {do_overwrite} and {params_fp} exists!")
 
@@ -1157,13 +1187,13 @@ class DatasetBase(
         raw_subdir = flat_dir / "raw"
 
         raw_dfs = {}
-        for split, subjects in tqdm(list(sp_subjects.items()), desc="Flattening Splits"):
-            raw_dfs[split] = []
-            sp_dir = raw_subdir / split
+        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
+            raw_dfs[sp] = []
+            sp_dir = raw_subdir / sp
 
-            for i, subjects_list in tqdm(list(enumerate(subjects)), desc="Subject chunks", leave=False):
+            for i, subjects_list in enumerate(tqdm(subjects, desc="Subject chunks", leave=False)):
                 fp = sp_dir / f"{i}.parquet"
-                raw_dfs[split].append(fp)
+                raw_dfs[sp].append(fp)
                 if fp.exists():
                     if do_update:
                         continue
@@ -1186,7 +1216,7 @@ class DatasetBase(
 
         for window_size in tqdm(window_sizes, desc="History window sizes"):
             for sp, df_fps in tqdm(list(raw_dfs.items()), desc="Windowing Splits", leave=False):
-                for i, df_fp in tqdm(enumerate(df_fps), desc="Subject chunks", leave=False):
+                for i, df_fp in enumerate(tqdm(df_fps, desc="Subject chunks", leave=False)):
                     fp = past_subdir / sp / window_size / f"{i}.parquet"
                     if fp.exists():
                         if do_update:
