@@ -247,7 +247,10 @@ def load_flat_rep(
             for feat in allowed_features:
                 allowed_columns = allowed_columns | cs.starts_with(f"{window_size}/{feat}")
 
-            fp = flat_dir / "past" / sp / window_size / "*.parquet"
-            dfs.append(pl.scan_parquet(fp).select("subject_id", "timestamp", allowed_columns))
+            window_dir = flat_dir / "past" / sp / window_size 
+            window_dfs = []
+            for fp in window_dir.glob("*.parquet"):
+                window_dfs.append(pl.scan_parquet(fp).select("subject_id", "timestamp", allowed_columns))
+            dfs.append(pl.concat(window_dfs, how='diagonal'))
         by_split[sp] = pl.concat(dfs, how="align")
     return by_split
