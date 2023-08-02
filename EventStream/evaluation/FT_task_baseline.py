@@ -9,6 +9,9 @@ import polars.selectors as cs
 
 from ..data.dataset_polars import Dataset
 
+# from sklearn.ensemble import RandomForestClassifier
+# from sklearn.metrics import roc_auc_score
+
 pl.enable_string_cache(True)
 
 
@@ -251,3 +254,169 @@ def load_flat_rep(
             dfs.append(pl.scan_parquet(fp).select("subject_id", "timestamp", allowed_columns))
         by_split[sp] = pl.concat(dfs, how="align")
     return by_split
+
+
+# def profile_model(
+#     task_df: pl.LazyFrame,
+#     flat_rep_dfs: dict[str, pl.LazyFrame],
+#     finetuning_task: str,
+#     model_cls: Callable = RandomForestClassifier,
+#     model_kwargs: dict[str, Any] | None = None,
+#     do_use_mean_var: bool = False,
+#     train_subset_size: int | None = None,
+#     n_samples: int = 3,
+# ):
+#     if model_kwargs is None:
+#         model_kwargs = {}
+#
+#     if flattened_dfs is None:
+#         flattened_dfs = summarize_patient_records(
+#             ESD,
+#             feature_inclusion_frequency=feature_inclusion_frequency,
+#             window_sizes=window_sizes,
+#             include_only_measurements=include_only_measurements,
+#             chunk_size_subjects=chunk_size_subjects,
+#         )
+#
+#     if chunk_size_subjects is None:
+#         raise NotImplementedError
+#
+#     if (train_subset_size % chunk_size_subjects) != 0:
+#         raise ValueError(
+#             f"train subset size {train_subset_size} must be a multiple "
+#             f"of chunk size {chunk_size_subjects}!"
+#         )
+#
+#     n = int(train_subset_size / chunk_size_subjects)
+#     if 2 * n >= len(flattened_dfs) - 1:
+#         raise ValueError(f"The full dataset does not contain {train_subset_size} patients!")
+#
+#     out = []
+#     for samp_idx in tqdm(list(range(n_samples)), desc="IID Model Samples"):
+#         train_st = samp_idx * 2 * n % len(flattened_dfs)
+#         train_end = train_st + n
+#         train_dfs = [flattened_dfs[i % len(flattened_dfs)] for i in range(train_st, train_end)]
+#
+#         tuning_st = train_end % len(flattened_dfs)
+#         tuning_end = tuning_st + n
+#         tuning_dfs = [flattened_dfs[i % len(flattened_dfs)] for i in range(tuning_st, tuning_end)]
+#
+#         sample_train_df = (
+#             pl.concat(train_dfs, how="diagonal")
+#             .join(
+#                 task_df.select("subject_id", pl.col("end_time").alias("timestamp"), label_col),
+#                 on=["subject_id", "timestamp"],
+#                 how="inner",
+#             )
+#             .collect()
+#         )
+#
+#         sample_tuning_df = pl.concat(tuning_dfs, how="diagonal").join(
+#             task_df.select("subject_id", pl.col("end_time").alias("timestamp"), label_col),
+#             on=["subject_id", "timestamp"],
+#             how="inner",
+#         )
+#
+#         sample_tuning_df = (
+#             sample_tuning_df.drop(
+#                 c for c in sample_tuning_df.columns if c not in sample_train_df.columns
+#             ).with_columns(
+#                 *[
+#                     pl.lit(None, dtype=sample_train_df[c].dtype).alias(c)
+#                     for c in sample_train_df.columns
+#                     if c not in sample_tuning_df.columns
+#                 ]
+#             )
+#         ).collect()[sample_train_df.columns]
+#
+#         if do_use_mean_var:
+#
+#             def last_part(s: str) -> str:
+#                 return "/".join(s.split("/")[:-1])
+#
+#             cols = {last_part(c) for c in sample_train_df.columns if c.endswith("has_values_count")}
+#             sample_train_df = (
+#                 sample_train_df.with_columns(
+#                     *[
+#                         (pl.col(f"{c}/sum") / pl.col(f"{c}/has_values_count")).alias(f"{c}/mean")
+#                         for c in cols
+#                     ],
+#                 )
+#                 .with_columns(
+#                     *[
+#                         (
+#                             (pl.col(f"{c}/sum_sqd") / pl.col(f"{c}/has_values_count"))
+#                             - (pl.col(f"{c}/mean") ** 2)
+#                         ).alias(f"{c}/var")
+#                         for c in cols
+#                     ],
+#                 )
+#                 .drop(
+#                     *[f"{c}/sum" for c in cols],
+#                     *[f"{c}/sum_sqd" for c in cols],
+#                     *[f"{c}/has_values_count" for c in cols],
+#                 )
+#             )
+#
+#             sample_tuning_df = (
+#                 sample_tuning_df.with_columns(
+#                     *[
+#                         (pl.col(f"{c}/sum") / pl.col(f"{c}/has_values_count")).alias(f"{c}/mean")
+#                         for c in cols
+#                     ],
+#                 )
+#                 .with_columns(
+#                     *[
+#                         (
+#                             (pl.col(f"{c}/sum_sqd") / pl.col(f"{c}/has_values_count"))
+#                             - (pl.col(f"{c}/mean") ** 2)
+#                         ).alias(f"{c}/var")
+#                         for c in cols
+#                     ],
+#                 )
+#                 .drop(
+#                     *[f"{c}/sum" for c in cols],
+#                     *[f"{c}/sum_sqd" for c in cols],
+#                     *[f"{c}/has_values_count" for c in cols],
+#                 )
+#             )
+#
+#         M = model_cls(**model_kwargs)
+#
+#         X = np.nan_to_num(
+#             sample_train_df.drop("subject_id", "timestamp", label_col).to_numpy(),
+#             nan=0,
+#             posinf=0,
+#             neginf=0,
+#         )
+#         Y = sample_train_df[label_col].to_numpy()
+#
+#         M.fit(X, Y)
+#
+#         tuning_X = np.nan_to_num(
+#             sample_tuning_df.drop("subject_id", "timestamp", label_col).to_numpy(),
+#             nan=0,
+#             posinf=0,
+#             neginf=0,
+#         )
+#         tuning_Y = sample_tuning_df[label_col].to_numpy()
+#
+#         acc = M.score(tuning_X, tuning_Y)
+#         auroc = roc_auc_score(tuning_Y, M.predict_proba(tuning_X)[:, 1])
+#         out.append((acc, auroc))
+#
+#     acc, auroc = zip(*out)
+#     acc_mean = np.mean(acc)
+#     acc_std = np.std(acc)
+#
+#     auroc_mean = np.mean(auroc)
+#     auroc_std = np.std(auroc)
+#
+#     print(
+#         f"{label_col}:\n"
+#         f"Over {len(sample_train_df)} train samples spanning {n*chunk_size_subjects} subjects:\n"
+#         f"Accuracy: {100*acc_mean:.1f} ± {100*acc_std:.1f}%\n"
+#         f"AUROC: {auroc_mean:.3f} ± {auroc_std:.3f}"
+#     )
+#
+#     return out
