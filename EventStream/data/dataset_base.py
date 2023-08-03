@@ -1086,6 +1086,57 @@ class DatasetBase(
             feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
         return feature_inclusion_frequency, include_only_measurements
 
+    def _get_flat_rep_feature_cols(
+        self,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        window_sizes: list[str] | None = None,
+        include_only_measurements: set[str] | None = None,
+    ) -> list[str]:
+        feature_columns = []
+        for m, cfg in self.measurement_configs.items():
+            if m not in include_only_measurements:
+                continue
+
+            features = None
+            if cfg.vocabulary is not None:
+                vocab = copy.deepcopy(cfg.vocabulary)
+                if feature_inclusion_frequency is not None:
+                    vocab.filter(
+                        total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m]
+                    )
+                features = vocab.vocabulary
+
+            if cfg.temporality == TemporalityType.STATIC:
+                temps = ["static"]
+                aggs = None
+            else:
+                if window_sizes is None:
+                    temps = ["dynamic"]
+                else:
+                    temps = window_sizes
+                has_values = False
+                if cfg.modality == DataModality.UNIVARIATE_REGRESSION and cfg.vocabulary is None:
+                    features = [m]
+                    has_values = True
+                elif cfg.modality == DataModality.MULTIVARIATE_REGRESSION:
+                    has_values = True
+
+                aggs = ["count"]
+                if has_values:
+                    aggs.extend(["has_values_count", "sum", "sum_sqd", "min", "max"])
+
+            for temp in temps:
+                if features is None:
+                    feature_columns.append(f"{temp}/{m}")
+                else:
+                    for feature in features:
+                        if aggs is None:
+                            feature_columns.append(f"{temp}/{m}/{feature}")
+                        else:
+                            for agg in aggs:
+                                feature_columns.append(f"{temp}/{m}/{feature}/{agg}")
+        return sorted(feature_columns)
+
     @TimeableMixin.TimeAs
     def cache_flat_representation(
         self,
@@ -1162,12 +1213,12 @@ class DatasetBase(
                     new = set(params.keys())
                     if old != new:
                         err_strings.append("Keys differ: ")
-                        if (old - new):
+                        if old - new:
                             err_strings.append(f"  old - new = {old - new}")
-                        if (new - old):
+                        if new - old:
                             err_strings.append(f"  new - old = {old - new}")
 
-                    for k in (old & new):
+                    for k in old & new:
                         old_val = old_params[k]
                         new_val = params[k]
 
@@ -1176,12 +1227,21 @@ class DatasetBase(
                             err_strings.append(f"  Old: {old_val}")
                             err_strings.append(f"  New: {new_val}")
 
-                    raise ValueError('\n'.join(err_strings))
+                    raise ValueError("\n".join(err_strings))
             elif not do_overwrite:
                 raise FileExistsError(f"do_overwrite is {do_overwrite} and {params_fp} exists!")
 
         with open(params_fp, mode="w") as f:
             json.dump(params, f)
+
+        # 0. Identify Output Columns
+        # We set window_sizes to None here because we want to get the feature column names for the raw flat
+        # representation, not the summarized one.
+        feature_columns = self._get_flat_rep_feature_cols(
+            feature_inclusion_frequency=feature_inclusion_frequency,
+            window_sizes=None,
+            include_only_measurements=include_only_measurements,
+        )
 
         # 1. Produce raw representation
         raw_subdir = flat_dir / "raw"
@@ -1204,6 +1264,7 @@ class DatasetBase(
                     feature_inclusion_frequency=feature_inclusion_frequency,
                     include_only_measurements=include_only_measurements,
                     include_only_subjects=subjects_list,
+                    feature_columns=feature_columns,
                 )
 
                 self._write_df(df, fp, do_overwrite=do_overwrite)

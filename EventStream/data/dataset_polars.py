@@ -1608,22 +1608,49 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     def _get_flat_rep(
         self,
+        feature_columns: list[str],
         **kwargs,
     ) -> pl.LazyFrame:
-        return (
-            self._summarize_static_measurements(**kwargs)
-            .join(
-                self._summarize_time_dependent_measurements(**kwargs),
-                on="subject_id",
-                how="inner",
+        out_df = (
+            (
+                self._summarize_static_measurements(**kwargs)
+                .join(
+                    self._summarize_time_dependent_measurements(**kwargs),
+                    on="subject_id",
+                    how="inner",
+                )
+                .join(
+                    self._summarize_dynamic_measurements(**kwargs),
+                    on="event_id",
+                    how="inner",
+                )
+                .drop("event_id")
+                .sort(by=["subject_id", "timestamp"])
             )
-            .join(
-                self._summarize_dynamic_measurements(**kwargs),
-                on="event_id",
-                how="inner",
-            )
-            .drop("event_id")
-            .sort(by=["subject_id", "timestamp"])
+            .collect()
+            .lazy()
+        )
+        # The above .collect().lazy() shouldn't be necessary but it appears to be for some reason...
+
+        cols_to_add = set(feature_columns) - set(out_df.columns)
+
+        def get_dtype(col: str) -> pl.DataType:
+            if col.startswith("static/"):
+                if "/" in col[len("static/") :]:
+                    return pl.Boolean
+                else:
+                    return pl.Float32
+            elif col.startswith("dynamic/"):
+                if col.endswith("/count") or col.endswith("/has_values_count"):
+                    return pl.UInt32
+                else:
+                    return pl.Float32
+            else:
+                raise ValueError(f"Column name {col} malformed!")
+
+        cols_to_add = [(c, get_dtype(c)) for c in cols_to_add]
+        return out_df.with_columns(*[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add]).select(
+            "subject_id", "timestamp", *feature_columns
         )
 
     @classmethod
