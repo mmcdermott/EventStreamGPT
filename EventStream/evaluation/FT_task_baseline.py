@@ -4,6 +4,7 @@ import copy
 import itertools
 import json
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -235,35 +236,32 @@ def load_flat_rep(
         with open(params_fp) as f:
             params = json.load(f)
 
-    allowed_features = []
-    for meas, cfg in ESD.measurement_configs.items():
-        if meas not in include_only_measurements:
-            continue
+    allowed_features = ESD._get_flat_rep_feature_cols(
+        feature_inclusion_frequency=feature_inclusion_frequency,
+        window_sizes=window_sizes,
+        include_only_measurements=include_only_measurements,
+    )
 
-        if cfg.vocabulary is None or feature_inclusion_frequency is None:
-            allowed_features.append(meas)
-            continue
-
-        vocab = copy.deepcopy(cfg.vocabulary)
-        vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[meas])
-        allowed_vocab = vocab.vocabulary
-        for e in allowed_vocab:
-            allowed_features.append(f"{meas}/{e}")
+    static_features = [f for f in allowed_features if f.startswith("static/")]
+    [f for f in allowed_features if not f.startswith("static/")]
 
     by_split = {}
     for sp in ESD.split_subjects.keys():
         dfs = []
         for window_size in window_sizes:
-            allowed_columns = cs.starts_with("static")
-            for feat in allowed_features:
-                allowed_columns = allowed_columns | cs.starts_with(f"{window_size}/{feat}")
-
             window_dir = flat_dir / "past" / sp / window_size
             window_dfs = []
             for fp in window_dir.glob("*.parquet"):
-                window_dfs.append(pl.scan_parquet(fp).select("subject_id", "timestamp", allowed_columns))
-            dfs.append(pl.concat(window_dfs, how="diagonal"))
-        by_split[sp] = pl.concat(dfs, how="align")
+                window_dfs.append(pl.scan_parquet(fp))
+
+            dfs.append(pl.concat(window_dfs, how="vertical"))
+
+        joined_df = dfs[0]
+        for jdf in dfs[1:]:
+            joined_df = joined_df.join(jdf.drop(static_features), on=["subject_id", "timestamp"], how="inner")
+
+        by_split[sp] = joined_df
+
     return by_split
 
 
@@ -296,23 +294,29 @@ class WindowSizeDist:
         self.n_windows_dist = n_windows_dist
 
     def rvs(self, size: int = 1, random_state: int | None = None) -> list[str] | list[list[str]]:
-        np.random.seed(random_state)
+        # if random_state is not None:
+        #    print(f"random_state is {type(random_state)}({random_state})")
+        #    np.random.set_state(random_state)
+
+        W = len(self.window_options)
+
         n_windows = self.n_windows_dist.rvs(size=size, random_state=random_state)
-        windows = np.random.choice(self.window_options, size=n_windows, p=self.window_ps)
+
+        if random_state is None:
+            random_state = np.random
+
+        windows = [
+            list(random_state.choice(self.window_options, size=min(n, W), p=self.window_ps, replace=False))
+            for n in n_windows
+        ]
 
         if size == 1:
-            return list(windows[0])
+            return windows[0]
         else:
-            return list([list(x) for x in windows])
+            return windows
 
 
 class ESDFlatFeatureLoader:
-    DEFAULT_HYPERPARAMETER_DIST: dict[str, Any] = {
-        "window_sizes": WindowSizeDist(),
-        "feature_inclusion_frequency": loguniform(-5, -2),
-        "convert_to_mean_var": bernoulli(0.5),
-    }
-
     def __init__(
         self,
         ESD: Dataset,
@@ -327,7 +331,26 @@ class ESDFlatFeatureLoader:
         self.include_only_measurements = include_only_measurements
         self.convert_to_mean_var = convert_to_mean_var
 
-    def fit(self, flat_rep_df: pl.LazyFrame, _):
+    def set_params(
+        self,
+        ESD: Dataset | None = None,
+        window_sizes: list[str] | None = None,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        include_only_measurements: set[str] | None = None,
+        convert_to_mean_var: bool | None = None,
+    ):
+        if ESD is not None:
+            self.ESD = ESD
+        if window_sizes is not None:
+            self.window_sizes = window_sizes
+        if feature_inclusion_frequency is not None:
+            self.feature_inclusion_frequency = feature_inclusion_frequency
+        if include_only_measurements is not None:
+            self.include_only_measurements = include_only_measurements
+        if convert_to_mean_var is not None:
+            self.convert_to_mean_var = convert_to_mean_var
+
+    def fit(self, flat_rep_df: pl.DataFrame, _) -> "ESDFlatFeatureLoader":
         if self.window_sizes is None:
             raise ValueError("Must specify window sizes!")
 
@@ -337,28 +360,53 @@ class ESDFlatFeatureLoader:
             include_only_measurements=self.include_only_measurements,
         )
 
-    def transform(self, flat_rep_df: pl.LazyFrame) -> np.ndarray:
-        out_df = flat_rep_df.select(self.feature_columns)
+        want_cols = set(self.feature_columns)
+        have_cols = set(flat_rep_df.columns)
+        if not want_cols.issubset(have_cols):
+            missing_cols = list(want_cols - have_cols)
+            raise ValueError(
+                f"Missing {len(missing_cols)} required columns:\n"
+                f"  {', '.join(missing_cols[:5])}{'...' if len(missing_cols) > 5 else ''}."
+                f"Have columns:\n{', '.join(flat_rep_df.columns)}"
+            )
+
+        flat_rep_df = flat_rep_df.select(self.feature_columns)
+        non_null_cols = [s.name for s in flat_rep_df if s.null_count() != flat_rep_df.height]
+
+        self.feature_columns = non_null_cols
+
+        return self
+
+    def transform(self, flat_rep_df: pl.DataFrame) -> np.ndarray:
+        out_df = flat_rep_df.lazy().select(self.feature_columns)
 
         if self.convert_to_mean_var:
 
             def last_part(s: str) -> str:
                 return "/".join(s.split("/")[:-1])
 
-            cols = {last_part(c) for c in self.final_col_schema if c.endswith("has_values_count")}
-            out_df = out_df.with_columns(
-                *[(pl.col(f"{c}/sum") / pl.col(f"{c}/has_values_count")).alias(f"{c}/mean") for c in cols],
-                *[
-                    (
-                        (pl.col(f"{c}/sum_sqd") / pl.col(f"{c}/has_values_count"))
-                        - (pl.col(f"{c}/mean") ** 2)
-                    ).alias(f"{c}/var")
-                    for c in cols
-                ],
-            ).drop(
-                *[f"{c}/sum" for c in cols],
-                *[f"{c}/sum_sqd" for c in cols],
-                *[f"{c}/has_values_count" for c in cols],
+            cols = {last_part(c) for c in self.feature_columns if c.endswith("has_values_count")}
+            out_df = (
+                out_df.with_columns(
+                    *[
+                        (pl.col(f"{c}/sum") / pl.col(f"{c}/has_values_count")).alias(f"{c}/mean")
+                        for c in cols
+                    ],
+                )
+                .with_columns(
+                    *[
+                        (
+                            (pl.col(f"{c}/sum_sqd") / pl.col(f"{c}/has_values_count"))
+                            - (pl.col(f"{c}/mean") ** 2)
+                        ).alias(f"{c}/var")
+                        for c in cols
+                    ],
+                )
+                .drop(
+                    *[f"{c}/sum" for c in cols],
+                    *[f"{c}/sum_sqd" for c in cols],
+                    *[f"{c}/has_values_count" for c in cols],
+                )
             )
 
         out_df = out_df.with_columns(
@@ -366,7 +414,7 @@ class ESDFlatFeatureLoader:
             cs.matches(r"static/.*/.*").fill_null(False),
         )
 
-        return out_df.collect(streaming=True).to_numpy()
+        return out_df.collect().to_numpy()
 
 
 # Building on
@@ -387,7 +435,7 @@ IMPUTATION_OPTIONS = [
     (
         SimpleImputer(),
         dict(
-            stratgy=["constant", "mean", "median", "most_frequent"],
+            strategy=["constant", "mean", "median", "most_frequent"],
             fill_value=[0],
             add_indicator=[True, False],
         ),
@@ -402,26 +450,78 @@ DIM_REDUCE_OPTIONS = [
     "passthrough",
     (
         [NMF(), PCA()],
-        dict(n_components=randint(2, 256)),
+        dict(n_components=randint(2, 32)),
     ),
     (
         SelectKBest(mutual_info_classif),
-        dict(k=randint(2, 256)),
+        dict(k=randint(2, 32)),
     ),
 ]
 
 
-def construct_pipeline(
+def fit_baseline_task_model(
+    task_df: pl.LazyFrame,
+    finetuning_task: str,
     ESD: Dataset,
+    n_samples: int,
     model_cls: Callable,
     model_param_distributions: dict[str, Any],
     scaling_options: list[Any] = SCALING_OPTIONS,
     impute_options: list[Any] = IMPUTATION_OPTIONS,
     dim_reduce_options: list[Any] = DIM_REDUCE_OPTIONS,
-) -> tuple[Pipeline, list[dict[str, Any]]]:
+    window_size_options: list[str] = WINDOW_OPTIONS,
+    hyperparameter_search_budget: int = 25,
+    n_processes: int = -1,
+    seed: int = 1,
+    verbose: int = 0,
+    error_score: str | float = np.NaN,
+):
+    if type(error_score) is str and error_score != "raise":
+        raise ValueError(f"error_score must be either 'raise' or a float; got {error_score}")
+    # TODO(mmd): Use https://github.com/automl/auto-sklearn
+
+    print("Checking for validity of window size options...")
+    min_window_size = (
+        task_df.select((pl.col("end_time") - pl.col("start_time")).drop_nulls().min()).collect().item()
+    )
+
+    if min_window_size is not None and min_window_size < max(window_size_options):
+        raise ValueError(
+            f"Cannot use window sizes {window_size_options} on dataset with min end-start size of "
+            f"{min_window_size}."
+        )
+
+    print(f"Loading representations for {', '.join(window_size_options)}")
+    flat_reps = load_flat_rep(ESD, window_sizes=window_size_options)
+    Xs_and_Ys = {}
+    for splits in (["train", "tuning"], ["held_out"]):
+        st = datetime.now()
+        print(f"Loading datasets for {', '.join(splits)}")
+        df = pl.concat([flat_reps[sp] for sp in splits], how="vertical").join(
+            task_df.select("subject_id", pl.col("end_time").alias("timestamp"), finetuning_task),
+            on=["subject_id", "timestamp"],
+            how="inner",
+        )
+        df = df.collect()
+
+        X = df.drop(["subject_id", "timestamp", finetuning_task])
+        Y = df[finetuning_task].to_numpy()
+        print(
+            f"Done with datasets for {', '.join(splits)} with X of shape {X.shape} "
+            f"(elapsed: {datetime.now() - st})"
+        )
+        Xs_and_Ys["&".join(splits)] = (X, Y)
+
+    # Constructing Pipeline
     pipe = copy.deepcopy(DEFAULT_SKLEARN_PIPELINE)
-    pipe = [("loading_features", ESDFlatFeatureLoader(ESD))] + pipe
+    pipe = [("loading_features", ESDFlatFeatureLoader(ESD, window_size_options))] + pipe
     pipe[-1] = ("model", model_cls())
+
+    loading_features_dist = {
+        "window_sizes": WindowSizeDist(window_options=window_size_options),
+        "feature_inclusion_frequency": loguniform(a=1e-7, b=1e-3),
+        "convert_to_mean_var": bernoulli(0.5),
+    }
 
     model_dist = {f"model__{k}": v for k, v in model_param_distributions.items()}
 
@@ -430,10 +530,11 @@ def construct_pipeline(
         scaling_options, impute_options, dim_reduce_options
     ):
         new_options = copy.deepcopy(model_dist)
+        new_options.update({f"loading_features__{k}": v for k, v in loading_features_dist.items()})
         for n, option in [
-            ("scaling", scaling_options),
-            ("imputation", impute_options),
-            ("reduce_dim", dim_reduce_options),
+            ("scaling", scaling_option),
+            ("imputation", impute_option),
+            ("reduce_dim", dim_reduce_option),
         ]:
             if type(option) is tuple:
                 cls_options, cls_params = option
@@ -453,54 +554,21 @@ def construct_pipeline(
 
         dist.append(new_options)
 
-    return Pipeline(pipe), dist
-
-
-def fit_baseline_task_model(
-    task_df: pl.LazyFrame,
-    finetuning_task: str,
-    ESD: Dataset,
-    n_samples: int,
-    model_cls: Callable,
-    hyperparameter_search_distributions: dict[str, Any],
-    window_size_options: list[str] = WINDOW_OPTIONS,
-    hyperparameter_search_budget: int = 25,
-    n_processes: int = -1,
-    seed: int = 1,
-):
-    # TODO(mmd): Use https://github.com/automl/auto-sklearn
-
-    min_window_size = task_df.select((pl.col("end_time") - pl.col("start_time")).drop_nulls().min()).collect()
-
-    min_window_size = min_window_size.item()
-
-    if min_window_size is not None and min_window_size < max(window_size_options):
-        raise ValueError(
-            f"Cannot use window sizes {window_size_options} on dataset with min end-start size of "
-            f"{min_window_size}."
-        )
-
-    flat_reps = load_flat_rep(ESD, window_sizes=window_size_options)
-    Xs_and_Ys = {}
-    for splits in (["train", "tuning"], ["held_out"]):
-        df = pl.concat([flat_reps[sp] for sp in splits], how="vertical").join(
-            task_df.select("subject_id", pl.col("end_timestamp").alias("timestamp"), finetuning_task),
-            on=["subject_id", "timestamp"],
-            how="inner",
-        )
-        X = df.drop(["subject_id", "timestamp", finetuning_task])
-        Y = df[finetuning_task].collect().to_numpy()
-        Xs_and_Ys["&".join(splits)] = (X, Y)
+    pipeline = Pipeline(pipe)
+    # print(f"Running with pipeline\n{pipe}\n\nAnd distribution\n{dist}")
 
     CV = RandomizedSearchCV(
-        estimator=model_cls,
-        param_distributions=hyperparameter_search_distributions,
+        estimator=pipeline,
+        param_distributions=dist,
         cv=n_samples,
         n_iter=hyperparameter_search_budget,
         n_jobs=n_processes,
         random_state=seed,
+        verbose=verbose,
+        error_score=error_score,
     )
 
+    print("Fitting model!")
     CV.fit(*Xs_and_Ys["train&tuning"])
 
     return CV

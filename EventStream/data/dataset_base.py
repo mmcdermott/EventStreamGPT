@@ -1092,6 +1092,9 @@ class DatasetBase(
         window_sizes: list[str] | None = None,
         include_only_measurements: set[str] | None = None,
     ) -> list[str]:
+        feature_inclusion_frequency, include_only_measurements = self._resolve_flat_rep_cache_params(
+            feature_inclusion_frequency, include_only_measurements
+        )
         feature_columns = []
         for m, cfg in self.measurement_configs.items():
             if m not in include_only_measurements:
@@ -1101,9 +1104,8 @@ class DatasetBase(
             if cfg.vocabulary is not None:
                 vocab = copy.deepcopy(cfg.vocabulary)
                 if feature_inclusion_frequency is not None:
-                    vocab.filter(
-                        total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m]
-                    )
+                    m_freq = feature_inclusion_frequency[m]
+                    vocab.filter(total_observations=None, min_valid_element_freq=m_freq)
                 features = vocab.vocabulary
 
             if cfg.temporality == TemporalityType.STATIC:
@@ -1261,10 +1263,8 @@ class DatasetBase(
                         raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
 
                 df = self._get_flat_rep(
-                    feature_inclusion_frequency=feature_inclusion_frequency,
-                    include_only_measurements=include_only_measurements,
-                    include_only_subjects=subjects_list,
                     feature_columns=feature_columns,
+                    include_only_subjects=subjects_list,
                 )
 
                 self._write_df(df, fp, do_overwrite=do_overwrite)

@@ -7,7 +7,6 @@ Attributes:
         series.
 """
 
-import copy
 import dataclasses
 import multiprocessing
 from collections.abc import Sequence
@@ -1397,8 +1396,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     def _summarize_static_measurements(
         self,
-        feature_inclusion_frequency: float | dict[str, float] | None = None,
-        include_only_measurements: set[str] | None = None,
+        feature_columns: list[str],
         include_only_subjects: set[int] | None = None,
     ) -> pl.LazyFrame:
         if include_only_subjects is None:
@@ -1406,13 +1404,34 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             df = self.subjects_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
 
+        valid_measures = {}
+        for feat_col in feature_columns:
+            parts = feat_col.split("/")
+
+            if parts[0] != "static":
+                continue
+
+            if len(parts) not in (2, 3):
+                raise ValueError(f"{feat_col} is an invalid feature column for static features!")
+
+            meas = parts[1]
+            if len(parts) == 2:
+                valid_measures[meas] = None
+            else:
+                if meas not in valid_measures:
+                    valid_measures[meas] = set()
+                valid_measures[meas].add(parts[2])
+
         out_dfs = {}
-        for m, cfg in self.measurement_configs.items():
-            if m not in include_only_measurements:
-                continue
-            if cfg.temporality != "static":
-                continue
+        for m, allowed_vocab in valid_measures.items():
+            cfg = self.measurement_configs[m]
+
             if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                if allowed_vocab is not None:
+                    raise ValueError(
+                        f"Encountered a measure {m} with no vocab but a pre-set feature vocab of "
+                        f"{allowed_vocab}"
+                    )
                 out_dfs[m] = (
                     df.lazy()
                     .filter(pl.col(m).is_not_null())
@@ -1422,15 +1441,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             elif cfg.modality == "multivariate_regression":
                 raise ValueError(f"{cfg.modality} is not supported for {cfg.temporality} measures.")
 
-            vocab = copy.deepcopy(cfg.vocabulary)
-            if feature_inclusion_frequency is not None:
-                vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m])
-            allowed_vocab = vocab.vocabulary
-
             ID_cols = ["subject_id"]
             pivoted_df = (
                 df.select(*ID_cols, m)
-                .filter(pl.col(m).is_in(allowed_vocab))
+                .filter(pl.col(m).is_in(list(allowed_vocab)))
                 .with_columns(pl.lit(True).alias("__indicator"))
                 .pivot(
                     index=ID_cols,
@@ -1449,8 +1463,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     def _summarize_time_dependent_measurements(
         self,
-        feature_inclusion_frequency: float | dict[str, float] | None = None,
-        include_only_measurements: set[str] | None = None,
+        feature_columns: list[str],
         include_only_subjects: set[int] | None = None,
     ) -> pl.LazyFrame:
         if include_only_subjects is None:
@@ -1458,12 +1471,27 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             df = self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
 
+        valid_measures = {}
+        for feat_col in feature_columns:
+            parts = feat_col.split("/")
+
+            if parts[0] == "static":
+                continue
+
+            meas = parts[1]
+            if self.measurement_configs[meas].temporality != "functional_time_dependent":
+                continue
+
+            if len(parts) != 4:
+                raise ValueError(f"{feat_col} is an invalid feature column for time_dependent features!")
+
+            if meas not in valid_measures:
+                valid_measures[meas] = set()
+            valid_measures[meas].add(parts[2])
+
         out_dfs = {}
-        for m, cfg in self.measurement_configs.items():
-            if m not in include_only_measurements:
-                continue
-            if cfg.temporality != "functional_time_dependent":
-                continue
+        for m, allowed_vocab in valid_measures.items():
+            cfg = self.measurement_configs[m]
             if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
                 out_dfs[m] = (
                     df.lazy()
@@ -1484,11 +1512,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             elif cfg.modality == "multivariate_regression":
                 raise ValueError(f"{cfg.modality} is not supported for {cfg.temporality} measures.")
 
-            vocab = copy.deepcopy(cfg.vocabulary)
-            if feature_inclusion_frequency is not None:
-                vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m])
-            allowed_vocab = vocab.vocabulary
-
             ID_cols = ["event_id", "subject_id", "timestamp"]
             pivoted_df = (
                 df.select(*ID_cols, m)
@@ -1504,15 +1527,15 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             remap_cols = [c for c in pivoted_df.columns if c not in ID_cols]
             out_dfs[m] = pivoted_df.lazy().select(
-                *ID_cols, *[pl.col(c).cast(pl.UInt32).alias(f"dynamic/{m}/{c}/count") for c in remap_cols]
+                *ID_cols,
+                *[pl.col(c).cast(pl.UInt32).alias(f"dynamic/{m}/{c}/count") for c in remap_cols],
             )
 
         return pl.concat(list(out_dfs.values()), how="align")
 
     def _summarize_dynamic_measurements(
         self,
-        feature_inclusion_frequency: float | dict[str, float] | None = None,
-        include_only_measurements: set[str] | None = None,
+        feature_columns: list[str],
         include_only_subjects: set[int] | None = None,
     ) -> pl.LazyFrame:
         if include_only_subjects is None:
@@ -1526,12 +1549,27 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 how="inner",
             )
 
+        valid_measures = {}
+        for feat_col in feature_columns:
+            parts = feat_col.split("/")
+
+            if parts[0] == "static":
+                continue
+
+            meas = parts[1]
+            if self.measurement_configs[meas].temporality != "dynamic":
+                continue
+
+            if len(parts) != 4:
+                raise ValueError(f"{feat_col} is an invalid feature column for dynamic features!")
+
+            if meas not in valid_measures:
+                valid_measures[meas] = set()
+            valid_measures[meas].add(parts[2])
+
         out_dfs = {}
-        for m, cfg in self.measurement_configs.items():
-            if m not in include_only_measurements:
-                continue
-            if cfg.temporality != "dynamic":
-                continue
+        for m, allowed_vocab in valid_measures.items():
+            cfg = self.measurement_configs[m]
             if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
                 out_dfs[m] = (
                     df.lazy()
@@ -1582,11 +1620,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 values_cols = [m]
                 aggs = [pl.all().is_not_null().sum().map_alias(lambda c: f"dynamic/{m}/{c}/count")]
 
-            vocab = copy.deepcopy(cfg.vocabulary)
-            if feature_inclusion_frequency is not None:
-                vocab.filter(total_observations=None, min_valid_element_freq=feature_inclusion_frequency[m])
-            allowed_vocab = vocab.vocabulary
-
             ID_cols = ["measurement_id", "event_id"]
             out_dfs[m] = (
                 df.select(*ID_cols, *set(column_cols + values_cols))
@@ -1613,14 +1646,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     ) -> pl.LazyFrame:
         out_df = (
             (
-                self._summarize_static_measurements(**kwargs)
+                self._summarize_static_measurements(feature_columns, **kwargs)
                 .join(
-                    self._summarize_time_dependent_measurements(**kwargs),
+                    self._summarize_time_dependent_measurements(feature_columns, **kwargs),
                     on="subject_id",
                     how="inner",
                 )
                 .join(
-                    self._summarize_dynamic_measurements(**kwargs),
+                    self._summarize_dynamic_measurements(feature_columns, **kwargs),
                     on="event_id",
                     how="inner",
                 )
@@ -1673,12 +1706,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 "subject_id",
                 "timestamp",
                 static_cols,
-                (
-                    (dynamic_count_cols | dynamic_sum_cols | dynamic_sum_sqd_cols)
-                    .cumsum()
-                    .over("subject_id")
-                    .map_alias(dynamic_col_alias)
-                ),
+                dynamic_count_cols.cumsum().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_sum_cols.cumsum().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_sum_sqd_cols.cumsum().over("subject_id").map_alias(dynamic_col_alias),
                 dynamic_min_cols.cummin().over("subject_id").map_alias(dynamic_col_alias),
                 dynamic_max_cols.cummax().over("subject_id").map_alias(dynamic_col_alias),
             )
@@ -1689,11 +1719,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 period=window_size,
             ).agg(
                 static_cols.first(),
-                (
-                    (dynamic_count_cols | dynamic_sum_cols | dynamic_sum_sqd_cols)
-                    .sum()
-                    .map_alias(dynamic_col_alias)
-                ),
+                dynamic_count_cols.sum().map_alias(dynamic_col_alias),
+                dynamic_sum_cols.sum().map_alias(dynamic_col_alias),
+                dynamic_sum_sqd_cols.sum().map_alias(dynamic_col_alias),
                 dynamic_min_cols.min().map_alias(dynamic_col_alias),
                 dynamic_max_cols.max().map_alias(dynamic_col_alias),
             )
