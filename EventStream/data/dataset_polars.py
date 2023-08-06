@@ -107,6 +107,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     }
     """The Polars schema of the numerical measurement metadata dataframes which track fit parameters."""
 
+    WRITE_USE_PYARROW = False
+    """Use C++ parquet implementation vs Rust parquet implementation for writing parquets."""
     STREAMING = True
     """Execute any lazy query in streaming mode."""
 
@@ -405,7 +407,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if not do_overwrite and fp.is_file():
             raise FileExistsError(f"{fp} exists and do_overwrite is {do_overwrite}!")
 
-        df.write_parquet(fp)
+        df.write_parquet(fp, use_pyarrow=cls.WRITE_USE_PYARROW)
 
     def get_metadata_schema(self, config: MeasurementConfig) -> dict[str, pl.DataType]:
         schema = {
