@@ -194,6 +194,14 @@ def load_flat_rep(
     include_only_measurements: set[str] | None = None,
     do_update_if_missing: bool = True,
 ) -> dict[str, pl.LazyFrame]:
+    """Loads a set of flat representations from a passed dataset that satisfy the given constraints.
+
+    Args:
+        ESD: The dataset for which the flat representations should be loaded.
+        window_size: A list of strings in polars timedelta syntax specifying the time windows over which the
+            features should be summarized.
+        feature_inclusion_frequency: TODO
+    """
     flat_dir = ESD.config.save_dir / "flat_reps"
 
     feature_inclusion_frequency, include_only_measurements = ESD._resolve_flat_rep_cache_params(
@@ -283,6 +291,15 @@ WINDOW_OPTIONS = [
 
 
 class WindowSizeDist:
+    """A random variable that returns lists of window sizes chosen among the passed window options.
+
+    Args:
+        window_options: A list of possible window size options (as strings) that can be used.
+        n_windows_dist: A random variable that chooses the number of windows that should be included in
+            any given sample.
+        window_ps: The probability that any individual sample will use a given window size.
+    """
+
     def __init__(
         self,
         window_options: list[str] = WINDOW_OPTIONS,
@@ -293,17 +310,46 @@ class WindowSizeDist:
         self.window_ps = window_ps
         self.n_windows_dist = n_windows_dist
 
-    def rvs(self, size: int = 1, random_state: int | None = None) -> list[str] | list[list[str]]:
-        # if random_state is not None:
-        #    print(f"random_state is {type(random_state)}({random_state})")
-        #    np.random.set_state(random_state)
+    def rvs(
+        self, size: int = 1, random_state: int | np.random.Generator | None = None
+    ) -> list[str] | list[list[str]]:
+        """Sample a set of `size` window sizes lists.
+
+        Args:
+            size: The number of samples to take. Defaults to 1.
+            random_state: The numpy random state to use to seed this sampling process.
+
+        Returns:
+            A list of sampled lists of window sizes. The list is of length ``size``, unless ``size == 1`` in
+            which case only a single sample is returned. This will also be a list (as each sample for this
+            distribution is a list) but it will have variable length determined by the sampling process. No
+            duplicates will be included in the output list, so if ``self.n_windows_dist`` includes support
+            more than the number of total options, excess window size options per sample will be ignored.
+
+        Examples:
+            >>> from scipy.stats import randint
+            >>> import numpy as np
+            >>> wsd = WindowSizeDist(["1d", "3d", "7d"], randint(1, 3))
+            >>> wsd.rvs(random_state=1)
+            ['1d', '3d']
+            >>> wsd.rvs(size=3, random_state=1)
+            [['1d', '3d'], ['1d', '3d'], ['7d']]
+            >>> wsd = WindowSizeDist(["1d", "2d", "3d", "4d"], randint(1, 3), [0.33, 0.33, 0.33, 0.01])
+            >>> wsd.rvs(size=3, random_state=2)
+            [['1d'], ['1d', '3d'], ['1d', '2d']]
+            >>> wsd = WindowSizeDist(["1d", "3d", "7d"], randint(5, 6))
+            >>> wsd.rvs(random_state=1)
+            ['1d', '3d', '7d']
+        """
 
         W = len(self.window_options)
 
         n_windows = self.n_windows_dist.rvs(size=size, random_state=random_state)
 
         if random_state is None:
-            random_state = np.random
+            random_state = np.random.default_rng()
+        elif type(random_state) is int:
+            random_state = np.random.default_rng(random_state)
 
         windows = [
             list(random_state.choice(self.window_options, size=min(n, W), p=self.window_ps, replace=False))
@@ -317,6 +363,13 @@ class WindowSizeDist:
 
 
 class ESDFlatFeatureLoader:
+    """A flat feature pre-processor in line with scikit-learn's APIs.
+
+    This can dynamically apply window size, feature inclusion frequency, measurement restrictions, and mean
+    variable conversions to flat feature sets. All window sizes indicated in this featurizer must be included
+    in the passed dataframes.
+    """
+
     def __init__(
         self,
         ESD: Dataset,
