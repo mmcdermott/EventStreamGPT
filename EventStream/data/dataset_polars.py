@@ -1560,12 +1560,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             if self.measurement_configs[meas].temporality != "dynamic":
                 continue
 
-            if len(parts) != 4:
+            if len(parts) < 4:
                 raise ValueError(f"{feat_col} is an invalid feature column for dynamic features!")
 
             if meas not in valid_measures:
                 valid_measures[meas] = set()
-            valid_measures[meas].add(parts[2])
+
+            valid_measures[meas].add('/'.join(parts[2:-1]))
 
         out_dfs = {}
         for m, allowed_vocab in valid_measures.items():
