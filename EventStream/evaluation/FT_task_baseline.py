@@ -528,6 +528,7 @@ def fit_baseline_task_model(
     seed: int = 1,
     verbose: int = 0,
     error_score: str | float = np.NaN,
+    train_subset_size: int | float | None = None,
 ):
     if type(error_score) is str and error_score != "raise":
         raise ValueError(f"error_score must be either 'raise' or a float; got {error_score}")
@@ -546,6 +547,7 @@ def fit_baseline_task_model(
 
     print(f"Loading representations for {', '.join(window_size_options)}")
     flat_reps = load_flat_rep(ESD, window_sizes=window_size_options)
+    subjects_included = {}
     Xs_and_Ys = {}
     for splits in (["train", "tuning"], ["held_out"]):
         st = datetime.now()
@@ -555,6 +557,25 @@ def fit_baseline_task_model(
             on=["subject_id", "timestamp"],
             how="inner",
         )
+        subject_ids = list(itertools.chain.from_iterable(ESD.split_subjects[sp] for sp in splits))
+        if "train" in splits and train_subset_size is not None:
+            prng = np.random.default_rng(seed)
+            match train_subset_size:
+                case int() as n_samples if n_samples > 1:
+                    subject_ids = prng.choice(subject_ids, size=n_samples, replace=False)
+                case float() as frac if 0 < frac < 1:
+                    subject_ids = prng.choice(
+                        subject_ids, size=int(frac*len(subject_ids)), replace=False
+                    )
+                case _:
+                    raise ValueError(
+                        f"train_subset_size must be either `None`, an int > 1, or a float between 0 and 1; "
+                        f"got {train_subset_size}"
+                    )
+            df = df.filter(pl.col("subject_id").is_in(subject_ids))
+
+        subjects_included["&".join(splits)] = subject_ids
+
         df = df.collect()
 
         X = df.drop(["subject_id", "timestamp", finetuning_task])
@@ -624,4 +645,4 @@ def fit_baseline_task_model(
     print("Fitting model!")
     CV.fit(*Xs_and_Ys["train&tuning"])
 
-    return CV
+    return CV, subjects_included, Xs_and_Ys
