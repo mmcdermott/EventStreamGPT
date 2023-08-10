@@ -1676,7 +1676,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     return pl.Float32
             elif col.startswith("dynamic/"):
                 if col.endswith("/count") or col.endswith("/has_values_count"):
-                    return pl.UInt32
+                    return pl.Int64
                 else:
                     return pl.Float32
             else:

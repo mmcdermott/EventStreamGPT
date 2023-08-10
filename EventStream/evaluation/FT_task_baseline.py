@@ -187,12 +187,124 @@ def summarize_binary_task(task_df: pl.LazyFrame):
     )
 
 
+def load_flat_rep_eager(
+    ESD: Dataset,
+    window_sizes: list[str],
+    feature_inclusion_frequency: float | dict[str, float] | None = None,
+    include_only_measurements: set[str] | None = None,
+    do_update_if_missing: bool = True,
+    join_df: pl.DataFrame | None = None,
+) -> dict[str, pl.LazyFrame]:
+    """Loads a set of flat representations from a passed dataset that satisfy the given constraints.
+
+    Args:
+        ESD: The dataset for which the flat representations should be loaded.
+        window_size: A list of strings in polars timedelta syntax specifying the time windows over which the
+            features should be summarized.
+        feature_inclusion_frequency: TODO
+    """
+    flat_dir = ESD.config.save_dir / "flat_reps"
+
+    feature_inclusion_frequency, include_only_measurements = ESD._resolve_flat_rep_cache_params(
+        feature_inclusion_frequency, include_only_measurements
+    )
+
+    cache_kwargs = dict(
+        feature_inclusion_frequency=feature_inclusion_frequency,
+        window_sizes=window_sizes,
+        include_only_measurements=include_only_measurements,
+        do_overwrite=False,
+        do_update=True,
+    )
+
+    params_fp = flat_dir / "params.json"
+    if not params_fp.is_file():
+        if not do_update_if_missing:
+            raise FileNotFoundError("Flat representation files haven't been written!")
+        else:
+            ESD.cache_flat_representation(**cache_kwargs)
+
+    with open(params_fp) as f:
+        params = json.load(f)
+
+    needs_more_measurements = not set(include_only_measurements).issubset(params["include_only_measurements"])
+    needs_more_features = params["feature_inclusion_frequency"] is not None and (
+        (feature_inclusion_frequency is None)
+        or any(
+            params["feature_inclusion_frequency"].get(m, float("inf")) > m_freq
+            for m, m_freq in feature_inclusion_frequency.items()
+        )
+    )
+    needs_more_windows = False
+    for window_size in window_sizes:
+        if not (flat_dir / "past" / "train" / window_size).is_dir():
+            needs_more_windows = True
+
+    if needs_more_measurements or needs_more_features or needs_more_windows:
+        ESD.cache_flat_representation(**cache_kwargs)
+        with open(params_fp) as f:
+            params = json.load(f)
+
+    allowed_features = ESD._get_flat_rep_feature_cols(
+        feature_inclusion_frequency=feature_inclusion_frequency,
+        window_sizes=window_sizes,
+        include_only_measurements=include_only_measurements,
+    )
+
+    static_features = [f for f in allowed_features if f.startswith("static/")]
+    [f for f in allowed_features if not f.startswith("static/")]
+
+    by_split = {}
+    for sp in ESD.split_subjects.keys():
+        dfs = []
+        for window_size in window_sizes:
+            window_dir = flat_dir / "past" / sp / window_size
+            window_dfs = []
+            out_schema = None
+            for fp in window_dir.glob("*.parquet"):
+                df = pl.scan_parquet(fp)
+                if join_df is not None:
+                    df = df.join(join_df, on=['subject_id', 'timestamp'], how='inner').collect()
+
+                if out_schema is None:
+                    out_schema = df.schema
+                elif out_schema.keys() != df.schema.keys():
+                    raise ValueError(
+                        f"Schemas differ! Running schema has keys {out_schema.keys()}, "
+                        f"but {sp} schema has keys {df.schema.keys()}"
+                    )
+                else:
+                    for k in out_schema.keys():
+                        if out_schema[k] != df.schema[k]:
+                            #print(
+                            #    f"Schemas differ @ {k}! Running schema has type {out_schema[k]}, "
+                            #    f"but {sp} schema has type {df.schema[k]}. Casting to running type."
+                            #)
+                            df = df.with_columns(pl.col(k).cast(out_schema[k]))
+                window_dfs.append(df)
+
+            dfs.append(pl.concat(window_dfs, how="vertical"))
+
+        joined_df = dfs[0]
+        for jdf in dfs[1:]:
+            join_keys = ["subject_id", "timestamp"]
+            if join_df is not None:
+                join_keys = list(set(join_keys).union(set(join_df.columns)))
+            joined_df = joined_df.join(
+                jdf.drop(static_features), on=join_keys, how="inner"
+            )
+
+        by_split[sp] = joined_df
+
+    return by_split
+
 def load_flat_rep(
     ESD: Dataset,
     window_sizes: list[str],
     feature_inclusion_frequency: float | dict[str, float] | None = None,
     include_only_measurements: set[str] | None = None,
     do_update_if_missing: bool = True,
+    join_df: pl.DataFrame | None = None,
 ) -> dict[str, pl.LazyFrame]:
     """Loads a set of flat representations from a passed dataset that satisfy the given constraints.
 
@@ -260,13 +372,21 @@ def load_flat_rep(
             window_dir = flat_dir / "past" / sp / window_size
             window_dfs = []
             for fp in window_dir.glob("*.parquet"):
-                window_dfs.append(pl.scan_parquet(fp))
+                df = pl.scan_parquet(fp)
+                if join_df is not None:
+                    df = df.join(join_df, on=['subject_id', 'timestamp'], how='inner')
+                window_dfs.append(df)
 
             dfs.append(pl.concat(window_dfs, how="vertical"))
 
         joined_df = dfs[0]
         for jdf in dfs[1:]:
-            joined_df = joined_df.join(jdf.drop(static_features), on=["subject_id", "timestamp"], how="inner")
+            join_keys = ["subject_id", "timestamp"]
+            if join_df is not None:
+                join_keys = list(set(join_keys).union(set(join_df.columns)))
+            joined_df = joined_df.join(
+                jdf.drop(static_features), on=join_keys, how="inner"
+            )
 
         by_split[sp] = joined_df
 
@@ -546,37 +666,61 @@ def fit_baseline_task_model(
         )
 
     print(f"Loading representations for {', '.join(window_size_options)}")
-    flat_reps = load_flat_rep(ESD, window_sizes=window_size_options)
+    task_df_adj = task_df.select("subject_id", pl.col("end_time").alias("timestamp"), finetuning_task)
+
     subjects_included = {}
+
+    if train_subset_size is not None:
+        splits = ['train', 'tuning']
+        subject_ids = list(itertools.chain.from_iterable(ESD.split_subjects[sp] for sp in splits))
+        prng = np.random.default_rng(seed)
+        match train_subset_size:
+            case int() as n_samples if n_samples > 1:
+                subject_ids = prng.choice(subject_ids, size=n_samples, replace=False)
+            case float() as frac if 0 < frac < 1:
+                subject_ids = prng.choice(
+                    subject_ids, size=int(frac*len(subject_ids)), replace=False
+                )
+            case _:
+                raise ValueError(
+                    f"train_subset_size must be either `None`, an int > 1, or a float between 0 and 1; "
+                    f"got {train_subset_size}"
+                )
+        subjects_included["&".join(splits)] = subject_ids
+        subjects_included["held_out"] = ESD.split_subjects['held_out']
+        subject_ids = list(set(subject_ids).union(ESD.split_subjects['held_out']))
+        task_df_adj = task_df_adj.filter(pl.col("subject_id").is_in(subject_ids))
+
+
+    flat_reps = load_flat_rep_eager(ESD, window_sizes=window_size_options, join_df=task_df_adj)
     Xs_and_Ys = {}
     for splits in (["train", "tuning"], ["held_out"]):
         st = datetime.now()
         print(f"Loading datasets for {', '.join(splits)}")
-        df = pl.concat([flat_reps[sp] for sp in splits], how="vertical").join(
-            task_df.select("subject_id", pl.col("end_time").alias("timestamp"), finetuning_task),
-            on=["subject_id", "timestamp"],
-            how="inner",
-        )
-        subject_ids = list(itertools.chain.from_iterable(ESD.split_subjects[sp] for sp in splits))
-        if "train" in splits and train_subset_size is not None:
-            prng = np.random.default_rng(seed)
-            match train_subset_size:
-                case int() as n_samples if n_samples > 1:
-                    subject_ids = prng.choice(subject_ids, size=n_samples, replace=False)
-                case float() as frac if 0 < frac < 1:
-                    subject_ids = prng.choice(
-                        subject_ids, size=int(frac*len(subject_ids)), replace=False
-                    )
-                case _:
+        out_schema = None
+        typed_dfs = []
+        for sp in splits:
+            sp_df = flat_reps[sp].lazy()
+            sp_schema = sp_df.schema
+            if out_schema is None:
+                out_schema = sp_schema
+            else:
+                if out_schema.keys() != sp_schema.keys():
                     raise ValueError(
-                        f"train_subset_size must be either `None`, an int > 1, or a float between 0 and 1; "
-                        f"got {train_subset_size}"
+                        f"Schemas differ! Running schema has keys {out_schema.keys()}, "
+                        f"but {sp} schema has keys {sp_schema.keys()}"
                     )
-            df = df.filter(pl.col("subject_id").is_in(subject_ids))
+                for k in out_schema.keys():
+                    if out_schema[k] != sp_schema[k]:
+                        #print(
+                        #    f"Schemas differ @ {k}! Running schema has type {out_schema[k]}, "
+                        #    f"but {sp} schema has type {sp_schema[k]}. Casting to running type."
+                        #)
+                        sp_df = sp_df.with_columns(pl.col(k).cast(out_schema[k]))
+            typed_dfs.append(sp_df)
 
-        subjects_included["&".join(splits)] = subject_ids
-
-        df = df.collect()
+        df = pl.concat(typed_dfs, how="vertical")
+        df = df.collect(streaming=True)
 
         X = df.drop(["subject_id", "timestamp", finetuning_task])
         Y = df[finetuning_task].to_numpy()
