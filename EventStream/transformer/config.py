@@ -881,10 +881,9 @@ class StructuredTransformerConfig(PretrainedConfig):
             self.mean_log_inter_event_time_min = dataset.mean_log_inter_event_time_min
             self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
 
-        if self.finetuning_task is None and len(dataset.tasks) == 1:
-            self.finetuning_task = dataset.tasks[0]
-
         if dataset.has_task:
+            if self.finetuning_task is None and len(dataset.tasks) == 1:
+                self.finetuning_task = dataset.tasks[0]
             if self.finetuning_task is not None:
                 # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
                 match dataset.task_types[self.finetuning_task]:
