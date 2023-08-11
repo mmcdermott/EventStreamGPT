@@ -270,41 +270,15 @@ class ESTForStreamClassificationLM(L.LightningModule):
 @hydra_dataclass
 class FinetuneConfig:
     load_from_model_dir: str | Path = omegaconf.MISSING
-    seed: int = 1
-
-    pretrained_weights_fp: Path | None = None
-    save_dir: str | None = None
-
-    do_overwrite: bool = False
-
-    optimization_config: OptimizationConfig = OptimizationConfig()
-
     task_df_name: str | None = omegaconf.MISSING
 
-    data_config_overrides: dict[str, Any] | None = dataclasses.field(
-        default_factory=lambda: {
-            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
-            "seq_padding_side": SeqPaddingSide.RIGHT,
-        }
+    pretrained_weights_fp: Path | None = "${load_from_model_dir}/pretrained_weights"
+    save_dir: str | None = (
+        "${load_from_model_dir}/finetuning/${task_df_name}/"
+        "subset_size_${data_config.train_subset_size}/"
+        "subset_seed_{data_config.train_subset_seed}/"
+        "${now:%Y-%m-%d_%H-%M-%S}"
     )
-
-    trainer_config: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {
-            "accelerator": "auto",
-            "devices": "auto",
-            "detect_anomaly": False,
-            "default_root_dir": None,
-        }
-    )
-
-    task_specific_params: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {
-            "pooling_method": "last",
-            "num_samples": None,
-        }
-    )
-
-    config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
     wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -322,65 +296,106 @@ class FinetuneConfig:
         }
     )
 
+    do_overwrite: bool = False
+    seed: int = 1
+
+    # Config override parameters
+    config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "task_specific_params": {
+                "pooling_method": "last",
+                "num_samples": None,
+            }
+        }
+    )
+    optimization_config: OptimizationConfig = OptimizationConfig()
+    data_config: dict[str, Any] | None = dataclasses.field(
+        default_factory=lambda: {
+            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+            "seq_padding_side": SeqPaddingSide.RIGHT,
+            "task_df_name": "${task_df_name}",
+            "train_subset_size": "FULL",
+            "train_subset_seed": 1,
+        }
+    )
+
+    trainer_config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "accelerator": "auto",
+            "devices": "auto",
+            "detect_anomaly": False,
+            "default_root_dir": "${save_dir}/model_checkpoints",
+            "log_every_n_steps": 10,
+        }
+    )
+
     def __post_init__(self):
-        if isinstance(self.save_dir, str):
-            self.save_dir = Path(self.save_dir)
+        match self.save_dir:
+            case str():
+                self.save_dir = Path(self.save_dir)
+            case Path():
+                pass
+            case _:
+                raise TypeError(
+                    f"`save_dir` must be a str or path! Got {type(self.save_dir)}({self.save_dir})"
+                )
 
-        if self.load_from_model_dir != omegaconf.MISSING:
-            if type(self.load_from_model_dir) is str:
+        if not self.save_dir.exists():
+            self.save_dir.mkdir(parents=True)
+        elif not self.save_dir.is_dir():
+            raise FileExistsError(f"{self.save_dir} is not a directory!")
+
+        if self.load_from_model_dir in (omegaconf.MISSING, None):
+            return
+
+        match self.load_from_model_dir:
+            case str():
                 self.load_from_model_dir = Path(self.load_from_model_dir)
+            case Path():
+                pass
+            case _:
+                raise TypeError(
+                    "`load_from_model_dir` must be a str or path! Got "
+                    f"{type(self.load_from_model_dir)}({self.load_from_model_dir})"
+                )
 
-            if self.pretrained_weights_fp is None:
-                self.pretrained_weights_fp = self.load_from_model_dir / "pretrained_weights"
-            elif str(self.pretrained_weights_fp) == "skip":
-                self.pretrained_weights_fp = None
-            if self.save_dir is None:
-                if self.data_config_overrides.get("train_subset_size", None) in (None, "FULL"):
-                    self.save_dir = self.load_from_model_dir / "finetuning" / self.task_df_name
-                else:
-                    if self.data_config_overrides.get("train_subset_seed", None) is None:
-                        self.data_config_overrides["train_subset_seed"] = int(random.randint(1, int(1e6)))
-                        print(
-                            f"WARNING: train_subset_size={self.data_config_overrides.train_subset_size} but "
-                            f"seed is unset. Setting to {self.data_config_overrides['train_subset_seed']}"
-                        )
-                    self.save_dir = (
-                        self.load_from_model_dir
-                        / "finetuning"
-                        / f"subset_size_{self.data_config_overrides['train_subset_size']}"
-                        / f"subset_seed_{self.data_config_overrides['train_subset_seed']}"
-                        / self.task_df_name
-                    )
-            if self.trainer_config.get("default_root_dir", None) is None:
-                self.trainer_config["default_root_dir"] = self.save_dir / "model_checkpoints"
+        if (
+            self.data_config.get("train_subset_size", "FULL") != "FULL"
+            and self.data_config.get("train_subset_seed", None) is None
+        ):
+            self.data_config["train_subset_seed"] = int(random.randint(1, int(1e6)))
+            print(
+                f"WARNING: train_subset_size={self.data_config.train_subset_size} but "
+                f"seed is unset. Setting to {self.data_config['train_subset_seed']}"
+            )
 
-            data_config_fp = self.load_from_model_dir / "data_config.json"
-            print(f"Loading data_config from {data_config_fp}")
-            self.data_config = PytorchDatasetConfig.from_json_file(data_config_fp)
-            self.data_config.task_df_name = self.task_df_name
+        data_config_fp = self.load_from_model_dir / "data_config.json"
+        print(f"Loading data_config from {data_config_fp}")
+        reloaded_data_config = PytorchDatasetConfig.from_json_file(data_config_fp)
+        reloaded_data_config.task_df_name = self.task_df_name
 
-            for param, val in self.data_config_overrides.items():
-                if param == "task_df_name":
+        for param, val in self.data_config.items():
+            if param == "task_df_name":
+                if val != self.task_df_name:
                     print(
                         f"WARNING: task_df_name is set in data_config_overrides to {val}! "
-                        f"Original is {self.task_df_name}. Ignoring data_config_overrides..."
+                        f"Original is {self.task_df_name}. Ignoring data_config..."
                     )
-                    continue
-                print(f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}")
-                setattr(self.data_config, param, val)
+                continue
+            print(f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}")
+            setattr(reloaded_data_config, param, val)
 
-            config_fp = self.load_from_model_dir / "config.json"
-            print(f"Loading config from {config_fp}")
-            self.config = StructuredTransformerConfig.from_json_file(config_fp)
+        self.data_config = reloaded_data_config
 
-            if self.task_specific_params is not None:
-                if self.config.task_specific_params is None:
-                    self.config.task_specific_params = {}
-                self.config.task_specific_params.update(self.task_specific_params)
+        config_fp = self.load_from_model_dir / "config.json"
+        print(f"Loading config from {config_fp}")
+        reloaded_config = StructuredTransformerConfig.from_json_file(config_fp)
 
-            for param, val in self.config_overrides.items():
-                print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
-                setattr(self.config, param, val)
+        for param, val in self.config.items():
+            print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
+            setattr(reloaded_config, param, val)
+
+        self.config = reloaded_config
 
 
 @task_wrapper
@@ -421,11 +436,11 @@ def train(cfg: FinetuneConfig):
         )
 
     # Model
-    LM = ESTForStreamClassificationLM(
-        config=config,
-        optimization_config=optimization_config,
-        pretrained_weights_fp=cfg.pretrained_weights_fp,
-    )
+    model_params = dict(config=config, optimization_config=optimization_config)
+    if cfg.pretrained_weights_fp is not None:
+        model_params["pretrained_weights_fp"] = cfg.pretrained_weights_fp
+
+    LM = ESTForStreamClassificationLM(**model_params)
 
     # TODO(mmd): Get this working!
     # if cfg.compile:
