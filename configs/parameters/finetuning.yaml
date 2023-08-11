@@ -1,0 +1,16 @@
+defaults:
+  - config: finetuning
+  - optimization_config: default
+  - wandb_logger_kwargs: default
+  - trainer_config: default
+
+load_from_model_dir:
+  value: ???
+do_overwrite:
+  value: False
+
+num_dataloader_workers:
+  value: ???
+
+do_final_validation_on_metrics:
+  value: True

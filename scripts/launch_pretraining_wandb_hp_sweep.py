@@ -71,7 +71,7 @@ def collapse_cfg(k: str, v: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="hyperparameter_sweep_base")
+@hydra.main(version_base=None, config_path="../configs", config_name="pretraining_hyperparameter_sweep_base")
 def main(cfg: DictConfig):
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
     cfg["command"] = [
