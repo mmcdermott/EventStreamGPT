@@ -214,6 +214,11 @@ class OptimizationConfig(JSONableMixin):
         init_lr: The initial learning rate used by the optimizer. Given warmup is used, this will be the peak
             learning rate after the warmup period.
         end_lr: The final learning rate at the end of all learning rate decay.
+        end_lr_frac_of_init_lr: The fraction of the initial learning rate that the end learning rate should
+            be. Must be consistent with end_lr, when both are set. If only one is set, the other will be
+            correctly inferred upon initialization. This is largely useful during hyperparameter tuning, to
+            avoid sampling hyperparameters where ``end_lr`` is larger than ``init_lr``, which is not
+            compatible with the supported learning rate scheduler.
         max_epochs: The maximum number of training epochs.
         batch_size: The batch size used during stochastic gradient descent.
         validation_batch_size: The batch size used during evaluation.
