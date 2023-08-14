@@ -12,8 +12,5 @@ experiment_dir:
 do_overwrite:
   value: False
 
-num_dataloader_workers:
-  value: ???
-
 do_final_validation_on_metrics:
   value: True
