@@ -276,7 +276,7 @@ class FinetuneConfig:
     save_dir: str | None = (
         "${load_from_model_dir}/finetuning/${task_df_name}/"
         "subset_size_${data_config.train_subset_size}/"
-        "subset_seed_{data_config.train_subset_seed}/"
+        "subset_seed_${data_config.train_subset_seed}/"
         "${now:%Y-%m-%d_%H-%M-%S}"
     )
 
@@ -302,6 +302,7 @@ class FinetuneConfig:
     # Config override parameters
     config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
+            **{k: None for k in StructuredTransformerConfig().to_dict().keys()},
             "task_specific_params": {
                 "pooling_method": "last",
                 "num_samples": None,
@@ -382,7 +383,7 @@ class FinetuneConfig:
                         f"Original is {self.task_df_name}. Ignoring data_config..."
                     )
                 continue
-            print(f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}")
+            print(f"Overwriting {param} in data_config from {getattr(reloaded_data_config, param)} to {val}")
             setattr(reloaded_data_config, param, val)
 
         self.data_config = reloaded_data_config
@@ -392,10 +393,16 @@ class FinetuneConfig:
         reloaded_config = StructuredTransformerConfig.from_json_file(config_fp)
 
         for param, val in self.config.items():
-            print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
+            if val is None: continue
+            print(f"Overwriting {param} in config from {getattr(reloaded_config, param)} to {val}")
             setattr(reloaded_config, param, val)
 
         self.config = reloaded_config
+
+        reloaded_pretrain_config = OmegaConf.load(self.load_from_model_dir / "pretrain_config.yaml")
+        if self.wandb_logger_kwargs.get("project", None) is None:
+            print(f"Setting wandb project to {reloaded_pretrain_config.wandb_logger_kwargs.project}")
+            self.wandb_logger_kwargs["project"] = reloaded_pretrain_config.wandb_logger_kwargs.project
 
 
 @task_wrapper
