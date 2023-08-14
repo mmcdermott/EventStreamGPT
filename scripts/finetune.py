@@ -31,6 +31,7 @@ def main(cfg: FinetuneConfig):
 
         cfg_dict = copy.deepcopy(cfg)
         cfg_dict.config = cfg_dict.config.to_dict()
+        cfg_dict.data_config = cfg_dict.data_config.to_dict()
         OmegaConf.save(cfg_dict, cfg_fp)
 
     return train(cfg)

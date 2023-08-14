@@ -1234,6 +1234,10 @@ class MeasurementConfig(JSONableMixin):
                 as_dict["_measurement_metadata"] = str(self._measurement_metadata)
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
             as_dict["functor"] = self.functor.to_dict()
+        if as_dict.get("vocabulary", None) is not None:
+            as_dict["vocabulary"]["obs_frequencies"] = [
+                float(x) for x in as_dict["vocabulary"]["obs_frequencies"]
+            ]
         return as_dict
 
     @classmethod

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import lightning as L
+from omegaconf import OmegaConf
 import omegaconf
 import torch
 import torch.multiprocessing
