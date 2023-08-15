@@ -48,7 +48,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
         self,
         config: StructuredTransformerConfig | dict[str, Any],
         optimization_config: OptimizationConfig | dict[str, Any],
-        pretrained_weights_fp: Path | None = None,
+        pretrained_weights_fp: Path | str | None = None,
         do_debug_mode: bool = True,
     ):
         """Initializes the Lightning Module.
@@ -270,12 +270,13 @@ class ESTForStreamClassificationLM(L.LightningModule):
 
 @hydra_dataclass
 class FinetuneConfig:
-    load_from_model_dir: str | Path = omegaconf.MISSING
+    experiment_dir: str | Path | None = "${load_from_model_dir}/finetuning"
+    load_from_model_dir: str | Path | None = omegaconf.MISSING
     task_df_name: str | None = omegaconf.MISSING
 
-    pretrained_weights_fp: Path | None = "${load_from_model_dir}/pretrained_weights"
+    pretrained_weights_fp: Path | str | None = "${load_from_model_dir}/pretrained_weights"
     save_dir: str | None = (
-        "${load_from_model_dir}/finetuning/${task_df_name}/"
+        "${experiment_dir}/${task_df_name}/"
         "subset_size_${data_config.train_subset_size}/"
         "subset_seed_${data_config.train_subset_seed}/"
         "${now:%Y-%m-%d_%H-%M-%S}"
@@ -313,6 +314,7 @@ class FinetuneConfig:
     optimization_config: OptimizationConfig = OptimizationConfig()
     data_config: dict[str, Any] | None = dataclasses.field(
         default_factory=lambda: {
+            **{k: None for k in PytorchDatasetConfig().to_dict().keys()},
             "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
             "seq_padding_side": SeqPaddingSide.RIGHT,
             "task_df_name": "${task_df_name}",
@@ -347,8 +349,23 @@ class FinetuneConfig:
         elif not self.save_dir.is_dir():
             raise FileExistsError(f"{self.save_dir} is not a directory!")
 
-        if self.load_from_model_dir in (omegaconf.MISSING, None):
+        if self.load_from_model_dir in (omegaconf.MISSING, None, "skip"):
+            self.config = StructuredTransformerConfig(
+                **{k: v for k, v in self.config.items() if v is not None}
+            )
+            self.data_config = PytorchDatasetConfig(**self.data_config)
             return
+
+        match self.pretrained_weights_fp:
+            case "skip" | None:
+                pass
+            case str():
+                self.pretrained_weights_fp = Path(self.pretrained_weights_fp)
+            case _:
+                raise TypeError(
+                    "`pretrained_weights_fp` must be a str or path! Got "
+                    f"{type(self.pretrained_weights_fp)}({self.pretrained_weights_fp})"
+                )
 
         match self.load_from_model_dir:
             case str():
@@ -377,6 +394,7 @@ class FinetuneConfig:
         reloaded_data_config.task_df_name = self.task_df_name
 
         for param, val in self.data_config.items():
+            if val is None: continue
             if param == "task_df_name":
                 if val != self.task_df_name:
                     print(

@@ -274,8 +274,23 @@ class DataEmbeddingLayer(torch.nn.Module):
         self.static_embedding_mode = static_embedding_mode
         self.split_by_measurement_indices = split_by_measurement_indices
         self.do_normalize_by_measurement_index = do_normalize_by_measurement_index
-        self.static_weight = static_weight / (static_weight + dynamic_weight)
-        self.dynamic_weight = dynamic_weight / (static_weight + dynamic_weight)
+
+        if static_embedding_mode != StaticEmbeddingMode.DROP:
+            if not np.is_numeric(static_weight):
+                raise TypeError("`static_weight` must be numeric.")
+            if static_weight < 0:
+                raise ValueError("`static_weight` must be non-negative.")
+            if not np.is_numeric(dynamic_weight):
+                raise TypeError("`dynamic_weight` must be numeric.")
+            if dynamic_weight < 0:
+                raise ValueError("`dynamic_weight` must be non-negative.")
+
+            self.static_weight = static_weight / (static_weight + dynamic_weight)
+            self.dynamic_weight = dynamic_weight / (static_weight + dynamic_weight)
+        else:
+            self.static_weight = None
+            self.dynamic_weight = None
+
         self.categorical_weight = categorical_weight / (categorical_weight + numerical_weight)
         self.numerical_weight = numerical_weight / (categorical_weight + numerical_weight)
 

@@ -664,7 +664,7 @@ class PytorchDatasetConfig(JSONableMixin):
         train_subset_size: If the training data should be subsampled randomly, this specifies the size of the
             training subset. If `None` or "FULL", then the full training data is used.
         train_subset_seed: If the training data should be subsampled randomly, this specifies the seed for
-            that random subsampling. Should be None if train_subset_size is None or "FULL".
+            that random subsampling.
         task_df_name: If the raw dataset should be limited to a task dataframe view, this specifies the name
             of the task dataframe, and indirectly the path on disk from where that task dataframe will be
             read (save_dir / "task_dfs" / f"{task_df_name}.parquet").
@@ -711,10 +711,6 @@ class PytorchDatasetConfig(JSONableMixin):
         Traceback (most recent call last):
             ...
         TypeError: train_subset_size is of unrecognized type <class 'str'>.
-        >>> config = PytorchDatasetConfig(train_subset_size="FULL", train_subset_seed=10)
-        Traceback (most recent call last):
-            ...
-        ValueError: train_subset_seed 10 should be None if train_subset_size is FULL.
         >>> config = PytorchDatasetConfig(
         ...     save_dir='./dataset',
         ...     max_seq_len=256,
@@ -761,11 +757,6 @@ class PytorchDatasetConfig(JSONableMixin):
             self.save_dir = Path(self.save_dir)
 
         match self.train_subset_size:
-            case (None | "FULL") if self.train_subset_seed is not None:
-                raise ValueError(
-                    f"train_subset_seed {self.train_subset_seed} should be None "
-                    f"if train_subset_size is {self.train_subset_size}."
-                )
             case int() as n if n < 0:
                 raise ValueError(f"If integral, train_subset_size must be positive! Got {n}")
             case float() as frac if frac <= 0 or frac >= 1:

@@ -263,7 +263,6 @@ class OptimizationConfig(JSONableMixin):
     num_dataloader_workers: int = 0
 
     def __post_init__(self):
-        print(f"GOT A end_lr of {self.end_lr}")
         if self.end_lr_frac_of_init_lr is not None:
             if self.end_lr_frac_of_init_lr <= 0.0 or self.end_lr_frac_of_init_lr >= 1.0:
                 raise ValueError("`end_lr_frac_of_init_lr` must be between 0.0 and 1.0!")

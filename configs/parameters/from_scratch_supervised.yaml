@@ -1,12 +1,15 @@
 defaults:
-  - config: finetuning
+  - config: default
   - optimization_config: default
+  - data_config: default
   - wandb_logger_kwargs: default
   - trainer_config: default
 
+experiment_dir:
+  value: ???
 task_df_name:
   value: ???
 load_from_model_dir:
-  value: ???
-do_overwrite:
-  value: False
+  value: "skip"
+pretrained_weights_fp:
+  value: "skip"
