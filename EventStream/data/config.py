@@ -1123,32 +1123,36 @@ class MeasurementConfig(JSONableMixin):
         match self._measurement_metadata:
             case None | pd.DataFrame() | pd.Series():
                 return self._measurement_metadata
+            case [(Path() | str()) as base_dir, str() as fn]:
+                fp = Path(base_dir) / fn
             case (Path() | str()) as fp:
-                out = pd.read_csv(fp, index_col=0)
-
-                if self.modality == DataModality.UNIVARIATE_REGRESSION:
-                    if out.shape[1] != 1:
-                        raise ValueError(
-                            f"For {self.modality}, measurement metadata at {fp} should be a series, but "
-                            f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
-                        )
-                    out = out.iloc[:, 0]
-                    for col in ("outlier_model", "normalizer"):
-                        if col in out:
-                            out[col] = eval(out[col])
-                elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
-                    raise ValueError(
-                        "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
-                        f"measurements should have measurement metadata paths stored. Got {fp} on "
-                        f"{self.modality} measurement!"
-                    )
-                else:
-                    for col in ("outlier_model", "normalizer"):
-                        if col in out:
-                            out[col] = out[col].apply(eval)
-                return out
+                fp = Path(fp)
             case _:
-                raise ValueError(f"_measurement_metadata is invalid! Got {type(self.measurement_metadata)}!")
+                raise ValueError(f"_measurement_metadata is invalid! Got {type(self._measurement_metadata)}!")
+
+        out = pd.read_csv(fp, index_col=0)
+
+        if self.modality == DataModality.UNIVARIATE_REGRESSION:
+            if out.shape[1] != 1:
+                raise ValueError(
+                    f"For {self.modality}, measurement metadata at {fp} should be a series, but "
+                    f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
+                )
+            out = out.iloc[:, 0]
+            for col in ("outlier_model", "normalizer"):
+                if col in out:
+                    out[col] = eval(out[col])
+        elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
+            raise ValueError(
+                "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
+                f"measurements should have measurement metadata paths stored. Got {fp} on "
+                f"{self.modality} measurement!"
+            )
+        else:
+            for col in ("outlier_model", "normalizer"):
+                if col in out:
+                    out[col] = out[col].apply(eval)
+        return out
 
     @measurement_metadata.setter
     def measurement_metadata(self, new_metadata: pd.DataFrame | pd.Series | None):
@@ -1156,12 +1160,16 @@ class MeasurementConfig(JSONableMixin):
             self._measurement_metadata = None
             return
 
-        if isinstance(self._measurement_metadata, (str, Path)):
-            new_metadata.to_csv(self._measurement_metadata)
-        else:
-            self._measurement_metadata = new_metadata
+        match self._measurement_metadata:
+            case [Path() as base_dir, str() as fn]:
+                new_metadata.to_csv(base_dir / fn)
+            case Path() | str() as fp:
+                new_metadata.to_csv(fp)
+            case _:
+                self._measurement_metadata = new_metadata
 
-    def cache_measurement_metadata(self, fp: Path):
+    def cache_measurement_metadata(self, base_dir: Path, fn: str):
+        fp = base_dir / fn
         if isinstance(self._measurement_metadata, (str, Path)):
             if str(fp) != str(self._measurement_metadata):
                 raise ValueError(f"Caching is already enabled at {self._measurement_metadata} != {fp}")
@@ -1171,14 +1179,19 @@ class MeasurementConfig(JSONableMixin):
 
         fp.parent.mkdir(exist_ok=True, parents=True)
         self.measurement_metadata.to_csv(fp)
-        self._measurement_metadata = str(fp.resolve())
+        self._measurement_metadata = [str(base_dir.resolve()), fn]
 
     def uncache_measurement_metadata(self):
         if self._measurement_metadata is None:
             return
 
-        if not isinstance(self._measurement_metadata, (str, Path)):
-            raise ValueError("Caching is not enabled, can't uncache!")
+        match self._measurement_metadata:
+            case [Path(), str()]:
+                pass
+            case Path() | str():
+                pass
+            case _:
+                raise ValueError("Caching is not enabled, can't uncache!")
 
         self._measurement_metadata = self.measurement_metadata
 
@@ -1237,14 +1250,19 @@ class MeasurementConfig(JSONableMixin):
         return as_dict
 
     @classmethod
-    def from_dict(cls, as_dict: dict) -> MeasurementConfig:
+    def from_dict(cls, as_dict: dict, base_dir: Path | None = None) -> MeasurementConfig:
         """Build a configuration object from a plain dictionary representation."""
         if as_dict["vocabulary"] is not None:
             as_dict["vocabulary"] = Vocabulary(**as_dict["vocabulary"])
 
         match as_dict["_measurement_metadata"], as_dict["modality"]:
-            case str() | None, _:
+            case None, _:
                 pass
+            case [str() as prior_base_dir, str() as relative_path], _:
+                if base_dir is not None:
+                    as_dict["_measurement_metadata"] = [base_dir, relative_path]
+                else:
+                    as_dict["_measurement_metadata"] = [str(prior_base_dir), relative_path]
             case dict(), DataModality.MULTIVARIATE_REGRESSION:
                 as_dict["_measurement_metadata"] = pd.DataFrame.from_dict(
                     as_dict["_measurement_metadata"], orient="tight"
@@ -1252,7 +1270,9 @@ class MeasurementConfig(JSONableMixin):
             case dict(), DataModality.UNIVARIATE_REGRESSION:
                 as_dict["_measurement_metadata"] = pd.Series(as_dict["_measurement_metadata"])
             case _:
-                raise ValueError(f"{as_dict['measurement_metadata']} and {as_dict['modality']} incompatible!")
+                raise ValueError(
+                    f"{as_dict['_measurement_metadata']} and {as_dict['modality']} incompatible!"
+                )
 
         if as_dict["functor"] is not None:
             if as_dict["temporality"] != TemporalityType.FUNCTIONAL_TIME_DEPENDENT:

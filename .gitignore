@@ -140,3 +140,5 @@ logfile
 tags
 
 docs/_collections/*
+
+sample_data/processed/*
