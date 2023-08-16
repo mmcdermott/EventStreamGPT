@@ -435,14 +435,17 @@ class DatasetBase(
 
         attrs_fp = load_dir / "E.pkl"
 
-        attrs_to_add = {
-            "config": DatasetConfig.from_json_file(load_dir / "config.json"),
-        }
+        reloaded_config = DatasetConfig.from_json_file(load_dir / "config.json")
+        if reloaded_config.save_dir != load_dir:
+            print(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
+            reloaded_config.save_dir = load_dir
+
+        attrs_to_add = {"config": reloaded_config}
         inferred_measurement_configs_fp = load_dir / "inferred_measurement_configs.json"
         if inferred_measurement_configs_fp.is_file():
             with open(inferred_measurement_configs_fp) as f:
                 attrs_to_add["inferred_measurement_configs"] = {
-                    k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
+                    k: MeasurementConfig.from_dict(v, base_dir=load_dir) for k, v in json.load(f).items()
                 }
 
         return super()._load(attrs_fp, **attrs_to_add)
@@ -478,10 +481,9 @@ class DatasetBase(
         self.config.to_json_file(config_fp, do_overwrite=do_overwrite)
 
         if self._is_fit:
-            inferred_measurement_metadata_dir = self.config.save_dir / "inferred_measurement_metadata"
+            self.config.save_dir / "inferred_measurement_metadata"
             for k, v in self.inferred_measurement_configs.items():
-                fp = inferred_measurement_metadata_dir / f"{k}.csv"
-                v.cache_measurement_metadata(fp)
+                v.cache_measurement_metadata(self.config.save_dir, f"inferred_measurement_metadata/{k}.csv")
 
             inferred_measurement_configs_fp = self.config.save_dir / "inferred_measurement_configs.json"
             inferred_measurement_configs = {
