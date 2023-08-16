@@ -85,7 +85,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
         )
         self.build_metrics()
 
-        if pretrained_weights_fp is None:
+        if pretrained_weights_fp is None or pretrained_weights_fp == "skip":
             self.model = ESTForStreamClassification(config)
         else:
             self.model = ESTForStreamClassification.from_pretrained(pretrained_weights_fp, config=config)
@@ -332,6 +332,8 @@ class FinetuneConfig:
 
             if self.pretrained_weights_fp is None:
                 self.pretrained_weights_fp = self.load_from_model_dir / "pretrained_weights"
+            elif str(self.pretrained_weights_fp) == "skip":
+                self.pretrained_weights_fp = None
             if self.save_dir is None:
                 if self.data_config_overrides.get("train_subset_size", None) in (None, "FULL"):
                     self.save_dir = self.load_from_model_dir / "finetuning" / self.task_df_name

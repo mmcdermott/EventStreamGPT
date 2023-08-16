@@ -366,6 +366,22 @@ following steps:
 3. You can then use the `scripts/zeroshot.py` script to run a zero-shot evaluation via a Hydra
    config on that task labeler and any pre-trained model.
 
+## Controlling Resource Usage
+
+This library uses [polars](https://pola-rs.github.io/polars/py-polars/html/reference/index.html), which is
+very fast, but can be memory intensive due to its extensive parallelization. One strategy one can take to
+control for this and limit the total memory usage is to limit the maximum number of threads polars is
+permitted to use while running. This can be controlled via the environment variable `POLARS_MAX_THREADS`. If
+this environment variable is set in the shell prior to running ESGPT commands, the ESGPT module will respect
+those limitations. For example:
+
+```bash
+POLARS_MAX_THREADS=1 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/...
+```
+
+You can read more about this in the [polars
+documentation](https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.threadpool_size.html).
+
 ## Testing
 
 EventStream code is tested in the global tests folder. These tests can be run via `python -m unittest` in the global directory. These tests are not exhaustive, particularly in covering the operation of EventStreamTransformer, but they are relatively comprehensive over core EventStreamData functionality.

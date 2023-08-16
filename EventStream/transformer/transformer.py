@@ -561,6 +561,69 @@ def time_from_deltas(batch: PytorchBatch) -> torch.Tensor:
     return torch.hstack([torch.zeros_like(t_deltas[:, :1]), t_deltas.cumsum(-1)[:, :-1]])
 
 
+class LearnableFrequencySinusoidalTemporalPositionEncoding(torch.nn.Module):
+    """A module for applying time-based position encodings to a PytorchBatch.
+
+    Adapted from https://openreview.net/pdf?id=onxoVA9FxMw
+
+    Args:
+        embedding_dim: The desired size of the output embedding. Unlike many position embedding
+            implementations, this does not need to be even.
+    """
+
+    def __init__(
+        self,
+        embedding_dim: int,
+        max_timepoint: float = 10000.0,
+    ):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        # div_term = torch.exp(torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim))
+
+        size = math.ceil(embedding_dim / 2)
+        div_term = torch.empty(
+            size,
+        )
+        torch.nn.init.normal_(div_term)
+
+        # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
+        # embedding. This is not a principled decision, but enabling odd embedding dimensions helps avoid edge
+        # cases during hyperparameter tuning when searching over possible embedding spaces.
+        if self.embedding_dim % 2 == 0:
+            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=True)
+            self.cos_div_term = torch.nn.Parameter(div_term, requires_grad=True)
+        else:
+            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=True)
+            self.cos_div_term = torch.nn.Parameter(div_term[:-1], requires_grad=True)
+
+    def forward(self, batch: PytorchBatch) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            batch: The input batch to process.
+
+        Returns:
+            The temporal position embeddings tensor of shape (bsz, seq_len)
+        """
+
+        t = time_from_deltas(batch) if batch.get("time", None) is None else batch["time"]
+        bsz, seq_len = t.shape
+        device = t.device
+
+        # First, we go from deltas to time values and unsqueeze it for broadcasting through the hidden dim.
+        t = t.unsqueeze(-1)
+
+        # temporal_embeddings will be our output container.
+        # It should have shape (batch size, sequence length, embedding dim), and be on the same device as the
+        # timepoints.
+        temporal_embeddings = torch.zeros(bsz, seq_len, self.embedding_dim, device=device)
+
+        temporal_embeddings[:, :, 0::2] = torch.sin(t * self.sin_div_term.unsqueeze(0).unsqueeze(0))
+        temporal_embeddings[:, :, 1::2] = torch.cos(t * self.cos_div_term.unsqueeze(0).unsqueeze(0))
+
+        return temporal_embeddings
+
+
 class TemporalPositionEncoding(torch.nn.Module):
     """A module for applying time-based position encodings to a PytorchBatch.
 
@@ -650,7 +713,12 @@ class ConditionallyIndependentPointProcessInputLayer(torch.nn.Module):
             categorical_weight=config.categorical_embedding_weight,
             numerical_weight=config.numerical_embedding_weight,
         )
-        self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
+        if config.do_use_learnable_sinusoidal_ATE:
+            self.time_embedding_layer = LearnableFrequencySinusoidalTemporalPositionEncoding(
+                embedding_dim=config.hidden_size
+            )
+        else:
+            self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
@@ -897,7 +965,12 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
             categorical_weight=config.categorical_embedding_weight,
             numerical_weight=config.numerical_embedding_weight,
         )
-        self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
+        if config.do_use_learnable_sinusoidal_ATE:
+            self.time_embedding_layer = LearnableFrequencySinusoidalTemporalPositionEncoding(
+                embedding_dim=config.hidden_size
+            )
+        else:
+            self.time_embedding_layer = TemporalPositionEncoding(embedding_dim=config.hidden_size)
         self.embedding_dropout = torch.nn.Dropout(p=config.input_dropout)
 
     def forward(self, batch: PytorchBatch, dep_graph_el_generation_target: int | None = None) -> torch.Tensor:

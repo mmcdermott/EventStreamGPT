@@ -107,6 +107,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     }
     """The Polars schema of the numerical measurement metadata dataframes which track fit parameters."""
 
+    WRITE_USE_PYARROW = False
+    """Use C++ parquet implementation vs Rust parquet implementation for writing parquets."""
+    STREAMING = True
+    """Execute any lazy query in streaming mode."""
+
     @staticmethod
     def get_smallest_valid_int_type(num: int | float | pl.Expr) -> pl.DataType:
         """Returns the smallest valid unsigned integral type for an ID variable with `num` unique options.
@@ -259,7 +264,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     raise ValueError(f"Invalid out data type {out_dt}!")
 
         if subject_id_source_col is not None:
-            df = df.select(col_exprs).collect()
+            df = df.select(col_exprs).collect(streaming=cls.STREAMING)
 
             ID_map = {o: n for o, n in zip(df[subject_id_source_col], df[internal_subj_key])}
             df = df.with_columns(pl.col(internal_subj_key).alias("subject_id"))
@@ -384,7 +389,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
         """Increments the values in a column by a given amount and returns a dataframe with the incremented
         column."""
-        return df.with_columns(pl.col(col) + inc_by).collect()
+        return df.with_columns(pl.col(col) + inc_by).collect(streaming=cls.STREAMING)
 
     @classmethod
     def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
@@ -402,7 +407,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if not do_overwrite and fp.is_file():
             raise FileExistsError(f"{fp} exists and do_overwrite is {do_overwrite}!")
 
-        df.write_parquet(fp)
+        df.write_parquet(fp, use_pyarrow=cls.WRITE_USE_PYARROW)
 
     def get_metadata_schema(self, config: MeasurementConfig) -> dict[str, pl.DataType]:
         schema = {
