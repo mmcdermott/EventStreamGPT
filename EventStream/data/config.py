@@ -737,7 +737,7 @@ class PytorchDatasetConfig(JSONableMixin):
     seq_padding_side: SeqPaddingSide = SeqPaddingSide.RIGHT
     subsequence_sampling_strategy: SubsequenceSamplingStrategy = SubsequenceSamplingStrategy.RANDOM
 
-    train_subset_size: int | str = "FULL"
+    train_subset_size: int | float | str = "FULL"
     train_subset_seed: int | None = None
 
     task_df_name: str | None = None
