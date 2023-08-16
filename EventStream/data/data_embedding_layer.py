@@ -276,12 +276,8 @@ class DataEmbeddingLayer(torch.nn.Module):
         self.do_normalize_by_measurement_index = do_normalize_by_measurement_index
 
         if static_embedding_mode != StaticEmbeddingMode.DROP:
-            if not np.is_numeric(static_weight):
-                raise TypeError("`static_weight` must be numeric.")
             if static_weight < 0:
                 raise ValueError("`static_weight` must be non-negative.")
-            if not np.is_numeric(dynamic_weight):
-                raise TypeError("`dynamic_weight` must be numeric.")
             if dynamic_weight < 0:
                 raise ValueError("`dynamic_weight` must be non-negative.")
 
