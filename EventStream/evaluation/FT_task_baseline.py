@@ -186,118 +186,6 @@ def summarize_binary_task(task_df: pl.LazyFrame):
         .collect()
     )
 
-
-def load_flat_rep_eager(
-    ESD: Dataset,
-    window_sizes: list[str],
-    feature_inclusion_frequency: float | dict[str, float] | None = None,
-    include_only_measurements: set[str] | None = None,
-    do_update_if_missing: bool = True,
-    join_df: pl.DataFrame | None = None,
-) -> dict[str, pl.LazyFrame]:
-    """Loads a set of flat representations from a passed dataset that satisfy the given constraints.
-
-    Args:
-        ESD: The dataset for which the flat representations should be loaded.
-        window_size: A list of strings in polars timedelta syntax specifying the time windows over which the
-            features should be summarized.
-        feature_inclusion_frequency: TODO
-    """
-    flat_dir = ESD.config.save_dir / "flat_reps"
-
-    feature_inclusion_frequency, include_only_measurements = ESD._resolve_flat_rep_cache_params(
-        feature_inclusion_frequency, include_only_measurements
-    )
-
-    cache_kwargs = dict(
-        feature_inclusion_frequency=feature_inclusion_frequency,
-        window_sizes=window_sizes,
-        include_only_measurements=include_only_measurements,
-        do_overwrite=False,
-        do_update=True,
-    )
-
-    params_fp = flat_dir / "params.json"
-    if not params_fp.is_file():
-        if not do_update_if_missing:
-            raise FileNotFoundError("Flat representation files haven't been written!")
-        else:
-            ESD.cache_flat_representation(**cache_kwargs)
-
-    with open(params_fp) as f:
-        params = json.load(f)
-
-    needs_more_measurements = not set(include_only_measurements).issubset(params["include_only_measurements"])
-    needs_more_features = params["feature_inclusion_frequency"] is not None and (
-        (feature_inclusion_frequency is None)
-        or any(
-            params["feature_inclusion_frequency"].get(m, float("inf")) > m_freq
-            for m, m_freq in feature_inclusion_frequency.items()
-        )
-    )
-    needs_more_windows = False
-    for window_size in window_sizes:
-        if not (flat_dir / "past" / "train" / window_size).is_dir():
-            needs_more_windows = True
-
-    if needs_more_measurements or needs_more_features or needs_more_windows:
-        ESD.cache_flat_representation(**cache_kwargs)
-        with open(params_fp) as f:
-            params = json.load(f)
-
-    allowed_features = ESD._get_flat_rep_feature_cols(
-        feature_inclusion_frequency=feature_inclusion_frequency,
-        window_sizes=window_sizes,
-        include_only_measurements=include_only_measurements,
-    )
-
-    static_features = [f for f in allowed_features if f.startswith("static/")]
-    [f for f in allowed_features if not f.startswith("static/")]
-
-    by_split = {}
-    for sp in ESD.split_subjects.keys():
-        dfs = []
-        for window_size in window_sizes:
-            window_dir = flat_dir / "past" / sp / window_size
-            window_dfs = []
-            out_schema = None
-            for fp in window_dir.glob("*.parquet"):
-                df = pl.scan_parquet(fp)
-                if join_df is not None:
-                    df = df.join(join_df, on=['subject_id', 'timestamp'], how='inner').collect()
-
-                if out_schema is None:
-                    out_schema = df.schema
-                elif out_schema.keys() != df.schema.keys():
-                    raise ValueError(
-                        f"Schemas differ! Running schema has keys {out_schema.keys()}, "
-                        f"but {sp} schema has keys {df.schema.keys()}"
-                    )
-                else:
-                    for k in out_schema.keys():
-                        if out_schema[k] != df.schema[k]:
-                            #print(
-                            #    f"Schemas differ @ {k}! Running schema has type {out_schema[k]}, "
-                            #    f"but {sp} schema has type {df.schema[k]}. Casting to running type."
-                            #)
-                            df = df.with_columns(pl.col(k).cast(out_schema[k]))
-                window_dfs.append(df)
-
-            dfs.append(pl.concat(window_dfs, how="vertical"))
-
-        joined_df = dfs[0]
-        for jdf in dfs[1:]:
-            join_keys = ["subject_id", "timestamp"]
-            if join_df is not None:
-                join_keys = list(set(join_keys).union(set(join_df.columns)))
-            joined_df = joined_df.join(
-                jdf.drop(static_features), on=join_keys, how="inner"
-            )
-
-        by_split[sp] = joined_df
-
-    return by_split
-
 def load_flat_rep(
     ESD: Dataset,
     window_sizes: list[str],
@@ -365,6 +253,11 @@ def load_flat_rep(
     static_features = [f for f in allowed_features if f.startswith("static/")]
     [f for f in allowed_features if not f.startswith("static/")]
 
+    join_keys = ["subject_id", "timestamp"]
+    to_drop_keys = static_features
+    if join_df is not None:
+        to_drop_keys.extend([c for c in join_df.columns if c not in join_keys])
+
     by_split = {}
     for sp in ESD.split_subjects.keys():
         dfs = []
@@ -374,19 +267,14 @@ def load_flat_rep(
             for fp in window_dir.glob("*.parquet"):
                 df = pl.scan_parquet(fp)
                 if join_df is not None:
-                    df = df.join(join_df, on=['subject_id', 'timestamp'], how='inner')
+                    df = df.join(join_df, on=join_keys, how='inner')
                 window_dfs.append(df)
 
             dfs.append(pl.concat(window_dfs, how="vertical"))
 
         joined_df = dfs[0]
         for jdf in dfs[1:]:
-            join_keys = ["subject_id", "timestamp"]
-            if join_df is not None:
-                join_keys = list(set(join_keys).union(set(join_df.columns)))
-            joined_df = joined_df.join(
-                jdf.drop(static_features), on=join_keys, how="inner"
-            )
+            joined_df = joined_df.join(jdf.drop(to_drop_keys), on=join_keys, how="inner")
 
         by_split[sp] = joined_df
 
@@ -692,7 +580,7 @@ def fit_baseline_task_model(
         task_df_adj = task_df_adj.filter(pl.col("subject_id").is_in(subject_ids))
 
 
-    flat_reps = load_flat_rep_eager(ESD, window_sizes=window_size_options, join_df=task_df_adj)
+    flat_reps = load_flat_rep(ESD, window_sizes=window_size_options, join_df=task_df_adj)
     Xs_and_Ys = {}
     for splits in (["train", "tuning"], ["held_out"]):
         st = datetime.now()
@@ -720,7 +608,7 @@ def fit_baseline_task_model(
             typed_dfs.append(sp_df)
 
         df = pl.concat(typed_dfs, how="vertical")
-        df = df.collect(streaming=True)
+        df = df.collect()
 
         X = df.drop(["subject_id", "timestamp", finetuning_task])
         Y = df[finetuning_task].to_numpy()
