@@ -32,6 +32,7 @@ pytorch-lognormal-mixture = "^0.0.1"
 pyarrow = "^12.0.1"
 torchmetrics = "^1.0.3"
 dill = "^0.3.7"
+kaleido = "0.2.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
