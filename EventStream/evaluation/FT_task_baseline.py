@@ -563,8 +563,8 @@ def fit_baseline_task_model(
         subject_ids = list(itertools.chain.from_iterable(ESD.split_subjects[sp] for sp in splits))
         prng = np.random.default_rng(seed)
         match train_subset_size:
-            case int() as n_samples if n_samples > 1:
-                subject_ids = prng.choice(subject_ids, size=n_samples, replace=False)
+            case int() as n_subjects if n_subjects > 1:
+                subject_ids = prng.choice(subject_ids, size=n_subjects, replace=False)
             case float() as frac if 0 < frac < 1:
                 subject_ids = prng.choice(
                     subject_ids, size=int(frac*len(subject_ids)), replace=False
