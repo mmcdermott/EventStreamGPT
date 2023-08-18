@@ -385,6 +385,7 @@ class ESDFlatFeatureLoader:
         feature_inclusion_frequency: float | dict[str, float] | None = None,
         include_only_measurements: set[str] | None = None,
         convert_to_mean_var: bool = True,
+        **kwargs,
     ):
         self.ESD = ESD
         self.window_sizes = window_sizes
