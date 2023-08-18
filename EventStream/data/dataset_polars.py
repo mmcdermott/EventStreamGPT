@@ -721,7 +721,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case _:
                     filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
 
-        return df.filter(pl.all(filter_exprs))
+        return df.filter(pl.all_horizontal(filter_exprs))
 
     @TimeableMixin.TimeAs
     def _add_time_dependent_measurements(self):
@@ -1231,7 +1231,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             pl.when(vocab_el_col.is_null())
             .then(None)
             .when(~vocab_el_col.is_in(config.vocabulary.vocabulary))
-            .then("UNK")
+            .then(pl.lit("UNK"))
             .otherwise(vocab_el_col)
             .cast(pl.Categorical)
             .alias(measure)
