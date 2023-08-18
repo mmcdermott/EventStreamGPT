@@ -24,18 +24,12 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Add conda to system path
-        run: |
-          echo $CONDA/bin >> $GITHUB_PATH
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
       - name: Install dependencies
         run: |
-          conda env update --file env_cpu.yml --name base
-          pip install pytest
-          pip install sh
-
-      - name: List dependencies
-        run: |
-          conda list
+          poetry install
 
       - name: Run pytest
         run: |
@@ -54,15 +48,12 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Add conda to system path
-        run: |
-          echo $CONDA/bin >> $GITHUB_PATH
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
       - name: Install dependencies
         run: |
-          conda env update --file env_cpu.yml --name base
-          pip install pytest
-          pip install pytest-cov[toml]
-          pip install sh
+          poetry install
 
       - name: Run tests and collect coverage
         run: pytest --doctest-modules --cov EventStream --ignore docs/
