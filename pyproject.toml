@@ -34,6 +34,7 @@ torchmetrics = "^1.0.3"
 dill = "^0.3.7"
 kaleido = "0.2.1"
 transformers = "^4.31.0"
+wandb = "^0.15.8"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.4.0"
