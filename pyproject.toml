@@ -33,6 +33,8 @@ pyarrow = "^12.0.1"
 torchmetrics = "^1.0.3"
 dill = "^0.3.7"
 kaleido = "0.2.1"
+transformers = "^4.31.0"
+torch = "^2.0.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.4.0"
@@ -50,14 +52,6 @@ linkify-it-py = "^2.0.2"
 pypandoc = "^1.11"
 pexpect = "^4.8.0"
 
-[tool.poetry.group.cpu.dependencies]
-torch = { version = "^2.0.1", source="pytorch-cpu-src" }
-
-
-[[tool.poetry.source]]
-name = "pytorch-cpu-src"
-url = "https://download.pytorch.org/whl/cpu"
-priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
