@@ -34,8 +34,11 @@ torchmetrics = "^1.0.3"
 dill = "^0.3.7"
 kaleido = "0.2.1"
 
-[tool.poetry.group.dev.dependencies]
+[tool.poetry.group.test.dependencies]
 pytest = "^7.4.0"
+pytest-cov = {extras = ["toml"], version = "^4.1.0"}
+
+[tool.poetry.group.docs.dependencies]
 sphinxcontrib-bibtex = "^2.5.0"
 sphinx = "^7.1.2"
 sphinx-collections = "^0.0.1"
@@ -46,7 +49,6 @@ sphinx-material = "^0.0.35"
 linkify-it-py = "^2.0.2"
 pypandoc = "^1.11"
 pexpect = "^4.8.0"
-pytest-cov = {extras = ["toml"], version = "^4.1.0"}
 
 [tool.poetry.group.cpu.dependencies]
 torch = { version = "^2.0.1", source="pytorch-cpu-src" }
