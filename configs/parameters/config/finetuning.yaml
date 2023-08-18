@@ -1,0 +1,13 @@
+resid_dropout:
+  min: 0.0
+  max: 0.5
+input_dropout:
+  min: 0.0
+  max: 0.5
+attention_dropout:
+  min: 0.0
+  max: 0.5
+
+task_specific_params:
+  pooling_method:
+    values: ["cls", "last", "max", "mean"]

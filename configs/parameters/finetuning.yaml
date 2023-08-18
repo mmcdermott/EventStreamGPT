@@ -1,0 +1,12 @@
+defaults:
+  - config: finetuning
+  - optimization_config: default
+  - wandb_logger_kwargs: default
+  - trainer_config: default
+
+task_df_name:
+  value: ???
+load_from_model_dir:
+  value: ???
+do_overwrite:
+  value: False

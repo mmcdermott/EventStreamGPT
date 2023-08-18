@@ -537,8 +537,6 @@ class PretrainConfig:
         }
     )
 
-    num_dataloader_workers: int = 1
-
     do_final_validation_on_metrics: bool = True
 
     # compile: bool = True

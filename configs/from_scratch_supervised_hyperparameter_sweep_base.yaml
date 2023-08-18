@@ -1,0 +1,15 @@
+defaults:
+  - parameters: from_scratch_supervised
+  - _self_
+
+entity: null
+project: null
+program: finetune.py
+method: bayes
+name: EST_FT_sweep
+metric:
+  goal: minimize
+  name: tuning_loss
+early_terminate:
+  type: hyperband
+  min_iter: 1000
