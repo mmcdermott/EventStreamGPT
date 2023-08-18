@@ -1,5 +1,6 @@
 """Utilities for collecting baseline performance of fine-tuning tasks defined over ESGPT datasets."""
 
+import wandb
 import copy
 import itertools
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import omegaconf
+import pickle
 from omegaconf import OmegaConf
 import numpy as np
 import polars as pl
@@ -21,6 +23,7 @@ from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, log_loss
 
 from ..data.dataset_polars import Dataset
 from ..utils import task_wrapper
@@ -256,6 +259,15 @@ class SklearnConfig:
     dim_reduce: Any = None
     model: Any = omegaconf.MISSING
 
+    wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "name": "${task_df_name}_sklearn",
+            "project": None,
+            "entity": None,
+            "save_code": True,
+        }
+    )
+
     def __post_init__(self):
         if isinstance(self.save_dir, str):
             self.save_dir = Path(self.save_dir)
@@ -370,31 +382,40 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
 
     print("Fitting model!")
     model.fit(*Xs_and_Ys["train"])
+    print(f"Saving model to {cfg.save_dir}")
+    with open(cfg.save_dir / "model.pkl", mode='wb') as f:
+        pickle.dump(model, f)
 
     print("Evaluating model!")
-    eval_metrics = {}
+    all_metrics = {}
     for split in ("tuning", "held_out"):
+        eval_metrics = {}
         X, Y = Xs_and_Ys[split]
         probs = model.predict_proba(X)
         for metric_n, metric_fn in [
             ("AUROC", roc_auc_score),
             ("AUPRC", average_precision_score),
-            ("Accuracy", accuracy_score),
             ("NLL", log_loss),
         ]:
-            eval_metrics[f"{split}/{metric_n}"] = metric_fn(Y, probs[:, 1])
+            eval_metrics[metric_n] = metric_fn(Y, probs[:, 1])
 
-    print(f"Saving model to {cfg.save_dir}")
-    with open(cfg.save_dir / "model.pkl", mode='wb') as f:
-        pickle.dump(model, f)
+        for metric_n, metric_fn in [
+            ("Accuracy", accuracy_score),
+        ]:
+            eval_metrics[metric_n] = metric_fn(Y, probs.argmax(axis=1))
+        all_metrics[split] = eval_metrics
+
     with open(cfg.save_dir / "final_metrics.json", mode="w") as f:
-        json.dump(eval_metrics, f)
+        json.dump(all_metrics, f)
 
-    return model, eval_metrics
+    return model, Xs_and_Ys, all_metrics
 
 @task_wrapper
 def wandb_train_sklearn(cfg: SklearnConfig):
-    wandb.init()
+    run = wandb.init(
+        **cfg.wandb_logger_kwargs,
+        config=dataclasses.asdict(cfg),
+    )
 
-    model, eval_metrics = train_sklearn_pipeline(cfg)
-    wandb.log(eval_metrics)
+    _, _, metrics = train_sklearn_pipeline(cfg)
+    run.log(metrics)
