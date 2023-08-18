@@ -6,3 +6,7 @@ max_seq_len:
 min_seq_len:
   min: 2
   max: 16
+train_subset_size:
+  value: FULL
+train_subset_seed:
+  value: 1
