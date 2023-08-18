@@ -55,6 +55,8 @@ static_embedding_weight:
 categorical_embedding_weight:
   min: 0.0
   max: 1.0
+do_use_learnable_sinusoidal_ATE:
+  values: [True, False]
 
 measurements_per_dep_graph_level:
   values: ???

@@ -232,41 +232,15 @@ configuration object:
 @hydra_dataclass
 class FinetuneConfig:
     load_from_model_dir: str | Path = omegaconf.MISSING
-    seed: int = 1
-
-    pretrained_weights_fp: Path | None = None
-    save_dir: str | None = None
-
-    do_overwrite: bool = False
-
-    optimization_config: OptimizationConfig = OptimizationConfig()
-
     task_df_name: str | None = omegaconf.MISSING
 
-    data_config_overrides: dict[str, Any] | None = dataclasses.field(
-        default_factory=lambda: {
-            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
-            "seq_padding_side": SeqPaddingSide.RIGHT,
-        }
+    pretrained_weights_fp: Path | None = "${load_from_model_dir}/pretrained_weights"
+    save_dir: str | None = (
+        "${load_from_model_dir}/finetuning/${task_df_name}/"
+        "subset_size_${data_config.train_subset_size}/"
+        "subset_seed_{data_config.train_subset_seed}/"
+        "${now:%Y-%m-%d_%H-%M-%S}"
     )
-
-    trainer_config: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {
-            "accelerator": "auto",
-            "devices": "auto",
-            "detect_anomaly": False,
-            "default_root_dir": None,
-        }
-    )
-
-    task_specific_params: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {
-            "pooling_method": "last",
-            "num_samples": None,
-        }
-    )
-
-    config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
     wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -281,6 +255,39 @@ class FinetuneConfig:
     wandb_experiment_config_kwargs: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "save_dir": "${save_dir}",
+        }
+    )
+
+    do_overwrite: bool = False
+    seed: int = 1
+
+    # Config override parameters
+    config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "task_specific_params": {
+                "pooling_method": "last",
+                "num_samples": None,
+            }
+        }
+    )
+    optimization_config: OptimizationConfig = OptimizationConfig()
+    data_config: dict[str, Any] | None = dataclasses.field(
+        default_factory=lambda: {
+            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+            "seq_padding_side": SeqPaddingSide.RIGHT,
+            "task_df_name": "${task_df_name}",
+            "train_subset_size": "FULL",
+            "train_subset_seed": 1,
+        }
+    )
+
+    trainer_config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "accelerator": "auto",
+            "devices": "auto",
+            "detect_anomaly": False,
+            "default_root_dir": "${save_dir}/model_checkpoints",
+            "log_every_n_steps": 10,
         }
     )
 ```

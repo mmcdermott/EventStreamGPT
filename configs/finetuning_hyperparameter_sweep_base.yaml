@@ -1,12 +1,12 @@
 defaults:
-  - parameters: default
+  - parameters: finetuning
   - _self_
 
 entity: null
 project: null
-program: pretrain.py
+program: finetune.py
 method: bayes
-name: EST_sweep
+name: EST_FT_sweep
 metric:
   goal: minimize
   name: tuning_loss
