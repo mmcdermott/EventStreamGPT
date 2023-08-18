@@ -73,7 +73,7 @@ def collapse_cfg(k: str, v: dict[str, Any]) -> dict[str, Any]:
 
 @hydra.main(
     version_base=None,
-    config_path="../configs",
+    config_path="../configs/sklearn_models",
     config_name="sklearn_baseline_hyperparameter_sweep_base",
 )
 def main(cfg: DictConfig):

@@ -381,13 +381,22 @@ class ESDFlatFeatureLoader:
     def __init__(
         self,
         ESD: Dataset,
-        window_sizes: list[str] | None = None,
+        window_sizes: list[str] | dict[str, bool] | None = None,
         feature_inclusion_frequency: float | dict[str, float] | None = None,
         include_only_measurements: set[str] | None = None,
         convert_to_mean_var: bool = True,
         **kwargs,
     ):
         self.ESD = ESD
+        match window_sizes:
+            case list():
+                pass
+            case dict():
+                window_sizes = [k for k, v in window_sizes.items() if v]
+            case None:
+                pass
+            case _:
+                raise ValueError("window_sizes must be a list, dict, or None")
         self.window_sizes = window_sizes
         self.feature_inclusion_frequency = feature_inclusion_frequency
         self.include_only_measurements = include_only_measurements

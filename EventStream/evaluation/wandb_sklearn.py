@@ -78,6 +78,7 @@ class BaseSklearnModuleConfig(ABC):
         cls = self.SKLEARN_COMPONENTS[self.CLS]
 
         kwargs = {**self.module_kwargs, **additional_kwargs}
+        kwargs = {k: None if v == 'null' else v for k, v in kwargs.items()}
         signature = inspect.signature(cls)
         for k in list(kwargs.keys()):
             if k not in signature.parameters:
@@ -108,14 +109,14 @@ class RandomForestClassifierConfig(BaseSklearnModuleConfig):
     min_samples_split: int = 2
     min_samples_leaf: int = 1
     min_weight_fraction_leaf: float = 0.0
-    max_features: str = 'auto'
+    max_features: str | None = "sqrt"
     max_leaf_nodes: int | None = None
     min_impurity_decrease: float = 0.0
     bootstrap: bool = True
     oob_score: bool = False
     class_weight: str | None = None
     ccp_alpha: float = 0.0
-    max_samples: int | None = None
+    max_samples: int | float | None = None
 
     @classmethod
     def default_param_dist(cls) -> dict[str, Any]:
@@ -126,7 +127,7 @@ class RandomForestClassifierConfig(BaseSklearnModuleConfig):
             "min_samples_split": randint(2, 32),
             "min_samples_leaf": randint(1, 32),
             "min_weight_fraction_leaf": loguniform(1e-5, 0.5),
-            "max_features": ["auto", "sqrt", "log2"],
+            "max_features": [None, "sqrt", "log2"],
             "max_leaf_nodes": [None, randint(2, 32)],
             "min_impurity_decrease": loguniform(1e-5, 1e-3),
             "bootstrap": [True, False],
@@ -187,7 +188,7 @@ class SelectKBestConfig(BaseSklearnModuleConfig):
 
     @classmethod
     def default_param_dist(cls) -> dict[str, Any]:
-        return dict(k=randint(2, 32))
+        return dict(k=randint(2, 256))
 
     k: int = 2
 
@@ -210,30 +211,6 @@ class KNNImputerConfig(BaseSklearnModuleConfig):
 class ESDFlatFeatureLoaderConfig(BaseSklearnModuleConfig):
     CLS: str = "ESDFlatFeatureLoader"
 
-    WINDOW_OPTIONS = [
-        "6h",
-        "1d",
-        "3d",
-        "7d",
-        "10d",
-        "30d",
-        "90d",
-        "180d",
-        "365d",
-        "730d",
-        "1825d",
-        "3650d",
-        "FULL",
-    ]
-
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return {
-            "window_sizes": WindowSizeDist(window_options=cls.WINDOW_OPTIONS),
-            "feature_inclusion_frequency": loguniform(a=1e-7, b=1e-3),
-            "convert_to_mean_var": bernoulli(0.5),
-        }
-
     window_sizes: list[str] | None = None
     feature_inclusion_frequency: float | None = None
     include_only_measurements: list[str] | None = None
@@ -243,12 +220,26 @@ class ESDFlatFeatureLoaderConfig(BaseSklearnModuleConfig):
 class SklearnConfig:
     PIPELINE_COMPONENTS = ["feature_selector", "scaling", "imputation", "dim_reduce", "model"]
 
+    defaults: list[Any] = dataclasses.field(default_factory=lambda:  [
+        "_self_",
+        {"feature_selector": "esd_flat_feature_loader"},
+        {"scaling": "standard_scaler"},
+        {"imputation": "simple_imputer"},
+        {"dim_reduce": "pca"},
+        {"model": "random_forest_classifier"},
+    ])
+
+
     seed: int = 1
 
+    experiment_dir: str | Path = omegaconf.MISSING
     dataset_dir: str | Path = omegaconf.MISSING
-    save_dir: str | Path = omegaconf.MISSING
+    save_dir: str | Path = (
+        "${experiment_dir}/sklearn_baselines/${task_df_name}/${finetuning_task_label}/"
+        "${now:%Y-%m-%d_%H-%M-%S}"
+    )
 
-    train_subset_size: int | float | None = None
+    train_subset_size: int | float | str | None = None
 
     do_overwrite: bool = False
 
@@ -274,14 +265,14 @@ class SklearnConfig:
         if isinstance(self.save_dir, str):
             self.save_dir = Path(self.save_dir)
         if isinstance(self.dataset_dir, str):
-            self.dataset_dir = Path(self.save_dir)
+            self.dataset_dir = Path(self.dataset_dir)
 
         match self.train_subset_size:
             case int() as n_subjects if n_subjects > 0:
                 pass
             case float() as frac_subjects if 0 < frac_subjects and frac_subjects < 1:
                 pass
-            case None:
+            case "FULL" | None:
                 pass
             case _:
                 raise ValueError(
@@ -347,7 +338,7 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
 
     subjects_included = {}
 
-    if cfg.train_subset_size is not None:
+    if cfg.train_subset_size not in (None, "FULL"):
         subject_ids = list(ESD.split_subjects['train'])
         prng = np.random.default_rng(cfg.seed)
         match cfg.train_subset_size:
@@ -359,8 +350,8 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
                 )
             case _:
                 raise ValueError(
-                    f"train_subset_size must be either `None`, an int > 1, or a float between 0 and 1; "
-                    f"got {train_subset_size}"
+                    f"train_subset_size must be either 'FULL', `None`, an int > 1, or a float in (0, 1); "
+                    f"got {cfg.train_subset_size}"
                 )
         subjects_included["train"] = [int(e) for e in subject_ids]
         subjects_included["tuning"] = [int(e) for e in ESD.split_subjects['tuning']]
