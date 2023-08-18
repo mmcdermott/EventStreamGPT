@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import lightning as L
-from omegaconf import OmegaConf
 import omegaconf
 import torch
 import torch.multiprocessing
@@ -15,6 +14,7 @@ import torchmetrics
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
+from omegaconf import OmegaConf
 from torchmetrics.classification import (
     BinaryAccuracy,
     BinaryAUROC,
@@ -308,7 +308,7 @@ class FinetuneConfig:
             "task_specific_params": {
                 "pooling_method": "last",
                 "num_samples": None,
-            }
+            },
         }
     )
     optimization_config: OptimizationConfig = OptimizationConfig()
@@ -394,7 +394,8 @@ class FinetuneConfig:
         reloaded_data_config.task_df_name = self.task_df_name
 
         for param, val in self.data_config.items():
-            if val is None: continue
+            if val is None:
+                continue
             if param == "task_df_name":
                 if val != self.task_df_name:
                     print(
@@ -412,7 +413,8 @@ class FinetuneConfig:
         reloaded_config = StructuredTransformerConfig.from_json_file(config_fp)
 
         for param, val in self.config.items():
-            if val is None: continue
+            if val is None:
+                continue
             print(f"Overwriting {param} in config from {getattr(reloaded_config, param)} to {val}")
             setattr(reloaded_config, param, val)
 

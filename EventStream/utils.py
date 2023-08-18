@@ -8,12 +8,12 @@ import enum
 import functools
 import json
 import re
+import sys
+import traceback
 from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, TypeVar, Union
-import sys
-import traceback
 
 import hydra
 import polars as pl
