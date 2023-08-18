@@ -8,6 +8,8 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import hydra
+from hydra.core.config_store import ConfigStore
 
 import omegaconf
 import pickle
@@ -313,6 +315,18 @@ class SklearnConfig:
             [("feature_selector", self.__get_component_model("feature_selector", ESD=dataset))] + 
             [(n, self.__get_component_model(n)) for n in self.PIPELINE_COMPONENTS[1:]]
         )
+
+cs = ConfigStore.instance()
+cs.store(name="sklearn_config", node=SklearnConfig)
+cs.store(group="scaling", name="min_max_scaler", node=MinMaxScalerConfig)
+cs.store(group="scaling", name="standard_scaler", node=StandardScalerConfig)
+cs.store(group="imputation", name="simple_imputer", node=SimpleImputerConfig)
+cs.store(group="imputation", name="knn_imputer", node=KNNImputerConfig)
+cs.store(group="dim_reduce", name="nmf", node=NMFConfig)
+cs.store(group="dim_reduce", name="pca", node=PCAConfig)
+cs.store(group="dim_reduce", name="select_k_best", node=SelectKBestConfig)
+cs.store(group="feature_selector", name="esd_flat_feature_loader", node=ESDFlatFeatureLoaderConfig)
+cs.store(group="model", name="random_forest_classifier", node=RandomForestClassifierConfig)
 
 
 def train_sklearn_pipeline(cfg: SklearnConfig):

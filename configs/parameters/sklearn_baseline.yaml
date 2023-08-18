@@ -1,0 +1,15 @@
+defaults:
+  - feature_selector:
+  - scaling:
+  - imputation:
+  - dim_reduce: 
+  - model: random_forest_classifier
+
+dataset_dir:
+  value: ???
+task_df_name:
+  value: ???
+finetuning_task_label:
+  value: ???
+train_subset_size:
+  value: ???
