@@ -29,7 +29,7 @@ min_impurity_decrease:
   min: 1e-5
   max: 1e-3
 bootstrap:
-  values: [True, False]
+  value: True
 oob_score:
   values: [True, False]
 class_weight:

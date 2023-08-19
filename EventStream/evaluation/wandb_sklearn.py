@@ -78,7 +78,7 @@ class BaseSklearnModuleConfig(ABC):
         cls = self.SKLEARN_COMPONENTS[self.CLS]
 
         kwargs = {**self.module_kwargs, **additional_kwargs}
-        kwargs = {k: None if v == 'null' else v for k, v in kwargs.items()}
+        kwargs = {k: None if v in ('null', 'None') else v for k, v in kwargs.items()}
         signature = inspect.signature(cls)
         for k in list(kwargs.keys()):
             if k not in signature.parameters:

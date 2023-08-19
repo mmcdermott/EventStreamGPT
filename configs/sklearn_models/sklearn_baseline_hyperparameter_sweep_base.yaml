@@ -9,4 +9,4 @@ method: bayes
 name: EST_sklearn_baseline_sweep
 metric:
   goal: minimize
-  name: tuning_loss
+  name: tuning.AUROC
