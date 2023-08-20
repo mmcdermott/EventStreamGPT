@@ -89,12 +89,12 @@ class TimeOfDayFunctorMock(TimeDependentFunctor):
     def pl_expr(self):
         return (
             pl.when(pl.col("timestamp").dt.hour() < 6)
-            .then("EARLY_AM")
+            .then(pl.lit("EARLY_AM"))
             .when(pl.col("timestamp").dt.hour() < 12)
-            .then("AM")
+            .then(pl.lit("AM"))
             .when(pl.col("timestamp").dt.hour() < 21)
-            .then("PM")
-            .otherwise("LATE_PM")
+            .then(pl.lit("PM"))
+            .otherwise(pl.lit("LATE_PM"))
         )
 
 
