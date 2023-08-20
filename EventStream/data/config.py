@@ -1256,9 +1256,10 @@ class MeasurementConfig(JSONableMixin):
             case str() as full_path, _:
                 full_path = Path(full_path)
                 if full_path.parts[-2] == "inferred_measurement_metadata":
-                    prior_base_dir = '/'.join(full_path.parts[:-2])
-                    relative_path = '/'.join(full_path.parts[-2:])
-                else: raise ValueError(f"Can't process old path format of {full_path}")
+                    prior_base_dir = "/".join(full_path.parts[:-2])
+                    relative_path = "/".join(full_path.parts[-2:])
+                else:
+                    raise ValueError(f"Can't process old path format of {full_path}")
 
                 if base_dir is not None:
                     as_dict["_measurement_metadata"] = [base_dir, relative_path]

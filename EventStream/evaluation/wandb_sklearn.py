@@ -1,44 +1,43 @@
 """Utilities for collecting baseline performance of fine-tuning tasks defined over ESGPT datasets."""
 
-import wandb
-import copy
-import itertools
 import json
-from collections.abc import Callable
+import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-import hydra
-from hydra.core.config_store import ConfigStore
 
-import omegaconf
-import pickle
-from omegaconf import OmegaConf
 import numpy as np
+import omegaconf
 import polars as pl
-import polars.selectors as cs
-from scipy.stats import bernoulli, loguniform, randint, rv_discrete
+import wandb
+from hydra.core.config_store import ConfigStore
+from omegaconf import OmegaConf
 from sklearn.decomposition import NMF, PCA
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectKBest, mutual_info_classif
 from sklearn.impute import KNNImputer, SimpleImputer
-from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    log_loss,
+    roc_auc_score,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, log_loss
 
 from ..data.dataset_polars import Dataset
 from ..utils import task_wrapper
-from .FT_task_baseline import load_flat_rep, add_tasks_from, ESDFlatFeatureLoader
+from .FT_task_baseline import ESDFlatFeatureLoader, add_tasks_from, load_flat_rep
 
 pl.enable_string_cache(True)
 
-from abc import ABC, abstractmethod
 import dataclasses
 import inspect
 import warnings
+from abc import ABC
 
 SKLEARN_CONFIG_MODULES = {}
+
 
 def registered_sklearn_config(dataclass: Any) -> Any:
     """Decorator that allows you to use a dataclass as a hydra config via the `ConfigStore`
@@ -54,7 +53,7 @@ def registered_sklearn_config(dataclass: Any) -> Any:
     dataclass = dataclasses.dataclass(dataclass)
 
     name = dataclass.__name__
-    cls_name = name[:-len("Config")]
+    cls_name = name[: -len("Config")]
 
     if cls_name != dataclass().CLS:
         raise ValueError(f"CLS must be {cls_name} for config class named {name}")
@@ -63,11 +62,21 @@ def registered_sklearn_config(dataclass: Any) -> Any:
 
     return dataclass
 
+
 class BaseSklearnModuleConfig(ABC):
     SKLEARN_COMPONENTS = {
-        cls.__name__: cls for cls in [
-            PCA, NMF, SelectKBest, mutual_info_classif, KNNImputer, SimpleImputer, MinMaxScaler,
-            StandardScaler, ESDFlatFeatureLoader, RandomForestClassifier
+        cls.__name__: cls
+        for cls in [
+            PCA,
+            NMF,
+            SelectKBest,
+            mutual_info_classif,
+            KNNImputer,
+            SimpleImputer,
+            MinMaxScaler,
+            StandardScaler,
+            ESDFlatFeatureLoader,
+            RandomForestClassifier,
         ]
     }
     SKIP_PARAMS = ["CLS", "SKLEARN_COMPONENTS", "SKIP_PARAMS"]
@@ -78,16 +87,16 @@ class BaseSklearnModuleConfig(ABC):
         cls = self.SKLEARN_COMPONENTS[self.CLS]
 
         kwargs = {**self.module_kwargs, **additional_kwargs}
-        kwargs = {k: None if v in ('null', 'None') else v for k, v in kwargs.items()}
+        kwargs = {k: None if v in ("null", "None") else v for k, v in kwargs.items()}
         signature = inspect.signature(cls)
         for k in list(kwargs.keys()):
             if k not in signature.parameters:
                 warnings.warn(f"Parameter {k} not in signature of {cls.__name__}. Dropping")
                 del kwargs[k]
-        if 'random_state' in signature.parameters:
-            kwargs['random_state'] = seed
-        elif 'seed' in signature.parameters:
-            kwargs['seed'] = seed
+        if "random_state" in signature.parameters:
+            kwargs["random_state"] = seed
+        elif "seed" in signature.parameters:
+            kwargs["seed"] = seed
 
         return self.SKLEARN_COMPONENTS[self.CLS](**kwargs)
 
@@ -95,16 +104,13 @@ class BaseSklearnModuleConfig(ABC):
     def module_kwargs(self) -> dict[str, Any]:
         return {k: v for k, v in dataclasses.asdict(self).items() if k not in self.SKIP_PARAMS}
 
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return dict()
 
 @registered_sklearn_config
 class RandomForestClassifierConfig(BaseSklearnModuleConfig):
-    CLS: str = 'RandomForestClassifier'
+    CLS: str = "RandomForestClassifier"
 
     n_estimators: int = 100
-    criterion: str = 'gini'
+    criterion: str = "gini"
     max_depth: int | None = None
     min_samples_split: int = 2
     min_samples_leaf: int = 1
@@ -118,89 +124,50 @@ class RandomForestClassifierConfig(BaseSklearnModuleConfig):
     ccp_alpha: float = 0.0
     max_samples: int | float | None = None
 
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return {
-            "n_estimators": randint(10, 1000),
-            "criterion": ["gini", "entropy"],
-            "max_depth": [None, randint(2, 32)],
-            "min_samples_split": randint(2, 32),
-            "min_samples_leaf": randint(1, 32),
-            "min_weight_fraction_leaf": loguniform(1e-5, 0.5),
-            "max_features": [None, "sqrt", "log2"],
-            "max_leaf_nodes": [None, randint(2, 32)],
-            "min_impurity_decrease": loguniform(1e-5, 1e-3),
-            "bootstrap": [True, False],
-            "oob_score": [True, False],
-            "class_weight": [None, "balanced", "balanced_subsample"],
-            "ccp_alpha": loguniform(1e-5, 1e-3),
-            "max_samples": [None, randint(2, 32), uniform(0, 1)],
-        }
 
 @registered_sklearn_config
 class MinMaxScalerConfig(BaseSklearnModuleConfig):
-    CLS: str = 'MinMaxScaler'
+    CLS: str = "MinMaxScaler"
+
 
 @registered_sklearn_config
 class StandardScalerConfig(BaseSklearnModuleConfig):
     CLS: str = "StandardScaler"
 
+
 @registered_sklearn_config
 class SimpleImputerConfig(BaseSklearnModuleConfig):
     CLS: str = "SimpleImputer"
-
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return dict(
-            strategy=["constant", "mean", "median", "most_frequent"],
-            fill_value=[0],
-            add_indicator=[True, False],
-        )
-
 
     strategy: str = "constant"
     fill_value: float = 0
     add_indicator: bool = True
 
+
 @registered_sklearn_config
 class NMFConfig(BaseSklearnModuleConfig):
     CLS: str = "NMF"
 
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return dict(n_components=randint(2, 32))
-
     n_components: int = 2
+
 
 @registered_sklearn_config
 class PCAConfig(BaseSklearnModuleConfig):
     CLS: str = "PCA"
 
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return dict(n_components=randint(2, 32))
-
     n_components: int = 2
+
 
 @registered_sklearn_config
 class SelectKBestConfig(BaseSklearnModuleConfig):
     CLS: str = "SelectKBest"
 
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return dict(k=randint(2, 256))
-
     k: int = 2
+
 
 @registered_sklearn_config
 class KNNImputerConfig(BaseSklearnModuleConfig):
     CLS: str = "KNNImputer"
-
-    @classmethod
-    def default_param_dist(cls) -> dict[str, Any]:
-        return dict(
-            n_neighbors=randint(2, 10), weights=["uniform", "distance"], add_indicator=[True, False]
-        )
 
     n_neighbors: int = 5
     weights: str = "uniform"
@@ -216,19 +183,21 @@ class ESDFlatFeatureLoaderConfig(BaseSklearnModuleConfig):
     include_only_measurements: list[str] | None = None
     convert_to_mean_var: bool = True
 
+
 @dataclasses.dataclass
 class SklearnConfig:
     PIPELINE_COMPONENTS = ["feature_selector", "scaling", "imputation", "dim_reduce", "model"]
 
-    defaults: list[Any] = dataclasses.field(default_factory=lambda:  [
-        "_self_",
-        {"feature_selector": "esd_flat_feature_loader"},
-        {"scaling": "standard_scaler"},
-        {"imputation": "simple_imputer"},
-        {"dim_reduce": "pca"},
-        {"model": "random_forest_classifier"},
-    ])
-
+    defaults: list[Any] = dataclasses.field(
+        default_factory=lambda: [
+            "_self_",
+            {"feature_selector": "esd_flat_feature_loader"},
+            {"scaling": "standard_scaler"},
+            {"imputation": "simple_imputer"},
+            {"dim_reduce": "pca"},
+            {"model": "random_forest_classifier"},
+        ]
+    )
 
     seed: int = 1
 
@@ -291,7 +260,7 @@ class SklearnConfig:
             case BaseSklearnModuleConfig():
                 pass
             case dict() | omegaconf.DictConfig():
-                component_val = SKLEARN_CONFIG_MODULES[component_val['CLS']](**component_val)
+                component_val = SKLEARN_CONFIG_MODULES[component_val["CLS"]](**component_val)
                 setattr(self, component, component_val)
             case _:
                 raise ValueError(
@@ -303,9 +272,10 @@ class SklearnConfig:
 
     def get_model(self, dataset: Dataset) -> Any:
         return Pipeline(
-            [("feature_selector", self.__get_component_model("feature_selector", ESD=dataset))] + 
-            [(n, self.__get_component_model(n)) for n in self.PIPELINE_COMPONENTS[1:]]
+            [("feature_selector", self.__get_component_model("feature_selector", ESD=dataset))]
+            + [(n, self.__get_component_model(n)) for n in self.PIPELINE_COMPONENTS[1:]]
         )
+
 
 cs = ConfigStore.instance()
 cs.store(name="sklearn_config", node=SklearnConfig)
@@ -325,7 +295,6 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     cfg.save_dir.mkdir(exist_ok=True, parents=True)
     OmegaConf.save(cfg, cfg.save_dir / "config.yaml")
 
-
     ESD = Dataset.load(cfg.dataset_dir)
 
     task_dfs = add_tasks_from(ESD.config.save_dir / "task_dfs")
@@ -339,31 +308,30 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     subjects_included = {}
 
     if cfg.train_subset_size not in (None, "FULL"):
-        subject_ids = list(ESD.split_subjects['train'])
+        subject_ids = list(ESD.split_subjects["train"])
         prng = np.random.default_rng(cfg.seed)
         match cfg.train_subset_size:
             case int() as n_subjects if n_subjects > 1:
                 subject_ids = prng.choice(subject_ids, size=n_subjects, replace=False)
             case float() as frac if 0 < frac < 1:
-                subject_ids = prng.choice(
-                    subject_ids, size=int(frac*len(subject_ids)), replace=False
-                )
+                subject_ids = prng.choice(subject_ids, size=int(frac * len(subject_ids)), replace=False)
             case _:
                 raise ValueError(
                     f"train_subset_size must be either 'FULL', `None`, an int > 1, or a float in (0, 1); "
                     f"got {cfg.train_subset_size}"
                 )
         subjects_included["train"] = [int(e) for e in subject_ids]
-        subjects_included["tuning"] = [int(e) for e in ESD.split_subjects['tuning']]
-        subjects_included["held_out"] = [int(e) for e in ESD.split_subjects['held_out']]
+        subjects_included["tuning"] = [int(e) for e in ESD.split_subjects["tuning"]]
+        subjects_included["held_out"] = [int(e) for e in ESD.split_subjects["held_out"]]
 
         all_subject_ids = list(
-            set(subjects_included["train"]) | set(subjects_included["tuning"]) |
-            set(subjects_included["held_out"])
+            set(subjects_included["train"])
+            | set(subjects_included["tuning"])
+            | set(subjects_included["held_out"])
         )
         task_df = task_df.filter(pl.col("subject_id").is_in(all_subject_ids))
 
-    with open(cfg.save_dir / "subjects.json", mode='w') as f:
+    with open(cfg.save_dir / "subjects.json", mode="w") as f:
         json.dump(subjects_included, f)
 
     flat_reps = load_flat_rep(ESD, window_sizes=cfg.feature_selector.window_sizes, join_df=task_df)
@@ -371,15 +339,11 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     for split in ("train", "tuning", "held_out"):
         st = datetime.now()
         print(f"Loading dataset for {split}")
-        out_schema = None
         df = flat_reps[split].collect()
 
         X = df.drop(["subject_id", "timestamp", cfg.finetuning_task_label])
         Y = df[cfg.finetuning_task_label].to_numpy()
-        print(
-            f"Done with {split} dataset with X of shape {X.shape} "
-            f"(elapsed: {datetime.now() - st})"
-        )
+        print(f"Done with {split} dataset with X of shape {X.shape} " f"(elapsed: {datetime.now() - st})")
         Xs_and_Ys[split] = (X, Y)
 
     print("Initializing model!")
@@ -388,7 +352,7 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     print("Fitting model!")
     model.fit(*Xs_and_Ys["train"])
     print(f"Saving model to {cfg.save_dir}")
-    with open(cfg.save_dir / "model.pkl", mode='wb') as f:
+    with open(cfg.save_dir / "model.pkl", mode="wb") as f:
         pickle.dump(model, f)
 
     print("Evaluating model!")
@@ -414,6 +378,7 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
         json.dump(all_metrics, f)
 
     return model, Xs_and_Ys, all_metrics
+
 
 @task_wrapper
 def wandb_train_sklearn(cfg: SklearnConfig):

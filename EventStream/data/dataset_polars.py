@@ -1571,7 +1571,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             if meas not in valid_measures:
                 valid_measures[meas] = set()
 
-            valid_measures[meas].add('/'.join(parts[2:-1]))
+            valid_measures[meas].add("/".join(parts[2:-1]))
 
         out_dfs = {}
         for m, allowed_vocab in valid_measures.items():

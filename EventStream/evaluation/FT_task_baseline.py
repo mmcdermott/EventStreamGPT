@@ -186,6 +186,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
         .collect()
     )
 
+
 def load_flat_rep(
     ESD: Dataset,
     window_sizes: list[str],
@@ -267,7 +268,7 @@ def load_flat_rep(
             for fp in window_dir.glob("*.parquet"):
                 df = pl.scan_parquet(fp)
                 if join_df is not None:
-                    df = df.join(join_df, on=join_keys, how='inner')
+                    df = df.join(join_df, on=join_keys, how="inner")
                 window_dfs.append(df)
 
             dfs.append(pl.concat(window_dfs, how="vertical"))
@@ -569,26 +570,23 @@ def fit_baseline_task_model(
     subjects_included = {}
 
     if train_subset_size is not None:
-        splits = ['train', 'tuning']
+        splits = ["train", "tuning"]
         subject_ids = list(itertools.chain.from_iterable(ESD.split_subjects[sp] for sp in splits))
         prng = np.random.default_rng(seed)
         match train_subset_size:
             case int() as n_subjects if n_subjects > 1:
                 subject_ids = prng.choice(subject_ids, size=n_subjects, replace=False)
             case float() as frac if 0 < frac < 1:
-                subject_ids = prng.choice(
-                    subject_ids, size=int(frac*len(subject_ids)), replace=False
-                )
+                subject_ids = prng.choice(subject_ids, size=int(frac * len(subject_ids)), replace=False)
             case _:
                 raise ValueError(
                     f"train_subset_size must be either `None`, an int > 1, or a float between 0 and 1; "
                     f"got {train_subset_size}"
                 )
         subjects_included["&".join(splits)] = subject_ids
-        subjects_included["held_out"] = ESD.split_subjects['held_out']
-        subject_ids = list(set(subject_ids).union(ESD.split_subjects['held_out']))
+        subjects_included["held_out"] = ESD.split_subjects["held_out"]
+        subject_ids = list(set(subject_ids).union(ESD.split_subjects["held_out"]))
         task_df_adj = task_df_adj.filter(pl.col("subject_id").is_in(subject_ids))
-
 
     flat_reps = load_flat_rep(ESD, window_sizes=window_size_options, join_df=task_df_adj)
     Xs_and_Ys = {}
@@ -610,10 +608,10 @@ def fit_baseline_task_model(
                     )
                 for k in out_schema.keys():
                     if out_schema[k] != sp_schema[k]:
-                        #print(
+                        # print(
                         #    f"Schemas differ @ {k}! Running schema has type {out_schema[k]}, "
                         #    f"but {sp} schema has type {sp_schema[k]}. Casting to running type."
-                        #)
+                        # )
                         sp_df = sp_df.with_columns(pl.col(k).cast(out_schema[k]))
             typed_dfs.append(sp_df)
 
