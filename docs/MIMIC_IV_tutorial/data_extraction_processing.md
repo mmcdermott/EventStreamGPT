@@ -97,6 +97,26 @@ patients:
 This allows us to overwrite those parameters in a given run on the command line, with, for example,
 `... min_los=1 min_admissions=2`.
 
+Note that these parameters drive the actual exclusion/inclusion criteria of subjects in our dataset. In
+particular, these queries drop all subjects who don't have sufficient admissions or admissions with
+sufficiently long ICU stays from the dataset, thereby filtering the full MIMIC-IV dataset down from the 300k
+patients present in the full data to only the 12k patients who remain in our final cohort. Relatedly, the
+query for laboratory test values, shown below, conjoins laboratory test names and their units of measure,
+which can result in some laboratory test values being remapped to `UNK`s if they do not occur sufficiently
+frequently with select units.
+
+```yaml
+labs:
+  query:
+    - |-
+      SELECT subject_id, charttime, (itemid || ' (' || valueuom || ')') AS lab_itemid, valuenum FROM
+      mimiciv_hosp.labevents
+    - |-
+      SELECT subject_id, charttime, (itemid || ' (' || valueuom || ')') AS lab_itemid, valuenum FROM
+      mimiciv_icu.chartevents
+  ts_col: charttime
+```
+
 ##### Per-input Blocks:
 
 The input-database specific input blocks define the raw datasets that we should read to build the output
