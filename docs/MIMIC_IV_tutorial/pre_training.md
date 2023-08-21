@@ -22,17 +22,14 @@ Users can clone this into their own weights and biases projects to further accel
 analysis. Samples of its outputs can be found below.
 
 ```{eval-rst}
-.. subfigure:: A|B
+.. subfigure:: A
    :gap: 8px
    :subcaptions: below
    :name: sample_wandb_outputs
    :class-grid: outline
 
-   .. image:: wandb_reports/hyperparameter_sweep_losses.png
-      :alt: Parameter importance and loss curves plots.
-
-   .. image:: wandb_reports/hyperparameter_sweep_comparisons.png
-      :alt: More detailed breakdown of the impact of various parameters.
+   .. image:: wandb_reports/pre_training_sweep.png
+      :alt: Weights and biases reports for pre-training.
 
    Sample hyperparameter tuning weights and biases report graphs over the MIMIC-IV cohort.
 ```

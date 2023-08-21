@@ -1,7 +1,7 @@
 default_language_version:
   python: python3
 
-exclude: "sample_data"
+exclude: "docs/MIMIC_IV_tutorial/wandb_reports/*"
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -19,7 +19,6 @@ repos:
       - id: check-case-conflict
       - id: check-added-large-files
         args: [--maxkb, "800"]
-        exclude: "sample_data"
 
   # python code formatting
   - repo: https://github.com/psf/black
