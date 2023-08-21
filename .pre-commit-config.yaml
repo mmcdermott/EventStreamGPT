@@ -1,7 +1,7 @@
 default_language_version:
   python: python3
 
-exclude: "docs/MIMIC_IV_tutorial/wandb_reports/.*"
+exclude: "sample_data|docs/MIMIC_IV_tutorial/wandb_reports"
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
