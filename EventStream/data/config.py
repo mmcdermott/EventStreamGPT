@@ -1280,8 +1280,13 @@ class MeasurementConfig(JSONableMixin):
                 )
             out = out.iloc[:, 0]
             for col in ("outlier_model", "normalizer"):
-                if col in out:
-                    out[col] = eval(out[col])
+                if col in out and type(out[col]) is str:
+                    try:
+                        out[col] = eval(out[col])
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(
+                            f"Failed to eval {col} for measure {self.name} with value {out[col]}"
+                        ) from e
         elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
             raise ValueError(
                 "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
@@ -1291,7 +1296,12 @@ class MeasurementConfig(JSONableMixin):
         else:
             for col in ("outlier_model", "normalizer"):
                 if col in out:
-                    out[col] = out[col].apply(eval)
+                    try:
+                        out[col] = out[col].apply(lambda x: eval(x) if type(x) is str else x)
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(
+                            f"Failed to eval {col} for measure {self.name} with values {list(out[col])[:5]}"
+                        ) from e
         return out
 
     @measurement_metadata.setter
