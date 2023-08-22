@@ -16,6 +16,7 @@ from typing import Any, Union
 import numpy as np
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 from mixins import TimeableMixin
 
 from ..utils import lt_count_or_proportion
@@ -407,7 +408,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if not do_overwrite and fp.is_file():
             raise FileExistsError(f"{fp} exists and do_overwrite is {do_overwrite}!")
 
-        df.write_parquet(fp, use_pyarrow=cls.WRITE_USE_PYARROW)
+        fp.parent.mkdir(exist_ok=True, parents=True)
+
+        if isinstance(df, pl.LazyFrame):
+            df.collect().write_parquet(fp, use_pyarrow=cls.WRITE_USE_PYARROW)
+        else:
+            df.write_parquet(fp, use_pyarrow=cls.WRITE_USE_PYARROW)
 
     def get_metadata_schema(self, config: MeasurementConfig) -> dict[str, pl.DataType]:
         schema = {
@@ -721,7 +727,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case _:
                     filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
 
-        return df.filter(pl.all(filter_exprs))
+        return df.filter(pl.all_horizontal(filter_exprs))
 
     @TimeableMixin.TimeAs
     def _add_time_dependent_measurements(self):
@@ -1231,7 +1237,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             pl.when(vocab_el_col.is_null())
             .then(None)
             .when(~vocab_el_col.is_in(config.vocabulary.vocabulary))
-            .then("UNK")
+            .then(pl.lit("UNK"))
             .otherwise(vocab_el_col)
             .cast(pl.Categorical)
             .alias(measure)
@@ -1392,6 +1398,339 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             out = out.sort("subject_id")
 
         return out
+
+    def _summarize_static_measurements(
+        self,
+        feature_columns: list[str],
+        include_only_subjects: set[int] | None = None,
+    ) -> pl.LazyFrame:
+        if include_only_subjects is None:
+            df = self.subjects_df
+        else:
+            df = self.subjects_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
+
+        valid_measures = {}
+        for feat_col in feature_columns:
+            parts = feat_col.split("/")
+
+            if parts[0] != "static":
+                continue
+
+            if len(parts) not in (2, 3):
+                raise ValueError(f"{feat_col} is an invalid feature column for static features!")
+
+            meas = parts[1]
+            if len(parts) == 2:
+                valid_measures[meas] = None
+            else:
+                if meas not in valid_measures:
+                    valid_measures[meas] = set()
+                valid_measures[meas].add(parts[2])
+
+        out_dfs = {}
+        for m, allowed_vocab in valid_measures.items():
+            cfg = self.measurement_configs[m]
+
+            if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                if allowed_vocab is not None:
+                    raise ValueError(
+                        f"Encountered a measure {m} with no vocab but a pre-set feature vocab of "
+                        f"{allowed_vocab}"
+                    )
+                out_dfs[m] = (
+                    df.lazy()
+                    .filter(pl.col(m).is_not_null())
+                    .select("subject_id", pl.col(m).alias(f"static/{m}"))
+                )
+                continue
+            elif cfg.modality == "multivariate_regression":
+                raise ValueError(f"{cfg.modality} is not supported for {cfg.temporality} measures.")
+
+            ID_cols = ["subject_id"]
+            pivoted_df = (
+                df.select(*ID_cols, m)
+                .filter(pl.col(m).is_in(list(allowed_vocab)))
+                .with_columns(pl.lit(True).alias("__indicator"))
+                .pivot(
+                    index=ID_cols,
+                    columns=m,
+                    values="__indicator",
+                    aggregate_function=None,
+                )
+            )
+
+            remap_cols = [c for c in pivoted_df.columns if c not in ID_cols]
+            out_dfs[m] = pivoted_df.lazy().select(
+                *ID_cols, *[pl.col(c).alias(f"static/{m}/{c}") for c in remap_cols]
+            )
+
+        return pl.concat(list(out_dfs.values()), how="align")
+
+    def _summarize_time_dependent_measurements(
+        self,
+        feature_columns: list[str],
+        include_only_subjects: set[int] | None = None,
+    ) -> pl.LazyFrame:
+        if include_only_subjects is None:
+            df = self.events_df
+        else:
+            df = self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
+
+        valid_measures = {}
+        for feat_col in feature_columns:
+            parts = feat_col.split("/")
+
+            if parts[0] == "static":
+                continue
+
+            meas = parts[1]
+            if self.measurement_configs[meas].temporality != "functional_time_dependent":
+                continue
+
+            if len(parts) != 4:
+                raise ValueError(f"{feat_col} is an invalid feature column for time_dependent features!")
+
+            if meas not in valid_measures:
+                valid_measures[meas] = set()
+            valid_measures[meas].add(parts[2])
+
+        out_dfs = {}
+        for m, allowed_vocab in valid_measures.items():
+            cfg = self.measurement_configs[m]
+            if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                out_dfs[m] = (
+                    df.lazy()
+                    .filter(pl.col(m).is_not_null())
+                    .select(
+                        "event_id",
+                        "subject_id",
+                        "timestamp",
+                        pl.lit(1, dtype=pl.UInt32).alias(f"dynamic/{m}/{m}/count"),
+                        pl.col(m).is_not_nan().cast(pl.UInt32).alias(f"dynamic/{m}/{m}/has_values_count"),
+                        pl.col(m).fill_nan(None).alias(f"dynamic/{m}/{m}/sum"),
+                        (pl.col(m) ** 2).fill_nan(None).alias(f"dynamic/{m}/{m}/sum_sqd"),
+                        pl.col(m).fill_nan(None).alias(f"dynamic/{m}/{m}/min"),
+                        pl.col(m).fill_nan(None).alias(f"dynamic/{m}/{m}/max"),
+                    )
+                )
+                continue
+            elif cfg.modality == "multivariate_regression":
+                raise ValueError(f"{cfg.modality} is not supported for {cfg.temporality} measures.")
+
+            ID_cols = ["event_id", "subject_id", "timestamp"]
+            pivoted_df = (
+                df.select(*ID_cols, m)
+                .filter(pl.col(m).is_in(allowed_vocab))
+                .with_columns(pl.lit(1).alias("__indicator"))
+                .pivot(
+                    index=ID_cols,
+                    columns=m,
+                    values="__indicator",
+                    aggregate_function=None,
+                )
+            )
+
+            remap_cols = [c for c in pivoted_df.columns if c not in ID_cols]
+            out_dfs[m] = pivoted_df.lazy().select(
+                *ID_cols,
+                *[pl.col(c).cast(pl.UInt32).alias(f"dynamic/{m}/{c}/count") for c in remap_cols],
+            )
+
+        return pl.concat(list(out_dfs.values()), how="align")
+
+    def _summarize_dynamic_measurements(
+        self,
+        feature_columns: list[str],
+        include_only_subjects: set[int] | None = None,
+    ) -> pl.LazyFrame:
+        if include_only_subjects is None:
+            df = self.dynamic_measurements_df
+        else:
+            df = self.dynamic_measurements_df.join(
+                self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects))).select(
+                    "event_id"
+                ),
+                on="event_id",
+                how="inner",
+            )
+
+        valid_measures = {}
+        for feat_col in feature_columns:
+            parts = feat_col.split("/")
+
+            if parts[0] == "static":
+                continue
+
+            meas = parts[1]
+            if self.measurement_configs[meas].temporality != "dynamic":
+                continue
+
+            if len(parts) < 4:
+                raise ValueError(f"{feat_col} is an invalid feature column for dynamic features!")
+
+            if meas not in valid_measures:
+                valid_measures[meas] = set()
+
+            valid_measures[meas].add("/".join(parts[2:-1]))
+
+        out_dfs = {}
+        for m, allowed_vocab in valid_measures.items():
+            cfg = self.measurement_configs[m]
+            if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                out_dfs[m] = (
+                    df.lazy()
+                    .select("measurement_id", "event_id", m)
+                    .filter(pl.col(m).is_not_null())
+                    .groupby("event_id")
+                    .agg(
+                        pl.col(m).count().alias(f"dynamic/{m}/{m}/count"),
+                        pl.col(m).is_not_nan().sum().alias(f"dynamic/{m}/{m}/has_values_count"),
+                        pl.col(m).drop_nans().sum().alias(f"dynamic/{m}/{m}/sum"),
+                        (pl.col(m).drop_nans() ** 2).sum().alias(f"dynamic/{m}/{m}/sum_sqd"),
+                        pl.col(m).drop_nans().min().alias(f"dynamic/{m}/{m}/min"),
+                        pl.col(m).drop_nans().max().alias(f"dynamic/{m}/{m}/max"),
+                    )
+                    .select(pl.all().shrink_dtype())
+                )
+                continue
+            elif cfg.modality == "multivariate_regression":
+                column_cols = [m, m]
+                values_cols = [m, cfg.values_column]
+                key_prefix = f"{m}_{m}_"
+                val_prefix = f"{cfg.values_column}_{m}_"
+                aggs = [
+                    cs.starts_with(key_prefix)
+                    .is_not_null()
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(key_prefix, '')}/count"),
+                    cs.starts_with(val_prefix)
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum"),
+                    (cs.starts_with(val_prefix) ** 2)
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum_sqd"),
+                    cs.starts_with(val_prefix)
+                    .min()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/min"),
+                    cs.starts_with(val_prefix)
+                    .max()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/max"),
+                    (
+                        (cs.starts_with(val_prefix).is_not_null() & cs.starts_with(val_prefix).is_not_nan())
+                        .sum()
+                        .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/has_values_count")
+                    ),
+                ]
+            else:
+                column_cols = [m]
+                values_cols = [m]
+                aggs = [pl.all().is_not_null().sum().map_alias(lambda c: f"dynamic/{m}/{c}/count")]
+
+            ID_cols = ["measurement_id", "event_id"]
+            out_dfs[m] = (
+                df.select(*ID_cols, *set(column_cols + values_cols))
+                .filter(pl.col(m).is_in(allowed_vocab))
+                .pivot(
+                    index=ID_cols,
+                    columns=column_cols,
+                    values=values_cols,
+                    aggregate_function=None,
+                )
+                .lazy()
+                .drop("measurement_id")
+                .groupby("event_id")
+                .agg(*aggs)
+                .select(pl.all().shrink_dtype())
+            )
+
+        return pl.concat(list(out_dfs.values()), how="align")
+
+    def _get_flat_rep(
+        self,
+        feature_columns: list[str],
+        **kwargs,
+    ) -> pl.LazyFrame:
+        out_df = (
+            (
+                self._summarize_static_measurements(feature_columns, **kwargs)
+                .join(
+                    self._summarize_time_dependent_measurements(feature_columns, **kwargs),
+                    on="subject_id",
+                    how="inner",
+                )
+                .join(
+                    self._summarize_dynamic_measurements(feature_columns, **kwargs),
+                    on="event_id",
+                    how="inner",
+                )
+                .drop("event_id")
+                .sort(by=["subject_id", "timestamp"])
+            )
+            .collect()
+            .lazy()
+        )
+        # The above .collect().lazy() shouldn't be necessary but it appears to be for some reason...
+
+        cols_to_add = set(feature_columns) - set(out_df.columns)
+
+        def get_dtype(col: str) -> pl.DataType:
+            if col.startswith("static/"):
+                if "/" in col[len("static/") :]:
+                    return pl.Boolean
+                else:
+                    return pl.Float32
+            elif col.startswith("dynamic/"):
+                if col.endswith("/count") or col.endswith("/has_values_count"):
+                    return pl.Int64
+                else:
+                    return pl.Float32
+            else:
+                raise ValueError(f"Column name {col} malformed!")
+
+        cols_to_add = [(c, get_dtype(c)) for c in cols_to_add]
+        return out_df.with_columns(*[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add]).select(
+            "subject_id", "timestamp", *feature_columns
+        )
+
+    @classmethod
+    def _summarize_over_window(cls, df: DF_T, window_size: str) -> pl.LazyFrame:
+        if isinstance(df, Path):
+            df = pl.scan_parquet(df)
+
+        static_cols = cs.starts_with("static/")
+        dynamic_sum_cols = cs.starts_with("dynamic/") & cs.ends_with("sum")
+        dynamic_count_cols = cs.starts_with("dynamic/") & cs.ends_with("count")
+        dynamic_sum_sqd_cols = cs.starts_with("dynamic/") & cs.ends_with("sum_sqd")
+        dynamic_min_cols = cs.starts_with("dynamic/") & cs.ends_with("min")
+        dynamic_max_cols = cs.starts_with("dynamic/") & cs.ends_with("max")
+
+        def dynamic_col_alias(c: str):
+            return f"{window_size}/{c[len('dynamic/'):]}"
+
+        if window_size == "FULL":
+            return df.select(
+                "subject_id",
+                "timestamp",
+                static_cols,
+                dynamic_count_cols.cumsum().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_sum_cols.cumsum().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_sum_sqd_cols.cumsum().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_min_cols.cummin().over("subject_id").map_alias(dynamic_col_alias),
+                dynamic_max_cols.cummax().over("subject_id").map_alias(dynamic_col_alias),
+            )
+        else:
+            return df.groupby_rolling(
+                index_column="timestamp",
+                by="subject_id",
+                period=window_size,
+            ).agg(
+                static_cols.first(),
+                dynamic_count_cols.sum().map_alias(dynamic_col_alias),
+                dynamic_sum_cols.sum().map_alias(dynamic_col_alias),
+                dynamic_sum_sqd_cols.sum().map_alias(dynamic_col_alias),
+                dynamic_min_cols.min().map_alias(dynamic_col_alias),
+                dynamic_max_cols.max().map_alias(dynamic_col_alias),
+            )
 
     def _denormalize(self, events_df: DF_T, col: str) -> DF_T:
         if self.config.normalizer_config is None:

@@ -104,7 +104,11 @@ class PytorchBatch:
             the static data elements observed for each subject in the batch. These are *unordered*; meaning
             that the second dimension position of a given element in this tensor is not necessarily
             meaningful. This is because the static data elements are sparsely encoded, so the indices are
-            sufficient to recover the original data even in an unordered form.
+            sufficient to recover the original data even in an unordered form. Here, by "indices" we mean that
+            these are integer values indicating the index of the associated categorical vocabulary element
+            corresponding to this observation; e.g., if the static measurement records that the subject's eye
+            color is brown, then if the categorical measurement of ``eye_color/BROWN``` in the unified
+            vocabulary is at position 32, then the index for that observation would be 32.
         static_measurement_indices: A long tensor of shape (batch_size, n_static_data_elements) indicating
             which measurements the indices in `static_indices` correspond to. E.g., if there is a static data
             element corresponding to race, then the value in `static_measurement_indices` at the associated
@@ -733,25 +737,27 @@ class PytorchBatch:
             <class 'polars.config.Config'>
             >>> batch.convert_to_DL_DF()
             shape: (4, 7)
-            ┌──────────┬────────────┬────────────┬────────────┬────────────┬────────────┬──────────┐
-            │ time_del ┆ static_ind ┆ static_mea ┆ dynamic_in ┆ dynamic_me ┆ dynamic_va ┆ start_ti │
-            │ ta       ┆ ices       ┆ surement_i ┆ dices      ┆ asurement_ ┆ lues       ┆ me       │
-            │ ---      ┆ ---        ┆ ndices     ┆ ---        ┆ indices    ┆ ---        ┆ ---      │
-            │ list[f64 ┆ list[i64]  ┆ ---        ┆ list[list[ ┆ ---        ┆ list[list[ ┆ f64      │
-            │ ]        ┆            ┆ list[i64]  ┆ i64]]      ┆ list[list[ ┆ f64]]      ┆          │
-            │          ┆            ┆            ┆            ┆ i64]]      ┆            ┆          │
-            ╞══════════╪════════════╪════════════╪════════════╪════════════╪════════════╪══════════╡
-            │ [1.0,    ┆ [1]        ┆ [1]        ┆ [[1], [1,  ┆ [[1], [1,  ┆ [[1.0],    ┆ 0.0      │
-            │ 2.0,     ┆            ┆            ┆ 2], [2,    ┆ 2], [2,    ┆ [1.0,      ┆          │
-            │ 3.0]     ┆            ┆            ┆ 3]]        ┆ 3]]        ┆ 2.0],      ┆          │
-            │          ┆            ┆            ┆            ┆            ┆ [null,     ┆          │
-            │          ┆            ┆            ┆            ┆            ┆ null]…     ┆          │
-            │ [1.0,    ┆ [1, 2]     ┆ [1, 1]     ┆ [[1], [1,  ┆ [[1], [1,  ┆ [[1.0],    ┆ 10.0     │
-            │ 5.0]     ┆            ┆            ┆ 5]]        ┆ 2]]        ┆ [1.0,      ┆          │
-            │          ┆            ┆            ┆            ┆            ┆ null]]     ┆          │
-            │ [2.3]    ┆ [1, 3]     ┆ [1, 1]     ┆ [[2]]      ┆ [[2]]      ┆ [[1.0]]    ┆ 3.0      │
-            │ []       ┆ [5]        ┆ [2]        ┆ []         ┆ []         ┆ []         ┆ 2.2      │
-            └──────────┴────────────┴────────────┴────────────┴────────────┴────────────┴──────────┘
+            ┌───────────┬───────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+            │ time_delt ┆ static_in ┆ static_m ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ start_ti │
+            │ a         ┆ dices     ┆ easureme ┆ indices  ┆ measurem ┆ values   ┆ me       │
+            │ ---       ┆ ---       ┆ nt_indic ┆ ---      ┆ ent_indi ┆ ---      ┆ ---      │
+            │ list[f64] ┆ list[f64] ┆ es       ┆ list[lis ┆ ces      ┆ list[lis ┆ f64      │
+            │           ┆           ┆ ---      ┆ t[f64]]  ┆ ---      ┆ t[f64]]  ┆          │
+            │           ┆           ┆ list[f64 ┆          ┆ list[lis ┆          ┆          │
+            │           ┆           ┆ ]        ┆          ┆ t[f64]]  ┆          ┆          │
+            ╞═══════════╪═══════════╪══════════╪══════════╪══════════╪══════════╪══════════╡
+            │ [1.0,     ┆ [1.0]     ┆ [1.0]    ┆ [[1.0],  ┆ [[1.0],  ┆ [[1.0],  ┆ 0.0      │
+            │ 2.0, 3.0] ┆           ┆          ┆ [1.0,    ┆ [1.0,    ┆ [1.0,    ┆          │
+            │           ┆           ┆          ┆ 2.0],    ┆ 2.0],    ┆ 2.0],    ┆          │
+            │           ┆           ┆          ┆ [2.0,    ┆ [2.0,    ┆ [null,   ┆          │
+            │           ┆           ┆          ┆ 3.0]]    ┆ 3.0]]    ┆ null]…   ┆          │
+            │ [1.0,     ┆ [1.0,     ┆ [1.0,    ┆ [[1.0],  ┆ [[1.0],  ┆ [[1.0],  ┆ 10.0     │
+            │ 5.0]      ┆ 2.0]      ┆ 1.0]     ┆ [1.0,    ┆ [1.0,    ┆ [1.0,    ┆          │
+            │           ┆           ┆          ┆ 5.0]]    ┆ 2.0]]    ┆ null]]   ┆          │
+            │ [2.3]     ┆ [1.0,     ┆ [1.0,    ┆ [[2.0]]  ┆ [[2.0]]  ┆ [[1.0]]  ┆ 3.0      │
+            │           ┆ 3.0]      ┆ 1.0]     ┆          ┆          ┆          ┆          │
+            │ []        ┆ [5.0]     ┆ [2.0]    ┆ []       ┆ []       ┆ []       ┆ 2.2      │
+            └───────────┴───────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
         """
 
         df = {

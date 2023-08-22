@@ -1,0 +1,43 @@
+CLS:
+  value: "RandomForestClassifier"
+
+n_estimators:
+  min: 10
+  max: 1000
+criterion:
+  values: ["gini", "entropy"]
+max_depth:
+  min: 2
+  max: 128
+min_samples_split:
+  min: 2
+  max: 32
+min_samples_leaf:
+  min: 1
+  max: 32
+min_weight_fraction_leaf:
+  distribution: log_uniform_values
+  min: 1e-5
+  max: 0.5
+max_features:
+  values: ["sqrt", "log2", "null"]
+max_leaf_nodes:
+  min: 2
+  max: 128
+min_impurity_decrease:
+  distribution: log_uniform_values
+  min: 1e-5
+  max: 1e-3
+bootstrap:
+  value: True
+oob_score:
+  values: [True, False]
+class_weight:
+  values: [None, "balanced", "balanced_subsample"]
+ccp_alpha:
+  distribution: log_uniform_values
+  min: 1e-5
+  max: 1e-3
+max_samples:
+  min: 0.1
+  max: 1.0

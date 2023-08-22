@@ -89,12 +89,12 @@ class TimeOfDayFunctorMock(TimeDependentFunctor):
     def pl_expr(self):
         return (
             pl.when(pl.col("timestamp").dt.hour() < 6)
-            .then("EARLY_AM")
+            .then(pl.lit("EARLY_AM"))
             .when(pl.col("timestamp").dt.hour() < 12)
-            .then("AM")
+            .then(pl.lit("AM"))
             .when(pl.col("timestamp").dt.hour() < 21)
-            .then("PM")
-            .otherwise("LATE_PM")
+            .then(pl.lit("PM"))
+            .otherwise(pl.lit("LATE_PM"))
         )
 
 
@@ -1707,6 +1707,14 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
         got_expl = got_DL_rep.select(exploded_expr)
 
         self.assertEqual(want_expl, got_expl)
+
+        with self.subTest("Caching a flat representation should run"):
+            with TemporaryDirectory() as d:
+                save_dir = Path(d) / "save_dir"
+                E.config.save_dir = save_dir
+                E.cache_flat_representation()
+
+                # To-do: Produce expected flat output.
 
         with self.subTest("Save/load should work"):
             with TemporaryDirectory() as d:

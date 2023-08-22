@@ -156,7 +156,11 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                                 [Averaging.MACRO, Averaging.WEIGHTED],
                             ),
                         }
-                        metric_kwargs = {"num_classes": vocab_size, "ignore_index": 0}
+                        metric_kwargs = {
+                            "num_classes": vocab_size,
+                            "ignore_index": 0,
+                            "validate_args": self.metrics_config.do_validate_args,
+                        }
                     case DataModality.MULTI_LABEL_CLASSIFICATION:
                         cat = MetricCategories.CLASSIFICATION
                         metrics = {
@@ -173,7 +177,10 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                                 [Averaging.MACRO, Averaging.WEIGHTED, Averaging.MICRO],
                             ),
                         }
-                        metric_kwargs = {"num_labels": vocab_size}
+                        metric_kwargs = {
+                            "num_labels": vocab_size,
+                            "validate_args": self.metrics_config.do_validate_args,
+                        }
                     case DataModality.UNIVARIATE_REGRESSION:
                         cat = MetricCategories.REGRESSION
                         metrics = {
@@ -193,9 +200,6 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         metric_kwargs = {}
                     case _:
                         raise ValueError(f"Unrecognized modality {task_type}!")
-
-                if not self.metrics_config.do_validate_args:
-                    metric_kwargs["validate_args"] = False
 
                 auc_kwargs = {**metric_kwargs, "thresholds": self.metrics_config.n_auc_thresholds}
                 for metric, (metric_cls, averagings) in metrics.items():
@@ -536,8 +540,6 @@ class PretrainConfig:
             "save_dir": "${save_dir}",
         }
     )
-
-    num_dataloader_workers: int = 1
 
     do_final_validation_on_metrics: bool = True
 

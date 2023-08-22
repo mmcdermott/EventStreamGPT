@@ -338,7 +338,7 @@ def eval_range(
         case _:
             raise ValueError(f"{upper_bound} must be either None, a number, or a (number, bool)!")
 
-    return pl.all(*expr)
+    return pl.all_horizontal(*expr)
 
 
 def align_time_and_eval_predicates(

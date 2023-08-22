@@ -97,12 +97,12 @@ class DatasetSchema(JSONableMixin):
         ...         dict(type="event", event_type="bar2", input_df="/path/to/bar.csv", ts_col="col2"),
         ...     ],
         ... )
-        >>> DS.dynamic_by_df
-        {'/path/to/foo.csv': [InputDFSchema(input_df='/path/to/foo.csv', type='event', event_type='foo',\
- subject_id_col='col', ts_col='col')], '/path/to/bar.csv': [InputDFSchema(input_df='/path/to/bar.csv',\
- type='event', event_type='bar', subject_id_col='col', ts_col='col'),\
- InputDFSchema(input_df='/path/to/bar.csv', type='event', event_type='bar2', subject_id_col='col',\
- ts_col='col2')]}
+        >>> DS.dynamic_by_df # doctest: +NORMALIZE_WHITESPACE
+        {'/path/to/foo.csv': [InputDFSchema(input_df='/path/to/foo.csv', type='event', event_type='foo',
+        subject_id_col='col', ts_col='col')], '/path/to/bar.csv': [InputDFSchema(input_df='/path/to/bar.csv',
+        type='event', event_type='bar', subject_id_col='col', ts_col='col'),
+        InputDFSchema(input_df='/path/to/bar.csv', type='event', event_type='bar2', subject_id_col='col',
+        ts_col='col2')]}
     """
 
     static: dict[str, Any] | InputDFSchema | None = None
@@ -199,6 +199,15 @@ class InputDFSchema(JSONableMixin):
         False
         >>> S
         InputDFSchema(input_df='/path/to_df.parquet', type='event', event_type='bar', ts_col='col')
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='range',
+        ...     start_ts_col='start',
+        ...     end_ts_col='end',
+        ...     event_type=('bar_st_eq_end', 'bar_st', 'bar_end'),
+        ... )
+        >>> S.is_static
+        False
         >>> InputDFSchema()
         Traceback (most recent call last):
             ...
@@ -230,7 +239,138 @@ class InputDFSchema(JSONableMixin):
         Traceback (most recent call last):
             ...
         ValueError: Missing mandatory range parameter event_type!
-        >>>
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
+        ...     subject_id_col='subj_id',
+        ...     event_type='foo'
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Set invalid param event_type for static source!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     event_type='bar',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory event parameter ts_col!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory event parameter event_type!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ...     event_type='foo',
+        ...     subject_id_col='subj',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: subject_id_col should be None for non-static types!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ...     event_type=('foo', 'categorical'),
+        ... )
+        Traceback (most recent call last):
+            ...
+        TypeError: event_type must be a string for events. Got ('foo', 'categorical')
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ...     event_type='foo',
+        ...     start_ts_col='start',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: start_ts_col should be None for event schema: Got start
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='col',
+        ...     event_type='bar',
+        ...     data_schema=('foobar', 'categorical'),
+        ... )
+        >>> S.is_static
+        False
+        >>> S # doctest: +NORMALIZE_WHITESPACE
+        InputDFSchema(input_df='/path/to_df.parquet',
+                      type='event',
+                      event_type='bar',
+                      ts_col='col',
+                      data_schema=[('foobar', 'categorical')])
+        >>> S.unified_schema
+        {'foobar': ('foobar', 'categorical')}
+        >>> S.columns_to_load
+        [('foobar', 'categorical'), ('col', <InputDataType.TIMESTAMP: 'timestamp'>)]
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='range',
+        ...     start_ts_col='start',
+        ...     end_ts_col='end',
+        ...     event_type='bar',
+        ...     start_data_schema=[
+        ...         {'buz': 'float'},
+        ...         {'baz': ['timestamp', '%Y-%m']}
+        ...     ],
+        ...     end_data_schema={'foobar': InputDataType.FLOAT},
+        ... )
+        >>> for n, schema in zip(('EQ', 'ST', 'END'), S.unified_schema):
+        ...     print(f"{n}:")
+        ...     for k, v in sorted(schema.items()):
+        ...         print(f"  {k}: {v}")
+        EQ:
+          baz: ('baz', ['timestamp', '%Y-%m'])
+          buz: ('buz', 'float')
+          foobar: ('foobar', <InputDataType.FLOAT: 'float'>)
+        ST:
+          baz: ('baz', ['timestamp', '%Y-%m'])
+          buz: ('buz', 'float')
+        END:
+          foobar: ('foobar', <InputDataType.FLOAT: 'float'>)
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='range',
+        ...     start_ts_col='start',
+        ...     end_ts_col='end',
+        ...     ts_format='%Y-%m-%d',
+        ...     event_type='bar',
+        ...     start_data_schema={'foobar': ('foobar_renamed', ['timestamp', '%Y'])},
+        ...     end_data_schema=[
+        ...         ('buz', 'float'),
+        ...         (['biz', 'whizz'], 'categorical'),
+        ...     ],
+        ... )
+        >>> for n, schema in zip(('EQ', 'ST', 'END'), S.unified_schema):
+        ...     print(f"{n}:")
+        ...     for k, v in sorted(schema.items()):
+        ...         print(f"  {k}: {v}")
+        EQ:
+          biz: ('biz', 'categorical')
+          buz: ('buz', 'float')
+          foobar: ('foobar_renamed', ['timestamp', '%Y'])
+          whizz: ('whizz', 'categorical')
+        ST:
+          foobar: ('foobar_renamed', ['timestamp', '%Y'])
+        END:
+          biz: ('biz', 'categorical')
+          buz: ('buz', 'float')
+          whizz: ('whizz', 'categorical')
+        >>> list(sorted(S.columns_to_load)) # doctest: +NORMALIZE_WHITESPACE
+        [('biz', 'categorical'), ('buz', 'float'),
+         ('end', (<InputDataType.TIMESTAMP: 'timestamp'>, '%Y-%m-%d')),
+         ('foobar', ['timestamp', '%Y']),
+         ('start', (<InputDataType.TIMESTAMP: 'timestamp'>, '%Y-%m-%d')),
+         ('whizz', 'categorical')]
     """
 
     input_df: Any | None = None
@@ -283,10 +423,8 @@ class InputDFSchema(JSONableMixin):
             case InputDFType.STATIC:
                 if self.subject_id_col is None:
                     raise ValueError("Must set subject_id_col for static source!")
-                if self.event_type is not None:
-                    raise ValueError("Event_type can't be set if type == 'static'!")
 
-                for param in ("ts_col", "start_ts_col", "end_ts_col"):
+                for param in ("event_type", "ts_col", "start_ts_col", "end_ts_col"):
                     if getattr(self, param) is not None:
                         raise ValueError(f"Set invalid param {param} for static source!")
 
@@ -295,7 +433,7 @@ class InputDFSchema(JSONableMixin):
                     raise ValueError("Missing mandatory event parameter ts_col!")
                 match self.event_type:
                     case None:
-                        raise ValueError("Missing mandatory range parameter event_type!")
+                        raise ValueError("Missing mandatory event parameter event_type!")
                     case str():
                         pass
                     case _:
@@ -526,9 +664,9 @@ class InputDFSchema(JSONableMixin):
         unified_schema = {}
         for schema in data_schema:
             match schema:
-                case str() as col, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
+                case str() as col, ((InputDataType() | str()) | [InputDataType.TIMESTAMP, str()]) as dt:
                     cls.__add_to_schema(unified_schema, in_col=col, dt=dt)
-                case list() as cols, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
+                case list() as cols, ((InputDataType() | str()) | [InputDataType.TIMESTAMP, str()]) as dt:
                     for c in cols:
                         cls.__add_to_schema(unified_schema, in_col=c, dt=dt)
                 case dict():
@@ -665,7 +803,7 @@ class PytorchDatasetConfig(JSONableMixin):
         train_subset_size: If the training data should be subsampled randomly, this specifies the size of the
             training subset. If `None` or "FULL", then the full training data is used.
         train_subset_seed: If the training data should be subsampled randomly, this specifies the seed for
-            that random subsampling. Should be None if train_subset_size is None or "FULL".
+            that random subsampling.
         task_df_name: If the raw dataset should be limited to a task dataframe view, this specifies the name
             of the task dataframe, and indirectly the path on disk from where that task dataframe will be
             read (save_dir / "task_dfs" / f"{task_df_name}.parquet").
@@ -712,10 +850,6 @@ class PytorchDatasetConfig(JSONableMixin):
         Traceback (most recent call last):
             ...
         TypeError: train_subset_size is of unrecognized type <class 'str'>.
-        >>> config = PytorchDatasetConfig(train_subset_size="FULL", train_subset_seed=10)
-        Traceback (most recent call last):
-            ...
-        ValueError: train_subset_seed 10 should be None if train_subset_size is FULL.
         >>> config = PytorchDatasetConfig(
         ...     save_dir='./dataset',
         ...     max_seq_len=256,
@@ -762,11 +896,6 @@ class PytorchDatasetConfig(JSONableMixin):
             self.save_dir = Path(self.save_dir)
 
         match self.train_subset_size:
-            case (None | "FULL") if self.train_subset_seed is not None:
-                raise ValueError(
-                    f"train_subset_seed {self.train_subset_seed} should be None "
-                    f"if train_subset_size is {self.train_subset_size}."
-                )
             case int() as n if n < 0:
                 raise ValueError(f"If integral, train_subset_size must be positive! Got {n}")
             case float() as frac if frac <= 0 or frac >= 1:
@@ -1134,40 +1263,36 @@ class MeasurementConfig(JSONableMixin):
         match self._measurement_metadata:
             case None | pd.DataFrame() | pd.Series():
                 return self._measurement_metadata
+            case [(Path() | str()) as base_dir, str() as fn]:
+                fp = Path(base_dir) / fn
             case (Path() | str()) as fp:
-                out = pd.read_csv(fp, index_col=0)
-
-                if self.modality == DataModality.UNIVARIATE_REGRESSION:
-                    if out.shape[1] != 1:
-                        raise ValueError(
-                            f"For {self.modality}, measurement metadata at {fp} should be a series, but "
-                            f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
-                        )
-                    out = out.iloc[:, 0]
-                    for col in ("outlier_model", "normalizer"):
-                        if col in out and out[col] and out[col] not in ("nan", np.NaN, float("nan")):
-                            try:
-                                out[col] = eval(out[col])
-                            except (TypeError, ValueError):
-                                print(f"Got '{out[col]}' for column {col}")
-                                raise
-                elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
-                    raise ValueError(
-                        "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
-                        f"measurements should have measurement metadata paths stored. Got {fp} on "
-                        f"{self.modality} measurement!"
-                    )
-                else:
-                    for col in ("outlier_model", "normalizer"):
-                        if col in out:
-                            try:
-                                out[col] = out[col].apply(lambda s: s if not s or s == "nan" else eval(s))
-                            except (TypeError, ValueError):
-                                print(f"Got '{out[col]}' for column {col}")
-                                raise
-                return out
+                fp = Path(fp)
             case _:
-                raise ValueError(f"_measurement_metadata is invalid! Got {type(self.measurement_metadata)}!")
+                raise ValueError(f"_measurement_metadata is invalid! Got {type(self._measurement_metadata)}!")
+
+        out = pd.read_csv(fp, index_col=0)
+
+        if self.modality == DataModality.UNIVARIATE_REGRESSION:
+            if out.shape[1] != 1:
+                raise ValueError(
+                    f"For {self.modality}, measurement metadata at {fp} should be a series, but "
+                    f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
+                )
+            out = out.iloc[:, 0]
+            for col in ("outlier_model", "normalizer"):
+                if col in out:
+                    out[col] = eval(out[col])
+        elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
+            raise ValueError(
+                "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
+                f"measurements should have measurement metadata paths stored. Got {fp} on "
+                f"{self.modality} measurement!"
+            )
+        else:
+            for col in ("outlier_model", "normalizer"):
+                if col in out:
+                    out[col] = out[col].apply(eval)
+        return out
 
     @measurement_metadata.setter
     def measurement_metadata(self, new_metadata: pd.DataFrame | pd.Series | None):
@@ -1175,12 +1300,16 @@ class MeasurementConfig(JSONableMixin):
             self._measurement_metadata = None
             return
 
-        if isinstance(self._measurement_metadata, (str, Path)):
-            new_metadata.to_csv(self._measurement_metadata)
-        else:
-            self._measurement_metadata = new_metadata
+        match self._measurement_metadata:
+            case [Path() as base_dir, str() as fn]:
+                new_metadata.to_csv(base_dir / fn)
+            case Path() | str() as fp:
+                new_metadata.to_csv(fp)
+            case _:
+                self._measurement_metadata = new_metadata
 
-    def cache_measurement_metadata(self, fp: Path):
+    def cache_measurement_metadata(self, base_dir: Path, fn: str):
+        fp = base_dir / fn
         if isinstance(self._measurement_metadata, (str, Path)):
             if str(fp) != str(self._measurement_metadata):
                 raise ValueError(f"Caching is already enabled at {self._measurement_metadata} != {fp}")
@@ -1190,14 +1319,19 @@ class MeasurementConfig(JSONableMixin):
 
         fp.parent.mkdir(exist_ok=True, parents=True)
         self.measurement_metadata.to_csv(fp)
-        self._measurement_metadata = str(fp.resolve())
+        self._measurement_metadata = [str(base_dir.resolve()), fn]
 
     def uncache_measurement_metadata(self):
         if self._measurement_metadata is None:
             return
 
-        if not isinstance(self._measurement_metadata, (str, Path)):
-            raise ValueError("Caching is not enabled, can't uncache!")
+        match self._measurement_metadata:
+            case [Path(), str()]:
+                pass
+            case Path() | str():
+                pass
+            case _:
+                raise ValueError("Caching is not enabled, can't uncache!")
 
         self._measurement_metadata = self.measurement_metadata
 
@@ -1253,17 +1387,38 @@ class MeasurementConfig(JSONableMixin):
                 as_dict["_measurement_metadata"] = str(self._measurement_metadata)
         if self.temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
             as_dict["functor"] = self.functor.to_dict()
+        if as_dict.get("vocabulary", None) is not None:
+            as_dict["vocabulary"]["obs_frequencies"] = [
+                float(x) for x in as_dict["vocabulary"]["obs_frequencies"]
+            ]
         return as_dict
 
     @classmethod
-    def from_dict(cls, as_dict: dict) -> MeasurementConfig:
+    def from_dict(cls, as_dict: dict, base_dir: Path | None = None) -> MeasurementConfig:
         """Build a configuration object from a plain dictionary representation."""
         if as_dict["vocabulary"] is not None:
             as_dict["vocabulary"] = Vocabulary(**as_dict["vocabulary"])
 
         match as_dict["_measurement_metadata"], as_dict["modality"]:
-            case str() | None, _:
+            case None, _:
                 pass
+            case str() as full_path, _:
+                full_path = Path(full_path)
+                if full_path.parts[-2] == "inferred_measurement_metadata":
+                    prior_base_dir = "/".join(full_path.parts[:-2])
+                    relative_path = "/".join(full_path.parts[-2:])
+                else:
+                    raise ValueError(f"Can't process old path format of {full_path}")
+
+                if base_dir is not None:
+                    as_dict["_measurement_metadata"] = [base_dir, relative_path]
+                else:
+                    as_dict["_measurement_metadata"] = [str(prior_base_dir), relative_path]
+            case [str() as prior_base_dir, str() as relative_path], _:
+                if base_dir is not None:
+                    as_dict["_measurement_metadata"] = [base_dir, relative_path]
+                else:
+                    as_dict["_measurement_metadata"] = [str(prior_base_dir), relative_path]
             case dict(), DataModality.MULTIVARIATE_REGRESSION:
                 as_dict["_measurement_metadata"] = pd.DataFrame.from_dict(
                     as_dict["_measurement_metadata"], orient="tight"
@@ -1271,7 +1426,9 @@ class MeasurementConfig(JSONableMixin):
             case dict(), DataModality.UNIVARIATE_REGRESSION:
                 as_dict["_measurement_metadata"] = pd.Series(as_dict["_measurement_metadata"])
             case _:
-                raise ValueError(f"{as_dict['measurement_metadata']} and {as_dict['modality']} incompatible!")
+                raise ValueError(
+                    f"{as_dict['_measurement_metadata']} and {as_dict['modality']} incompatible!"
+                )
 
         if as_dict["functor"] is not None:
             if as_dict["temporality"] != TemporalityType.FUNCTIONAL_TIME_DEPENDENT:

@@ -69,6 +69,18 @@ During pre-processing, the EFGPT pipeline, in general, performances the followin
 In this way, we can view the input of the entire EFGPT pipeline as the raw, pre-extraction input dataset, and
 the output as a pre-cached PyTorch Dataset ready-made for deep-learning use.
 
+#### Dropped Data
+
+Data can be dropped during the pre-processing pipeline in several ways:
+
+1. Subjects who do not have sufficiently many events (unique timepoints) in the record can be dropped,
+   depending on configuration parameters.
+2. Measurements (e.g., entire columns) that are measured insufficiently frequently (again, pending
+   configuration parameters) will be dropped.
+3. Data elements (e.g., individual lab tests) that are observed insufficiently frequently will be re-mapped
+   and aggregated to `UNK` vocabulary elements. No numerical measurements are dropped during such
+   re-mappings, just re-assigned to the `UNK` key rather than the original key.
+
 ### Deep-learning Representations
 
 The deep learning representation is a polars dataframe written to disk. This dataframe has one row per
