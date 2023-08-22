@@ -184,7 +184,7 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
         self.obs_frequencies = list(np.concatenate(([unk_freq], obs_frequencies[idx])))
 
     def filter(
-        self, total_observations: int | None, min_valid_element_freq: COUNT_OR_PROPORTION
+        self, total_observations: int | None, min_valid_element_freq: COUNT_OR_PROPORTION | None
     ) -> Vocabulary:
         """Filters the vocabulary elements to only those occurring sufficiently often.
 
@@ -199,6 +199,10 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             total_observations: How many total observations were there of vocabulary elements.
             min_valid_element_freq: How frequently must an element have been observed to be retained?
 
+        Raises:
+            ValueError: If `min_valid_element_freq` is not a positive integer or a floating point number
+            between 0 and 1.
+
         Example:
             >>> vocab = Vocabulary(vocabulary=['apple', 'banana', 'UNK'], obs_frequencies=[5, 3, 2])
             >>> vocab.filter(total_observations=10, min_valid_element_freq=0.4)
@@ -206,10 +210,48 @@ class Vocabulary(Generic[VOCAB_ELEMENT]):
             ['UNK', 'apple']
             >>> vocab.obs_frequencies
             [0.5, 0.5]
+            >>> vocab = Vocabulary(vocabulary=['apple', 'banana', 'UNK'], obs_frequencies=[5, 3, 2])
+            >>> vocab.filter(total_observations=10, min_valid_element_freq=4)
+            >>> vocab.vocabulary
+            ['UNK', 'apple']
+            >>> vocab.obs_frequencies
+            [0.5, 0.5]
+            >>> vocab = Vocabulary(vocabulary=['apple', 'banana', 'UNK'], obs_frequencies=[5, 3, 2])
+            >>> vocab.filter(total_observations=10, min_valid_element_freq=None)
+            >>> vocab.vocabulary
+            ['UNK', 'apple', 'banana']
+            >>> vocab.filter(total_observations=10, min_valid_element_freq=1.02)
+            Traceback (most recent call last):
+                ...
+            ValueError: Can only filter vocabularies by floats in (0, 1) or ints > 1; got <class 'float'> 1.02
+            >>> vocab.filter(total_observations=10, min_valid_element_freq="0.02")
+            Traceback (most recent call last):
+                ...
+            ValueError: Can only filter vocabularies by floats in (0, 1) or ints > 1; got <class 'str'> 0.02
+            >>> vocab.filter(total_observations=10, min_valid_element_freq=0)
+            Traceback (most recent call last):
+                ...
+            ValueError: Can only filter vocabularies by floats in (0, 1) or ints > 1; got <class 'int'> 0
         """
 
-        if type(min_valid_element_freq) is not float:
-            min_valid_element_freq /= total_observations
+        if min_valid_element_freq is None:
+            return
+
+        try:
+            if 0 < min_valid_element_freq and min_valid_element_freq < 1:
+                pass
+            elif min_valid_element_freq >= 1 and min_valid_element_freq == round(min_valid_element_freq):
+                min_valid_element_freq /= total_observations
+            else:
+                raise ValueError(
+                    "Can only filter vocabularies by floats in (0, 1) or ints > 1; got "
+                    f"{type(min_valid_element_freq)} {min_valid_element_freq}"
+                )
+        except TypeError as e:
+            raise ValueError(
+                "Can only filter vocabularies by floats in (0, 1) or ints > 1; got "
+                f"{type(min_valid_element_freq)} {min_valid_element_freq}"
+            ) from e
 
         # np.searchsorted(a, v, side='right') returns i such that
         # a[i-1] <= v < a[i]

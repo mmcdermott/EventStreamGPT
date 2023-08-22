@@ -1,0 +1,6 @@
+CLS:
+  value: "SelectKBest"
+
+k:
+  min: 2
+  max: 256

@@ -1,0 +1,12 @@
+defaults:
+  - parameters: sklearn_baseline
+  - _self_
+
+entity: null
+project: null
+program: sklearn_baseline.py
+method: bayes
+name: EST_sklearn_baseline_sweep
+metric:
+  goal: minimize
+  name: tuning.AUROC

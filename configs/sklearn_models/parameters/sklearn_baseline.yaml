@@ -1,0 +1,17 @@
+defaults:
+  - feature_selector: esd_flat_feature_loader
+  - scaling: standard_scaler
+  - imputation: simple_imputer
+  - dim_reduce: pca
+  - model: random_forest_classifier
+
+experiment_dir:
+  value: ???
+dataset_dir:
+  value: ???
+task_df_name:
+  value: ???
+finetuning_task_label:
+  value: ???
+train_subset_size:
+  value: ???

@@ -69,11 +69,9 @@ class ESDMock(DatasetBase[dict, dict]):
     def _update_attr_df(self, attr: str, df: dict):
         self.functions_called["_update_attr_df"].append((attr, df))
 
-    def backup_numerical_measurements(self):
-        self.functions_called["backup_numerical_measurements"].append(())
-
-    def restore_numerical_measurements(self):
-        self.functions_called["restore_numerical_measurements"].append(())
+    def _get_flat_rep(self, **kwargs) -> dict:
+        self.functions_called("_get_flat_rep").append(((), kwargs))
+        return {}
 
     def _transform_numerical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: dict
@@ -142,6 +140,11 @@ class ESDMock(DatasetBase[dict, dict]):
             (df, event_type, columns_schema, ts_col)
         )
         return {}, None
+
+    @classmethod
+    def _summarize_over_window(cls, df: dict, window_size: str):
+        cls.FUNCTIONS_CALLED["_summarize_over_window"].append((df, window_size))
+        return df
 
     @classmethod
     def _split_range_events_df(
