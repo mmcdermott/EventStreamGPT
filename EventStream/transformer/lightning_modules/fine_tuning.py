@@ -11,7 +11,7 @@ import omegaconf
 import torch
 import torch.multiprocessing
 import torchmetrics
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf
@@ -493,7 +493,10 @@ def train(cfg: FinetuneConfig):
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    callbacks = [LearningRateMonitor(logging_interval="step")]
+    checkpoint_callback = ModelCheckpoint(dirpath= None, filename='{epoch}-{val_loss:.2f}-best_model' ,monitor="val_loss", mode='min', save_top_k=1)
+    callbacks = [LearningRateMonitor(logging_interval="step"),
+                checkpoint_callback,
+    ]
     if optimization_config.patience is not None:
         callbacks.append(
             EarlyStopping(monitor="tuning_loss", mode="min", patience=optimization_config.patience)
@@ -537,6 +540,14 @@ def train(cfg: FinetuneConfig):
     trainer = L.Trainer(**trainer_kwargs)
     trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
 
+    # retrieve the best model
+    best_model = checkpoint_callback.best_model_path
+
+    # #reload the best model in a new trainer instance
+    # trainer = L.Trainer(**trainer_kwargs, resume_from_checkpoint=best_model)
+
+
+
     held_out_pyd = PytorchDataset(cfg.data_config, split="held_out")
     held_out_dataloader = torch.utils.data.DataLoader(
         held_out_pyd,
@@ -545,8 +556,8 @@ def train(cfg: FinetuneConfig):
         collate_fn=held_out_pyd.collate,
         shuffle=False,
     )
-    tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader)
-    held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader)
+    tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader, ckpt_path="best")
+    held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader, ckpt_path="best")
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
         print("Saving final metrics...")

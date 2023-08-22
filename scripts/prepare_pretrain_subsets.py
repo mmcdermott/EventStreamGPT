@@ -203,12 +203,18 @@ def main(cfg: DictConfig):
                             save_dir=FT_subset_dir,
                             do_overwrite=False,
                             task_df_name=FT_task,
-                            data_config_overrides={
+                            # data_config_overrides={
+                            #     "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
+                            #     "train_subset_size": FT_subset_size,
+                            #     "train_subset_seed": seed,
+                            # },
+                            # task_specific_params={"pooling_method": "last"},
+                            data_config={
                                 "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                                 "train_subset_size": FT_subset_size,
                                 "train_subset_seed": seed,
                             },
-                            task_specific_params={"pooling_method": "last"},
+                            config={'task_specific_params':{"pooling_method": "last"}},
                             optimization_config=dict(**cfg["few_shot_commands"]["optimization_config"]),
                             wandb_logger_kwargs={
                                 "name": (
