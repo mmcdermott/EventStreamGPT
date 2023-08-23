@@ -291,6 +291,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             "functor": None,
             "values_column": None,
             "_measurement_metadata": None,
+            "modifiers": None,
         }
         nontrivial_measurement_metadata_df = pd.DataFrame(
             {"A": [1, 2, 3], "B": ["a", "b", "c"]},

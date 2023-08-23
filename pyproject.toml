@@ -33,6 +33,7 @@ pyarrow = "^12.0.1"
 torchmetrics = "^1.0.3"
 dill = "^0.3.7"
 kaleido = "0.2.1"
+datasets = "^2.14.4"
 transformers = "^4.31.0"
 wandb = "^0.15.8"
 scipy = "^1.11.2"
@@ -43,6 +44,8 @@ pexpect = "^4.8.0"
 pytest = "^7.4.0"
 pytest-cov = {extras = ["toml"], version = "^4.1.0"}
 nbmake = "^1.4.3"
+pre-commit = "^3.3.3"
+pytest-subtests = "^0.11.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinxcontrib-bibtex = "^2.5.0"

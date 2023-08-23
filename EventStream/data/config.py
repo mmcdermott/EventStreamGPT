@@ -12,7 +12,6 @@ from pathlib import Path
 from textwrap import shorten, wrap
 from typing import Any, Union
 
-import numpy as np
 import omegaconf
 import pandas as pd
 
