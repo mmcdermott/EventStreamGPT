@@ -1052,6 +1052,21 @@ class MeasurementConfig(JSONableMixin):
         True
         >>> cfg.is_dropped
         False
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='multi_label_classification',
+        ...     temporality='dynamic',
+        ...     modifiers=['foo', 'bar'],
+        ... )
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='multi_label_classification',
+        ...     temporality='dynamic',
+        ...     modifiers=[1, 2],
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: `self.modifiers` must be a list of strings; got element 1.
         >>> MeasurementConfig()
         Traceback (most recent call last):
             ...
