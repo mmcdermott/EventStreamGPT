@@ -361,6 +361,8 @@ class FinetuneConfig:
                 pass
             case str():
                 self.pretrained_weights_fp = Path(self.pretrained_weights_fp)
+            case Path():
+                pass
             case _:
                 raise TypeError(
                     "`pretrained_weights_fp` must be a str or path! Got "
@@ -376,6 +378,18 @@ class FinetuneConfig:
                 raise TypeError(
                     "`load_from_model_dir` must be a str or path! Got "
                     f"{type(self.load_from_model_dir)}({self.load_from_model_dir})"
+                )
+            
+        # convert data_config.save_dir to Path
+        match self.data_config['save_dir']:
+            case str():
+                self.data_config['save_dir'] = Path(self.data_config['save_dir'])
+            case Path():
+                pass
+            case _:
+                raise TypeError(
+                    "`data_config.save_dir` must be a str or path! Got "
+                    f"{type(self.data_config.save_dir)}({self.data_config.save_dir})"
                 )
 
         if (
@@ -438,6 +452,9 @@ def train(cfg: FinetuneConfig):
     L.seed_everything(cfg.seed)
     torch.multiprocessing.set_sharing_strategy("file_system")
 
+    print(cfg.data_config.save_dir)
+    print(type(cfg.data_config.save_dir))
+
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
 
@@ -452,6 +469,7 @@ def train(cfg: FinetuneConfig):
         cfg.save_dir.mkdir(parents=True, exist_ok=True)
         print("Saving config files...")
         config_fp = cfg.save_dir / "config.json"
+        print("config", config)
         if config_fp.exists() and not cfg.do_overwrite:
             raise FileExistsError(f"{config_fp} already exists!")
         else:
@@ -493,7 +511,7 @@ def train(cfg: FinetuneConfig):
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    checkpoint_callback = ModelCheckpoint(dirpath= None, filename='{epoch}-{val_loss:.2f}-best_model' ,monitor="val_loss", mode='min', save_top_k=1)
+    checkpoint_callback = ModelCheckpoint(dirpath= None, filename='{epoch}-{val_loss:.2f}-best_model' ,monitor="tuning_loss", mode='min', save_top_k=1)
     callbacks = [LearningRateMonitor(logging_interval="step"),
                 checkpoint_callback,
     ]
