@@ -1642,14 +1642,18 @@ class DatasetConfig(JSONableMixin):
         ... )
         >>> cfg.save_dir
         PosixPath('/path/to/save/dir')
-        >>> cfg.to_dict()
-        {'measurement_configs': {'meas1': {'name': 'meas1', 'temporality': <TemporalityType.DYNAMIC:\
- 'dynamic'>, 'modality': <DataModality.MULTI_LABEL_CLASSIFICATION: 'multi_label_classification'>,\
- 'observation_frequency': None, 'functor': None, 'vocabulary': None, 'values_column': None,\
- '_measurement_metadata': None}}, 'min_events_per_subject': None, 'agg_by_time_scale': '1h',\
- 'min_valid_column_observations': 0.5, 'min_valid_vocab_element_observations': None,\
- 'min_true_float_frequency': None, 'min_unique_numerical_observations': None,\
- 'outlier_detector_config': None, 'normalizer_config': None, 'save_dir': '/path/to/save/dir'}
+        >>> cfg.to_dict() # doctest: +NORMALIZE_WHITESPACE
+        {'measurement_configs':
+            {'meas1':
+                {'name': 'meas1',
+                 'temporality': <TemporalityType.DYNAMIC: 'dynamic'>,
+                 'modality': <DataModality.MULTI_LABEL_CLASSIFICATION: 'multi_label_classification'>,
+                 'observation_frequency': None, 'functor': None, 'vocabulary': None, 'values_column': None,
+                 '_measurement_metadata': None, 'modifiers': None}},
+        'min_events_per_subject': None, 'agg_by_time_scale': '1h', 'min_valid_column_observations': 0.5,
+        'min_valid_vocab_element_observations': None, 'min_true_float_frequency': None,
+        'min_unique_numerical_observations': None, 'outlier_detector_config': None, 'normalizer_config': None,
+        'save_dir': '/path/to/save/dir'}
         >>> cfg2 = DatasetConfig.from_dict(cfg.to_dict())
         >>> assert cfg == cfg2
         >>> DatasetConfig(
