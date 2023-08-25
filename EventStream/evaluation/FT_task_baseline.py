@@ -199,9 +199,29 @@ def load_flat_rep(
 
     Args:
         ESD: The dataset for which the flat representations should be loaded.
-        window_size: A list of strings in polars timedelta syntax specifying the time windows over which the
-            features should be summarized.
-        feature_inclusion_frequency: TODO
+        window_sizes: Beyond writing out a raw, per-event flattened representation, the dataset also has
+            the capability to summarize these flattened representations over the historical windows
+            specified in this argument. These are strings specifying time deltas, using this syntax:
+            `link_`. Each window size will be summarized to a separate directory, and will share the same
+            subject file split as is used in the raw representation files.
+        feature_inclusion_frequency: The base feature inclusion frequency that should be used to dictate
+            what features can be included in the flat representation. It can either be a float, in which
+            case it applies across all measurements, or `None`, in which case no filtering is applied, or
+            a dictionary from measurement type to a float dictating a per-measurement-type inclusion
+            cutoff.
+        include_only_measurements: Measurement types can also be filtered out wholesale from both
+            representations. If this list is not None, only these measurements will be included.
+        do_update_if_missing: If `True`, then if any window sizes or features are missing, the function will
+            try to update the stored flat representations to reflect these. If `False`, if information is
+            missing, it will raise a `FileNotFoundError` instead.
+        join_df: If specified, the flat representations loaded will be (inner) joined against this dataframe
+            on the columns ``"subject_id"`` and ``"timestamp"``. This is how one would typically load just the
+            flattened data relevant to a given downstream task, to avoid needing to load the full dataset in
+            flattened form into memory.
+
+    Raises:
+        FileNotFoundError: If `do_update_if_missing` is `False` and the requested historical representations
+            are not already written to disk.
     """
     flat_dir = ESD.config.save_dir / "flat_reps"
 
