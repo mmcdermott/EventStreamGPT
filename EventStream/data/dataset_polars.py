@@ -1590,7 +1590,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                         pl.col(m).drop_nans().min().alias(f"dynamic/{m}/{m}/min"),
                         pl.col(m).drop_nans().max().alias(f"dynamic/{m}/{m}/max"),
                     )
-                    .select(pl.all().shrink_dtype())
                 )
                 continue
             elif cfg.modality == "multivariate_regression":
@@ -1640,7 +1639,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .drop("measurement_id")
                 .groupby("event_id")
                 .agg(*aggs)
-                .select(pl.all().shrink_dtype())
             )
 
         return pl.concat(list(out_dfs.values()), how="align")
@@ -1688,8 +1686,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 raise ValueError(f"Column name {col} malformed!")
 
         cols_to_add = [(c, get_dtype(c)) for c in cols_to_add]
-        return out_df.with_columns(*[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add]).select(
-            "subject_id", "timestamp", *feature_columns
+        return (
+            out_df.with_columns(*[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add])
+            .collect()
+            .select("subject_id", "timestamp", *feature_columns)
+            .lazy()
         )
 
     @classmethod
