@@ -1175,7 +1175,7 @@ class DatasetBase(
             window_sizes: Beyond writing out a raw, per-event flattened representation, the dataset also has
                 the capability to summarize these flattened representations over the historical windows
                 specified in this argument. These are strings specifying time deltas, using this syntax:
-                `link_`. Each window size will be summarized to a separate directory, and will share the same
+                `link`_. Each window size will be summarized to a separate directory, and will share the same
                 subject file split as is used in the raw representation files.
             include_only_measurements: Measurement types can also be filtered out wholesale from both
                 representations. If this list is not None, only these measurements will be included.
