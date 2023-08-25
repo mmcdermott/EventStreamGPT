@@ -167,7 +167,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
         └───────────────────┴──────────────────────────┴────────────────────┴──────────┘
     """
     label_cols = [c for c in task_df.columns if c not in KEY_COLS]
-    print(
+    return (
         task_df.groupby("subject_id")
         .agg(
             pl.count().alias("samples_per_subject"),
@@ -178,7 +178,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
             pl.col("samples_per_subject").median().alias("median_samples_per_subject"),
             *[pl.col(c).mean().alias(f"{c}/subject Mean") for c in label_cols],
             *[
-                (pl.col(c) * pl.col("samples_per_subject")).sum()
+                (pl.col(c).cast(pl.Float64) * pl.col("samples_per_subject")).sum()
                 / (pl.col("samples_per_subject").sum()).alias(f"{c} Mean")
                 for c in label_cols
             ],
