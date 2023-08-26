@@ -1161,10 +1161,33 @@ class DatasetBase(
           set of parquet files containing flat (e.g., wide) representations of summarized events per subject,
           broken out by split and subject chunk.
         * A set of subdirectories ``past/*`` which contains summarized views over the past ``*`` time period
-          per subject per event.
+          per subject per event, for all time periods in ``window_sizes``, if any.
 
         Args:
-            TODO
+            subjects_per_output_file: The number of subjects that should be included in each output file.
+                Lowering this number increases the number of files written, making the process of creating and
+                leveraging these files slower but more memory efficient.
+            feature_inclusion_frequency: The base feature inclusion frequency that should be used to dictate
+                what features can be included in the flat representation. It can either be a float, in which
+                case it applies across all measurements, or `None`, in which case no filtering is applied, or
+                a dictionary from measurement type to a float dictating a per-measurement-type inclusion
+                cutoff.
+            window_sizes: Beyond writing out a raw, per-event flattened representation, the dataset also has
+                the capability to summarize these flattened representations over the historical windows
+                specified in this argument. These are strings specifying time deltas, using this syntax:
+                `link`_. Each window size will be summarized to a separate directory, and will share the same
+                subject file split as is used in the raw representation files.
+            include_only_measurements: Measurement types can also be filtered out wholesale from both
+                representations. If this list is not None, only these measurements will be included.
+            do_overwrite: If `True`, this function will overwrite the data already stored in the target save
+                directory.
+            do_update: If `True`, this function will (a) ensure that the parameters are the same or are
+                mappable to one another (critically, _it may_ default to an existing subject split if one has
+                been used historically, overwriting the specified `subjects_per_output_file` parameter!), then
+                (b) attempt to write only those files that are not yet written to disk across the historical
+                summarization targets.
+
+        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_rolling.html # noqa: E501
         """
 
         self._seed(1, "cache_flat_representation")

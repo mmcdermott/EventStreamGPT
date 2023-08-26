@@ -29,13 +29,14 @@ jobs:
           pip install -e .
           pip install pytest
           pip install pytest-cov[toml]
+          pip install nbmake
 
       #----------------------------------------------
       #              run test suite
       #----------------------------------------------
       - name: Run tests
         run: |
-          pytest -v --doctest-modules --cov EventStream --ignore docs/
+          pytest -v --doctest-modules --cov EventStream --ignore docs/ --nbmake
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

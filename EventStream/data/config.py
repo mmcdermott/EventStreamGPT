@@ -96,12 +96,12 @@ class DatasetSchema(JSONableMixin):
         ...         dict(type="event", event_type="bar2", input_df="/path/to/bar.csv", ts_col="col2"),
         ...     ],
         ... )
-        >>> DS.dynamic_by_df
-        {'/path/to/foo.csv': [InputDFSchema(input_df='/path/to/foo.csv', type='event', event_type='foo',\
- subject_id_col='col', ts_col='col')], '/path/to/bar.csv': [InputDFSchema(input_df='/path/to/bar.csv',\
- type='event', event_type='bar', subject_id_col='col', ts_col='col'),\
- InputDFSchema(input_df='/path/to/bar.csv', type='event', event_type='bar2', subject_id_col='col',\
- ts_col='col2')]}
+        >>> DS.dynamic_by_df # doctest: +NORMALIZE_WHITESPACE
+        {'/path/to/foo.csv': [InputDFSchema(input_df='/path/to/foo.csv', type='event', event_type='foo',
+        subject_id_col='col', ts_col='col')], '/path/to/bar.csv': [InputDFSchema(input_df='/path/to/bar.csv',
+        type='event', event_type='bar', subject_id_col='col', ts_col='col'),
+        InputDFSchema(input_df='/path/to/bar.csv', type='event', event_type='bar2', subject_id_col='col',
+        ts_col='col2')]}
     """
 
     static: dict[str, Any] | InputDFSchema | None = None
@@ -198,6 +198,15 @@ class InputDFSchema(JSONableMixin):
         False
         >>> S
         InputDFSchema(input_df='/path/to_df.parquet', type='event', event_type='bar', ts_col='col')
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='range',
+        ...     start_ts_col='start',
+        ...     end_ts_col='end',
+        ...     event_type=('bar_st_eq_end', 'bar_st', 'bar_end'),
+        ... )
+        >>> S.is_static
+        False
         >>> InputDFSchema()
         Traceback (most recent call last):
             ...
@@ -229,7 +238,138 @@ class InputDFSchema(JSONableMixin):
         Traceback (most recent call last):
             ...
         ValueError: Missing mandatory range parameter event_type!
-        >>>
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to/df.csv",
+        ...     type='static',
+        ...     subject_id_col='subj_id',
+        ...     event_type='foo'
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Set invalid param event_type for static source!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     event_type='bar',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory event parameter ts_col!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: Missing mandatory event parameter event_type!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ...     event_type='foo',
+        ...     subject_id_col='subj',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: subject_id_col should be None for non-static types!
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ...     event_type=('foo', 'categorical'),
+        ... )
+        Traceback (most recent call last):
+            ...
+        TypeError: event_type must be a string for events. Got ('foo', 'categorical')
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='bar',
+        ...     event_type='foo',
+        ...     start_ts_col='start',
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: start_ts_col should be None for event schema: Got start
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='event',
+        ...     ts_col='col',
+        ...     event_type='bar',
+        ...     data_schema=('foobar', 'categorical'),
+        ... )
+        >>> S.is_static
+        False
+        >>> S # doctest: +NORMALIZE_WHITESPACE
+        InputDFSchema(input_df='/path/to_df.parquet',
+                      type='event',
+                      event_type='bar',
+                      ts_col='col',
+                      data_schema=[('foobar', 'categorical')])
+        >>> S.unified_schema
+        {'foobar': ('foobar', 'categorical')}
+        >>> S.columns_to_load
+        [('foobar', 'categorical'), ('col', <InputDataType.TIMESTAMP: 'timestamp'>)]
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='range',
+        ...     start_ts_col='start',
+        ...     end_ts_col='end',
+        ...     event_type='bar',
+        ...     start_data_schema=[
+        ...         {'buz': 'float'},
+        ...         {'baz': ['timestamp', '%Y-%m']}
+        ...     ],
+        ...     end_data_schema={'foobar': InputDataType.FLOAT},
+        ... )
+        >>> for n, schema in zip(('EQ', 'ST', 'END'), S.unified_schema):
+        ...     print(f"{n}:")
+        ...     for k, v in sorted(schema.items()):
+        ...         print(f"  {k}: {v}")
+        EQ:
+          baz: ('baz', ['timestamp', '%Y-%m'])
+          buz: ('buz', 'float')
+          foobar: ('foobar', <InputDataType.FLOAT: 'float'>)
+        ST:
+          baz: ('baz', ['timestamp', '%Y-%m'])
+          buz: ('buz', 'float')
+        END:
+          foobar: ('foobar', <InputDataType.FLOAT: 'float'>)
+        >>> S = InputDFSchema(
+        ...     input_df="/path/to_df.parquet",
+        ...     type='range',
+        ...     start_ts_col='start',
+        ...     end_ts_col='end',
+        ...     ts_format='%Y-%m-%d',
+        ...     event_type='bar',
+        ...     start_data_schema={'foobar': ('foobar_renamed', ['timestamp', '%Y'])},
+        ...     end_data_schema=[
+        ...         ('buz', 'float'),
+        ...         (['biz', 'whizz'], 'categorical'),
+        ...     ],
+        ... )
+        >>> for n, schema in zip(('EQ', 'ST', 'END'), S.unified_schema):
+        ...     print(f"{n}:")
+        ...     for k, v in sorted(schema.items()):
+        ...         print(f"  {k}: {v}")
+        EQ:
+          biz: ('biz', 'categorical')
+          buz: ('buz', 'float')
+          foobar: ('foobar_renamed', ['timestamp', '%Y'])
+          whizz: ('whizz', 'categorical')
+        ST:
+          foobar: ('foobar_renamed', ['timestamp', '%Y'])
+        END:
+          biz: ('biz', 'categorical')
+          buz: ('buz', 'float')
+          whizz: ('whizz', 'categorical')
+        >>> list(sorted(S.columns_to_load)) # doctest: +NORMALIZE_WHITESPACE
+        [('biz', 'categorical'), ('buz', 'float'),
+         ('end', (<InputDataType.TIMESTAMP: 'timestamp'>, '%Y-%m-%d')),
+         ('foobar', ['timestamp', '%Y']),
+         ('start', (<InputDataType.TIMESTAMP: 'timestamp'>, '%Y-%m-%d')),
+         ('whizz', 'categorical')]
     """
 
     input_df: Any | None = None
@@ -282,10 +422,8 @@ class InputDFSchema(JSONableMixin):
             case InputDFType.STATIC:
                 if self.subject_id_col is None:
                     raise ValueError("Must set subject_id_col for static source!")
-                if self.event_type is not None:
-                    raise ValueError("Event_type can't be set if type == 'static'!")
 
-                for param in ("ts_col", "start_ts_col", "end_ts_col"):
+                for param in ("event_type", "ts_col", "start_ts_col", "end_ts_col"):
                     if getattr(self, param) is not None:
                         raise ValueError(f"Set invalid param {param} for static source!")
 
@@ -294,7 +432,7 @@ class InputDFSchema(JSONableMixin):
                     raise ValueError("Missing mandatory event parameter ts_col!")
                 match self.event_type:
                     case None:
-                        raise ValueError("Missing mandatory range parameter event_type!")
+                        raise ValueError("Missing mandatory event parameter event_type!")
                     case str():
                         pass
                     case _:
@@ -525,9 +663,9 @@ class InputDFSchema(JSONableMixin):
         unified_schema = {}
         for schema in data_schema:
             match schema:
-                case str() as col, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
+                case str() as col, ((InputDataType() | str()) | [InputDataType.TIMESTAMP, str()]) as dt:
                     cls.__add_to_schema(unified_schema, in_col=col, dt=dt)
-                case list() as cols, (InputDataType() | [InputDataType.TIMESTAMP, str()]) as dt:
+                case list() as cols, ((InputDataType() | str()) | [InputDataType.TIMESTAMP, str()]) as dt:
                     for c in cols:
                         cls.__add_to_schema(unified_schema, in_col=c, dt=dt)
                 case dict():

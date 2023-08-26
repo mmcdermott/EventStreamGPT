@@ -1708,6 +1708,14 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
 
         self.assertEqual(want_expl, got_expl)
 
+        with self.subTest("Caching a flat representation should run"):
+            with TemporaryDirectory() as d:
+                save_dir = Path(d) / "save_dir"
+                E.config.save_dir = save_dir
+                E.cache_flat_representation()
+
+                # To-do: Produce expected flat output.
+
         with self.subTest("Save/load should work"):
             with TemporaryDirectory() as d:
                 save_dir = Path(d) / "save_dir"

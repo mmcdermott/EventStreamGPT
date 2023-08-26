@@ -564,7 +564,11 @@ def time_from_deltas(batch: PytorchBatch) -> torch.Tensor:
 class LearnableFrequencySinusoidalTemporalPositionEncoding(torch.nn.Module):
     """A module for applying time-based position encodings to a PytorchBatch.
 
-    Adapted from https://openreview.net/pdf?id=onxoVA9FxMw
+    Adapted from :footcite:t:`wang2021on` (`link`_).
+
+    .. _link: https://openreview.net/pdf?id=onxoVA9FxMw
+
+    .. footbibliography::
 
     Args:
         embedding_dim: The desired size of the output embedding. Unlike many position embedding
@@ -981,7 +985,7 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
         """
 
         embed = self.data_embedding_layer(batch)
-        # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len config.hidden_size).
+        # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len, config.hidden_size).
 
         time_embed = self.time_embedding_layer(batch)
         # `time_embed` is of shape (batch_size, sequence_length, config.hidden_size).
