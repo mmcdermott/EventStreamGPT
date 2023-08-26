@@ -112,12 +112,12 @@ def main(cfg: DictConfig):
                         load_from_model_dir=str(seed_runs_dir),
                         do_overwrite=False,
                         task_df_name=FT_task,
-                        data_config_overrides={
+                        data_config={
                             "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                             "train_subset_size": "FULL",
                             "train_subset_seed": None,
                         },
-                        task_specific_params={"pooling_method": "last"},
+                        config={"task_specific_params": {"pooling_method": "last"}},
                         optimization_config=dict(**cfg["get_embeddings_commands"]["optimization_config"]),
                     )
 
@@ -149,14 +149,16 @@ def main(cfg: DictConfig):
                         save_dir=zero_shot_task_dir,
                         do_overwrite=False,
                         task_df_name=FT_task,
-                        data_config_overrides={
+                        data_config={
                             "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                             "seq_padding_side": str(SeqPaddingSide.LEFT),
                             "max_seq_len": cfg["zero_shot_commands"]["input_seq_len"],
                             "do_include_start_time_min": True,
                         },
-                        task_specific_params={
-                            "num_samples": cfg["zero_shot_commands"]["num_samples"],
+                        config={
+                            "task_specific_params": {
+                                "num_samples": cfg["zero_shot_commands"]["num_samples"],
+                            }
                         },
                         optimization_config=dict(**cfg["zero_shot_commands"]["optimization_config"]),
                         wandb_logger_kwargs={
@@ -203,12 +205,6 @@ def main(cfg: DictConfig):
                             save_dir=FT_subset_dir,
                             do_overwrite=False,
                             task_df_name=FT_task,
-                            # data_config_overrides={
-                            #     "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
-                            #     "train_subset_size": FT_subset_size,
-                            #     "train_subset_seed": seed,
-                            # },
-                            # task_specific_params={"pooling_method": "last"},
                             data_config={
                                 "subsequence_sampling_strategy": str(SubsequenceSamplingStrategy.TO_END),
                                 "train_subset_size": FT_subset_size,
