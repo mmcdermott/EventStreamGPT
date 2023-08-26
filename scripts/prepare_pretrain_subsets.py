@@ -214,7 +214,7 @@ def main(cfg: DictConfig):
                                 "train_subset_size": FT_subset_size,
                                 "train_subset_seed": seed,
                             },
-                            config={'task_specific_params':{"pooling_method": "last"}},
+                            config={"task_specific_params": {"pooling_method": "last"}},
                             optimization_config=dict(**cfg["few_shot_commands"]["optimization_config"]),
                             wandb_logger_kwargs={
                                 "name": (
