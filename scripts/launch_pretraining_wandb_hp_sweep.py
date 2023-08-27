@@ -58,6 +58,8 @@ def collapse_cfg(k: str, v: dict[str, Any]) -> dict[str, Any]:
     if len(WANDB_SWEEP_KEYS.intersection(v.keys())) > 0:
         if set(v.keys()) == {"value"} and v["value"] is None:
             return {}
+        elif "value" in v and v["value"] is not None:
+            return {k: {"value": v["value"]}}
         else:
             return {k: v}
 
