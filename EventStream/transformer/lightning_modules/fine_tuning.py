@@ -11,7 +11,7 @@ import omegaconf
 import torch
 import torch.multiprocessing
 import torchmetrics
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf
@@ -332,6 +332,7 @@ class FinetuneConfig:
             "log_every_n_steps": 10,
         }
     )
+    do_use_filesystem_sharing: bool = True
 
     def __post_init__(self):
         match self.save_dir:
@@ -357,7 +358,7 @@ class FinetuneConfig:
             return
 
         match self.pretrained_weights_fp:
-            case "skip" | None:
+            case "skip" | None | Path():
                 pass
             case str():
                 self.pretrained_weights_fp = Path(self.pretrained_weights_fp)
@@ -376,6 +377,18 @@ class FinetuneConfig:
                 raise TypeError(
                     "`load_from_model_dir` must be a str or path! Got "
                     f"{type(self.load_from_model_dir)}({self.load_from_model_dir})"
+                )
+
+        # convert data_config.save_dir to Path
+        match self.data_config["save_dir"]:
+            case str():
+                self.data_config["save_dir"] = Path(self.data_config["save_dir"])
+            case Path():
+                pass
+            case _:
+                raise TypeError(
+                    "`data_config.save_dir` must be a str or path! Got "
+                    f"{type(self.data_config.save_dir)}({self.data_config.save_dir})"
                 )
 
         if (
@@ -436,7 +449,8 @@ def train(cfg: FinetuneConfig):
     """
 
     L.seed_everything(cfg.seed)
-    torch.multiprocessing.set_sharing_strategy("file_system")
+    if cfg.do_use_filesystem_sharing:
+        torch.multiprocessing.set_sharing_strategy("file_system")
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
@@ -493,7 +507,17 @@ def train(cfg: FinetuneConfig):
 
     # Setting up model configurations
     # This will track the learning rate value as it updates through warmup and decay.
-    callbacks = [LearningRateMonitor(logging_interval="step")]
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=None,
+        filename="{epoch}-{val_loss:.2f}-best_model",
+        monitor="tuning_loss",
+        mode="min",
+        save_top_k=3,
+    )
+    callbacks = [
+        LearningRateMonitor(logging_interval="step"),
+        checkpoint_callback,
+    ]
     if optimization_config.patience is not None:
         callbacks.append(
             EarlyStopping(monitor="tuning_loss", mode="min", patience=optimization_config.patience)
@@ -545,8 +569,8 @@ def train(cfg: FinetuneConfig):
         collate_fn=held_out_pyd.collate,
         shuffle=False,
     )
-    tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader)
-    held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader)
+    tuning_metrics = trainer.validate(model=LM, dataloaders=tuning_dataloader, ckpt_path="best")
+    held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader, ckpt_path="best")
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
         print("Saving final metrics...")
