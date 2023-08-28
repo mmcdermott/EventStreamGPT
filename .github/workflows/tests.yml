@@ -30,6 +30,7 @@ jobs:
           pip install pytest
           pip install pytest-cov[toml]
           pip install nbmake
+          pip install rootutils
 
       #----------------------------------------------
       #              run test suite
