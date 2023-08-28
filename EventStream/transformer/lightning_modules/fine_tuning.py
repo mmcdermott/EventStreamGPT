@@ -332,6 +332,7 @@ class FinetuneConfig:
             "log_every_n_steps": 10,
         }
     )
+    do_use_filesystem_sharing: bool = True
 
     def __post_init__(self):
         match self.save_dir:
@@ -448,7 +449,8 @@ def train(cfg: FinetuneConfig):
     """
 
     L.seed_everything(cfg.seed)
-    torch.multiprocessing.set_sharing_strategy("file_system")
+    if cfg.do_use_filesystem_sharing:
+        torch.multiprocessing.set_sharing_strategy("file_system")
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")

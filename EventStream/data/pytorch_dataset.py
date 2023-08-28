@@ -186,7 +186,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                             self.task_vocabs[t] = [False, True]
                         case "multi_class_classification":
                             self.task_vocabs[t] = list(
-                                range(task_df.select(pl.col(t).max()).collect().item())
+                                range(task_df.select(pl.col(t).max()).collect().item() + 1)
                             )
 
                 task_info_fp = task_dir / "task_info.json"
@@ -226,7 +226,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
             else:
                 raise FileNotFoundError(
-                    f"Neither {task_df_fp} nor {raw_task_df_fp} exist, but config.task_df_name = "
+                    f"Neither {task_dir}/*.parquet nor {raw_task_df_fp} exist, but config.task_df_name = "
                     f"{config.task_df_name}!"
                 )
         else:
