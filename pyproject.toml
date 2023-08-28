@@ -43,6 +43,7 @@ pexpect = "^4.8.0"
 pytest = "^7.4.0"
 pytest-cov = {extras = ["toml"], version = "^4.1.0"}
 nbmake = "^1.4.3"
+rootutils = "^1.0.7"
 
 [tool.poetry.group.docs.dependencies]
 sphinxcontrib-bibtex = "^2.5.0"

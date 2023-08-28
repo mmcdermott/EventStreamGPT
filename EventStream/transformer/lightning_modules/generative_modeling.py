@@ -489,7 +489,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         }
 
 
-SKIP_CFG_PARAMS = {"seq_attention_layers", "dep_graph_attention_layers"}
+SKIP_CFG_PARAMS = {"seq_attention_layers", "dep_graph_attention_layers", "hidden_size"}
 
 
 @hydra_dataclass
@@ -542,6 +542,7 @@ class PretrainConfig:
     )
 
     do_final_validation_on_metrics: bool = True
+    do_use_filesystem_sharing: bool = True
 
     # compile: bool = True
 
@@ -563,7 +564,8 @@ def train(cfg: PretrainConfig):
     """
 
     L.seed_everything(cfg.seed)
-    torch.multiprocessing.set_sharing_strategy("file_system")
+    if cfg.do_use_filesystem_sharing:
+        torch.multiprocessing.set_sharing_strategy("file_system")
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")

@@ -1,0 +1,105 @@
+defaults:
+  - pretrain_config
+  - _self_
+
+do_overwrite: false
+seed: 1
+config:
+  do_use_learnable_sinusoidal_ATE: false
+  do_split_embeddings: true
+  categorical_embedding_dim: 32
+  numerical_embedding_dim: 16
+  static_embedding_mode: drop
+  categorical_embedding_weight: 0.3
+  numerical_embedding_weight: 0.5
+  do_normalize_by_measurement_index: true
+  structured_event_processing_mode: nested_attention
+  num_hidden_layers: 3
+  seq_attention_types: ["global", "local"]
+  dep_graph_attention_types: ["global", "local"]
+  seq_window_size: 4
+  dep_graph_window_size: 4
+  do_full_block_in_seq_attention: True
+  do_full_block_in_dep_graph_attention: False
+  TTE_generation_layer_type: exponential
+  head_dim: 8
+  num_attention_heads: 4
+  attention_dropout: 0.2
+  input_dropout: 0.2
+  resid_dropout: 0.2
+  intermediate_size: 256
+  measurements_per_dep_graph_level:
+    - ["age"]
+    - ["event_type"]
+    - ["department", "HR", "temp", ["lab_name", "categorical_only"]]
+    - [["lab_name", "numerical_only"]]
+optimization_config:
+  init_lr: 0.0001
+  end_lr_frac_of_init_lr: null
+  end_lr: 0.00001
+  max_epochs: 6
+  batch_size: 32
+  validation_batch_size: 32
+  lr_frac_warmup_steps: 0.05
+  lr_decay_power: 2
+  weight_decay: 0.2
+  patience: 2
+  gradient_accumulation: 2
+  num_dataloader_workers: 1
+data_config:
+  save_dir: ???
+  max_seq_len: 128
+  min_seq_len: 4
+  train_subset_size: 0.95
+  train_subset_seed: 1
+pretraining_metrics_config:
+  do_skip_all_metrics: false
+  do_validate_args: true
+  include_metrics:
+    TRAIN:
+      LOSS_PARTS: true
+final_validation_metrics_config:
+  n_auc_thresholds: 25
+  do_skip_all_metrics: false
+  do_validate_args: true
+  include_metrics:
+    TUNING:
+      LOSS_PARTS: true
+      TTE:
+        MSE: true
+        MSLE: true
+      CLASSIFICATION:
+        AUROC:
+        - WEIGHTED
+        ACCURACY: true
+        AUPRC:
+        - WEIGHTED
+      REGRESSION:
+        MSE: true
+    HELD_OUT:
+      LOSS_PARTS: true
+      TTE:
+        MSE: true
+        MSLE: true
+      CLASSIFICATION:
+        AUROC:
+        - WEIGHTED
+        ACCURACY: true
+      REGRESSION:
+        MSE: true
+        EXPLAINED_VARIANCE: true
+        MSLE: true
+trainer_config:
+  accelerator: cpu
+  devices: auto
+  detect_anomaly: true
+  log_every_n_steps: 1
+experiment_dir: ???
+wandb_logger_kwargs:
+  name: null
+  project: null
+  team: null
+  log_model: false
+  do_log_graph: false
+do_final_validation_on_metrics: true
+do_use_filesystem_sharing: false
