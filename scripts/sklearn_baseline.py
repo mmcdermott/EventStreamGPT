@@ -2,6 +2,7 @@
 """Fine-tunes a model on a user-specified downstream task."""
 
 try:
+    # This color-codes and prettifies error messages if the script fails.
     import stackprinter
 
     stackprinter.set_excepthook(style="darkbg2")

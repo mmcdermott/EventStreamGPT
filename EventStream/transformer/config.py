@@ -677,8 +677,10 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         if head_dim * num_attention_heads != hidden_size:
             raise ValueError(
-                f"hidden_size must be divisible by num_attention_heads (got `hidden_size`: {hidden_size} "
-                f"and `num_attention_heads`: {num_attention_heads})."
+                "hidden_size must be consistent with head_dim and divisible by num_attention_heads. Got:\n"
+                f"  hidden_size: {hidden_size}\n"
+                f"  head_dim: {head_dim}\n"
+                f"  num_attention_heads: {num_attention_heads}"
             )
 
         if type(num_hidden_layers) is not int:
