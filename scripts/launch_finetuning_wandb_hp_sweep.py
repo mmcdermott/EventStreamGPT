@@ -12,8 +12,9 @@ except ImportError:
 from typing import Any
 
 import hydra
-import wandb
 from omegaconf import DictConfig
+
+import wandb
 
 # This is a (non-exhaustive) set of weights and biases sweep parameter keywords, which is used to indicate
 # when a configuration dictionary contains actual parameter choices, rather than further nested parameter
