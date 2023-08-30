@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import omegaconf
 import polars as pl
+import wandb
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from sklearn.decomposition import NMF, PCA
@@ -23,8 +24,6 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-
-import wandb
 
 from ..data.dataset_polars import Dataset
 from ..data.pytorch_dataset import PytorchDataset
