@@ -9,7 +9,6 @@ from typing import Any
 import numpy as np
 import omegaconf
 import polars as pl
-import wandb
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from sklearn.decomposition import NMF, PCA
@@ -25,7 +24,10 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
+import wandb
+
 from ..data.dataset_polars import Dataset
+from ..data.pytorch_dataset import PytorchDataset
 from ..utils import task_wrapper
 from .FT_task_baseline import ESDFlatFeatureLoader, add_tasks_from, load_flat_rep
 
@@ -289,6 +291,68 @@ cs.store(group="dim_reduce", name="select_k_best", node=SelectKBestConfig)
 cs.store(group="feature_selector", name="esd_flat_feature_loader", node=ESDFlatFeatureLoaderConfig)
 cs.store(group="model", name="random_forest_classifier", node=RandomForestClassifierConfig)
 
+METRIC_FNS = {
+    "NLL": log_loss,
+    "AUROC": roc_auc_score,
+    "AUPRC": average_precision_score,
+    "Accuracy": accuracy_score,
+}
+
+
+def eval_multi_class_classification(Y: np.ndarray, probs: np.ndarray, task_vocab: list[Any]):
+    results = {}
+    probs_metrics = [("NLL", {"labels": task_vocab})]
+
+    for metric_n, metric_kwargs in [
+        ("AUROC/OVO", {"multi_class": "ovo", "labels": task_vocab}),
+        ("AUROC/OVR", {"multi_class": "ovr", "labels": task_vocab}),
+        ("AUPRC/OVR", {}),
+    ]:
+        average_methods = ["weighted"]
+        if metric_n.endswith("OVR"):
+            average_methods.extend([None, "macro"])
+        for average in average_methods:
+            probs_metrics.append((f"{metric_n}/{average}", {"average": average, **metric_kwargs}))
+
+    for metric_n, metric_kwargs in probs_metrics:
+        metric_fn = METRIC_FNS[metric_n.split("/")[0]]
+        try:
+            output = metric_fn(Y, probs, **metric_kwargs)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Failed in evaluating {metric_fn}") from e
+        if isinstance(output, (list, tuple, np.ndarray)):
+            if not metric_n.endswith("/None"):
+                raise ValueError(f"Metric {metric_n} returned a list output unexpectedly")
+            if len(output) != len(task_vocab):
+                raise ValueError(
+                    f"Metric returned a sequence of inappropriate length {len(output)} (vocab length "
+                    f"{len(task_vocab)}"
+                )
+            for v, o in zip(task_vocab, output):
+                results[f"{metric_n[:-len('/None')]}/{v}"] = o
+        else:
+            results[metric_n] = output
+
+    label_metrics = ["Accuracy"]
+    for metric_n in label_metrics:
+        results[metric_n] = METRIC_FNS[metric_n.split("/")[0]](Y, probs.argmax(axis=1))
+
+    return results
+
+
+def eval_binary_classification(Y: np.ndarray, probs: np.ndarray) -> dict[str, float]:
+    results = {}
+    probs_metrics = ["AUROC", "AUPRC", "NLL"]
+    label_metrics = ["Accuracy"]
+
+    for metric_n in probs_metrics:
+        results[metric_n] = METRIC_FNS[metric_n.split("/")[0]](Y, probs[:, 1])
+
+    for metric_n in label_metrics:
+        results[metric_n] = METRIC_FNS[metric_n.split("/")[0]](Y, probs.argmax(axis=1))
+
+    return results
+
 
 def train_sklearn_pipeline(cfg: SklearnConfig):
     print(f"Saving config to {cfg.save_dir / 'config.yaml'}")
@@ -300,10 +364,28 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     task_dfs = add_tasks_from(ESD.config.save_dir / "task_dfs")
     task_df = task_dfs[cfg.task_df_name]
 
+    task_type, normalized_label = PytorchDataset.normalize_task(
+        pl.col(cfg.finetuning_task_label), task_df.schema[cfg.finetuning_task_label]
+    )
+
+    match task_type:
+        case "binary_classification":
+            task_vocab = [False, True]
+        case "multi_class_classification":
+            task_vocab = list(
+                range(task_df.select(pl.col(cfg.finetuning_task_label).max()).collect().item() + 1)
+            )
+        case _:
+            raise ValueError(f"Task type {task_type} not supported!")
+
     # TODO(mmd): Window sizes may violate start_time constraints in task dfs!
 
     print(f"Loading representations for {', '.join(cfg.feature_selector.window_sizes)}")
-    task_df = task_df.select("subject_id", pl.col("end_time").alias("timestamp"), cfg.finetuning_task_label)
+    task_df = task_df.select(
+        "subject_id",
+        pl.col("end_time").alias("timestamp"),
+        normalized_label.alias(cfg.finetuning_task_label),
+    )
 
     subjects_included = {}
 
@@ -358,21 +440,14 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     print("Evaluating model!")
     all_metrics = {}
     for split in ("tuning", "held_out"):
-        eval_metrics = {}
         X, Y = Xs_and_Ys[split]
         probs = model.predict_proba(X)
-        for metric_n, metric_fn in [
-            ("AUROC", roc_auc_score),
-            ("AUPRC", average_precision_score),
-            ("NLL", log_loss),
-        ]:
-            eval_metrics[metric_n] = metric_fn(Y, probs[:, 1])
 
-        for metric_n, metric_fn in [
-            ("Accuracy", accuracy_score),
-        ]:
-            eval_metrics[metric_n] = metric_fn(Y, probs.argmax(axis=1))
-        all_metrics[split] = eval_metrics
+        match task_type:
+            case "binary_classification":
+                all_metrics[split] = eval_binary_classification(Y, probs)
+            case "multi_class_classification":
+                all_metrics[split] = eval_multi_class_classification(Y, probs, task_vocab=task_vocab)
 
     with open(cfg.save_dir / "final_metrics.json", mode="w") as f:
         json.dump(all_metrics, f)

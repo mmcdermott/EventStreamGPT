@@ -182,7 +182,7 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Ten
 
     torch._assert(
         (weights >= 0).all(),
-        "weights should be >= 0",
+        "weights should be >= 0. Got min {torch.min(weights)}",
     )
 
     shape_err_string = (
