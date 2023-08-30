@@ -156,4 +156,5 @@ def get_embeddings(cfg: FinetuneConfig):
                 print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
             else:
                 print(f"Saving {sp} embeddings to {embeddings_fp}.")
+                embeddings_fp.parent.mkdir(exist_ok=True, parents=True)
                 torch.save(embeddings, embeddings_fp)
