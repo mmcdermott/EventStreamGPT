@@ -114,7 +114,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     """Execute any lazy query in streaming mode."""
 
     @staticmethod
-    def get_smallest_valid_int_type(num: int | float | pl.Expr) -> pl.DataType:
+    def get_smallest_valid_uint_type(num: int | float | pl.Expr) -> pl.DataType:
         """Returns the smallest valid unsigned integral type for an ID variable with `num` unique options.
 
         Args:
@@ -126,15 +126,15 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         Examples:
             >>> import polars as pl
-            >>> Dataset.get_smallest_valid_int_type(num=1)
+            >>> Dataset.get_smallest_valid_uint_type(num=1)
             UInt8
-            >>> Dataset.get_smallest_valid_int_type(num=2**8-1)
+            >>> Dataset.get_smallest_valid_uint_type(num=2**8-1)
             UInt16
-            >>> Dataset.get_smallest_valid_int_type(num=2**16-1)
+            >>> Dataset.get_smallest_valid_uint_type(num=2**16-1)
             UInt32
-            >>> Dataset.get_smallest_valid_int_type(num=2**32-1)
+            >>> Dataset.get_smallest_valid_uint_type(num=2**32-1)
             UInt64
-            >>> Dataset.get_smallest_valid_int_type(num=2**64-1)
+            >>> Dataset.get_smallest_valid_uint_type(num=2**64-1)
             Traceback (most recent call last):
                 ...
             ValueError: Value is too large to be expressed as an int!
@@ -542,7 +542,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 raise ValueError(f"ID column {id_col.name} is not a non-negative integer type!")
 
         max_val = id_col.max()
-        dt = Dataset.get_smallest_valid_int_type(max_val)
+        dt = Dataset.get_smallest_valid_uint_type(max_val)
 
         id_col = id_col.cast(dt)
 
@@ -1258,7 +1258,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         """Re-formats `source_df` into the desired deep-learning output format."""
         struct_exprs = []
         total_vocab_size = self.vocabulary_config.total_vocab_size
-        idx_dt = self.get_smallest_valid_int_type(total_vocab_size)
+        idx_dt = self.get_smallest_valid_uint_type(total_vocab_size)
 
         for m in measures:
             if m == "event_type":
@@ -1292,7 +1292,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.struct([idx_present_expr, idx_value_expr, val_expr.alias("value")]).alias(m)
             )
 
-        measurements_idx_dt = self.get_smallest_valid_int_type(len(self.unified_measurements_idxmap))
+        measurements_idx_dt = self.get_smallest_valid_uint_type(len(self.unified_measurements_idxmap))
         return (
             source_df.select(*id_cols, *struct_exprs)
             .melt(
@@ -1440,7 +1440,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 out_dfs[m] = (
                     df.lazy()
                     .filter(pl.col(m).is_not_null())
-                    .select("subject_id", pl.col(m).alias(f"static/{m}").cast(pl.Float32))
+                    .select("subject_id", pl.col(m).alias(f"static/{m}/{m}/value").cast(pl.Float32))
                 )
                 continue
             elif cfg.modality == "multivariate_regression":
@@ -1461,7 +1461,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             remap_cols = [c for c in pivoted_df.columns if c not in ID_cols]
             out_dfs[m] = pivoted_df.lazy().select(
-                *ID_cols, *[pl.col(c).alias(f"static/{m}/{c}").cast(pl.Boolean) for c in remap_cols]
+                *ID_cols, *[pl.col(c).alias(f"static/{m}/{c}/present").cast(pl.Boolean) for c in remap_cols]
             )
 
         return pl.concat(list(out_dfs.values()), how="align")
@@ -1505,12 +1505,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                         "event_id",
                         "subject_id",
                         "timestamp",
-                        pl.lit(1, dtype=pl.UInt32).alias(f"dynamic/{m}/{m}/count"),
-                        pl.col(m).is_not_nan().cast(pl.UInt32).alias(f"dynamic/{m}/{m}/has_values_count"),
-                        pl.col(m).fill_nan(None).alias(f"dynamic/{m}/{m}/sum"),
-                        (pl.col(m) ** 2).fill_nan(None).alias(f"dynamic/{m}/{m}/sum_sqd"),
-                        pl.col(m).fill_nan(None).alias(f"dynamic/{m}/{m}/min"),
-                        pl.col(m).fill_nan(None).alias(f"dynamic/{m}/{m}/max"),
+                        pl.col(m).cast(pl.Float32).alias(f"time_dependent/{m}/{m}/value"),
                     )
                 )
                 continue
@@ -1521,7 +1516,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             pivoted_df = (
                 df.select(*ID_cols, m)
                 .filter(pl.col(m).is_in(allowed_vocab))
-                .with_columns(pl.lit(1).alias("__indicator"))
+                .with_columns(pl.lit(True).alias("__indicator"))
                 .pivot(
                     index=ID_cols,
                     columns=m,
@@ -1533,7 +1528,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             remap_cols = [c for c in pivoted_df.columns if c not in ID_cols]
             out_dfs[m] = pivoted_df.lazy().select(
                 *ID_cols,
-                *[pl.col(c).cast(pl.UInt32).alias(f"dynamic/{m}/{c}/count") for c in remap_cols],
+                *[pl.col(c).cast(pl.Boolean).alias(f"time_dependent/{m}/{c}/present") for c in remap_cols],
             )
 
         return pl.concat(list(out_dfs.values()), how="align")
@@ -1576,19 +1571,32 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         out_dfs = {}
         for m, allowed_vocab in valid_measures.items():
             cfg = self.measurement_configs[m]
+            count_type = self.get_smallest_valid_uint_type(
+                int(cfg.observation_frequency * len(self.subject_ids))
+            )
             if cfg.modality == "univariate_regression" and cfg.vocabulary is None:
+                prefix = f"dynamic/{m}/{m}"
+
+                key_col = pl.col(m)
+                val_col = pl.col(m).drop_nans().cast(pl.Float32)
+
                 out_dfs[m] = (
                     df.lazy()
                     .select("measurement_id", "event_id", m)
                     .filter(pl.col(m).is_not_null())
                     .groupby("event_id")
                     .agg(
-                        pl.col(m).count().alias(f"dynamic/{m}/{m}/count"),
-                        pl.col(m).is_not_nan().sum().alias(f"dynamic/{m}/{m}/has_values_count"),
-                        pl.col(m).drop_nans().sum().alias(f"dynamic/{m}/{m}/sum"),
-                        (pl.col(m).drop_nans() ** 2).sum().alias(f"dynamic/{m}/{m}/sum_sqd"),
-                        pl.col(m).drop_nans().min().alias(f"dynamic/{m}/{m}/min"),
-                        pl.col(m).drop_nans().max().alias(f"dynamic/{m}/{m}/max"),
+                        pl.col(m).is_not_null().sum().cast(count_type).alias(f"{prefix}/count"),
+                        (
+                            (pl.col(m).is_not_nan() & pl.col(m).is_not_null())
+                            .sum()
+                            .cast(count_type)
+                            .alias(f"{prefix}/has_values_count"),
+                        )
+                        val_col.sum().alias(f"{prefix}/sum"),
+                        (val_col ** 2).sum().alias(f"{prefix}/sum_sqd"),
+                        val_col.min().alias(f"{prefix}/min"),
+                        val_col.max().alias(f"{prefix}/max"),
                     )
                 )
                 continue
@@ -1597,33 +1605,44 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 values_cols = [m, cfg.values_column]
                 key_prefix = f"{m}_{m}_"
                 val_prefix = f"{cfg.values_column}_{m}_"
+
+                key_col = cs.starts_with(key_prefix)
+                val_col = cs.starts_with(val_prefix).drop_nans().cast(pl.Float32)
+
                 aggs = [
-                    cs.starts_with(key_prefix)
+                    key_col
                     .is_not_null()
                     .sum()
+                    .cast(count_type)
                     .map_alias(lambda c: f"dynamic/{m}/{c.replace(key_prefix, '')}/count"),
-                    cs.starts_with(val_prefix)
-                    .sum()
-                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum"),
-                    (cs.starts_with(val_prefix) ** 2)
-                    .sum()
-                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum_sqd"),
-                    cs.starts_with(val_prefix)
-                    .min()
-                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/min"),
-                    cs.starts_with(val_prefix)
-                    .max()
-                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/max"),
                     (
                         (cs.starts_with(val_prefix).is_not_null() & cs.starts_with(val_prefix).is_not_nan())
                         .sum()
                         .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/has_values_count")
                     ),
+                    val_col
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum"),
+                    (val_col ** 2)
+                    .sum()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum_sqd"),
+                    val_col
+                    .min()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/min"),
+                    val_col
+                    .max()
+                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/max"),
                 ]
             else:
                 column_cols = [m]
                 values_cols = [m]
-                aggs = [pl.all().is_not_null().sum().map_alias(lambda c: f"dynamic/{m}/{c}/count")]
+                aggs = [
+                    pl.all()
+                    .is_not_null()
+                    .sum()
+                    .cast(count_type)
+                    .map_alias(lambda c: f"dynamic/{m}/{c}/count")
+                ]
 
             ID_cols = ["measurement_id", "event_id"]
             out_dfs[m] = (
@@ -1672,6 +1691,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         cols_to_add = set(feature_columns) - set(out_df.columns)
 
         def get_dtype(col: str) -> pl.DataType:
+            parts = col.split("/")
             if col.startswith("static/"):
                 if "/" in col[len("static/") :]:
                     return pl.Boolean
