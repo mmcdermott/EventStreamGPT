@@ -69,7 +69,11 @@ class ESDMock(DatasetBase[dict, dict]):
     def _update_attr_df(self, attr: str, df: dict):
         self.functions_called["_update_attr_df"].append((attr, df))
 
-    def _get_flat_rep(self, **kwargs) -> dict:
+    def _get_flat_static_rep(self, **kwargs) -> dict:
+        self.functions_called("_get_flat_rep").append(((), kwargs))
+        return {}
+
+    def _get_flat_ts_rep(self, **kwargs) -> dict:
         self.functions_called("_get_flat_rep").append(((), kwargs))
         return {}
 
@@ -492,7 +496,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         partial_retained_config = MeasurementConfig(
             **{
                 **base_measurement_config_kwargs,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
                 "name": "retained",
             }
         )
@@ -503,7 +507,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "values_column": "value",
                 "modality": DataModality.MULTIVARIATE_REGRESSION,
                 "_measurement_metadata": empty_measurement_metadata,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
             }
         )
         want_functions_called = {
@@ -524,7 +528,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                             **base_measurement_config_kwargs,
                             "modality": DataModality.MULTIVARIATE_REGRESSION,
                             "values_column": "value",
-                            "observation_frequency": 1.0,
+                            "observation_rate_over_cases": 1.0,
                             "name": "numeric",
                             "_measurement_metadata": empty_measurement_metadata,
                         }
@@ -548,7 +552,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
             **{
                 **base_measurement_config_kwargs,
                 "vocabulary": mock_vocab,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
                 "name": "retained",
             }
         )
@@ -560,7 +564,7 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "modality": DataModality.MULTIVARIATE_REGRESSION,
                 "_measurement_metadata": empty_measurement_metadata,
                 "vocabulary": mock_vocab,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
             }
         )
         want_inferred_measurement_configs = {

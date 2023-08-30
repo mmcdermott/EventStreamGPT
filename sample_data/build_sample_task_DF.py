@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import polars as pl, numpy as np
 from pathlib import Path
 import hydra

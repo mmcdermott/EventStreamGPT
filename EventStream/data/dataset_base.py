@@ -842,7 +842,9 @@ class DatasetBase(
                 config.drop()
                 continue
 
-            total_possible, total_observed = self._total_possible_and_observed(measure, config, source_df)
+            total_possible, total_observed, raw_total_observed = self._total_possible_and_observed(
+                measure, config, source_df
+            )
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
@@ -850,7 +852,8 @@ class DatasetBase(
                 config.drop()
                 continue
 
-            config.observation_frequency = total_observed / total_possible
+            config.observation_rate_over_cases = total_observed / total_possible
+            config.observation_rate_per_case = raw_total_observed / total_observed
 
             # 2. Drop the column if observations occur too rarely.
             if lt_count_or_proportion(
@@ -885,13 +888,14 @@ class DatasetBase(
     @abc.abstractmethod
     def _total_possible_and_observed(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> tuple[int, int]:
-        """Returns the total possible/actual instances where `measure` could be/was observed.
+    ) -> tuple[int, int, int]:
+        """Returns the total possible/actual/all raw instances where `measure` could be/was observed.
 
         Possible means number of subjects (for static measurements) or number of unique events (for dynamic or
         functional time dependent measurements). Actual means where the given measurement column takes on a
-        non-null value. For a multivariate regression measurement, the column that must be non-null is the key
-        column, not the value column.
+        non-null value. All means the count of total observations, accounting for duplicate observations per
+        possible instance. For a multivariate regression measurement, the column that must be non-null is the
+        key column, not the value column.
 
         Args:
             measure: The name of the measurement.
@@ -1063,7 +1067,11 @@ class DatasetBase(
         return vocabs
 
     @abc.abstractmethod
-    def _get_flat_rep(self, **kwargs) -> DF_T:
+    def _get_flat_ts_rep(self, **kwargs) -> DF_T:
+        raise NotImplementedError("Must be overwritten in base class.")
+
+    @abc.abstractmethod
+    def _get_flat_static_rep(self, **kwargs) -> DF_T:
         raise NotImplementedError("Must be overwritten in base class.")
 
     @classmethod
@@ -1109,36 +1117,54 @@ class DatasetBase(
                     m_freq = feature_inclusion_frequency[m]
                     vocab.filter(total_observations=None, min_valid_element_freq=m_freq)
                 features = vocab.vocabulary
-
-            if cfg.temporality == TemporalityType.STATIC:
-                temps = ["static"]
-                aggs = None
+            elif cfg.modality == DataModality.UNIVARIATE_REGRESSION:
+                features = [m]
             else:
-                if window_sizes is None:
-                    temps = ["dynamic"]
-                else:
-                    temps = window_sizes
-                has_values = False
-                if cfg.modality == DataModality.UNIVARIATE_REGRESSION and cfg.vocabulary is None:
-                    features = [m]
-                    has_values = True
-                elif cfg.modality == DataModality.MULTIVARIATE_REGRESSION:
-                    has_values = True
+                raise ValueError(f"Config with modality {cfg.modality} should have a Vocabulary!")
 
-                aggs = ["count"]
-                if has_values:
-                    aggs.extend(["has_values_count", "sum", "sum_sqd", "min", "max"])
+            match cfg.temporality:
+                case TemporalityType.STATIC:
+                    temps = [str(cfg.temporality)]
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION:
+                            aggs = ["value"]
+                        case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            aggs = ["present"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+                case TemporalityType.FUNCTIONAL_TIME_DEPENDENT if window_sizes is None:
+                    temps = [str(cfg.temporality)]
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION:
+                            aggs = ["value"]
+                        case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            aggs = ["present"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+                case TemporalityType.FUNCTIONAL_TIME_DEPENDENT if window_sizes is not None:
+                    temps = window_sizes
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION:
+                            aggs = ["count", "has_values_count", "sum", "sum_sqd", "min", "max"]
+                        case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            aggs = ["count"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+                case TemporalityType.DYNAMIC:
+                    temps = [str(cfg.temporality)] if window_sizes is None else window_sizes
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION | DataModality.MULTIVARIATE_REGRESSION:
+                            aggs = ["count", "has_values_count", "sum", "sum_sqd", "min", "max"]
+                        case DataModality.MULTI_LABEL_CLASSIFICATION:
+                            aggs = ["count"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
 
             for temp in temps:
-                if features is None:
-                    feature_columns.append(f"{temp}/{m}")
-                else:
-                    for feature in features:
-                        if aggs is None:
-                            feature_columns.append(f"{temp}/{m}/{feature}")
-                        else:
-                            for agg in aggs:
-                                feature_columns.append(f"{temp}/{m}/{feature}/{agg}")
+                for feature in features:
+                    for agg in aggs:
+                        feature_columns.append(f"{temp}/{m}/{feature}/{agg}")
+
         return sorted(feature_columns)
 
     @TimeableMixin.TimeAs
@@ -1270,24 +1296,48 @@ class DatasetBase(
             include_only_measurements=include_only_measurements,
         )
 
-        # 1. Produce raw representation
-        raw_subdir = flat_dir / "raw"
+        # 1. Produce static representation
+        static_subdir = flat_dir / "static"
 
-        raw_dfs = {}
+        static_dfs = {}
         for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
-            raw_dfs[sp] = []
-            sp_dir = raw_subdir / sp
+            static_dfs[sp] = []
+            sp_dir = static_subdir / sp
 
             for i, subjects_list in enumerate(tqdm(subjects, desc="Subject chunks", leave=False)):
                 fp = sp_dir / f"{i}.parquet"
-                raw_dfs[sp].append(fp)
+                static_dfs[sp].append(fp)
                 if fp.exists():
                     if do_update:
                         continue
                     elif not do_overwrite:
                         raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
 
-                df = self._get_flat_rep(
+                df = self._get_flat_static_rep(
+                    feature_columns=feature_columns,
+                    include_only_subjects=subjects_list,
+                )
+
+                self._write_df(df, fp, do_overwrite=do_overwrite)
+
+        # 2. Produce raw representation
+        ts_subdir = flat_dir / "at_ts"
+
+        ts_dfs = {}
+        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
+            ts_dfs[sp] = []
+            sp_dir = ts_subdir / sp
+
+            for i, subjects_list in enumerate(tqdm(subjects, desc="Subject chunks", leave=False)):
+                fp = sp_dir / f"{i}.parquet"
+                ts_dfs[sp].append(fp)
+                if fp.exists():
+                    if do_update:
+                        continue
+                    elif not do_overwrite:
+                        raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
+
+                df = self._get_flat_ts_rep(
                     feature_columns=feature_columns,
                     include_only_subjects=subjects_list,
                 )
@@ -1297,13 +1347,13 @@ class DatasetBase(
         if window_sizes is None:
             return
 
-        # 2. Window Sizes
-        past_subdir = flat_dir / "past"
+        # 3. Produce summarized history representations
+        history_subdir = flat_dir / "over_history"
 
         for window_size in tqdm(window_sizes, desc="History window sizes"):
-            for sp, df_fps in tqdm(list(raw_dfs.items()), desc="Windowing Splits", leave=False):
+            for sp, df_fps in tqdm(list(ts_dfs.items()), desc="Windowing Splits", leave=False):
                 for i, df_fp in enumerate(tqdm(df_fps, desc="Subject chunks", leave=False)):
-                    fp = past_subdir / sp / window_size / f"{i}.parquet"
+                    fp = history_subdir / sp / window_size / f"{i}.parquet"
                     if fp.exists():
                         if do_update:
                             continue

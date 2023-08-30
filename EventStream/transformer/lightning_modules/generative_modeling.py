@@ -202,8 +202,9 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                         raise ValueError(f"Unrecognized modality {task_type}!")
 
                 auc_kwargs = {
-                    **metric_kwargs, "thresholds": self.metrics_config.n_auc_thresholds,
-                    "compute_on_cpu": True
+                    **metric_kwargs,
+                    "thresholds": self.metrics_config.n_auc_thresholds,
+                    "compute_on_cpu": True,
                 }
                 for metric, (metric_cls, averagings) in metrics.items():
                     if metric in (Metrics.AUROC, Metrics.AUPRC):
