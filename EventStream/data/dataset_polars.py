@@ -1440,7 +1440,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 out_dfs[m] = (
                     df.lazy()
                     .filter(pl.col(m).is_not_null())
-                    .select("subject_id", pl.col(m).alias(f"static/{m}"))
+                    .select("subject_id", pl.col(m).alias(f"static/{m}").cast(pl.Float32))
                 )
                 continue
             elif cfg.modality == "multivariate_regression":
@@ -1461,7 +1461,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             remap_cols = [c for c in pivoted_df.columns if c not in ID_cols]
             out_dfs[m] = pivoted_df.lazy().select(
-                *ID_cols, *[pl.col(c).alias(f"static/{m}/{c}") for c in remap_cols]
+                *ID_cols, *[pl.col(c).alias(f"static/{m}/{c}").cast(pl.Boolean) for c in remap_cols]
             )
 
         return pl.concat(list(out_dfs.values()), how="align")
