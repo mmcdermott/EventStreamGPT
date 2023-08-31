@@ -257,7 +257,7 @@ def load_flat_rep(
     )
     needs_more_windows = False
     for window_size in window_sizes:
-        if not (flat_dir / "past" / "train" / window_size).is_dir():
+        if not (flat_dir / "over_history" / "train" / window_size).is_dir():
             needs_more_windows = True
 
     if needs_more_measurements or needs_more_features or needs_more_windows:
@@ -271,33 +271,51 @@ def load_flat_rep(
         include_only_measurements=include_only_measurements,
     )
 
-    static_features = [f for f in allowed_features if f.startswith("static/")]
-    [f for f in allowed_features if not f.startswith("static/")]
-
     join_keys = ["subject_id", "timestamp"]
-    to_drop_keys = static_features
-    if join_df is not None:
-        to_drop_keys.extend([c for c in join_df.columns if c not in join_keys])
 
     by_split = {}
-    for sp in ESD.split_subjects.keys():
+    for sp, all_sp_subjects in ESD.split_subjects.items():
+        if join_df is not None:
+            sp_join_df = join_df.filter(pl.col("subject_id").is_in(list(all_sp_subjects)))
+
+        static_df = pl.scan_parquet(flat_dir / "static" / sp / "*.parquet")
+        if join_df is not None:
+            static_df = static_df.join(sp_join_df.select("subject_id").unique(), on="subject_id", how="inner")
+
         dfs = []
         for window_size in window_sizes:
-            window_dir = flat_dir / "past" / sp / window_size
+            window_features = [c for c in allowed_features if c.startswith(f"{window_size}/")]
+            window_dir = flat_dir / "over_history" / sp / window_size
             window_dfs = []
             for fp in window_dir.glob("*.parquet"):
-                df = pl.scan_parquet(fp)
+                df = pl.scan_parquet(fp).select("subject_id", "timestamp", *window_features)
+
                 if join_df is not None:
-                    df = df.join(join_df, on=join_keys, how="inner")
+                    subjects_idx = int(fp.stem)
+                    subjects = params["subject_chunks_by_split"][sp][subjects_idx]
+                    filter_join_df = sp_join_df.select(join_keys).filter(pl.col("subject_id").is_in(subjects))
+
+                    df = df.join(filter_join_df, on=join_keys, how="inner")
+
                 window_dfs.append(df)
 
             dfs.append(pl.concat(window_dfs, how="vertical"))
 
         joined_df = dfs[0]
         for jdf in dfs[1:]:
-            joined_df = joined_df.join(jdf.drop(to_drop_keys), on=join_keys, how="inner")
+            joined_df = joined_df.join(jdf, on=join_keys, how="inner")
 
-        by_split[sp] = joined_df
+        # Add in the labels
+        if join_df is not None:
+            joined_df = joined_df.join(sp_join_df, on=join_keys, how="inner")
+            extra_cols = [c for c in sp_join_df.columns if c not in join_keys]
+        else:
+            extra_cols = []
+
+        # Add in the static data
+        by_split[sp] = joined_df.join(static_df, on="subject_id", how="left").select(
+            *join_keys, *extra_cols, *allowed_features
+        )
 
     return by_split
 

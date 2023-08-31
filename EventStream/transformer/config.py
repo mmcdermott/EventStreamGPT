@@ -160,15 +160,7 @@ class MetricsConfig(JSONableMixin):
 
     def do_log_only_loss(self, split: Split) -> bool:
         """Returns True if only loss should be logged for this split."""
-        if (
-            self.do_skip_all_metrics
-            or split not in self.include_metrics
-            or not self.include_metrics[split]
-            or (
-                (len(self.include_metrics[split]) == 1)
-                and (MetricCategories.LOSS_PARTS in self.include_metrics[split])
-            )
-        ):
+        if self.do_skip_all_metrics or split not in self.include_metrics or not self.include_metrics[split]:
             return True
         else:
             return False
