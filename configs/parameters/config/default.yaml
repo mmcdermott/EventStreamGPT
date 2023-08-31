@@ -3,6 +3,9 @@ head_dim:
   max: 64
 hidden_size:
   value: "null"
+intermediate_size:
+  min: 32
+  max: 1028
 num_attention_heads:
   min: 1
   max: 16
