@@ -1483,7 +1483,7 @@ class MeasurementConfig(JSONableMixin):
             ...     ),
             ...     vocabulary=vocab,
             ... )
-            >>> cfg.describe()
+            >>> cfg.describe(line_width=100)
             MVR: dynamic, multivariate_regression observed 68.2%, 1.3/case on average
             Value Types:
               2 categorical
@@ -1504,8 +1504,8 @@ class MeasurementConfig(JSONableMixin):
         lines = []
         lines.append(
             f"{self.name}: {self.temporality}, {self.modality} "
-            f"observed {100*self.observation_rate_over_cases:.1f}% {self.observation_rate_per_case:.1f}/case "
-            "on average"
+            f"observed {100*self.observation_rate_over_cases:.1f}%, "
+            f"{self.observation_rate_per_case:.1f}/case on average"
         )
 
         match self.modality:

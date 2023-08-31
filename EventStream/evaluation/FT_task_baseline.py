@@ -308,10 +308,13 @@ def load_flat_rep(
         # Add in the labels
         if join_df is not None:
             joined_df = joined_df.join(sp_join_df, on=join_keys, how="inner")
+            extra_cols = [c for c in sp_join_df.columns if c not in join_keys]
+        else:
+            extra_cols = []
 
         # Add in the static data
         by_split[sp] = joined_df.join(static_df, on="subject_id", how="left").select(
-            "subject_id", "timestamp", *allowed_features
+            *join_keys, *extra_cols, *allowed_features
         )
 
     return by_split
