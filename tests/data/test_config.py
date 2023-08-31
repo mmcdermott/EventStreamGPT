@@ -4,6 +4,8 @@ sys.path.append("../..")
 
 import dataclasses
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pandas as pd
 
@@ -86,6 +88,15 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 temporality=TemporalityType.DYNAMIC,
                 modality=DataModality.MULTIVARIATE_REGRESSION,
                 values_column="val",
+            ),
+            dict(
+                temporality=TemporalityType.DYNAMIC,
+                modality=DataModality.MULTIVARIATE_REGRESSION,
+                values_column="val",
+                _measurement_metadata=pd.DataFrame(
+                    {"censor_lower_bound": [1, 0.2, 0.1]},
+                    index=pd.Index(["foo", "bar", "baz"], name="key"),
+                ),
             ),
             dict(
                 temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
@@ -231,6 +242,77 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         self.assertFalse(config.is_numeric)
         self.assertFalse(config.is_dropped)
 
+    def test_measurement_metadata_property(self):
+        cases = [
+            {
+                "msg": "Should work for properly formed univariate cases.",
+                "config": dict(
+                    modality=DataModality.UNIVARIATE_REGRESSION,
+                    _measurement_metadata=pd.Series(
+                        [{"mean": 2}, {"foo": "bar"}],
+                        index=pd.Index(["outlier_model", "normalizer"]),
+                        name="key",
+                    ),
+                ),
+            },
+            {
+                "msg": "Should fail for malformed univariate cases.",
+                "config": dict(
+                    modality=DataModality.UNIVARIATE_REGRESSION,
+                    _measurement_metadata=pd.Series(
+                        [{"mean": 2}, "'b' + 7"], index=pd.Index(["outlier_model", "normalizer"])
+                    ),
+                ),
+                "want_raise": ValueError,
+            },
+            {
+                "msg": "Should work for properly formed multivariate cases.",
+                "config": dict(
+                    modality=DataModality.MULTIVARIATE_REGRESSION,
+                    values_column="val",
+                    _measurement_metadata=pd.DataFrame(
+                        {
+                            "censor_lower_bound": [1, 0.2, 0.1],
+                            "outlier_model": [{"mean": 2}, None, {"std": 3}],
+                        },
+                        index=pd.Index(["foo", "bar", "baz"], name="key"),
+                    ),
+                ),
+            },
+            {
+                "msg": "Should fail for malformed multivariate cases.",
+                "config": dict(
+                    modality=DataModality.MULTIVARIATE_REGRESSION,
+                    values_column="val",
+                    _measurement_metadata=pd.DataFrame(
+                        {
+                            "censor_lower_bound": [1, 0.2, 0.1],
+                            "outlier_model": ["'a'+3", {"mean": 1}, {"std": 3}],
+                        },
+                        index=pd.Index(["foo", "bar", "baz"], name="key"),
+                    ),
+                ),
+                "want_raise": ValueError,
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(case["msg"]):
+                config = MeasurementConfig(temporality=TemporalityType.DYNAMIC, **case["config"])
+
+                # Should not raise an error.
+                old_meas_metadata = config.measurement_metadata
+
+                with TemporaryDirectory() as d:
+                    config.cache_measurement_metadata(Path(d), "data.csv")
+
+                    if case.get("want_raise", None) is not None:
+                        with self.assertRaises(case["want_raise"]):
+                            config.measurement_metadata
+                    else:
+                        new_meas_metadata = config.measurement_metadata
+                        self.assertEqual(old_meas_metadata, new_meas_metadata)
+
     def test_drop(self):
         config = MeasurementConfig(
             temporality=TemporalityType.DYNAMIC,
@@ -292,6 +374,7 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
             "functor": None,
             "values_column": None,
             "_measurement_metadata": None,
+            "modifiers": None,
         }
         nontrivial_measurement_metadata_df = pd.DataFrame(
             {"A": [1, 2, 3], "B": ["a", "b", "c"]},

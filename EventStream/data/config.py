@@ -1015,6 +1015,9 @@ class MeasurementConfig(JSONableMixin):
             * normalizer: The parameters (in dictionary form) for the fit normalizer model. Optional. If
               not pre-specified, will be inferred from the data.
 
+        modifiers: Stores a list of additional column names that modify this measurement that should be
+            tracked with this measurement record through the dataset.
+
     Raises:
         ValueError: If the configuration is not self consistent (e.g., a functor specified on a
             non-functional_time_dependent measure).
@@ -1058,6 +1061,21 @@ class MeasurementConfig(JSONableMixin):
         True
         >>> cfg.is_dropped
         False
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='multi_label_classification',
+        ...     temporality='dynamic',
+        ...     modifiers=['foo', 'bar'],
+        ... )
+        >>> cfg = MeasurementConfig(
+        ...     name='key',
+        ...     modality='multi_label_classification',
+        ...     temporality='dynamic',
+        ...     modifiers=[1, 2],
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: `self.modifiers` must be a list of strings; got element 1.
         >>> MeasurementConfig()
         Traceback (most recent call last):
             ...
@@ -1120,6 +1138,8 @@ class MeasurementConfig(JSONableMixin):
     # Specific to numeric measures
     values_column: str | None = None
     _measurement_metadata: pd.DataFrame | pd.Series | str | Path | None = None
+
+    modifiers: list[str] | None = None
 
     def __post_init__(self):
         self._validate()
@@ -1220,6 +1240,11 @@ class MeasurementConfig(JSONableMixin):
         if err_strings:
             raise ValueError("\n".join(err_strings))
 
+        if self.modifiers is not None:
+            for mod in self.modifiers:
+                if not isinstance(mod, str):
+                    raise ValueError(f"`self.modifiers` must be a list of strings; got element {mod}.")
+
     def drop(self):
         """Sets the modality to DROPPED and does associated post-processing to ensure validity.
 
@@ -1279,8 +1304,13 @@ class MeasurementConfig(JSONableMixin):
                 )
             out = out.iloc[:, 0]
             for col in ("outlier_model", "normalizer"):
-                if col in out:
-                    out[col] = eval(out[col])
+                if col in out and type(out[col]) is str:
+                    try:
+                        out[col] = eval(out[col])
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(
+                            f"Failed to eval {col} for measure {self.name} with value {out[col]}"
+                        ) from e
         elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
             raise ValueError(
                 "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
@@ -1290,7 +1320,12 @@ class MeasurementConfig(JSONableMixin):
         else:
             for col in ("outlier_model", "normalizer"):
                 if col in out:
-                    out[col] = out[col].apply(eval)
+                    try:
+                        out[col] = out[col].apply(lambda x: eval(x) if type(x) is str else x)
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(
+                            f"Failed to eval {col} for measure {self.name} with values {list(out[col])[:5]}"
+                        ) from e
         return out
 
     @measurement_metadata.setter
@@ -1646,7 +1681,8 @@ class DatasetConfig(JSONableMixin):
                  'functor': None,
                  'vocabulary': None,
                  'values_column': None,
-                 '_measurement_metadata': None}},
+                 '_measurement_metadata': None,
+                 'modifiers': None}},
             'min_events_per_subject': None,
             'agg_by_time_scale': '1h',
             'min_valid_column_observations': 0.5,

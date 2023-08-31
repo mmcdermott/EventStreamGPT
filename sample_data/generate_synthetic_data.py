@@ -227,6 +227,68 @@ def make_labs_df(cfg: GenerateConfig, admissions_by_subject: dict[int, list[tupl
     
     return pl.DataFrame(labs_data).sample(fraction=1, with_replacement=False, shuffle=True, seed=1)
 
+def make_medications_data(
+    cfg, admissions_by_subject: dict[int, list[tuple[datetime, datetime]]]
+) -> pl.DataFrame:
+    random.seed(cfg.seed)
+    np.random.seed(cfg.seed)
+    
+    medications_data = {
+        "MRN": [],
+        "timestamp": [],
+        "name": [],
+        "dose": [],
+        "frequency": [],
+        "duration": [],
+        "generic_name": [],
+    }
+    
+    hrs = 60
+    days = 24 * hrs
+    months = 30 * days
+    
+    med_options = pl.DataFrame({
+        'name':    ['Motrin', 'Advil', 'Tylenol', 'Benadryl', 'motrin'],
+        'generic': ['Ibuprofen', 'Ibuprofen', 'Acetaminophen', 'Diphenydramine', 'Ibuprofen'],
+        'dose_range': [(400, 800), (400, 800), (325, 625), (25, 100), (400, 800)],
+        'frequency': [(1, 3), (1, 3), (1, 5), (1, 2), (1, 3)],
+        'duration': [(1, 10), (1, 10), (1, 3), (1, 21), (3, 10)], 
+    })
+    
+    for MRN, admissions in admissions_by_subject.items():
+        medication_ps = np.random.dirichlet(alpha=[0.1 for _ in range(len(med_options))])
+        
+        for st, end in admissions:
+            n_meds_taken = np.random.choice(5, 1, p=[0.4, 0.4, 0.1, 0.075, 0.025])
+            meds_taken = np.random.choice(med_options['name'].to_list(), n_meds_taken, p=medication_ps)
+    
+            for medication in meds_taken:
+                med_record = med_options.filter(pl.col('name') == medication).to_dict()
+                
+                gap = np.random.uniform(low=2*days, high=14*days)
+                medications_time = st + timedelta(minutes=gap + np.random.uniform(low=-30, high=30))
+    
+                while medications_time < end:
+                    medications_data["MRN"].append(MRN)
+                    medications_data["timestamp"].append(medications_time.strftime("%H:%M:%S-%Y-%m-%d"))
+                    medications_data["name"].append(medication)
+                    medications_data["generic_name"].append(med_record['generic'][0])
+                    
+                    dose = round((np.random.uniform(*med_record['dose_range'][0])/100))*100
+                    duration = np.random.randint(*med_record['duration'][0])
+                    frequency = np.random.randint(*med_record['frequency'][0])
+                    
+                    medications_data["dose"].append(dose)
+                    medications_data["frequency"].append(f"{frequency}x/day")
+                    medications_data["duration"].append(f"{duration} days")
+    
+                    end_time = medications_time + timedelta(days=duration)
+                    new_gap = np.random.uniform(low=2*days, high=14*days)
+    
+                    medications_time = end_time + timedelta(minutes=new_gap)
+    
+    return pl.DataFrame(medications_data).sample(fraction=1, with_replacement=False, shuffle=True, seed=1)
+    
 @hydra.main(version_base=None, config_name="generate_config")
 def main(cfg: GenerateConfig):
     n_subjects = cfg.n_subjects
@@ -250,6 +312,12 @@ def main(cfg: GenerateConfig):
     labs_data.write_csv(out_dir / "labs.csv")
     print(f"labs.csv {labs_data.shape} written to {out_dir} in {datetime.now() - st}:")
     print(labs_data.head(3))
+
+    st = datetime.now()
+    medications_data = make_medications_data(cfg, admissions_by_subject)
+    medications_data.write_csv(out_dir / "medications.csv")
+    print(f"medications.csv {medications_data.shape} written to {out_dir} in {datetime.now() - st}:")
+    print(medications_data.head(3))
 
 if __name__ == "__main__":
     main()
