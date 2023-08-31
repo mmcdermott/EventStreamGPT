@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
 
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -30,6 +30,7 @@ jobs:
           pip install pytest
           pip install pytest-cov[toml]
           pip install nbmake
+          pip install rootutils
 
       #----------------------------------------------
       #              run test suite

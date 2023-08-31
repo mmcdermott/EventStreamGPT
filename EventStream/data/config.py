@@ -962,8 +962,17 @@ class MeasurementConfig(JSONableMixin):
             time-dependent measure that varies with time and static data in an analytically computable manner
             (e.g., age). If `TemporalityType.DYNAMIC`, then this is a measurement that varies in time in a
             non-a-priori computable manner.
-        observation_frequency: The fraction of valid instances in which this measure is observed. Is set
-            dynamically during pre-procesisng, and not specified at construction.
+        observation_rate_over_cases: The fraction of valid "instances" in which this measure is observed at
+            all. For example, for a static measurement, this is the fraction of subjects for which this
+            measure is observed to take on a non-null value at least once. For a dynamic measurement, this is
+            the fraction of events for which this measure is observed to take on a non-null value at least
+            once. This is set dynamically during pre-procesisng, and not specified at construction.
+        observation_rate_per_case: The number of times this measure is observed to take on a non-null value
+            per possible valid "instance" where at least one measure is observed. For example, for a static
+            measurement, this is the number of times this measure is observed per subject when
+            this measure is observed at all. For a dynamic measurement, this is the number of times this
+            measure is observed per event when this measure is observed at all. This is set dynamically during
+            pre-procesisng, and not specified at construction.
         functor: If `temporality == TemporalityType.FUNCTIONAL_TIME_DEPENDENT`, then this will be set to the
             functor used to compute the value of a known-time-depedency measure. In this case, `functor` must
             be a subclass of `data.time_dependent_functor.TimeDependentFunctor`. If `temporality` is anything
@@ -1117,7 +1126,8 @@ class MeasurementConfig(JSONableMixin):
     name: str | None = None
     temporality: TemporalityType | None = None
     modality: DataModality | None = None
-    observation_frequency: float | None = None
+    observation_rate_over_cases: float | None = None
+    observation_rate_per_case: float | None = None
 
     # Specific to time-dependent measures
     functor: TimeDependentFunctor | None = None
@@ -1500,15 +1510,16 @@ class MeasurementConfig(JSONableMixin):
             ...     values_column='bar',
             ...     temporality='dynamic',
             ...     modality='multivariate_regression',
-            ...     observation_frequency=0.6816,
+            ...     observation_rate_over_cases=0.6816,
+            ...     observation_rate_per_case=1.32,
             ...     _measurement_metadata=pd.DataFrame(
             ...         {'value_type': ['float', 'categorical', 'categorical']},
             ...         index=pd.Index(['apple', 'pear', 'banana'], name='MVR'),
             ...     ),
             ...     vocabulary=vocab,
             ... )
-            >>> cfg.describe()
-            MVR: dynamic, multivariate_regression observed 68.2%
+            >>> cfg.describe(line_width=100)
+            MVR: dynamic, multivariate_regression observed 68.2%, 1.3/case on average
             Value Types:
               2 categorical
               1 float
@@ -1527,7 +1538,9 @@ class MeasurementConfig(JSONableMixin):
         """
         lines = []
         lines.append(
-            f"{self.name}: {self.temporality}, {self.modality} observed {100*self.observation_frequency:.1f}%"
+            f"{self.name}: {self.temporality}, {self.modality} "
+            f"observed {100*self.observation_rate_over_cases:.1f}%, "
+            f"{self.observation_rate_per_case:.1f}/case on average"
         )
 
         match self.modality:
@@ -1663,12 +1676,21 @@ class DatasetConfig(JSONableMixin):
                 {'name': 'meas1',
                  'temporality': <TemporalityType.DYNAMIC: 'dynamic'>,
                  'modality': <DataModality.MULTI_LABEL_CLASSIFICATION: 'multi_label_classification'>,
-                 'observation_frequency': None, 'functor': None, 'vocabulary': None, 'values_column': None,
-                 '_measurement_metadata': None, 'modifiers': None}},
-        'min_events_per_subject': None, 'agg_by_time_scale': '1h', 'min_valid_column_observations': 0.5,
-        'min_valid_vocab_element_observations': None, 'min_true_float_frequency': None,
-        'min_unique_numerical_observations': None, 'outlier_detector_config': None, 'normalizer_config': None,
-        'save_dir': '/path/to/save/dir'}
+                 'observation_rate_over_cases': None,
+                 'observation_rate_per_case': None,
+                 'functor': None,
+                 'vocabulary': None,
+                 'values_column': None,
+                 '_measurement_metadata': None}},
+            'min_events_per_subject': None,
+            'agg_by_time_scale': '1h',
+            'min_valid_column_observations': 0.5,
+            'min_valid_vocab_element_observations': None,
+            'min_true_float_frequency': None,
+            'min_unique_numerical_observations': None,
+            'outlier_detector_config': None,
+            'normalizer_config': None,
+            'save_dir': '/path/to/save/dir'}
         >>> cfg2 = DatasetConfig.from_dict(cfg.to_dict())
         >>> assert cfg == cfg2
         >>> DatasetConfig(

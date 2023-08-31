@@ -167,7 +167,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
         └───────────────────┴──────────────────────────┴────────────────────┴──────────┘
     """
     label_cols = [c for c in task_df.columns if c not in KEY_COLS]
-    print(
+    return (
         task_df.groupby("subject_id")
         .agg(
             pl.count().alias("samples_per_subject"),
@@ -178,7 +178,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
             pl.col("samples_per_subject").median().alias("median_samples_per_subject"),
             *[pl.col(c).mean().alias(f"{c}/subject Mean") for c in label_cols],
             *[
-                (pl.col(c) * pl.col("samples_per_subject")).sum()
+                (pl.col(c).cast(pl.Float64) * pl.col("samples_per_subject")).sum()
                 / (pl.col("samples_per_subject").sum()).alias(f"{c} Mean")
                 for c in label_cols
             ],
@@ -199,9 +199,29 @@ def load_flat_rep(
 
     Args:
         ESD: The dataset for which the flat representations should be loaded.
-        window_size: A list of strings in polars timedelta syntax specifying the time windows over which the
-            features should be summarized.
-        feature_inclusion_frequency: TODO
+        window_sizes: Beyond writing out a raw, per-event flattened representation, the dataset also has
+            the capability to summarize these flattened representations over the historical windows
+            specified in this argument. These are strings specifying time deltas, using this syntax:
+            `link_`. Each window size will be summarized to a separate directory, and will share the same
+            subject file split as is used in the raw representation files.
+        feature_inclusion_frequency: The base feature inclusion frequency that should be used to dictate
+            what features can be included in the flat representation. It can either be a float, in which
+            case it applies across all measurements, or `None`, in which case no filtering is applied, or
+            a dictionary from measurement type to a float dictating a per-measurement-type inclusion
+            cutoff.
+        include_only_measurements: Measurement types can also be filtered out wholesale from both
+            representations. If this list is not None, only these measurements will be included.
+        do_update_if_missing: If `True`, then if any window sizes or features are missing, the function will
+            try to update the stored flat representations to reflect these. If `False`, if information is
+            missing, it will raise a `FileNotFoundError` instead.
+        join_df: If specified, the flat representations loaded will be (inner) joined against this dataframe
+            on the columns ``"subject_id"`` and ``"timestamp"``. This is how one would typically load just the
+            flattened data relevant to a given downstream task, to avoid needing to load the full dataset in
+            flattened form into memory.
+
+    Raises:
+        FileNotFoundError: If `do_update_if_missing` is `False` and the requested historical representations
+            are not already written to disk.
     """
     flat_dir = ESD.config.save_dir / "flat_reps"
 
@@ -237,7 +257,7 @@ def load_flat_rep(
     )
     needs_more_windows = False
     for window_size in window_sizes:
-        if not (flat_dir / "past" / "train" / window_size).is_dir():
+        if not (flat_dir / "over_history" / "train" / window_size).is_dir():
             needs_more_windows = True
 
     if needs_more_measurements or needs_more_features or needs_more_windows:
@@ -251,33 +271,51 @@ def load_flat_rep(
         include_only_measurements=include_only_measurements,
     )
 
-    static_features = [f for f in allowed_features if f.startswith("static/")]
-    [f for f in allowed_features if not f.startswith("static/")]
-
     join_keys = ["subject_id", "timestamp"]
-    to_drop_keys = static_features
-    if join_df is not None:
-        to_drop_keys.extend([c for c in join_df.columns if c not in join_keys])
 
     by_split = {}
-    for sp in ESD.split_subjects.keys():
+    for sp, all_sp_subjects in ESD.split_subjects.items():
+        if join_df is not None:
+            sp_join_df = join_df.filter(pl.col("subject_id").is_in(list(all_sp_subjects)))
+
+        static_df = pl.scan_parquet(flat_dir / "static" / sp / "*.parquet")
+        if join_df is not None:
+            static_df = static_df.join(sp_join_df.select("subject_id").unique(), on="subject_id", how="inner")
+
         dfs = []
         for window_size in window_sizes:
-            window_dir = flat_dir / "past" / sp / window_size
+            window_features = [c for c in allowed_features if c.startswith(f"{window_size}/")]
+            window_dir = flat_dir / "over_history" / sp / window_size
             window_dfs = []
             for fp in window_dir.glob("*.parquet"):
-                df = pl.scan_parquet(fp)
+                df = pl.scan_parquet(fp).select("subject_id", "timestamp", *window_features)
+
                 if join_df is not None:
-                    df = df.join(join_df, on=join_keys, how="inner")
+                    subjects_idx = int(fp.stem)
+                    subjects = params["subject_chunks_by_split"][sp][subjects_idx]
+                    filter_join_df = sp_join_df.select(join_keys).filter(pl.col("subject_id").is_in(subjects))
+
+                    df = df.join(filter_join_df, on=join_keys, how="inner")
+
                 window_dfs.append(df)
 
             dfs.append(pl.concat(window_dfs, how="vertical"))
 
         joined_df = dfs[0]
         for jdf in dfs[1:]:
-            joined_df = joined_df.join(jdf.drop(to_drop_keys), on=join_keys, how="inner")
+            joined_df = joined_df.join(jdf, on=join_keys, how="inner")
 
-        by_split[sp] = joined_df
+        # Add in the labels
+        if join_df is not None:
+            joined_df = joined_df.join(sp_join_df, on=join_keys, how="inner")
+            extra_cols = [c for c in sp_join_df.columns if c not in join_keys]
+        else:
+            extra_cols = []
+
+        # Add in the static data
+        by_split[sp] = joined_df.join(static_df, on="subject_id", how="left").select(
+            *join_keys, *extra_cols, *allowed_features
+        )
 
     return by_split
 

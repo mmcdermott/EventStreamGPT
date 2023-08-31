@@ -314,8 +314,8 @@ class InnerAttention(nn.Module):
             )
         else:
             raise ValueError(
-                "Only attn layer types 'global' and 'local' exist, but got `config.attention_layers`: "
-                f"{config.attention_layers}. Select attn layer types from ['global', 'local'] only."
+                "Only attn layer types 'global' and 'local' exist, but got `self.attention_layers`: "
+                f"{self.attention_layers}. Select attn layer types from ['global', 'local'] only."
             )
 
         # We put the layer norm in here as sometimes the attention layer is used independently of the full
@@ -985,7 +985,7 @@ class NestedAttentionPointProcessInputLayer(torch.nn.Module):
         """
 
         embed = self.data_embedding_layer(batch)
-        # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len config.hidden_size).
+        # `data_embed` is of shape (batch_size, sequence_length, dep_graph_len, config.hidden_size).
 
         time_embed = self.time_embedding_layer(batch)
         # `time_embed` is of shape (batch_size, sequence_length, config.hidden_size).

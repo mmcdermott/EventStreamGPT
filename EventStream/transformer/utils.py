@@ -170,7 +170,7 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Ten
         >>> safe_weighted_avg(X, weights)
         Traceback (most recent call last):
             ...
-        AssertionError: weights should be >= 0
+        AssertionError: weights should be >= 0. Got min -1.0
         >>> X = torch.FloatTensor([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])
         >>> weights = torch.FloatTensor([[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]])
         >>> safe_weighted_avg(X, weights)
@@ -182,7 +182,7 @@ def safe_weighted_avg(X: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Ten
 
     torch._assert(
         (weights >= 0).all(),
-        "weights should be >= 0",
+        f"weights should be >= 0. Got min {torch.min(weights)}",
     )
 
     shape_err_string = (

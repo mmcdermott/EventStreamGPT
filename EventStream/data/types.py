@@ -275,7 +275,7 @@ class PytorchBatch:
             self_v = self[k]
             other_v = other[k]
 
-            if type(self_v) != type(other_v):
+            if type(self_v) is not type(other_v):
                 return False
 
             match self_v:

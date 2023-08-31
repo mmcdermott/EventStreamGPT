@@ -23,7 +23,6 @@ torch.set_float32_matmul_precision("high")
 def main(cfg: FinetuneConfig):
     if type(cfg) is not FinetuneConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
-    # TODO(mmd): This isn't the right return value for hyperparameter sweeps.
     return get_embeddings(cfg)
 
 
