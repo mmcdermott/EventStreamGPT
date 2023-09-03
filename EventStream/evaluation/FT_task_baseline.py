@@ -313,8 +313,10 @@ def load_flat_rep(
             extra_cols = []
 
         # Add in the static data
-        by_split[sp] = joined_df.join(static_df, on="subject_id", how="left").select(
-            *join_keys, *extra_cols, *allowed_features
+        by_split[sp] = (
+            joined_df.join(static_df, on="subject_id", how="left")
+            .with_columns(cs.ends_with('count').fill_null(0))
+            .select(*join_keys, *extra_cols, *allowed_features)
         )
 
     return by_split
@@ -519,10 +521,7 @@ class ESDFlatFeatureLoader:
                 )
             )
 
-        out_df = out_df.with_columns(
-            cs.ends_with("/count").fill_null(0),
-            cs.matches(r"static/.*/.*").fill_null(False),
-        )
+        out_df = out_df
 
         return out_df.collect().to_numpy()
 
