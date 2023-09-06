@@ -1663,7 +1663,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         temp, meas = parts[0], parts[1]
         agg = parts[-1]
-        feature = '/'.join(parts[2:-1])
+        feature = "/".join(parts[2:-1])
 
         cfg = self.measurement_configs[meas]
 
@@ -1706,7 +1706,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         feature_columns: list[str],
         **kwargs,
     ) -> pl.LazyFrame:
-        static_features = [c for c in feature_columns if c.startswith('static/')]
+        static_features = [c for c in feature_columns if c.startswith("static/")]
         return self._normalize_flat_rep_df_cols(
             self._summarize_static_measurements(static_features, **kwargs).collect().lazy(),
             static_features,
@@ -1729,13 +1729,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .sort(by=["subject_id", "timestamp"])
             .collect()
             .lazy(),
-            [c for c in feature_columns if not c.startswith('static/')]
+            [c for c in feature_columns if not c.startswith("static/")],
         )
         # The above .collect().lazy() shouldn't be necessary but it appears to be for some reason...
 
     def _normalize_flat_rep_df_cols(
-        self, flat_df: DF_T, feature_columns: list[str] | None = None,
-        set_count_0_to_null: bool = False
+        self, flat_df: DF_T, feature_columns: list[str] | None = None, set_count_0_to_null: bool = False
     ) -> DF_T:
         if feature_columns is None:
             feature_columns = [x for x in flat_df.columns if x not in ("subject_id", "timestamp")]
@@ -1753,26 +1752,19 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             key_cols = ["subject_id"]
 
-        flat_df = (
-            flat_df.with_columns(
-                *[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add],
-                *[pl.col(c).cast(dt).alias(c) for c, dt in cols_to_retype],
-            )
-            .select(*key_cols, *feature_columns)
-        )
+        flat_df = flat_df.with_columns(
+            *[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add],
+            *[pl.col(c).cast(dt).alias(c) for c, dt in cols_to_retype],
+        ).select(*key_cols, *feature_columns)
 
-        if not set_count_0_to_null: return flat_df
+        if not set_count_0_to_null:
+            return flat_df
 
-        flat_df = (
-            flat_df
-            .collect()
-        )
+        flat_df = flat_df.collect()
 
-        flat_df = (
-            flat_df
-            .with_columns(pl.when(cs.ends_with('count') != 0).then(cs.ends_with('count')).keep_name())
-            .lazy()
-        )
+        flat_df = flat_df.with_columns(
+            pl.when(cs.ends_with("count") != 0).then(cs.ends_with("count")).keep_name()
+        ).lazy()
         return flat_df
 
     def _summarize_over_window(self, df: DF_T, window_size: str) -> pl.LazyFrame:

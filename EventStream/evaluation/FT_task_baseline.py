@@ -315,7 +315,7 @@ def load_flat_rep(
         # Add in the static data
         by_split[sp] = (
             joined_df.join(static_df, on="subject_id", how="left")
-            .with_columns(cs.ends_with('count').fill_null(0))
+            .with_columns(cs.ends_with("count").fill_null(0))
             .select(*join_keys, *extra_cols, *allowed_features)
         )
 
@@ -498,6 +498,12 @@ class ESDFlatFeatureLoader:
                 return "/".join(s.split("/")[:-1])
 
             cols = {last_part(c) for c in self.feature_columns if c.endswith("has_values_count")}
+            for col in cols:
+                match_cols = [c for c in out_df.columns if c.startswith(col)]
+                for c in (f"{col}/sum", f"{col}/has_values_count", f"{col}/sum_sqd"):
+                    if c not in out_df.columns:
+                        raise ValueError(f"{c} missing!\nPartial Matches: {', '.join(match_cols)}")
+
             out_df = (
                 out_df.with_columns(
                     *[
