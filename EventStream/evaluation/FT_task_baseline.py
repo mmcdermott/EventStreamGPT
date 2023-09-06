@@ -497,18 +497,21 @@ class ESDFlatFeatureLoader:
             def last_part(s: str) -> str:
                 return "/".join(s.split("/")[:-1])
 
-            cols = {last_part(c) for c in self.feature_columns if c.endswith("has_values_count")}
-            for col in cols:
-                match_cols = [c for c in out_df.columns if c.startswith(col)]
-                for c in (f"{col}/sum", f"{col}/has_values_count", f"{col}/sum_sqd"):
-                    if c not in out_df.columns:
-                        raise ValueError(f"{c} missing!\nPartial Matches: {', '.join(match_cols)}")
+            has_values_cols = {last_part(c) for c in self.feature_columns if c.endswith("has_values_count")}
+            to_conv_mean_cols = []
+            to_conv_var_cols = []
+
+            for col in has_values_cols:
+                if f"{col}/sum" in self.feature_columns:
+                    to_conv_mean_cols.append(col)
+                    if f"{col}/sum_sqd" in self.feature_columns:
+                        to_conv_var_cols.append(col)
 
             out_df = (
                 out_df.with_columns(
                     *[
                         (pl.col(f"{c}/sum") / pl.col(f"{c}/has_values_count")).alias(f"{c}/mean")
-                        for c in cols
+                        for c in to_conv_mean_cols
                     ],
                 )
                 .with_columns(
@@ -517,13 +520,13 @@ class ESDFlatFeatureLoader:
                             (pl.col(f"{c}/sum_sqd") / pl.col(f"{c}/has_values_count"))
                             - (pl.col(f"{c}/mean") ** 2)
                         ).alias(f"{c}/var")
-                        for c in cols
+                        for c in to_conv_var_cols
                     ],
                 )
                 .drop(
-                    *[f"{c}/sum" for c in cols],
-                    *[f"{c}/sum_sqd" for c in cols],
-                    *[f"{c}/has_values_count" for c in cols],
+                    *[f"{c}/sum" for c in to_conv_mean_cols],
+                    *[f"{c}/sum_sqd" for c in to_conv_var_cols],
+                    *[f"{c}/has_values_count" for c in has_values_cols],
                 )
             )
 
