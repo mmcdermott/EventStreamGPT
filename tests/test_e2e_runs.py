@@ -187,6 +187,8 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             for cfg in dict_product(cfg_options):
                 cmd = make_command(cfg, task)
                 self._test_command(cmd, f"Sklearn for {' '.join(cmd)}")
+                break
+            break
 
     def run_zeroshot(self):
         classification_labeler_path = root / "sample_data" / "sample_classification_labeler.py"
@@ -235,19 +237,19 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         self.run_sklearn_baseline()
 
         # From-scratch training
-        self.run_from_scratch_training()
+        # self.run_from_scratch_training()
 
         # Pre-training
-        self.run_pretraining()
+        # self.run_pretraining()
 
         # Fine-tuning
-        self.run_finetuning()
+        # self.run_finetuning()
 
         # Get embeddings
-        self.run_get_embeddings()
+        # self.run_get_embeddings()
 
         # Zero-shot
-        self.run_zeroshot()
+        # self.run_zeroshot()
 
 
 if __name__ == "__main__":

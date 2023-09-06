@@ -1658,10 +1658,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         """Gets the appropriate minimal dtype for the given flat representation column string."""
 
         parts = col.split("/")
-        if len(parts) != 4:
+        if len(parts) < 4:
             raise ValueError(f"Malformed column {col}. Should be temporal/measurement/feature/agg")
 
-        temp, meas, feature, agg = parts
+        temp, meas = parts[0], parts[1]
+        agg = parts[-1]
+        feature = "/".join(parts[2:-1])
 
         cfg = self.measurement_configs[meas]
 
@@ -1704,9 +1706,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         feature_columns: list[str],
         **kwargs,
     ) -> pl.LazyFrame:
+        static_features = [c for c in feature_columns if c.startswith("static/")]
         return self._normalize_flat_rep_df_cols(
-            self._summarize_static_measurements(feature_columns, **kwargs).collect().lazy(),
-            feature_columns,
+            self._summarize_static_measurements(static_features, **kwargs).collect().lazy(),
+            static_features,
+            set_count_0_to_null=False,
         )
 
     def _get_flat_ts_rep(
@@ -1725,18 +1729,20 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .sort(by=["subject_id", "timestamp"])
             .collect()
             .lazy(),
-            feature_columns,
+            [c for c in feature_columns if not c.startswith("static/")],
         )
         # The above .collect().lazy() shouldn't be necessary but it appears to be for some reason...
 
-    def _normalize_flat_rep_df_cols(self, flat_df: DF_T, feature_columns: list[str] | None = None) -> DF_T:
+    def _normalize_flat_rep_df_cols(
+        self, flat_df: DF_T, feature_columns: list[str] | None = None, set_count_0_to_null: bool = False
+    ) -> DF_T:
         if feature_columns is None:
             feature_columns = [x for x in flat_df.columns if x not in ("subject_id", "timestamp")]
             cols_to_add = set()
             cols_to_retype = set(feature_columns)
         else:
             cols_to_add = set(feature_columns) - set(flat_df.columns)
-            cols_to_retype = set(feature_columns) & set(flat_df.columns)
+            cols_to_retype = set(feature_columns).intersection(set(flat_df.columns))
 
         cols_to_add = [(c, self._get_flat_col_dtype(c)) for c in cols_to_add]
         cols_to_retype = [(c, self._get_flat_col_dtype(c)) for c in cols_to_retype]
@@ -1746,15 +1752,20 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             key_cols = ["subject_id"]
 
-        return (
-            flat_df.with_columns(
-                *[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add],
-                *[pl.col(c).cast(dt).alias(c) for c, dt in cols_to_retype],
-            )
-            .collect()
-            .select(*key_cols, *feature_columns)
-            .lazy()
-        )
+        flat_df = flat_df.with_columns(
+            *[pl.lit(None, dtype=dt).alias(c) for c, dt in cols_to_add],
+            *[pl.col(c).cast(dt).alias(c) for c, dt in cols_to_retype],
+        ).select(*key_cols, *feature_columns)
+
+        if not set_count_0_to_null:
+            return flat_df
+
+        flat_df = flat_df.collect()
+
+        flat_df = flat_df.with_columns(
+            pl.when(cs.ends_with("count") != 0).then(cs.ends_with("count")).keep_name()
+        ).lazy()
+        return flat_df
 
     def _summarize_over_window(self, df: DF_T, window_size: str) -> pl.LazyFrame:
         if isinstance(df, Path):
@@ -1780,12 +1791,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         value_cols = cs.ends_with("/value")
 
         # Columns to aggregate via other operations
-        cols_to_sum = (
-            cs.ends_with("/count")
-            | cs.ends_with("/has_values_count")
-            | cs.ends_with("/sum")
-            | cs.ends_with("/sum_sqd")
-        )
+        cnt_cols = (cs.ends_with("/count") | cs.ends_with("/has_values_count")).fill_null(0)
+
+        cols_to_sum = cs.ends_with("/sum") | cs.ends_with("/sum_sqd")
         cols_to_min = cs.ends_with("/min")
         cols_to_max = cs.ends_with("/max")
 
@@ -1806,6 +1814,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 value_cols.cummin().map_alias(time_aggd_col_alias_fntr("min")),
                 value_cols.cummax().map_alias(time_aggd_col_alias_fntr("max")),
                 # Raw aggregations
+                cnt_cols.cumsum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_sum.cumsum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_min.cummin().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_max.cummax().map_alias(time_aggd_col_alias_fntr()),
@@ -1831,12 +1840,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 value_cols.min().map_alias(time_aggd_col_alias_fntr("min")),
                 value_cols.max().map_alias(time_aggd_col_alias_fntr("max")),
                 # Raw aggregations
+                cnt_cols.sum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_sum.sum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_min.min().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_max.max().map_alias(time_aggd_col_alias_fntr()),
             )
 
-        return self._normalize_flat_rep_df_cols(df)
+        return self._normalize_flat_rep_df_cols(df, set_count_0_to_null=True)
 
     def _denormalize(self, events_df: DF_T, col: str) -> DF_T:
         if self.config.normalizer_config is None:
