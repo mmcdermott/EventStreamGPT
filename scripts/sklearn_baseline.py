@@ -11,7 +11,7 @@ except ImportError:
 
 import hydra
 
-from EventStream.evaluation.wandb_sklearn import SklearnConfig, wandb_train_sklearn
+from EventStream.baseline.FT_task_baseline import SklearnConfig, wandb_train_sklearn
 
 
 @hydra.main(version_base=None, config_name="sklearn_config")
