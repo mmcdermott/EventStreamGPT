@@ -1791,12 +1791,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         value_cols = cs.ends_with("/value")
 
         # Columns to aggregate via other operations
-        cols_to_sum = (
-            cs.ends_with("/count")
-            | cs.ends_with("/has_values_count")
-            | cs.ends_with("/sum")
-            | cs.ends_with("/sum_sqd")
-        )
+        cnt_cols = (cs.ends_with("/count") | cs.ends_with("/has_values_count")).fill_null(0)
+
+        cols_to_sum = cs.ends_with("/sum") | cs.ends_with("/sum_sqd")
         cols_to_min = cs.ends_with("/min")
         cols_to_max = cs.ends_with("/max")
 
@@ -1817,6 +1814,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 value_cols.cummin().map_alias(time_aggd_col_alias_fntr("min")),
                 value_cols.cummax().map_alias(time_aggd_col_alias_fntr("max")),
                 # Raw aggregations
+                cnt_cols.cumsum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_sum.cumsum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_min.cummin().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_max.cummax().map_alias(time_aggd_col_alias_fntr()),
@@ -1842,6 +1840,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 value_cols.min().map_alias(time_aggd_col_alias_fntr("min")),
                 value_cols.max().map_alias(time_aggd_col_alias_fntr("max")),
                 # Raw aggregations
+                cnt_cols.sum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_sum.sum().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_min.min().map_alias(time_aggd_col_alias_fntr()),
                 cols_to_max.max().map_alias(time_aggd_col_alias_fntr()),
