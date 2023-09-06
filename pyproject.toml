@@ -55,10 +55,10 @@ sphinx-collections = "^0.0.1"
 sphinx-subfigure = "^0.2.4"
 myst-parser = "^2.0.0"
 nbsphinx = "^0.9.2"
-sphinx-material = "^0.0.35"
 linkify-it-py = "^2.0.2"
 pypandoc = "^1.11"
 pexpect = "^4.8.0"
+sphinx-immaterial = "^0.11.7"
 
 [tool.poetry.group.cpu.dependencies]
 torch = { version = "^2.0.1", source="pytorch-cpu-src" }
