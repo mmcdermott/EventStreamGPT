@@ -127,9 +127,15 @@ def load_flat_rep(
             needs_more_windows = True
 
     if needs_more_measurements or needs_more_features or needs_more_windows:
-        ESD.cache_flat_representation(**cache_kwargs)
-        with open(params_fp) as f:
-            params = json.load(f)
+        if do_update_if_missing:
+            ESD.cache_flat_representation(**cache_kwargs)
+            with open(params_fp) as f:
+                params = json.load(f)
+        else:
+            raise FileNotFoundError(
+                f"Missing files! Needs measurements: {needs_more_measurements}; Needs features: "
+                f"{needs_more_features}; Needs windows: {needs_more_windows}."
+            )
 
     allowed_features = ESD._get_flat_rep_feature_cols(
         feature_inclusion_frequency=feature_inclusion_frequency,
@@ -180,7 +186,7 @@ def load_flat_rep(
 
                     if do_cache_filtered_task:
                         cached_fp.parent.mkdir(exist_ok=True, parents=True)
-                        df.sink_parquet(cached_fp)
+                        df.collect().write_parquet(cached_fp, use_pyarrow=True)
 
                 df = df.select("subject_id", "timestamp", *window_features)
                 if subjects_included.get(sp, None) is not None:
@@ -223,22 +229,15 @@ class ESDFlatFeatureLoader:
     def __init__(
         self,
         ESD: Dataset,
-        window_sizes: list[str] | dict[str, bool] | None = None,
+        window_sizes: list[str],
         feature_inclusion_frequency: float | dict[str, float] | None = None,
         include_only_measurements: set[str] | None = None,
         convert_to_mean_var: bool = True,
         **kwargs,
     ):
         self.ESD = ESD
-        match window_sizes:
-            case list():
-                pass
-            case dict():
-                window_sizes = [k for k, v in window_sizes.items() if v]
-            case None:
-                pass
-            case _:
-                raise ValueError("window_sizes must be a list, dict, or None")
+        if type(window_sizes) is not list:
+            raise ValueError(f"window_sizes must be a list; got {type(window_sizes)}: {window_sizes}")
         self.window_sizes = window_sizes
         self.feature_inclusion_frequency = feature_inclusion_frequency
         self.include_only_measurements = include_only_measurements
@@ -264,9 +263,6 @@ class ESDFlatFeatureLoader:
             self.convert_to_mean_var = convert_to_mean_var
 
     def fit(self, flat_rep_df: pl.DataFrame, _) -> "ESDFlatFeatureLoader":
-        if self.window_sizes is None:
-            raise ValueError("Must specify window sizes!")
-
         self.feature_columns = self.ESD._get_flat_rep_feature_cols(
             feature_inclusion_frequency=self.feature_inclusion_frequency,
             window_sizes=self.window_sizes,
