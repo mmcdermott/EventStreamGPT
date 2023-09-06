@@ -480,6 +480,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         """
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
+        for k in ["static_indices", "static_measurement_indices"]:
+            if full_subj_data[k] is None:
+                full_subj_data[k] = []
         if self.config.do_include_subject_id:
             full_subj_data["subject_id"] = self.subject_ids[idx]
         if self.config.do_include_start_time_min:
