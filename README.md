@@ -29,14 +29,7 @@ GitHub issue.
 ## Installation
 
 Installation of the required dependencies can be done via pip with `pip install -e .` in the root directory of
-the repository.
-
-### Other Installation Instructions
-
-Installation (this mode is deprecated) can also be done via conda with the `env.yml` file: `conda env create -n ${ENV_NAME} -f env.yml`
-
-It can also be attempted via poetry, though that approach has issues at present in differentiating between cpu
-and gpu machines.
+the repository. To be able to run tests, use `pip install -e .[tests]`. To be able to build docs, use `pip install -e .[docs]`.
 
 ## Overview
 
