@@ -97,7 +97,7 @@ class GenerateConfig:
 
     do_overwrite: bool = False
 
-    optimization_config: OptimizationConfig = OptimizationConfig()
+    optimization_config: OptimizationConfig = dataclasses.field(default_factory=lambda: OptimizationConfig())
 
     task_df_name: str | None = None
 

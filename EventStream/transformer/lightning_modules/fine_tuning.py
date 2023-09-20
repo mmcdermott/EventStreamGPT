@@ -311,7 +311,7 @@ class FinetuneConfig:
             },
         }
     )
-    optimization_config: OptimizationConfig = OptimizationConfig()
+    optimization_config: OptimizationConfig = dataclasses.field(default_factory=lambda: OptimizationConfig())
     data_config: dict[str, Any] | None = dataclasses.field(
         default_factory=lambda: {
             **{k: None for k in PytorchDatasetConfig().to_dict().keys()},
