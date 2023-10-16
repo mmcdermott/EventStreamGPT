@@ -924,7 +924,7 @@ class StructuredTransformerConfig(PretrainedConfig):
     @classmethod
     def from_dict(cls, *args, **kwargs) -> "StructuredTransformerConfig":
         raw_from_dict = super().from_dict(*args, **kwargs)
-        if raw_from_dict.measurmeent_configs:
+        if raw_from_dict.measurement_configs:
             new_meas_configs = {}
             for k, v in raw_from_dict.measurement_configs.items():
                 new_meas_configs[k] = MeasurementConfig.from_dict(v)
