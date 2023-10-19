@@ -303,10 +303,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
         with self._time_as("convert_to_rows"):
-            self.subject_ids = self.cached_data["subject_id"].to_list()
+            self.subject_ids = self.cached_data["subject_id"]
             self.cached_data = self.cached_data.drop("subject_id")
             self.columns = self.cached_data.columns
-            self.cached_data = self.cached_data.rows()
 
     @staticmethod
     def _build_task_cached_df(task_df: pl.LazyFrame, cached_data: pl.LazyFrame) -> pl.LazyFrame:
@@ -479,7 +478,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         output format.
         """
 
-        full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
+        full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data.row(idx))}
         for k in ["static_indices", "static_measurement_indices"]:
             if full_subj_data[k] is None:
                 full_subj_data[k] = []
