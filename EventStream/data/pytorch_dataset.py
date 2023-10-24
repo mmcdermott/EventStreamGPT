@@ -156,7 +156,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             if len(list(task_dir.glob(f"{split}*.parquet"))) > 0:
                 print(
                     f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
-                    f"{', '.join([str(fp) for fp in task_dir.glob('{split}*.parquet')])}"
+                    f"{', '.join([str(fp) for fp in task_dir.glob(f"{split}*.parquet")])}"
                 )
                 self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
                 with open(task_info_fp) as f:
