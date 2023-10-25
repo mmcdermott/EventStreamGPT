@@ -511,12 +511,16 @@ class PretrainConfig:
             },
         }
     )
-    optimization_config: OptimizationConfig = OptimizationConfig()
-    data_config: PytorchDatasetConfig = PytorchDatasetConfig()
-    pretraining_metrics_config: MetricsConfig = MetricsConfig(
-        include_metrics={Split.TRAIN: {MetricCategories.LOSS_PARTS: True}},
+    optimization_config: OptimizationConfig = dataclasses.field(default_factory=lambda: OptimizationConfig())
+    data_config: PytorchDatasetConfig = dataclasses.field(default_factory=lambda: PytorchDatasetConfig())
+    pretraining_metrics_config: MetricsConfig = dataclasses.field(
+        default_factory=lambda: MetricsConfig(
+            include_metrics={Split.TRAIN: {MetricCategories.LOSS_PARTS: True}},
+        )
     )
-    final_validation_metrics_config: MetricsConfig = MetricsConfig(do_skip_all_metrics=False)
+    final_validation_metrics_config: MetricsConfig = dataclasses.field(
+        default_factory=lambda: MetricsConfig(do_skip_all_metrics=False)
+    )
 
     trainer_config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
