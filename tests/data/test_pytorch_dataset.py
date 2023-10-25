@@ -394,10 +394,23 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     self.assertEqual(want_vals.to_pandas(), got_vals.to_pandas())
 
     def test_get_item_should_collate(self):
-        config, pyd = self.get_pyd(max_seq_len=4, min_seq_len=2)
+        _, pyd = self.get_pyd(max_seq_len=4, min_seq_len=2)
 
         items = [pyd._seeded_getitem(i, seed=1) for i in range(3)]
         pyd.collate(items)
+
+    def test_schema(self):
+        _, pyd = self.get_pyd(max_seq_len=4, min_seq_len=2)
+
+        want_df = pl.DataFrame(
+            {
+                "subject_id": [1, 2, 3],
+                "start_time": [datetime(2000, 1, 1), datetime(1995, 1, 1), datetime(2001, 1, 1, 12)],
+                "end_time": [datetime(2000, 2, 1), datetime(2000, 1, 2), datetime(2001, 1, 1, 14)],
+            }
+        ).with_columns(pl.col("subject_id").cast(pl.UInt8))
+
+        self.assertEqual(want_df.to_pandas(), pyd.schema.to_pandas())
 
     def test_get_item(self):
         cases = [

@@ -250,10 +250,10 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     # We fill with 1 here as it will be ignored in the code anyways as the next event's
                     # event mask will be null.
                     # TODO(mmd): validate this in a test.
-                    (pl.col("").shift(-1) - pl.col("")).fill_null(1)
+                    (pl.element().shift(-1) - pl.element()).fill_null(1)
                 )
                 .alias("time_delta"),
-            )
+            ).drop("time")
 
         stats = (
             self.cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
@@ -306,7 +306,25 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             if "time" in self.cached_data.columns:
                 time_col_expr = pl.col("time")
             elif "time_delta" in self.cached_data.columns:
-                time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
+                cols = self.cached_data.columns
+                gp_by_cols = ["subject_id", "start_time"]
+                self.cached_data = (
+                    self.cached_data.explode("time_delta")
+                    .with_columns(
+                        pl.col("time_delta")
+                        .cumsum()
+                        .shift_and_fill(fill_value=0, periods=1)
+                        .over("subject_id")
+                        .alias("time")
+                    )
+                    .groupby(gp_by_cols, maintain_order=True)
+                    .agg(
+                        *[pl.col(c).first() for c in cols if c not in ("time", "time_delta", *gp_by_cols)],
+                        pl.col("time"),
+                        pl.col("time_delta"),
+                    )
+                )
+                time_col_expr = pl.col("time")
             else:
                 raise KeyError(f"Missing time column from cached_data.columns: {self.cached_data.columns}")
 
