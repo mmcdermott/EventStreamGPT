@@ -253,7 +253,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     (pl.col("").shift(-1) - pl.col("")).fill_null(1)
                 )
                 .alias("time_delta"),
-            ).drop("time")
+            )
 
         stats = (
             self.cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
@@ -302,9 +302,30 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
+        with self._time_as("extract_IDs"):
+            if "time" in self.cached_data.columns:
+                time_col_expr = pl.col("time")
+            elif "time_delta" in self.cached_data.columns:
+                time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
+            else:
+                raise KeyError(f"Missing time column from cached_data.columns: {self.cached_data.columns}")
+
+            min_time = time_col_expr.list.min()
+            max_time = time_col_expr.list.max()
+
+            self.schema = (
+                self.cached_data.lazy()
+                .select(
+                    "subject_id",
+                    (pl.col("start_time") + pl.duration(minutes=min_time)).alias("start_time"),
+                    (pl.col("start_time") + pl.duration(minutes=max_time)).alias("end_time"),
+                )
+                .collect()
+            )
+
         with self._time_as("convert_to_rows"):
             self.subject_ids = self.cached_data["subject_id"].to_list()
-            self.cached_data = self.cached_data.drop("subject_id")
+            self.cached_data = self.cached_data.drop("subject_id", "time")
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
 
