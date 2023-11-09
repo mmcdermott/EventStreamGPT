@@ -1,6 +1,8 @@
 import json
 from collections import defaultdict
 from pathlib import Path
+import copy
+from tqdm.auto import tqdm
 
 import numpy as np
 import polars as pl
@@ -17,6 +19,190 @@ from .config import (
 from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
+
+class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
+    """A PyTorch Dataset class.
+
+    This class enables accessing the deep-learning friendly representation produced by
+    `Dataset.build_DL_cached_representation` in a PyTorch Dataset format. The `getitem` method of this class
+    will return a dictionary containing a subject's data from this deep learning representation, with event
+    sequences sliced to be within max sequence length according to configuration parameters, and the `collate`
+    method of this class will collate those output dictionaries into a `PytorchBatch` object usable by
+    downstream pipelines.
+
+    Upon construction, this class will try to load a number of dataset files from disk. These files should be
+    saved in accordance with the `Dataset.save` method; in particular,
+
+    * There should be pre-cached deep-learning representation parquet dataframes stored in ``config.save_dir /
+      'DL_reps' / f"{split}*.parquet"``
+    * There should be a vocabulary config object in json form stored in ``config.save_dir /
+      'vocabulary_config.json'``
+    * There should be a set of inferred measurement configs stored in ``config.save_dir /
+      'inferred_measurement_configs.json'``
+    * If a task dataframe name is specified in the configuration object, then there should be either a
+      pre-cached task-specifid DL representation dataframe in ``config.save_dir / 'DL_reps' / 'for_task' /
+      config.task_df_name / f"{split}.parquet"``, or a "raw" task dataframe, containing subject IDs, start and
+      end times, and labels, stored in ``config.save_dir / task_dfs / f"{config.task_df_name}.parquet"``. In
+      the case that the latter is all that exists, then the former will be constructed by limiting the input
+      cached dataframe down to the appropriate sequences and adding label columns. This newly constructed
+      datafrmae will then be saved in the former filepath for future use. This construction process should
+      happen first on the train split, so that inferred task vocabularies are shared across splits.
+
+    Args:
+        config: Configuration options for the dataset.
+        split: The split of data which should be used in this dataset (e.g., ``'train'``, ``'tuning'``,
+            ``'held_out'``). This will dictate where the system looks for pre-cached deep-learning
+            representation files.
+    """
+
+    def __init__(self, config: PytorchDatasetConfig, split: str, just_cache: bool = False):
+        super().__init__()
+
+        self.config = config
+        self.split = split
+
+        self.cache_if_needed()
+        if just_cache: return
+
+        self.fetch_tensors()
+        self.fetch_metadata()
+
+    def __len__(self):
+        return self._length
+
+    @TimeableMixin.TimeAs
+    def cache_if_needed(self):
+        if len(self.config.tensorized_cached_files) > 0: return
+
+        self.config._cache_data_parameters()
+
+        constructor_config = copy.deepcopy(self.config)
+        constructor_config.do_include_subsequence_indices = True
+        constructor_config.do_include_subject_id = True
+        constructor_config.do_include_start_time_min = True
+
+        items = []
+        constructor_pyd = ConstructorPytorchDataset(constructor_config, self.split)
+        for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
+            for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
+                items.append(it)
+
+        global_batch = constructor_pyd.collate(items)
+
+        for k, T in global_batch.items():
+            fp = self.config.tensorized_cached_dir / f"{k}.pt"
+            torch.save(T, fp)
+
+    def fetch_tensors(self):
+        self.tensors = {k: torch.load(fp) for k, fp in self.config.tensorized_cached_files.items()}
+
+    def fetch_metadata(self):
+        self.vocabulary_config = self.config.vocabulary_config
+        self.measurement_configs = self.config.measurement_configs
+
+        if self.config.task_df_name is not None:
+            with open(self.config.task_info_fp) as f:
+                task_info = json.load(f)
+                self.tasks = sorted(task_info["tasks"])
+                self.task_vocabs = task_info["vocabs"]
+                self.task_types = task_info["types"]
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        """Returns a Returns a dictionary corresponding to a single subject's data.
+
+        The output of this will not be tensorized as that work will need to be re-done in the collate function
+        regardless. The output will have structure:
+        ``
+        {
+            'time_delta': [seq_len],
+            'dynamic_indices': [seq_len, n_data_per_event] (ragged),
+            'dynamic_values': [seq_len, n_data_per_event] (ragged),
+            'dynamic_measurement_indices': [seq_len, n_data_per_event] (ragged),
+            'static_indices': [seq_len, n_data_per_event] (ragged),
+            'static_measurement_indices': [seq_len, n_data_per_event] (ragged),
+        }
+        ``
+
+        1. ``time_delta`` captures the time between each event and the subsequent event.
+        2. ``dynamic_indices`` captures the categorical metadata elements listed in `self.data_cols` in a
+           unified vocabulary space spanning all metadata vocabularies.
+        3. ``dynamic_values`` captures the numerical metadata elements listed in `self.data_cols`. If no
+           numerical elements are listed in `self.data_cols` for a given categorical column, the according
+           index in this output will be `np.NaN`.
+        4. ``dynamic_measurement_indices`` captures which measurement vocabulary was used to source a given
+           data element.
+        5. ``static_indices`` captures the categorical metadata elements listed in `self.static_cols` in a
+           unified vocabulary.
+        6. ``static_measurement_indices`` captures which measurement vocabulary was used to source a given
+           data element.
+        """
+        return {k: T[idx] for k, t in self.tensors.items()}
+
+
+    @TimeableMixin.TimeAs
+    def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+        """Combines the ragged dictionaries produced by `__getitem__` into a tensorized batch.
+
+        This function handles conversion of arrays to tensors and padding of elements within the batch across
+        static data elements, sequence events, and dynamic data elements.
+
+        Args:
+            batch: A list of `__getitem__` format output dictionaries.
+
+        Returns:
+            A fully collated, tensorized, and padded batch.
+        """
+
+        collated = torch.utils.data.default_collate(batch)
+
+        self._register_start("collate_post_padding_processing")
+        out_batch = {}
+
+        # Add event and data masks on the basis of which elements are present, then convert the tensor
+        # elements to the appropriate types.
+        out_batch["event_mask"] = ~collated["time_delta"].isnan()
+        out_batch["dynamic_values_mask"] = ~collated["dynamic_values"].isnan()
+        out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"], nan=0)
+        out_batch["dynamic_indices"] = torch.nan_to_num(collated["dynamic_indices"], nan=0).long()
+        out_batch["dynamic_measurement_indices"] = torch.nan_to_num(
+            collated["dynamic_measurement_indices"], nan=0
+        ).long()
+        out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"], nan=0)
+
+        if self.config.do_include_start_time_min:
+            out_batch["start_time"] = collated["start_time"].float()
+        if self.config.do_include_subsequence_indices:
+            out_batch["start_idx"] = collated["start_idx"].long()
+            out_batch["end_idx"] = collated["end_idx"].long()
+        if self.config.do_include_subject_id:
+            out_batch["subject_id"] = collated["subject_id"].long()
+
+        out_batch = PytorchBatch(**out_batch)
+        self._register_end("collate_post_padding_processing")
+
+        if not self.has_task:
+            return out_batch
+
+        self._register_start("collate_task_labels")
+        out_labels = {}
+
+        for task in self.tasks:
+            task_type = self.task_types[task]
+
+            match task_type:
+                case "multi_class_classification":
+                    out_labels[task] = collated[task].long()
+                case "binary_classification":
+                    out_labels[task] = collated[task].float()
+                case "regression":
+                    out_labels[task] = collated[task].float()
+                case _:
+                    raise TypeError(f"Don't know how to tensorify task of type {task_type}!")
+
+        out_batch.stream_labels = out_labels
+        self._register_end("collate_task_labels")
+
+        return out_batch
 
 
 def to_int_index(col: pl.Expr) -> pl.Expr:
@@ -55,8 +241,8 @@ def to_int_index(col: pl.Expr) -> pl.Expr:
     return pl.when(col.is_null()).then(pl.lit(None)).otherwise(indices).alias(col.meta.output_name())
 
 
-class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
-    """A PyTorch Dataset class built on a pre-processed `DatasetBase` instance.
+class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
+    """A PyTorch Dataset class which constructs necessary items from scratch.
 
     This class enables accessing the deep-learning friendly representation produced by
     `Dataset.build_DL_cached_representation` in a PyTorch Dataset format. The `getitem` method of this class
@@ -126,30 +312,22 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         raise TypeError(f"Can't process label of {dtype} type!")
 
-    def __init__(self, config: PytorchDatasetConfig, split: str, do_add_IDs: bool = False):
+    def __init__(self, config: PytorchDatasetConfig, split: str):
         super().__init__()
 
         self.config = config
         self.task_types = {}
         self.task_vocabs = {}
 
-        self.vocabulary_config = VocabularyConfig.from_json_file(
-            self.config.save_dir / "vocabulary_config.json"
-        )
-
-        inferred_measurement_config_fp = self.config.save_dir / "inferred_measurement_configs.json"
-        with open(inferred_measurement_config_fp) as f:
-            inferred_measurement_configs = {
-                k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
-            }
-        self.measurement_configs = {k: v for k, v in inferred_measurement_configs.items() if not v.is_dropped}
+        self.vocabulary_config = self.config.vocabulary_config
+        self.measurement_configs = self.config.measurement_configs
 
         self.split = split
 
         if self.config.task_df_name is not None:
-            task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
-            raw_task_df_fp = self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
-            task_info_fp = task_dir / "task_info.json"
+            task_dir = self.config.cached_task_dir
+            raw_task_df_fp = self.config.raw_task_df_fp
+            task_info_fp = self.config.task_info_fp
 
             self.has_task = True
 
@@ -301,48 +479,6 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     )
 
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
-
-        if do_add_IDs:
-            with self._time_as("extract_IDs"):
-                self.cached_data = self.cached_data.lazy()
-                if "time" in self.cached_data.columns:
-                    time_col_expr = pl.col("time")
-                elif "time_delta" in self.cached_data.columns:
-                    cols = self.cached_data.columns
-                    gp_by_cols = ["subject_id", "start_time"]
-                    self.cached_data = (
-                        self.cached_data.explode("time_delta")
-                        .with_columns(
-                            pl.col("time_delta")
-                            .cumsum()
-                            .shift_and_fill(fill_value=0, periods=1)
-                            .over("subject_id")
-                            .alias("time")
-                        )
-                        .groupby(gp_by_cols, maintain_order=True)
-                        .agg(
-                            *[pl.col(c).first() for c in cols if c not in ("time", "time_delta", *gp_by_cols)],
-                            pl.col("time"),
-                            pl.col("time_delta"),
-                        )
-                    )
-                    time_col_expr = pl.col("time")
-                else:
-                    raise KeyError(f"Missing time column from cached_data.columns: {self.cached_data.columns}")
-
-                min_time = time_col_expr.list.min()
-                max_time = time_col_expr.list.max()
-
-                self.schema = (
-                    self.cached_data
-                    .select(
-                        "subject_id",
-                        (pl.col("start_time") + pl.duration(minutes=min_time)).alias("start_time"),
-                        (pl.col("start_time") + pl.duration(minutes=max_time)).alias("end_time"),
-                    )
-                    .collect(streaming=True)
-                )
-                self.cached_data = self.cached_data.collect(streaming=True)
 
         with self._time_as("convert_to_rows"):
             self.subject_ids = self.cached_data["subject_id"].to_list()

@@ -920,6 +920,97 @@ class PytorchDatasetConfig(JSONableMixin):
         as_dict["save_dir"] = Path(as_dict["save_dir"])
         return cls(**as_dict)
 
+    @property
+    def vocabulary_config_fp(self) -> Path:
+        return self.save_dir / "vocabulary_config.json"
+
+    @property
+    def vocabulary_config(self) -> VocabularyConfig:
+        return VocabularyConfig.from_json_file(self.vocabulary_config_fp)
+
+    @property
+    def measurement_config_fp(self) -> Path:
+        return self.save_dir / "inferred_measurement_configs.json"
+
+    @property
+    def measurement_configs(self) -> dict[str, MeasurementConfig]:
+        with open(self.measurement_config_fp) as f:
+            measurement_configs = {
+                k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
+            }
+            return {k: v for k, v in measurement_configs.items() if not v.is_dropped}
+
+    @property
+    def DL_reps_dir(self) -> Path:
+        return self.save_dir / "DL_reps"
+
+    @property
+    def cached_task_dir(self) -> Path | None:
+        if self.task_df_name is None:
+            return None
+        else:
+            return self.save_dir / "DL_reps" / "for_task" / self.task_df_name
+
+    @property
+    def raw_task_df_fp(self) -> Path | None:
+        if self.task_df_name is None: return None
+        else: return self.config.save_dir / "task_dfs" / f"{self.task_df_name}.parquet"
+
+    @property
+    def task_info_fp(self) -> Path | None:
+        if self.task_df_name is None: return None
+        else: return self.cached_task_dir / "task_info.json"
+
+    @property
+    def _data_parameters_and_hash(self) -> tuple[dict[str, Any], str]:
+        params = sorted(
+            'save_dir', 'max_seq_len', 'min_seq_len', 'seq_padding_side', 'subsequence_sampling_strategy',
+            'train_subset_size', 'train_subset_seed', 'task_df_name'
+        )
+        params = ((p, getattr(self, p)) for p in params)
+
+        return {k: v for k, v in params}, str(hash(params))
+
+    @property
+    def tensorized_cached_dir(self) -> Path:
+        if self.task_df_name is None:
+            base_dir = self.DL_reps_dir / "tensorized_cached"
+        else:
+            base_dir = self.cached_task_dir
+
+        return base_dir / self._data_parameters_and_hash[1]
+
+    @property
+    def _cached_data_parameters_fp(self) -> Path:
+        return self.tensorized_cached_dir / "data_parameters.json"
+
+    def _cache_data_parameters(self):
+        self._cached_data_parameters_fp.mkdir(exist_ok=True, parents=True)
+
+        with open(self._cached_data_parameters_fp, mode='w') as f:
+            json.dump(self._data_parameters_and_hash[0], f)
+
+    @property
+    def tensorized_cached_files(self, split: str) -> dict[str, fp]:
+        if not self.tensorized_cached_dir.is_dir():
+            return {}
+
+        all_files = {fp.stem: fp for fp in self.tensorized_cached_dir.glob("*.pt")}
+
+        for param, need_keys in [
+            ('do_include_start_time_min', ["start_time"]),
+            ('do_include_subsequence_indices', ["start_idx", "end_idx"]),
+            ('do_include_subject_id', ["subject_id"]),
+        ]:
+            param_val = getattr(self, param)
+            for need_key in need_keys:
+                if param_val and (need_key not in all_files):
+                    raise KeyError(f"Missing {need_key} but {param} is True!")
+                elif need_key in all_files:
+                    all_files.pop(need_key)
+
+        return all_files
+
 
 @dataclasses.dataclass
 class MeasurementConfig(JSONableMixin):
