@@ -126,7 +126,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         raise TypeError(f"Can't process label of {dtype} type!")
 
-    def __init__(self, config: PytorchDatasetConfig, split: str):
+    def __init__(self, config: PytorchDatasetConfig, split: str, do_add_IDs: bool = False):
         super().__init__()
 
         self.config = config
@@ -302,48 +302,53 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
-        with self._time_as("extract_IDs"):
-            if "time" in self.cached_data.columns:
-                time_col_expr = pl.col("time")
-            elif "time_delta" in self.cached_data.columns:
-                cols = self.cached_data.columns
-                gp_by_cols = ["subject_id", "start_time"]
-                self.cached_data = (
-                    self.cached_data.explode("time_delta")
-                    .with_columns(
-                        pl.col("time_delta")
-                        .cumsum()
-                        .shift_and_fill(fill_value=0, periods=1)
-                        .over("subject_id")
-                        .alias("time")
+        if do_add_IDs:
+            with self._time_as("extract_IDs"):
+                self.cached_data = self.cached_data.lazy()
+                if "time" in self.cached_data.columns:
+                    time_col_expr = pl.col("time")
+                elif "time_delta" in self.cached_data.columns:
+                    cols = self.cached_data.columns
+                    gp_by_cols = ["subject_id", "start_time"]
+                    self.cached_data = (
+                        self.cached_data.explode("time_delta")
+                        .with_columns(
+                            pl.col("time_delta")
+                            .cumsum()
+                            .shift_and_fill(fill_value=0, periods=1)
+                            .over("subject_id")
+                            .alias("time")
+                        )
+                        .groupby(gp_by_cols, maintain_order=True)
+                        .agg(
+                            *[pl.col(c).first() for c in cols if c not in ("time", "time_delta", *gp_by_cols)],
+                            pl.col("time"),
+                            pl.col("time_delta"),
+                        )
                     )
-                    .groupby(gp_by_cols, maintain_order=True)
-                    .agg(
-                        *[pl.col(c).first() for c in cols if c not in ("time", "time_delta", *gp_by_cols)],
-                        pl.col("time"),
-                        pl.col("time_delta"),
+                    time_col_expr = pl.col("time")
+                else:
+                    raise KeyError(f"Missing time column from cached_data.columns: {self.cached_data.columns}")
+
+                min_time = time_col_expr.list.min()
+                max_time = time_col_expr.list.max()
+
+                self.schema = (
+                    self.cached_data
+                    .select(
+                        "subject_id",
+                        (pl.col("start_time") + pl.duration(minutes=min_time)).alias("start_time"),
+                        (pl.col("start_time") + pl.duration(minutes=max_time)).alias("end_time"),
                     )
+                    .collect(streaming=True)
                 )
-                time_col_expr = pl.col("time")
-            else:
-                raise KeyError(f"Missing time column from cached_data.columns: {self.cached_data.columns}")
-
-            min_time = time_col_expr.list.min()
-            max_time = time_col_expr.list.max()
-
-            self.schema = (
-                self.cached_data.lazy()
-                .select(
-                    "subject_id",
-                    (pl.col("start_time") + pl.duration(minutes=min_time)).alias("start_time"),
-                    (pl.col("start_time") + pl.duration(minutes=max_time)).alias("end_time"),
-                )
-                .collect()
-            )
+                self.cached_data = self.cached_data.collect(streaming=True)
 
         with self._time_as("convert_to_rows"):
             self.subject_ids = self.cached_data["subject_id"].to_list()
-            self.cached_data = self.cached_data.drop("subject_id", "time")
+            if "time" in self.cached_data.columns:
+                self.cached_data = self.cached_data.drop("time")
+            self.cached_data = self.cached_data.drop("subject_id")
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
 
