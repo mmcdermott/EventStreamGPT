@@ -11,6 +11,7 @@ from io import StringIO, TextIOBase
 from pathlib import Path
 from textwrap import shorten, wrap
 from typing import Any, Union
+import json
 
 import omegaconf
 import pandas as pd
@@ -880,7 +881,16 @@ class PytorchDatasetConfig(JSONableMixin):
     do_include_subject_id: bool = False
     do_include_start_time_min: bool = False
 
+    # Trades off between speed/disk/mem and support
+    cache_for_epochs: int = 1
+
     def __post_init__(self):
+        if self.subsequence_sampling_strategy != 'random' and self.cache_for_epochs > 1:
+            raise ValueError(
+                f"It does not make sense to cache for {self.cache_for_epochs} with non-random "
+                "subsequence sampling."
+            )
+
         if self.seq_padding_side not in SeqPaddingSide.values():
             raise ValueError(f"seq_padding_side invalid; must be in {', '.join(SeqPaddingSide.values())}")
         if type(self.min_seq_len) is not int or self.min_seq_len < 0:
@@ -954,7 +964,7 @@ class PytorchDatasetConfig(JSONableMixin):
     @property
     def raw_task_df_fp(self) -> Path | None:
         if self.task_df_name is None: return None
-        else: return self.config.save_dir / "task_dfs" / f"{self.task_df_name}.parquet"
+        else: return self.save_dir / "task_dfs" / f"{self.task_df_name}.parquet"
 
     @property
     def task_info_fp(self) -> Path | None:
@@ -963,13 +973,13 @@ class PytorchDatasetConfig(JSONableMixin):
 
     @property
     def _data_parameters_and_hash(self) -> tuple[dict[str, Any], str]:
-        params = sorted(
+        params = sorted((
             'save_dir', 'max_seq_len', 'min_seq_len', 'seq_padding_side', 'subsequence_sampling_strategy',
             'train_subset_size', 'train_subset_seed', 'task_df_name'
-        )
-        params = ((p, getattr(self, p)) for p in params)
+        ))
+        params = tuple((p, getattr(self, p)) for p in params)
 
-        return {k: v for k, v in params}, str(hash(params))
+        return {k: str(v) if isinstance(v, Path) else v for k, v in params}, str(hash(params))
 
     @property
     def tensorized_cached_dir(self) -> Path:
@@ -985,17 +995,16 @@ class PytorchDatasetConfig(JSONableMixin):
         return self.tensorized_cached_dir / "data_parameters.json"
 
     def _cache_data_parameters(self):
-        self._cached_data_parameters_fp.mkdir(exist_ok=True, parents=True)
+        self._cached_data_parameters_fp.parent.mkdir(exist_ok=True, parents=True)
 
         with open(self._cached_data_parameters_fp, mode='w') as f:
             json.dump(self._data_parameters_and_hash[0], f)
 
-    @property
     def tensorized_cached_files(self, split: str) -> dict[str, fp]:
         if not self.tensorized_cached_dir.is_dir():
             return {}
 
-        all_files = {fp.stem: fp for fp in self.tensorized_cached_dir.glob("*.pt")}
+        all_files = {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.pt")}
 
         for param, need_keys in [
             ('do_include_start_time_min', ["start_time"]),

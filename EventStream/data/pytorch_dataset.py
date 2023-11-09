@@ -3,6 +3,7 @@ from collections import defaultdict
 from pathlib import Path
 import copy
 from tqdm.auto import tqdm
+from datetime import datetime
 
 import numpy as np
 import polars as pl
@@ -68,11 +69,11 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         self.fetch_metadata()
 
     def __len__(self):
-        return self._length
+        return self.tensors["time_delta"].shape[0]
 
     @TimeableMixin.TimeAs
     def cache_if_needed(self):
-        if len(self.config.tensorized_cached_files) > 0: return
+        if len(self.config.tensorized_cached_files(self.split)) > 0: return
 
         self.config._cache_data_parameters()
 
@@ -89,12 +90,41 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         global_batch = constructor_pyd.collate(items)
 
+        tensors_to_cache = []
+        seen_keys = set()
         for k, T in global_batch.items():
-            fp = self.config.tensorized_cached_dir / f"{k}.pt"
+            if k.endswith("_mask"): continue
+            if T is None: continue
+            if isinstance(T, torch.Tensor):
+                if k in seen_keys:
+                    raise KeyError(f"Duplicate tensor save key {k}!")
+                tensors_to_cache.append((k, T))
+                seen_keys.add(k)
+            elif isinstance(T, dict):
+                for kk, TT in T.items():
+                    if TT is None: continue
+                    elif not isinstance(TT, torch.Tensor):
+                        raise TypeError(f"Unrecognized tensor type {type(TT)} @ {k}/{kk}!")
+
+                    if kk in seen_keys:
+                        raise KeyError(f"Duplicate tensor save key {kk}!")
+                    tensors_to_cache.append((kk, TT))
+                    seen_keys.add(kk)
+            else:
+                raise TypeError(f"Unrecognized tensor type {type(T)} @ {k}!")
+
+        for k, T in tqdm(tensors_to_cache, leave=False, desc="Caching..."):
+            fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
+            fp.parent.mkdir(exist_ok=True,  parents=True)
+            st = datetime.now()
+            print(f"Caching tensor {k} of shape {T.shape} to {fp}...")
             torch.save(T, fp)
+            print(f"Done in {datetime.now() - st}")
 
     def fetch_tensors(self):
-        self.tensors = {k: torch.load(fp) for k, fp in self.config.tensorized_cached_files.items()}
+        self.tensors = {
+            k: torch.load(fp) for k, fp in self.config.tensorized_cached_files(self.split).items()
+        }
 
     def fetch_metadata(self):
         self.vocabulary_config = self.config.vocabulary_config
