@@ -886,6 +886,9 @@ class PytorchDatasetConfig(JSONableMixin):
     cache_for_epochs: int = 1
 
     def __post_init__(self):
+        if self.cache_for_epochs is None:
+            self.cache_for_epochs = 1
+
         if self.subsequence_sampling_strategy != "random" and self.cache_for_epochs > 1:
             raise ValueError(
                 f"It does not make sense to cache for {self.cache_for_epochs} with non-random "

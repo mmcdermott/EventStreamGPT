@@ -67,6 +67,18 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
     def __len__(self):
         return self.tensors["time_delta"].shape[0]
 
+    @property
+    def has_task(self) -> bool:
+        return self.config.task_df_name is not None
+
+    @property
+    def seq_padding_side(self) -> SeqPaddingSide:
+        return self.config.seq_padding_side
+
+    @property
+    def max_seq_len(self) -> int:
+        return self.config.max_seq_len
+
     @TimeableMixin.TimeAs
     def cache_if_needed(self):
         if len(self.config.tensorized_cached_files(self.split)) > 0:
@@ -81,6 +93,16 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         items = []
         constructor_pyd = ConstructorPytorchDataset(constructor_config, self.split)
+
+        (self.config.tensorized_cached_dir / self.split).mkdir(exist_ok=True, parents=True)
+
+        with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
+            stats = {
+                "mean_log_inter_event_time_min": constructor_pyd.mean_log_inter_event_time_min,
+                "std_log_inter_event_time_min": constructor_pyd.std_log_inter_event_time_min,
+            }
+            json.dump(stats, f)
+
         for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
                 items.append(it)
@@ -126,11 +148,17 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             k: torch.load(fp) for k, fp in self.config.tensorized_cached_files(self.split).items()
         }
 
+        with open(self.config.tensorized_cached_dir / self.split / "data_stats.json") as f:
+            stats = json.load(f)
+
+            self.mean_log_inter_event_time_min = stats["mean_log_inter_event_time_min"]
+            self.std_log_inter_event_time_min = stats["std_log_inter_event_time_min"]
+
     def fetch_metadata(self):
         self.vocabulary_config = self.config.vocabulary_config
         self.measurement_configs = self.config.measurement_configs
 
-        if self.config.task_df_name is not None:
+        if self.has_task:
             with open(self.config.task_info_fp) as f:
                 task_info = json.load(f)
                 self.tasks = sorted(task_info["tasks"])
@@ -591,7 +619,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             ... })
             >>> pl.Config.set_tbl_width_chars(88)
             <class 'polars.config.Config'>
-            >>> PytorchDataset._build_task_cached_df(task_df, cached_data)
+            >>> ConstructorPytorchDataset._build_task_cached_df(task_df, cached_data)
             shape: (3, 8)
             ┌───────────┬───────────┬───────────┬──────────┬──────────┬──────────┬────────┬────────┐
             │ subject_i ┆ start_tim ┆ time      ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ label1 ┆ label2 │
