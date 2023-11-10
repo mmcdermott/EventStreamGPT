@@ -1,25 +1,20 @@
+import copy
 import json
 from collections import defaultdict
-from pathlib import Path
-import copy
-from tqdm.auto import tqdm
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import polars as pl
 import torch
-from mixins import SaveableMixin, SeedableMixin, TimeableMixin
+from mixins import SeedableMixin, TimeableMixin
+from tqdm.auto import tqdm
 
-from .config import (
-    MeasurementConfig,
-    PytorchDatasetConfig,
-    SeqPaddingSide,
-    SubsequenceSamplingStrategy,
-    VocabularyConfig,
-)
+from .config import PytorchDatasetConfig, SeqPaddingSide, SubsequenceSamplingStrategy
 from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
+
 
 class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
     """A PyTorch Dataset class.
@@ -63,7 +58,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         self.split = split
 
         self.cache_if_needed()
-        if just_cache: return
+        if just_cache:
+            return
 
         self.fetch_tensors()
         self.fetch_metadata()
@@ -73,7 +69,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def cache_if_needed(self):
-        if len(self.config.tensorized_cached_files(self.split)) > 0: return
+        if len(self.config.tensorized_cached_files(self.split)) > 0:
+            return
 
         self.config._cache_data_parameters()
 
@@ -88,13 +85,15 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
                 items.append(it)
 
-        global_batch = constructor_pyd.collate(items)
+        global_batch = constructor_pyd.collate(items, do_convert_float_nans=False)
 
         tensors_to_cache = []
         seen_keys = set()
         for k, T in global_batch.items():
-            if k.endswith("_mask"): continue
-            if T is None: continue
+            if k.endswith("_mask"):
+                continue
+            if T is None:
+                continue
             if isinstance(T, torch.Tensor):
                 if k in seen_keys:
                     raise KeyError(f"Duplicate tensor save key {k}!")
@@ -102,7 +101,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 seen_keys.add(k)
             elif isinstance(T, dict):
                 for kk, TT in T.items():
-                    if TT is None: continue
+                    if TT is None:
+                        continue
                     elif not isinstance(TT, torch.Tensor):
                         raise TypeError(f"Unrecognized tensor type {type(TT)} @ {k}/{kk}!")
 
@@ -115,7 +115,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         for k, T in tqdm(tensors_to_cache, leave=False, desc="Caching..."):
             fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
-            fp.parent.mkdir(exist_ok=True,  parents=True)
+            fp.parent.mkdir(exist_ok=True, parents=True)
             st = datetime.now()
             print(f"Caching tensor {k} of shape {T.shape} to {fp}...")
             torch.save(T, fp)
@@ -168,7 +168,6 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         """
         return {k: T[idx] for k, T in self.tensors.items()}
 
-
     @TimeableMixin.TimeAs
     def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         """Combines the ragged dictionaries produced by `__getitem__` into a tensorized batch.
@@ -193,11 +192,11 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         out_batch["event_mask"] = ~collated["time_delta"].isnan()
         out_batch["dynamic_values_mask"] = ~collated["dynamic_values"].isnan()
         out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"], nan=0)
-        out_batch["dynamic_indices"] = torch.nan_to_num(collated["dynamic_indices"], nan=0).long()
-        out_batch["dynamic_measurement_indices"] = torch.nan_to_num(
-            collated["dynamic_measurement_indices"], nan=0
-        ).long()
+        out_batch["dynamic_indices"] = collated["dynamic_indices"]
+        out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"]
         out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"], nan=0)
+        out_batch["static_indices"] = collated["static_indices"]
+        out_batch["static_measurement_indices"] = collated["static_indices"]
 
         if self.config.do_include_start_time_min:
             out_batch["start_time"] = collated["start_time"].float()
@@ -739,9 +738,11 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
         return full_subj_data
 
-    def __static_and_dynamic_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+    def __static_and_dynamic_collate(
+        self, batch: list[DATA_ITEM_T], do_convert_float_nans: bool = True
+    ) -> PytorchBatch:
         """An internal collate function for both static and dynamic data."""
-        out_batch = self.__dynamic_only_collate(batch)
+        out_batch = self.__dynamic_only_collate(batch, do_convert_float_nans=do_convert_float_nans)
 
         # Get the maximum number of static elements in the batch.
         max_n_static = max(len(e["static_indices"]) for e in batch)
@@ -780,7 +781,9 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
         return out_batch
 
-    def __dynamic_only_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+    def __dynamic_only_collate(
+        self, batch: list[DATA_ITEM_T], do_convert_float_nans: bool = True
+    ) -> PytorchBatch:
         """An internal collate function for dynamic data alone."""
         # Get the local max sequence length and n_data elements for padding.
         max_seq_len = max(len(e["time_delta"]) for e in batch)
@@ -850,13 +853,14 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         out_batch["event_mask"] = ~out_batch["time_delta"].isnan()
         out_batch["dynamic_values_mask"] = ~out_batch["dynamic_values"].isnan()
 
-        out_batch["time_delta"] = torch.nan_to_num(out_batch["time_delta"], nan=0)
-
         out_batch["dynamic_indices"] = torch.nan_to_num(out_batch["dynamic_indices"], nan=0).long()
         out_batch["dynamic_measurement_indices"] = torch.nan_to_num(
             out_batch["dynamic_measurement_indices"], nan=0
         ).long()
-        out_batch["dynamic_values"] = torch.nan_to_num(out_batch["dynamic_values"], nan=0)
+
+        if do_convert_float_nans:
+            out_batch["time_delta"] = torch.nan_to_num(out_batch["time_delta"], nan=0)
+            out_batch["dynamic_values"] = torch.nan_to_num(out_batch["dynamic_values"], nan=0)
 
         if self.config.do_include_start_time_min:
             out_batch["start_time"] = torch.FloatTensor([e["start_time"] for e in batch])
@@ -898,7 +902,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         return out_batch
 
     @TimeableMixin.TimeAs
-    def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+    def collate(self, batch: list[DATA_ITEM_T], do_convert_float_nans: bool = True) -> PytorchBatch:
         """Combines the ragged dictionaries produced by `__getitem__` into a tensorized batch.
 
         This function handles conversion of arrays to tensors and padding of elements within the batch across
@@ -911,6 +915,6 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             A fully collated, tensorized, and padded batch.
         """
         if self.do_produce_static_data:
-            return self.__static_and_dynamic_collate(batch)
+            return self.__static_and_dynamic_collate(batch, do_convert_float_nans=do_convert_float_nans)
         else:
-            return self.__dynamic_only_collate(batch)
+            return self.__dynamic_only_collate(batch, do_convert_float_nans=do_convert_float_nans)
