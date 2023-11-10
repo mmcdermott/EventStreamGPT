@@ -166,7 +166,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         6. ``static_measurement_indices`` captures which measurement vocabulary was used to source a given
            data element.
         """
-        return {k: T[idx] for k, t in self.tensors.items()}
+        return {k: T[idx] for k, T in self.tensors.items()}
 
 
     @TimeableMixin.TimeAs
@@ -210,7 +210,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         out_batch = PytorchBatch(**out_batch)
         self._register_end("collate_post_padding_processing")
 
-        if not self.has_task:
+        if self.config.task_df_name is None:
             return out_batch
 
         self._register_start("collate_task_labels")

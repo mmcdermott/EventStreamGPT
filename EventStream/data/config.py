@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import hashlib
 import random
 from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Sequence
@@ -977,9 +978,17 @@ class PytorchDatasetConfig(JSONableMixin):
             'save_dir', 'max_seq_len', 'min_seq_len', 'seq_padding_side', 'subsequence_sampling_strategy',
             'train_subset_size', 'train_subset_seed', 'task_df_name'
         ))
-        params = tuple((p, getattr(self, p)) for p in params)
 
-        return {k: str(v) if isinstance(v, Path) else v for k, v in params}, str(hash(params))
+        params_list = []
+        for p in params:
+            v = str(getattr(self, p))
+            params_list.append((p, v))
+
+        params = tuple(params_list)
+        h = hashlib.blake2b(digest_size=8)
+        h.update(str(params).encode())
+
+        return {k: v for k, v in params}, h.hexdigest()
 
     @property
     def tensorized_cached_dir(self) -> Path:
