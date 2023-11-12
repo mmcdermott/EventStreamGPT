@@ -1,6 +1,8 @@
 import json
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pathlib import Path
+from datetime import datetime
+
 
 import numpy as np
 import polars as pl
@@ -128,6 +130,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
     def __init__(self, config: PytorchDatasetConfig, split: str):
         super().__init__()
+
+        print('EveryQueryGPT dataloader')
 
         self.config = config
         self.task_types = {}
@@ -485,49 +489,70 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 full_subj_data[k] = []
         if self.config.do_include_subject_id:
             full_subj_data["subject_id"] = self.subject_ids[idx]
-        if self.config.do_include_start_time_min:
-            # Note that this is using the python datetime module's `timestamp` function which differs from
-            # some dataframe libraries' timestamp functions (e.g., polars).
-            full_subj_data["start_time"] = full_subj_data["start_time"].timestamp() / 60.0
-        else:
-            full_subj_data.pop("start_time")
 
-        # If we need to truncate to `self.max_seq_len`, grab a random full-size span to capture that.
-        # TODO(mmd): This will proportionally underweight the front and back ends of the subjects data
-        # relative to the middle, as there are fewer full length sequences containing those elements.
-        seq_len = len(full_subj_data["time_delta"])
-        if seq_len > self.max_seq_len:
-            with self._time_as("truncate_to_max_seq_len"):
-                match self.config.subsequence_sampling_strategy:
-                    case SubsequenceSamplingStrategy.RANDOM:
-                        start_idx = np.random.choice(seq_len - self.max_seq_len)
-                    case SubsequenceSamplingStrategy.TO_END:
-                        start_idx = seq_len - self.max_seq_len
-                    case SubsequenceSamplingStrategy.FROM_START:
-                        start_idx = 0
-                    case _:
-                        raise ValueError(
-                            f"Invalid sampling strategy: {self.config.subsequence_sampling_strategy}!"
-                        )
+        min_future_days = 180 #todo: add to config
+        start_time = full_subj_data["start_time"].timestamp() / 60 # minutes 
+        times = np.array([sum(full_subj_data["time_delta"][:i]) for i in range(1, len(full_subj_data["time_delta"])+1)])
+        min_future = min(times[-1], min_future_days*24*60)
+        max_end_time = start_time + times[-1] - min_future
+        max_end_idx = np.max(np.argwhere((times+start_time) < max_end_time))
 
-                if self.config.do_include_start_time_min:
-                    full_subj_data["start_time"] += sum(full_subj_data["time_delta"][:start_idx])
-                if self.config.do_include_subsequence_indices:
-                    full_subj_data["start_idx"] = start_idx
-                    full_subj_data["end_idx"] = start_idx + self.max_seq_len
+        print(f'there are {len(full_subj_data["time_delta"])} events')
+        print('data start at',datetime.fromtimestamp(60*(start_time)))
+        print('data cuts off inputs at',datetime.fromtimestamp(60*(start_time+times[max_end_idx])))
+        print('data actually ends at',datetime.fromtimestamp(60*(start_time+times[-1])))
 
-                for k in (
+        if max_end_idx <= self.max_seq_len: 
+            input_start_idx = 0
+            input_end_idx = max_end_idx
+        else: 
+            input_start_idx = np.random.choice(max_end_idx - self.max_seq_len)
+            input_end_idx = input_start_idx + self.max_seq_len
+
+        min_query_duration_hours = 1  #todo: add to config
+        min_duration = min_query_duration_hours*60
+
+        print(f'answer to the query is calculated from {input_end_idx} to end of events {len(times)}')
+        query_start_time = np.random.randint(times[input_end_idx], times[-1]-min_duration)
+        query_end_time = np.random.randint(query_start_time+min_duration, times[-1])
+        query_start_time += start_time
+        query_end_time  += start_time
+        query_start_idx = np.min(np.argwhere((times+start_time) >= query_start_time))
+        query_end_idx = np.max(np.argwhere((times+start_time) <= query_end_time))
+
+        print(f'query duration {(query_end_time-query_start_time)/(24*60)} days')
+        print(f'query start time {datetime.fromtimestamp(60*(query_start_time))}')
+        print(f'query start idx time {datetime.fromtimestamp(60*(start_time+times[query_start_idx]))} at idx {query_start_idx}')
+        print(f'query end time {datetime.fromtimestamp(60*(query_end_time))}')
+        print(f'query end idx time {datetime.fromtimestamp(60*(start_time+times[query_end_idx]))} at idx {query_end_idx}')
+
+        # should the code already be present in the answer period or be random from the list of codes? 
+        # ideally this should be sampled from all codes in the training data 
+        codes_observed = Counter(sum( full_subj_data['dynamic_indices'][query_start_idx:query_end_idx], []))
+        code = np.random.choice(list(codes_observed.keys())) 
+        query = {
+            # s, end time e, and code c with some (potentially fully open) value range (L,R)
+            'start_delta_from_input_end': query_start_time-times[input_end_idx],
+            'end_delta_from_input_end': query_end_time-times[input_end_idx],
+            'duration': query_end_time-query_start_time,
+            'code': code
+            # ignorning values for now not sure how to look up the min max range for the entire patient set
+        } 
+
+        poisson_rate = codes_observed[code] / query['duration'] # frequency / minutes ?? 
+        # need to normalize somehow?? 
+        # is poisson right for uneven sampling? 
+
+        print(f'inputs go from {input_start_idx} to {input_end_idx}')
+        for k in (
                     "time_delta",
                     "dynamic_indices",
                     "dynamic_values",
                     "dynamic_measurement_indices",
                 ):
-                    full_subj_data[k] = full_subj_data[k][start_idx : start_idx + self.max_seq_len]
-        elif self.config.do_include_subsequence_indices:
-            full_subj_data["start_idx"] = 0
-            full_subj_data["end_idx"] = seq_len
+                    full_subj_data[k] = full_subj_data[k][input_start_idx : input_end_idx]
 
-        return full_subj_data
+        return full_subj_data, query, poisson_rate
 
     def __static_and_dynamic_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         """An internal collate function for both static and dynamic data."""
