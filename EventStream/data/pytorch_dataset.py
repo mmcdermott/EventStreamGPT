@@ -79,14 +79,32 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
     def max_seq_len(self) -> int:
         return self.config.max_seq_len
 
+    @property
+    def cached_files_exist(self) -> bool:
+        return len(self.config.tensorized_cached_files(self.split)) > 0
+
     @TimeableMixin.TimeAs
     def cache_if_needed(self):
-        if len(self.config.tensorized_cached_files(self.split)) > 0:
+        if self.cached_files_exist:
             return
+        if self.full_dataset_cached_files_exist:
+            self.cache_subset()
+        else:
+            self.cache_full_data()
+            if self.is_subset_dataest:
+                self.cache_subset()
 
+    @TimeableMixin.TimeAs
+    def cache_subset(self):
+        raise NotImplementedError
+
+    @TimeableMixin.TimeAs
+    def cache_full_data(self):
         self.config._cache_data_parameters()
 
         constructor_config = copy.deepcopy(self.config)
+        constructor_config.train_subset_size = "FULL"
+        constructor_config.train_subset_seed = None
         constructor_config.do_include_subsequence_indices = True
         constructor_config.do_include_subject_id = True
         constructor_config.do_include_start_time_min = True
