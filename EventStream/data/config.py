@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import hashlib
+import json
 import random
 from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Sequence
@@ -12,7 +13,6 @@ from io import StringIO, TextIOBase
 from pathlib import Path
 from textwrap import shorten, wrap
 from typing import Any, Union
-import json
 
 import omegaconf
 import pandas as pd
@@ -886,7 +886,10 @@ class PytorchDatasetConfig(JSONableMixin):
     cache_for_epochs: int = 1
 
     def __post_init__(self):
-        if self.subsequence_sampling_strategy != 'random' and self.cache_for_epochs > 1:
+        if self.cache_for_epochs is None:
+            self.cache_for_epochs = 1
+
+        if self.subsequence_sampling_strategy != "random" and self.cache_for_epochs > 1:
             raise ValueError(
                 f"It does not make sense to cache for {self.cache_for_epochs} with non-random "
                 "subsequence sampling."
@@ -946,9 +949,7 @@ class PytorchDatasetConfig(JSONableMixin):
     @property
     def measurement_configs(self) -> dict[str, MeasurementConfig]:
         with open(self.measurement_config_fp) as f:
-            measurement_configs = {
-                k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
-            }
+            measurement_configs = {k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()}
             return {k: v for k, v in measurement_configs.items() if not v.is_dropped}
 
     @property
@@ -964,20 +965,32 @@ class PytorchDatasetConfig(JSONableMixin):
 
     @property
     def raw_task_df_fp(self) -> Path | None:
-        if self.task_df_name is None: return None
-        else: return self.save_dir / "task_dfs" / f"{self.task_df_name}.parquet"
+        if self.task_df_name is None:
+            return None
+        else:
+            return self.save_dir / "task_dfs" / f"{self.task_df_name}.parquet"
 
     @property
     def task_info_fp(self) -> Path | None:
-        if self.task_df_name is None: return None
-        else: return self.cached_task_dir / "task_info.json"
+        if self.task_df_name is None:
+            return None
+        else:
+            return self.cached_task_dir / "task_info.json"
 
     @property
     def _data_parameters_and_hash(self) -> tuple[dict[str, Any], str]:
-        params = sorted((
-            'save_dir', 'max_seq_len', 'min_seq_len', 'seq_padding_side', 'subsequence_sampling_strategy',
-            'train_subset_size', 'train_subset_seed', 'task_df_name'
-        ))
+        params = sorted(
+            (
+                "save_dir",
+                "max_seq_len",
+                "min_seq_len",
+                "seq_padding_side",
+                "subsequence_sampling_strategy",
+                "train_subset_size",
+                "train_subset_seed",
+                "task_df_name",
+            )
+        )
 
         params_list = []
         for p in params:
@@ -1006,24 +1019,26 @@ class PytorchDatasetConfig(JSONableMixin):
     def _cache_data_parameters(self):
         self._cached_data_parameters_fp.parent.mkdir(exist_ok=True, parents=True)
 
-        with open(self._cached_data_parameters_fp, mode='w') as f:
+        with open(self._cached_data_parameters_fp, mode="w") as f:
             json.dump(self._data_parameters_and_hash[0], f)
 
-    def tensorized_cached_files(self, split: str) -> dict[str, fp]:
-        if not self.tensorized_cached_dir.is_dir():
+    def tensorized_cached_files(self, split: str) -> dict[str, Path]:
+        if not (self.tensorized_cached_dir / split).is_dir():
             return {}
 
         all_files = {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.pt")}
+        files_str = ", ".join(all_files.keys())
 
         for param, need_keys in [
-            ('do_include_start_time_min', ["start_time"]),
-            ('do_include_subsequence_indices', ["start_idx", "end_idx"]),
-            ('do_include_subject_id', ["subject_id"]),
+            ("do_include_start_time_min", ["start_time"]),
+            ("do_include_subsequence_indices", ["start_idx", "end_idx"]),
+            ("do_include_subject_id", ["subject_id"]),
         ]:
             param_val = getattr(self, param)
             for need_key in need_keys:
-                if param_val and (need_key not in all_files):
-                    raise KeyError(f"Missing {need_key} but {param} is True!")
+                if param_val:
+                    if need_key not in all_files.keys():
+                        raise KeyError(f"Missing {need_key} but {param} is True! Have {files_str}")
                 elif need_key in all_files:
                     all_files.pop(need_key)
 

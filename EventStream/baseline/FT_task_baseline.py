@@ -31,7 +31,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from ..data.dataset_polars import Dataset
-from ..data.pytorch_dataset import PytorchDataset
+from ..data.pytorch_dataset import ConstructorPytorchDataset
 from ..tasks.profile import add_tasks_from
 from ..utils import task_wrapper
 
@@ -658,7 +658,7 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     task_dfs = add_tasks_from(ESD.config.save_dir / "task_dfs")
     task_df = task_dfs[cfg.task_df_name]
 
-    task_type, normalized_label = PytorchDataset.normalize_task(
+    task_type, normalized_label = ConstructorPytorchDataset.normalize_task(
         pl.col(cfg.finetuning_task_label), task_df.schema[cfg.finetuning_task_label]
     )
 
