@@ -664,7 +664,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             >>> pl.Config.set_tbl_width_chars(88)
             <class 'polars.config.Config'>
             >>> ConstructorPytorchDataset._build_task_cached_df(task_df, cached_data)
-            shape: (3, 8)
+            shape: (4, 8)
             ┌───────────┬───────────┬───────────┬──────────┬──────────┬──────────┬────────┬────────┐
             │ subject_i ┆ start_tim ┆ time      ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ label1 ┆ label2 │
             │ d         ┆ e         ┆ ---       ┆ measurem ┆ indices  ┆ values   ┆ ---    ┆ ---    │
@@ -679,7 +679,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             │           ┆ 00:00:00  ┆           ┆ 2]]      ┆ 40]]     ┆ 1.0],    ┆        ┆        │
             │           ┆           ┆           ┆          ┆          ┆ [null,   ┆        ┆        │
             │           ┆           ┆           ┆          ┆          ┆ 0.0]]    ┆        ┆        │
-            │ 0         ┆ 2020-01-0 ┆ [0.0]     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 0      │
+            │ 0         ┆ 2020-01-0 ┆ [0.0]     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 1      │
             │           ┆ 1         ┆           ┆ 1]]      ┆ 12]]     ┆ 0.2,     ┆        ┆        │
             │           ┆ 00:00:00  ┆           ┆          ┆          ┆ 1.0]]    ┆        ┆        │
             │ 1         ┆ 2020-02-0 ┆ []        ┆ []       ┆ []       ┆ []       ┆ 1      ┆ 1      │
@@ -699,12 +699,14 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
         start_idx_expr = (
-            time_col_expr.list.explode().search_sorted(pl.col("start_time_min")).over("subject_id")
+            pl.col("time").list.explode().search_sorted(pl.col("start_time_min")).over("task_ID")
         )
-        end_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("end_time_min")).over("subject_id")
+        end_idx_expr = pl.col("time").list.explode().search_sorted(pl.col("end_time_min")).over("task_ID")
 
         return (
-            cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
+            cached_data
+            .with_columns(time_col_expr.alias("time"))
+            .join(task_df.with_row_count("task_ID"), on="subject_id", how="inner", suffix="_task")
             .with_columns(
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
@@ -715,7 +717,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                     for t in time_dep_cols
                 },
             )
-            .drop("start_time_task", "end_time_min", "start_time_min", "end_time")
+            .drop("start_time_task", "end_time_min", "start_time_min", "end_time", "task_ID")
         )
 
         return cached_data
