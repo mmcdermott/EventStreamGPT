@@ -601,6 +601,48 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             ...     ],
             ... })
             >>> task_df = pl.DataFrame({
+            ...     "subject_id": [0, 1, 2, 5],
+            ...     "start_time": [
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 1, 11),
+            ...         datetime(2020, 3, 1, 13),
+            ...         datetime(2020, 1, 2)
+            ...     ],
+            ...     "end_time": [
+            ...         datetime(2020, 1, 3),
+            ...         datetime(2020, 1, 21),
+            ...         datetime(2020, 3, 4),
+            ...         datetime(2020, 1, 3)
+            ...     ],
+            ...     "label1": [0, 1, 0, 1],
+            ...     "label2": [0, 1, 5, 1]
+            ... })
+            >>> pl.Config.set_tbl_width_chars(88)
+            <class 'polars.config.Config'>
+            >>> ConstructorPytorchDataset._build_task_cached_df(task_df, cached_data)
+            shape: (3, 8)
+            ┌───────────┬───────────┬───────────┬──────────┬──────────┬──────────┬────────┬────────┐
+            │ subject_i ┆ start_tim ┆ time      ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ label1 ┆ label2 │
+            │ d         ┆ e         ┆ ---       ┆ measurem ┆ indices  ┆ values   ┆ ---    ┆ ---    │
+            │ ---       ┆ ---       ┆ list[f64] ┆ ent_indi ┆ ---      ┆ ---      ┆ i64    ┆ i64    │
+            │ i64       ┆ datetime[ ┆           ┆ ces      ┆ list[lis ┆ list[lis ┆        ┆        │
+            │           ┆ μs]       ┆           ┆ ---      ┆ t[i64]]  ┆ t[f64]]  ┆        ┆        │
+            │           ┆           ┆           ┆ list[lis ┆          ┆          ┆        ┆        │
+            │           ┆           ┆           ┆ t[i64]]  ┆          ┆          ┆        ┆        │
+            ╞═══════════╪═══════════╪═══════════╪══════════╪══════════╪══════════╪════════╪════════╡
+            │ 0         ┆ 2020-01-0 ┆ [0.0,     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 0      │
+            │           ┆ 1         ┆ 1440.0]   ┆ 1], [0,  ┆ 12], [1, ┆ 0.2,     ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆ 2]]      ┆ 40]]     ┆ 1.0],    ┆        ┆        │
+            │           ┆           ┆           ┆          ┆          ┆ [null,   ┆        ┆        │
+            │           ┆           ┆           ┆          ┆          ┆ 0.0]]    ┆        ┆        │
+            │ 1         ┆ 2020-02-0 ┆ []        ┆ []       ┆ []       ┆ []       ┆ 1      ┆ 1      │
+            │           ┆ 1         ┆           ┆          ┆          ┆          ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
+            │ 2         ┆ 2020-03-0 ┆ [1440.0]  ┆ [[0, 4]] ┆ [[5,     ┆ [[null,  ┆ 0      ┆ 5      │
+            │           ┆ 1         ┆           ┆          ┆ 87]]     ┆ null]]   ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
+            └───────────┴───────────┴───────────┴──────────┴──────────┴──────────┴────────┴────────┘
+            >>> task_df = pl.DataFrame({
             ...     "subject_id": [0, 0, 1, 2, 5],
             ...     "start_time": [
             ...         datetime(2020, 1, 1),
