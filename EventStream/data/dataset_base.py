@@ -14,11 +14,11 @@ from collections import defaultdict
 from collections.abc import Hashable, Sequence
 from pathlib import Path
 from typing import Any, Generic, TypeVar
-from loguru import logger
 
 import humanize
 import numpy as np
 import pandas as pd
+from loguru import logger
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
 from plotly.graph_objs._figure import Figure
 from tqdm.auto import tqdm
@@ -236,9 +236,11 @@ class DatasetBase(
 
             for schema in schemas:
                 if schema.filter_on:
+                    logger.debug("Filtering")
                     df = cls._filter_col_inclusion(schema.filter_on)
                 match schema.type:
                     case InputDFType.EVENT:
+                        logger.debug("Processing Event")
                         df = cls._resolve_ts_col(df, schema.ts_col, "timestamp")
                         all_events_and_measurements.append(
                             cls._process_events_and_measurements_df(
@@ -249,6 +251,7 @@ class DatasetBase(
                         )
                         event_types.append(schema.event_type)
                     case InputDFType.RANGE:
+                        logger.debug("Processing Range")
                         df = cls._resolve_ts_col(df, schema.start_ts_col, "start_time")
                         df = cls._resolve_ts_col(df, schema.end_ts_col, "end_time")
                         for et, unified_schema, sp_df in zip(
@@ -548,12 +551,14 @@ class DatasetBase(
             subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
             subject_id_dtype = subjects_df["subject_id"].dtype
 
+            logger.debug("Extracting events and measurements dataframe...")
             events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
                 ID_map,
                 input_schema.static.subject_id_col,
                 subject_id_dtype,
                 input_schema.dynamic_by_df,
             )
+            logger.debug("Built events and measurements dataframe")
 
         self.config = config
         self._is_fit = False

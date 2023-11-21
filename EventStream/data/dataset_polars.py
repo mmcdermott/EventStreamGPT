@@ -13,12 +13,12 @@ import multiprocessing
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Union
-from loguru import logger
 
 import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from loguru import logger
 from mixins import TimeableMixin
 
 from ..utils import lt_count_or_proportion
@@ -177,6 +177,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         match df:
             case (str() | Path()) as fp:
+                logger.debug(f"Loading df from {fp}")
                 if not isinstance(fp, Path):
                     fp = Path(fp)
 
@@ -193,6 +194,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             case pl.LazyFrame():
                 pass
             case Query() as q:
+                logger.debug(f"Querying df via\n{q}")
                 query = q.query
                 if not isinstance(query, (list, tuple)):
                     query = [query]
@@ -267,6 +269,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     raise ValueError(f"Invalid out data type {out_dt}!")
 
         if subject_id_source_col is not None:
+            logger.debug("Creating ID map")
             df = df.select(col_exprs).collect(streaming=cls.STREAMING)
 
             ID_map = {o: n for o, n in zip(df[subject_id_source_col], df[internal_subj_key])}
@@ -332,6 +335,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
            and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
         """
 
+        logger.debug(f"Processing {event_type} via {columns_schema}")
+
         cols_select_exprs = [
             "timestamp",
             "subject_id",
@@ -392,6 +397,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
         """Increments the values in a column by a given amount and returns a dataframe with the incremented
         column."""
+        logger.debug(f"Incrementing {col} by {inc_by}")
         return df.with_columns(pl.col(col) + inc_by).collect(streaming=cls.STREAMING)
 
     @classmethod

@@ -12,15 +12,12 @@ import dataclasses
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from loguru import logger
 
 import hydra
 import inflect
+from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 
-from EventStream.logger import (
-    hydra_loguru_init
-)
 from EventStream.data.config import (
     DatasetConfig,
     DatasetSchema,
@@ -34,6 +31,7 @@ from EventStream.data.types import (
     InputDFType,
     TemporalityType,
 )
+from EventStream.logger import hydra_loguru_init
 
 inflect = inflect.engine()
 
@@ -53,12 +51,16 @@ def add_to_container(key: str, val: Any, cont: dict[str, Any]):
         ValueError: If `key` is in `cont` with value not equal to `val`.
 
     Examples:
+        >>> import sys
+        >>> from loguru import logger
+        >>> logger.remove()
+        >>> _ = logger.add(sys.stdout, format="{message}")
         >>> cont = {'foo': "bar"}
         >>> add_to_container('biz', 3, cont)
         >>> cont
         {'foo': 'bar', 'biz': 3}
         >>> add_to_container('biz', 3, cont)
-        WARNING: biz is specified twice with value 3.
+        biz is specified twice with value 3.
         >>> cont
         {'foo': 'bar', 'biz': 3}
         >>> add_to_container('foo', 3, cont)
