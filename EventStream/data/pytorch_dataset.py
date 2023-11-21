@@ -698,14 +698,11 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         elif "time_delta" in cached_data.columns:
             time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
-        start_idx_expr = (
-            pl.col("time").list.explode().search_sorted(pl.col("start_time_min")).over("task_ID")
-        )
+        start_idx_expr = pl.col("time").list.explode().search_sorted(pl.col("start_time_min")).over("task_ID")
         end_idx_expr = pl.col("time").list.explode().search_sorted(pl.col("end_time_min")).over("task_ID")
 
         return (
-            cached_data
-            .with_columns(time_col_expr.alias("time"))
+            cached_data.with_columns(time_col_expr.alias("time"))
             .join(task_df.with_row_count("task_ID"), on="subject_id", how="inner", suffix="_task")
             .with_columns(
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
