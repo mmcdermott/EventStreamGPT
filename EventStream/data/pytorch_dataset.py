@@ -574,8 +574,9 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             ...     ],
             ... })
             >>> task_df = pl.DataFrame({
-            ...     "subject_id": [0, 1, 2, 5],
+            ...     "subject_id": [0, 0, 1, 2, 5],
             ...     "start_time": [
+            ...         datetime(2020, 1, 1),
             ...         datetime(2020, 1, 1),
             ...         datetime(2020, 1, 11),
             ...         datetime(2020, 3, 1, 13),
@@ -583,12 +584,13 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             ...     ],
             ...     "end_time": [
             ...         datetime(2020, 1, 3),
+            ...         datetime(2020, 1, 2),
             ...         datetime(2020, 1, 21),
             ...         datetime(2020, 3, 4),
             ...         datetime(2020, 1, 3)
             ...     ],
-            ...     "label1": [0, 1, 0, 1],
-            ...     "label2": [0, 1, 5, 1]
+            ...     "label1": [0, 0, 1, 0, 1],
+            ...     "label2": [0, 1, 1, 5, 1]
             ... })
             >>> pl.Config.set_tbl_width_chars(88)
             <class 'polars.config.Config'>
@@ -608,6 +610,9 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             │           ┆ 00:00:00  ┆           ┆ 2]]      ┆ 40]]     ┆ 1.0],    ┆        ┆        │
             │           ┆           ┆           ┆          ┆          ┆ [null,   ┆        ┆        │
             │           ┆           ┆           ┆          ┆          ┆ 0.0]]    ┆        ┆        │
+            │ 0         ┆ 2020-01-0 ┆ [0.0]     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 0      │
+            │           ┆ 1         ┆           ┆ 1]]      ┆ 12]]     ┆ 0.2,     ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆ 1.0]]    ┆        ┆        │
             │ 1         ┆ 2020-02-0 ┆ []        ┆ []       ┆ []       ┆ []       ┆ 1      ┆ 1      │
             │           ┆ 1         ┆           ┆          ┆          ┆          ┆        ┆        │
             │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
