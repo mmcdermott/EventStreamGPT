@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Hashable, Sequence
 from pathlib import Path
 from typing import Any, Generic, TypeVar
+from loguru import logger
 
 import humanize
 import numpy as np
@@ -273,7 +274,7 @@ class DatasetBase(
                 raise ValueError(f"Failed to increment event_id on {event_type}") from e
 
             if len(new_events) == 0:
-                print(f"Empty new events dataframe of type {event_type}!")
+                logger.warning(f"Empty new events dataframe of type {event_type}!")
                 continue
 
             all_events.append(new_events)
@@ -364,7 +365,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_subjects_df")) or self._subjects_df is None:
             subjects_fp = self.subjects_fp(self.config.save_dir)
-            print(f"Loading subjects from {subjects_fp}...")
+            logger.info(f"Loading subjects from {subjects_fp}...")
             self._subjects_df = self._read_df(subjects_fp)
 
         return self._subjects_df
@@ -382,7 +383,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_events_df")) or self._events_df is None:
             events_fp = self.events_fp(self.config.save_dir)
-            print(f"Loading events from {events_fp}...")
+            logger.info(f"Loading events from {events_fp}...")
             self._events_df = self._read_df(events_fp)
 
         return self._events_df
@@ -401,7 +402,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_dynamic_measurements_df")) or self._dynamic_measurements_df is None:
             dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
-            print(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
+            logger.info(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
             self._dynamic_measurements_df = self._read_df(dynamic_measurements_fp)
 
         return self._dynamic_measurements_df
@@ -438,7 +439,7 @@ class DatasetBase(
 
         reloaded_config = DatasetConfig.from_json_file(load_dir / "config.json")
         if reloaded_config.save_dir != load_dir:
-            print(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
+            logger.info(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
             reloaded_config.save_dir = load_dir
 
         attrs_to_add = {"config": reloaded_config}
@@ -838,7 +839,7 @@ class DatasetBase(
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
-                print(f"WARNING: Measure {measure} not found! Dropping...")
+                logger.warning(f"Measure {measure} not found! Dropping...")
                 config.drop()
                 continue
 
@@ -848,7 +849,7 @@ class DatasetBase(
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
-                print(f"Found no possible events for {measure}!")
+                logger.info(f"Found no possible events for {measure}!")
                 config.drop()
                 continue
 
@@ -1251,7 +1252,7 @@ class DatasetBase(
                     old_params = json.load(f)
 
                 if old_params["subjects_per_output_file"] != params["subjects_per_output_file"]:
-                    print(
+                    logger.info(
                         "Standardizing chunk size to existing record "
                         f"({old_params['subjects_per_output_file']})."
                     )

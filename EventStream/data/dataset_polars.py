@@ -13,6 +13,7 @@ import multiprocessing
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Union
+from loguru import logger
 
 import numpy as np
 import pandas as pd

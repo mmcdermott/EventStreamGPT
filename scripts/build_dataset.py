@@ -12,11 +12,15 @@ import dataclasses
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+from loguru import logger
 
 import hydra
 import inflect
 from omegaconf import DictConfig, OmegaConf
 
+from EventStream.logger import (
+    hydra_loguru_init
+)
 from EventStream.data.config import (
     DatasetConfig,
     DatasetSchema,
@@ -65,7 +69,7 @@ def add_to_container(key: str, val: Any, cont: dict[str, Any]):
 
     if key in cont:
         if cont[key] == val:
-            print(f"WARNING: {key} is specified twice with value {val}.")
+            logger.warning(f"{key} is specified twice with value {val}.")
         else:
             raise ValueError(f"{key} is specified twice ({val} v. {cont[key]})")
     else:
@@ -74,6 +78,8 @@ def add_to_container(key: str, val: Any, cont: dict[str, Any]):
 
 @hydra.main(version_base=None, config_path="../configs", config_name="dataset_base")
 def main(cfg: DictConfig):
+    hydra_loguru_init()
+
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
 
     cfg_fp = Path(cfg["save_dir"]) / "hydra_config.yaml"
@@ -354,7 +360,7 @@ def main(cfg: DictConfig):
     config_kwargs = {k: v for k, v in cfg.items() if k in valid_config_kwargs}
 
     if extra_kwargs:
-        print(f"Omitting {extra_kwargs} from config!")
+        logger.info(f"Omitting {extra_kwargs} from config!")
 
     config = DatasetConfig(measurement_configs=measurement_configs, **config_kwargs)
 
