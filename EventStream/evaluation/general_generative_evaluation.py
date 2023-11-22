@@ -10,6 +10,7 @@ import omegaconf
 import polars as pl
 import torch
 import torch.multiprocessing
+from loguru import logger
 
 from ..data.config import PytorchDatasetConfig, SeqPaddingSide
 from ..data.pytorch_dataset import PytorchDataset
@@ -152,7 +153,7 @@ class GenerateConfig:
             self.trainer_config["default_root_dir"] = self.save_dir / "model_checkpoints"
 
         data_config_fp = self.load_from_model_dir / "data_config.json"
-        print(f"Loading data_config from {data_config_fp}")
+        logger.info(f"Loading data_config from {data_config_fp}")
         self.data_config = PytorchDatasetConfig.from_json_file(data_config_fp)
 
         if self.task_df_name is not None:
@@ -160,20 +161,22 @@ class GenerateConfig:
 
         for param, val in self.data_config_overrides.items():
             if param == "task_df_name":
-                print(
-                    f"WARNING: task_df_name is set in data_config_overrides to {val}! "
+                logger.warning(
+                    f"task_df_name is set in data_config_overrides to {val}! "
                     f"Original is {self.task_df_name}. Ignoring data_config_overrides..."
                 )
                 continue
-            print(f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}")
+            logger.info(
+                f"Overwriting {param} in data_config from {getattr(self.data_config, param)} to {val}"
+            )
             setattr(self.data_config, param, val)
 
         config_fp = self.load_from_model_dir / "config.json"
-        print(f"Loading config from {config_fp}")
+        logger.info(f"Loading config from {config_fp}")
         self.config = StructuredTransformerConfig.from_json_file(config_fp)
 
         for param, val in self.config_overrides.items():
-            print(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
+            logger.info(f"Overwriting {param} in config from {getattr(self.config, param)} to {val}")
             setattr(self.config, param, val)
 
         if self.task_specific_params is None:
@@ -256,18 +259,18 @@ def generate_trajectories(cfg: GenerateConfig):
         out_fp.parent.mkdir(exist_ok=True, parents=True)
 
         st_convert = datetime.now()
-        print(f"Converting to DFs for sample {samp_idx}...")
+        logger.debug(f"Converting to DFs for sample {samp_idx}...")
         if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
             with Pool(cfg.parallelize_conversion) as p:
                 dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
         else:
             dfs = [B.convert_to_DL_DF() for B in gen_batches]
-        print(f"Conversion done in {datetime.now() - st_convert}")
+        logger.debug(f"Conversion done in {datetime.now() - st_convert}")
 
         st_write = datetime.now()
-        print(f"Writing DF to {out_fp}...")
+        logger.debug(f"Writing DF to {out_fp}...")
         pl.concat(dfs).write_parquet(out_fp)
-        print(f"Writing done in {datetime.now() - st_write}")
+        logger.debug(f"Writing done in {datetime.now() - st_write}")
 
     held_out_trajectories = trainer.predict(model=LM, dataloaders=held_out_dataloader)
 
@@ -276,16 +279,16 @@ def generate_trajectories(cfg: GenerateConfig):
         out_fp.parent.mkdir(exist_ok=True, parents=True)
 
         st_convert = datetime.now()
-        print(f"Converting to DFs for sample {samp_idx}...")
+        logger.debug(f"Converting to DFs for sample {samp_idx}...")
         if cfg.parallelize_conversion is not None and cfg.parallelize_conversion > 1:
             with Pool(cfg.parallelize_conversion) as p:
                 dfs = p.map(PytorchBatch.convert_to_DL_DF, gen_batches)
         else:
             dfs = [B.convert_to_DL_DF() for B in gen_batches]
-        print(f"Conversion done in {datetime.now() - st_convert}")
-        print(f"Conversion done in {datetime.now() - st_convert}")
+        logger.debug(f"Conversion done in {datetime.now() - st_convert}")
+        logger.debug(f"Conversion done in {datetime.now() - st_convert}")
 
         st_write = datetime.now()
-        print(f"Writing DF to {out_fp}...")
+        logger.debug(f"Writing DF to {out_fp}...")
         pl.concat(dfs).write_parquet(out_fp)
-        print(f"Writing done in {datetime.now() - st_write}")
+        logger.debug(f"Writing done in {datetime.now() - st_write}")

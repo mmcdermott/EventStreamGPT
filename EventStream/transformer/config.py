@@ -11,6 +11,7 @@ import math
 from collections.abc import Hashable
 from typing import Any, Union
 
+from loguru import logger
 from transformers import PretrainedConfig
 
 from ..data.config import MeasurementConfig
@@ -571,14 +572,14 @@ class StructuredTransformerConfig(PretrainedConfig):
                 )
         else:
             if categorical_embedding_dim is not None:
-                print(
-                    f"WARNING: categorical_embedding_dim is set to {categorical_embedding_dim} but "
+                logger.warning(
+                    f"categorical_embedding_dim is set to {categorical_embedding_dim} but "
                     f"do_split_embeddings={do_split_embeddings}. Setting categorical_embedding_dim to None."
                 )
                 categorical_embedding_dim = None
             if numerical_embedding_dim is not None:
-                print(
-                    f"WARNING: numerical_embedding_dim is set to {numerical_embedding_dim} but "
+                logger.warning(
+                    f"numerical_embedding_dim is set to {numerical_embedding_dim} but "
                     f"do_split_embeddings={do_split_embeddings}. Setting numerical_embedding_dim to None."
                 )
                 numerical_embedding_dim = None
@@ -595,8 +596,7 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         missing_param_err_tmpl = f"For a {structured_event_processing_mode} model, {{}} should not be None"
         extra_param_err_tmpl = (
-            f"WARNING: For a {structured_event_processing_mode} model, {{}} is not used; got {{}}. Setting "
-            "to None."
+            f"For a {structured_event_processing_mode} model, {{}} is not used; got {{}}. Setting " "to None."
         )
         match structured_event_processing_mode:
             case StructuredEventProcessingMode.NESTED_ATTENTION:
@@ -626,21 +626,21 @@ class StructuredTransformerConfig(PretrainedConfig):
 
             case StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT:
                 if measurements_per_dep_graph_level is not None:
-                    print(
+                    logger.warning(
                         extra_param_err_tmpl.format(
                             "measurements_per_dep_graph_level", measurements_per_dep_graph_level
                         )
                     )
                     measurements_per_dep_graph_level = None
                 if do_full_block_in_seq_attention is not None:
-                    print(
+                    logger.warning(
                         extra_param_err_tmpl.format(
                             "do_full_block_in_seq_attention", do_full_block_in_seq_attention
                         )
                     )
                     do_full_block_in_seq_attention = None
                 if do_full_block_in_dep_graph_attention is not None:
-                    print(
+                    logger.warning(
                         extra_param_err_tmpl.format(
                             "do_full_block_in_dep_graph_attention",
                             do_full_block_in_dep_graph_attention,
@@ -648,10 +648,14 @@ class StructuredTransformerConfig(PretrainedConfig):
                     )
                     do_full_block_in_dep_graph_attention = None
                 if dep_graph_attention_types is not None:
-                    print(extra_param_err_tmpl.format("dep_graph_attention_types", dep_graph_attention_types))
+                    logger.warning(
+                        extra_param_err_tmpl.format("dep_graph_attention_types", dep_graph_attention_types)
+                    )
                     dep_graph_attention_types = None
                 if dep_graph_window_size is not None:
-                    print(extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size))
+                    logger.warning(
+                        extra_param_err_tmpl.format("dep_graph_window_size", dep_graph_window_size)
+                    )
                     dep_graph_window_size = None
 
             case _:
@@ -752,7 +756,7 @@ class StructuredTransformerConfig(PretrainedConfig):
 
             case TimeToEventGenerationHeadType.EXPONENTIAL:
                 if TTE_lognormal_generation_num_components is not None:
-                    print(
+                    logger.warning(
                         extra_param_err_tmpl.format(
                             "TTE_lognormal_generation_num_components",
                             TTE_lognormal_generation_num_components,
@@ -760,14 +764,14 @@ class StructuredTransformerConfig(PretrainedConfig):
                     )
                     TTE_lognormal_generation_num_components = None
                 if mean_log_inter_event_time_min is not None:
-                    print(
+                    logger.warning(
                         extra_param_err_tmpl.format(
                             "mean_log_inter_event_time_min", mean_log_inter_event_time_min
                         )
                     )
                     mean_log_inter_event_time_min = None
                 if std_log_inter_event_time_min is not None:
-                    print(
+                    logger.warning(
                         extra_param_err_tmpl.format(
                             "std_log_inter_event_time_min", std_log_inter_event_time_min
                         )

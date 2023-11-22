@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 import torch
+from loguru import logger
 from mixins import SeedableMixin, TimeableMixin
 from tqdm.auto import tqdm
 
@@ -139,9 +140,9 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
             fp.parent.mkdir(exist_ok=True, parents=True)
             st = datetime.now()
-            print(f"Caching tensor {k} of shape {T.shape} to {fp}...")
+            logger.info(f"Caching tensor {k} of shape {T.shape} to {fp}...")
             torch.save(T, fp)
-            print(f"Done in {datetime.now() - st}")
+            logger.info(f"Done in {datetime.now() - st}")
 
     def fetch_tensors(self):
         self.tensors = {
@@ -389,7 +390,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             self.has_task = True
 
             if len(list(task_dir.glob(f"{split}*.parquet"))) > 0:
-                print(
+                logger.info(
                     f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
                     f"{', '.join([str(fp) for fp in task_dir.glob(f'{split}*.parquet')])}"
                 )
@@ -438,20 +439,22 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                             f"Task info differs from on disk!\nDisk:\n{loaded_task_info}\n"
                             f"Local:\n{task_info}\nSplit: {self.split}"
                         )
-                    print(f"Re-built existing {task_info_fp}! Not overwriting...")
+                    logger.info(f"Re-built existing {task_info_fp}! Not overwriting...")
                 else:
                     task_info_fp.parent.mkdir(exist_ok=True, parents=True)
                     with open(task_info_fp, mode="w") as f:
                         json.dump(task_info, f)
 
                 if self.split != "train":
-                    print(f"WARNING: Constructing task-specific dataset on non-train split {self.split}!")
+                    logger.warning(f"Constructing task-specific dataset on non-train split {self.split}!")
                 for cached_data_fp in Path(self.config.save_dir / "DL_reps").glob(f"{split}*.parquet"):
                     task_df_fp = task_dir / cached_data_fp.name
                     if task_df_fp.is_file():
                         continue
 
-                    print(f"Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}...")
+                    logger.info(
+                        f"Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}..."
+                    )
 
                     task_cached_data = self._build_task_cached_df(task_df, pl.scan_parquet(cached_data_fp))
 
@@ -504,7 +507,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             bad_inter_event_times = self.cached_data.filter(pl.col("time_delta").list.min() <= 0).collect()
             bad_subject_ids = [str(x) for x in list(bad_inter_event_times["subject_id"])]
             warning_strs = [
-                f"WARNING: Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
+                f"Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
                 f"ESD Subject IDs: {', '.join(bad_subject_ids)}",
                 f"Global min: {stats['min'].item()}",
             ]
@@ -514,7 +517,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 warning_strs.append(f"Wrote malformed data records to {fp}")
             warning_strs.append("Removing malformed subjects")
 
-            print("\n".join(warning_strs))
+            logger.warning("\n".join(warning_strs))
 
             self.cached_data = self.cached_data.filter(pl.col("time_delta").list.min() > 0)
 
