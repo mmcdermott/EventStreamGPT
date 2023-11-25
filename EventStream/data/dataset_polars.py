@@ -324,7 +324,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         df: DF_T,
         event_type: str,
         columns_schema: dict[str, tuple[str, InputDataType]],
-    ) -> tuple[DF_T, DF_T | None]:
+    ) -> tuple[DF_T | None, DF_T | None]:
         """Performs the following pre-processing steps on an input events and measurements
         dataframe:
 
@@ -354,8 +354,15 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             df.filter(pl.col("timestamp").is_not_null() & pl.col("subject_id").is_not_null())
             .select(cols_select_exprs)
             .unique()
-            .with_row_count("event_id")
+            .with_columns(
+                pl.struct(subject_id=pl.col("subject_id"), timestamp=pl.col("timestamp"))
+                .hash(1, 2, 3, 4)
+                .alias("event_id")
+            )
         )
+
+        if len(df.head(2).collect()) == 0:
+            return None, None
 
         events_df = df.select("event_id", "subject_id", "timestamp", "event_type")
 
@@ -392,13 +399,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             ne_df.with_columns(st_col).drop(drop_cols),
             ne_df.with_columns(end_col).drop(drop_cols),
         )
-
-    @classmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
-        """Increments the values in a column by a given amount and returns a dataframe with the incremented
-        column."""
-        logger.debug(f"Incrementing {col} by {inc_by}")
-        return df.with_columns(pl.col(col) + inc_by).collect(streaming=cls.STREAMING)
 
     @classmethod
     def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
