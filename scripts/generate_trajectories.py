@@ -19,12 +19,14 @@ from EventStream.evaluation.general_generative_evaluation import (
     GenerateConfig,
     generate_trajectories,
 )
+from EventStream.logger import hydra_loguru_init
 
 torch.set_float32_matmul_precision("high")
 
 
 @hydra.main(version_base=None, config_name="generate_config")
 def main(cfg: GenerateConfig):
+    hydra_loguru_init()
     if type(cfg) is not GenerateConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
 
