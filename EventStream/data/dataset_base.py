@@ -108,8 +108,6 @@ class DatasetBase(
         df: INPUT_DF_T,
         columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
         subject_id_col: str | None = None,
-        subject_ids_map: dict[Any, int] | None = None,
-        subject_id_dtype: Any | None = None,
         filter_on: dict[str, bool | list[Any]] | None = None,
     ) -> DF_T:
         """Loads an input dataframe into the format expected by the processing library."""
@@ -185,32 +183,25 @@ class DatasetBase(
             Both the built `subjects_df` as well as a dictionary from the raw subject ID column values to the
             inferred numeric subject IDs.
         """
-        subjects_df, ID_map = cls._load_input_df(
+        subjects_df = cls._load_input_df(
             schema.input_df,
             [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
             filter_on=schema.filter_on,
-            subject_id_source_col=schema.subject_id_col,
+            subject_id_col=schema.subject_id_col,
         )
 
-        subjects_df = cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
-
-        return subjects_df, ID_map
+        return cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
 
     @classmethod
     def build_event_and_measurement_dfs(
         cls,
-        subject_ids_map: dict[Any, int],
         subject_id_col: str,
-        subject_id_dtype: Any,
         schemas_by_df: dict[INPUT_DF_T, list[InputDFSchema]],
     ) -> tuple[DF_T, DF_T]:
         """Builds and returns events and measurements dataframes from the input schema map.
 
         Args:
-            subject_ids_map: A mapping from the input subject ID space to the inferred, output ID space. This
-                is also used to filter dynamic input dataframes down to only valid subjects.
             subject_id_col: The name of the column containing (input) subject IDs.
-            subject_id_dtype: The dtype of the output subject ID column.
             schemas_by_df: A mapping from input dataframe to associated event/measurement schemas.
 
         Returns:
@@ -225,7 +216,7 @@ class DatasetBase(
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
             try:
-                df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
+                df = cls._load_input_df(df, all_columns, subject_id_col)
             except Exception as e:
                 raise ValueError(f"Errored while loading {df}") from e
 
@@ -535,17 +526,16 @@ class DatasetBase(
             if dynamic_measurements_df is not None:
                 raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
 
-            subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
-            subject_id_dtype = subjects_df["subject_id"].dtype
+            subjects_df = self.build_subjects_dfs(input_schema.static)
 
             logger.debug("Extracting events and measurements dataframe...")
             events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
-                ID_map,
                 input_schema.static.subject_id_col,
-                subject_id_dtype,
                 input_schema.dynamic_by_df,
             )
             logger.debug("Built events and measurements dataframe")
+            if isinstance(subjects_df, pl.LazyFrame):
+                subjects_df = subjects_df.collect()
             if isinstance(events_df, pl.LazyFrame):
                 events_df = events_df.collect()
             if isinstance(dynamic_measurements_df, pl.LazyFrame):

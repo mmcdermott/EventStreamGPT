@@ -158,23 +158,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         df: INPUT_DF_T,
         columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
         subject_id_col: str | None = None,
-        subject_ids_map: dict[Any, int] | None = None,
-        subject_id_dtype: Any | None = None,
         filter_on: dict[str, bool | list[Any]] | None = None,
-        subject_id_source_col: str | None = None,
     ) -> DF_T | tuple[DF_T, str]:
         """Loads an input dataframe into the format expected by the processing library."""
-        if subject_id_col is None:
-            if subject_ids_map is not None:
-                raise ValueError("Must not set subject_ids_map if subject_id_col is not set")
-            if subject_id_dtype is not None:
-                raise ValueError("Must not set subject_id_dtype if subject_id_col is not set")
-        else:
-            if subject_ids_map is None:
-                raise ValueError("Must set subject_ids_map if subject_id_col is set")
-            if subject_id_dtype is None:
-                raise ValueError("Must set subject_id_dtype if subject_id_col is set")
-
         match df:
             case (str() | Path()) as fp:
                 logger.debug(f"Loading df from {fp}")
@@ -232,26 +218,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             case _:
                 raise TypeError(f"Input dataframe `df` is of invalid type {type(df)}!")
 
-        col_exprs = []
+        col_exprs = [pl.col(subject_id_col).alias("subject_id")]
 
         df = df.select(pl.all().shrink_dtype())
 
         if filter_on:
             df = cls._filter_col_inclusion(df, filter_on)
-
-        if subject_id_source_col is not None:
-            internal_subj_key = "subject_id"
-            while internal_subj_key in df.columns:
-                internal_subj_key = f"_{internal_subj_key}"
-            df = df.with_row_count(internal_subj_key)
-            col_exprs.append(internal_subj_key)
-        else:
-            assert subject_id_col is not None
-            df = df.with_columns(pl.col(subject_id_col).cast(pl.Utf8).cast(pl.Categorical))
-            df = cls._filter_col_inclusion(df, {subject_id_col: list(subject_ids_map.keys())})
-            col_exprs.append(
-                pl.col(subject_id_col).map_dict(subject_ids_map).cast(subject_id_dtype).alias("subject_id")
-            )
 
         for in_col, out_dt in columns:
             match out_dt:
@@ -268,15 +240,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case _:
                     raise ValueError(f"Invalid out data type {out_dt}!")
 
-        if subject_id_source_col is not None:
-            logger.debug("Creating ID map")
-            df = df.select(col_exprs).collect(streaming=cls.STREAMING)
-
-            ID_map = {o: n for o, n in zip(df[subject_id_source_col], df[internal_subj_key])}
-            df = df.with_columns(pl.col(internal_subj_key).alias("subject_id"))
-            return df, ID_map
-        else:
-            return df.select(col_exprs)
+        return df.select(col_exprs)
 
     @classmethod
     def _rename_cols(cls, df: DF_T, to_rename: dict[str, str]) -> DF_T:
@@ -360,9 +324,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .alias("event_id")
             )
         )
-
-        if len(df.head(2).collect()) == 0:
-            return None, None
 
         events_df = df.select("event_id", "subject_id", "timestamp", "event_type")
 
@@ -662,6 +623,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
     @TimeableMixin.TimeAs
     def _agg_by_time(self):
         event_id_dt = self.events_df["event_id"].dtype
+
+        if self.dynamic_measurements_df["event_id"].dtype != event_id_dt:
+            self.dynamic_measurements_df = self.dynamic_measurements_df.with_columns(
+                pl.col("event_id").cast(event_id_dt)
+            )
 
         if self.config.agg_by_time_scale is None:
             grouped = self.events_df.groupby(["subject_id", "timestamp"], maintain_order=True)
