@@ -16,6 +16,7 @@ from typing import Any, Union
 
 import omegaconf
 import pandas as pd
+from loguru import logger
 
 from ..utils import (
     COUNT_OR_PROPORTION,
@@ -851,6 +852,10 @@ class PytorchDatasetConfig(JSONableMixin):
         Traceback (most recent call last):
             ...
         TypeError: train_subset_size is of unrecognized type <class 'str'>.
+        >>> import sys
+        >>> from loguru import logger
+        >>> logger.remove()
+        >>> _ = logger.add(sys.stdout, format="{message}")
         >>> config = PytorchDatasetConfig(
         ...     save_dir='./dataset',
         ...     max_seq_len=256,
@@ -862,7 +867,7 @@ class PytorchDatasetConfig(JSONableMixin):
         ...     task_df_name=None,
         ...     do_include_start_time_min=False
         ... )
-        WARNING! train_subset_size is set, but train_subset_seed is not. Setting to...
+        train_subset_size is set, but train_subset_seed is not. Setting to...
         >>> assert config.train_subset_seed is not None
     """
 
@@ -915,7 +920,7 @@ class PytorchDatasetConfig(JSONableMixin):
                 raise ValueError(f"If float, train_subset_size must be in (0, 1)! Got {frac}")
             case int() | float() if (self.train_subset_seed is None):
                 seed = int(random.randint(1, int(1e6)))
-                print(f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}")
+                logger.warning(f"train_subset_size is set, but train_subset_seed is not. Setting to {seed}")
                 self.train_subset_seed = seed
             case None | "FULL" | int() | float():
                 pass

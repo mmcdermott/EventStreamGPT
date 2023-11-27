@@ -18,6 +18,8 @@ from typing import Any, Generic, TypeVar
 import humanize
 import numpy as np
 import pandas as pd
+import polars as pl
+from loguru import logger
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
 from plotly.graph_objs._figure import Figure
 from tqdm.auto import tqdm
@@ -155,12 +157,6 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> tuple[DF_T, int]:
-        """Increments the values in `col` by a given amount and returns the resulting df."""
-        raise NotImplementedError("Must be implemented by subclass.")
-
-    @classmethod
-    @abc.abstractmethod
     def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
         """Concatenates a list of dataframes into a single dataframe."""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -235,9 +231,11 @@ class DatasetBase(
 
             for schema in schemas:
                 if schema.filter_on:
+                    logger.debug("Filtering")
                     df = cls._filter_col_inclusion(schema.filter_on)
                 match schema.type:
                     case InputDFType.EVENT:
+                        logger.debug("Processing Event")
                         df = cls._resolve_ts_col(df, schema.ts_col, "timestamp")
                         all_events_and_measurements.append(
                             cls._process_events_and_measurements_df(
@@ -248,6 +246,7 @@ class DatasetBase(
                         )
                         event_types.append(schema.event_type)
                     case InputDFType.RANGE:
+                        logger.debug("Processing Range")
                         df = cls._resolve_ts_col(df, schema.start_ts_col, "start_time")
                         df = cls._resolve_ts_col(df, schema.end_ts_col, "end_time")
                         for et, unified_schema, sp_df in zip(
@@ -265,22 +264,14 @@ class DatasetBase(
                         raise ValueError(f"Invalid schema type {schema.type}.")
 
         all_events, all_measurements = [], []
-        running_event_id_max = 0
         for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
-            try:
-                new_events = cls._inc_df_col(events, "event_id", running_event_id_max)
-            except Exception as e:
-                raise ValueError(f"Failed to increment event_id on {event_type}") from e
-
-            if len(new_events) == 0:
-                print(f"Empty new events dataframe of type {event_type}!")
+            if events is None:
+                logger.warning(f"Empty new events dataframe of type {event_type}!")
                 continue
 
-            all_events.append(new_events)
+            all_events.append(events)
             if measurements is not None:
-                all_measurements.append(cls._inc_df_col(measurements, "event_id", running_event_id_max))
-
-            running_event_id_max = all_events[-1]["event_id"].max() + 1
+                all_measurements.append(measurements)
 
         return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
 
@@ -364,7 +355,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_subjects_df")) or self._subjects_df is None:
             subjects_fp = self.subjects_fp(self.config.save_dir)
-            print(f"Loading subjects from {subjects_fp}...")
+            logger.info(f"Loading subjects from {subjects_fp}...")
             self._subjects_df = self._read_df(subjects_fp)
 
         return self._subjects_df
@@ -382,7 +373,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_events_df")) or self._events_df is None:
             events_fp = self.events_fp(self.config.save_dir)
-            print(f"Loading events from {events_fp}...")
+            logger.info(f"Loading events from {events_fp}...")
             self._events_df = self._read_df(events_fp)
 
         return self._events_df
@@ -401,7 +392,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_dynamic_measurements_df")) or self._dynamic_measurements_df is None:
             dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
-            print(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
+            logger.info(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
             self._dynamic_measurements_df = self._read_df(dynamic_measurements_fp)
 
         return self._dynamic_measurements_df
@@ -438,7 +429,7 @@ class DatasetBase(
 
         reloaded_config = DatasetConfig.from_json_file(load_dir / "config.json")
         if reloaded_config.save_dir != load_dir:
-            print(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
+            logger.info(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
             reloaded_config.save_dir = load_dir
 
         attrs_to_add = {"config": reloaded_config}
@@ -547,12 +538,18 @@ class DatasetBase(
             subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
             subject_id_dtype = subjects_df["subject_id"].dtype
 
+            logger.debug("Extracting events and measurements dataframe...")
             events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
                 ID_map,
                 input_schema.static.subject_id_col,
                 subject_id_dtype,
                 input_schema.dynamic_by_df,
             )
+            logger.debug("Built events and measurements dataframe")
+            if isinstance(events_df, pl.LazyFrame):
+                events_df = events_df.collect()
+            if isinstance(dynamic_measurements_df, pl.LazyFrame):
+                dynamic_measurements_df = dynamic_measurements_df.collect()
 
         self.config = config
         self._is_fit = False
@@ -583,15 +580,19 @@ class DatasetBase(
         self.event_types = []
         self.n_events_per_subject = {}
 
-        (
-            self.subjects_df,
-            self.events_df,
-            self.dynamic_measurements_df,
-        ) = self._validate_initial_dfs(subjects_df, events_df, dynamic_measurements_df)
+        self.events_df = events_df
+        self.dynamic_measurements_df = dynamic_measurements_df
 
         if self.events_df is not None:
             self._agg_by_time()
             self._sort_events()
+
+        (
+            self.subjects_df,
+            self.events_df,
+            self.dynamic_measurements_df,
+        ) = self._validate_initial_dfs(subjects_df, self.events_df, self.dynamic_measurements_df)
+
         self._update_subject_event_properties()
 
     @abc.abstractmethod
@@ -838,7 +839,7 @@ class DatasetBase(
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
-                print(f"WARNING: Measure {measure} not found! Dropping...")
+                logger.warning(f"Measure {measure} not found! Dropping...")
                 config.drop()
                 continue
 
@@ -848,7 +849,7 @@ class DatasetBase(
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
-                print(f"Found no possible events for {measure}!")
+                logger.info(f"Found no possible events for {measure}!")
                 config.drop()
                 continue
 
@@ -1251,7 +1252,7 @@ class DatasetBase(
                     old_params = json.load(f)
 
                 if old_params["subjects_per_output_file"] != params["subjects_per_output_file"]:
-                    print(
+                    logger.info(
                         "Standardizing chunk size to existing record "
                         f"({old_params['subjects_per_output_file']})."
                     )

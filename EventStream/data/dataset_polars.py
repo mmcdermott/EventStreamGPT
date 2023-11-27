@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+from loguru import logger
 from mixins import TimeableMixin
 
 from ..utils import lt_count_or_proportion
@@ -176,6 +177,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         match df:
             case (str() | Path()) as fp:
+                logger.debug(f"Loading df from {fp}")
                 if not isinstance(fp, Path):
                     fp = Path(fp)
 
@@ -192,6 +194,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             case pl.LazyFrame():
                 pass
             case Query() as q:
+                logger.debug(f"Querying df via\n{q}")
                 query = q.query
                 if not isinstance(query, (list, tuple)):
                     query = [query]
@@ -266,6 +269,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     raise ValueError(f"Invalid out data type {out_dt}!")
 
         if subject_id_source_col is not None:
+            logger.debug("Creating ID map")
             df = df.select(col_exprs).collect(streaming=cls.STREAMING)
 
             ID_map = {o: n for o, n in zip(df[subject_id_source_col], df[internal_subj_key])}
@@ -320,7 +324,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         df: DF_T,
         event_type: str,
         columns_schema: dict[str, tuple[str, InputDataType]],
-    ) -> tuple[DF_T, DF_T | None]:
+    ) -> tuple[DF_T | None, DF_T | None]:
         """Performs the following pre-processing steps on an input events and measurements
         dataframe:
 
@@ -330,6 +334,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         4. Splits the dataframe into an events dataframe, storing `event_id`, `subject_id`, `event_type`,
            and `timestamp`, and a `measurements` dataframe, storing `event_id` and all other data columns.
         """
+
+        logger.debug(f"Processing {event_type} via {columns_schema}")
 
         cols_select_exprs = [
             "timestamp",
@@ -348,8 +354,15 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             df.filter(pl.col("timestamp").is_not_null() & pl.col("subject_id").is_not_null())
             .select(cols_select_exprs)
             .unique()
-            .with_row_count("event_id")
+            .with_columns(
+                pl.struct(subject_id=pl.col("subject_id"), timestamp=pl.col("timestamp"))
+                .hash(1, 2, 3, 4)
+                .alias("event_id")
+            )
         )
+
+        if len(df.head(2).collect()) == 0:
+            return None, None
 
         events_df = df.select("event_id", "subject_id", "timestamp", "event_type")
 
@@ -386,12 +399,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             ne_df.with_columns(st_col).drop(drop_cols),
             ne_df.with_columns(end_col).drop(drop_cols),
         )
-
-    @classmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> DF_T:
-        """Increments the values in a column by a given amount and returns a dataframe with the incremented
-        column."""
-        return df.with_columns(pl.col(col) + inc_by).collect(streaming=cls.STREAMING)
 
     @classmethod
     def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
