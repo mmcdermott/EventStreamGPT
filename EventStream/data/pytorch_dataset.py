@@ -83,19 +83,52 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
     def cached_files_exist(self) -> bool:
         return len(self.config.tensorized_cached_files(self.split)) > 0
 
+    @property
+    def full_dataset_cached_files_exist(self) -> bool:
+        copy_config = copy.deepcopy(self.config)
+        copy_config.train_subset_size = 'FULL'
+        return len(copy_config.tensorized_cached_files(self.split)) > 0
+
+    @property
+    def is_subset_dataset(self) -> bool:
+        return self.config.train_subset_size != 'FULL'
+
     @TimeableMixin.TimeAs
     def cache_if_needed(self):
+        # print('self.cached_files_exist: ', self.cached_files_exist)
+        # print('self.full_dataset_cached_files_exist: ', self.full_dataset_cached_files_exist)
+        # print('self.is_subset_dataset: ', self.is_subset_dataset)
+        
         if self.cached_files_exist:
             return
-        if self.full_dataset_cached_files_exist:
-            self.cache_subset()
+
+        if self.is_subset_dataset:
+            # TODO pa: cache_full_data before cache_subset
+            # # cache full, if doesn't exist
+            if not self.full_dataset_cached_files_exist:
+                self.cache_full_data()
+            # cache subset
+            self.cache_subset() 
         else:
+            # cache full data
             self.cache_full_data()
-            if self.is_subset_dataest:
-                self.cache_subset()
 
     @TimeableMixin.TimeAs
     def cache_subset(self):
+        # Load cached data from full data
+        full_data_config = copy.deepcopy(self.config)
+        full_data_config.train_subset_size = 'FULL'
+        assert self.full_dataset_cached_files_exist, f"Full dataset needs to be cached first at tensorized_cached_dir: {full_data_config.tensorized_cached_dir}"
+        
+        # TODO: subset the cached full data
+        # for k, T in tqdm(tensors_to_cache, leave=False, desc="Caching..."):
+        #     fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
+        #     fp.parent.mkdir(exist_ok=True, parents=True)
+        #     st = datetime.now()
+        #     print(f"Caching tensor {k} of shape {T.shape} to {fp}...")
+        #     torch.save(T, fp)
+        #     print(f"Done in {datetime.now() - st}")
+
         raise NotImplementedError
 
     @TimeableMixin.TimeAs
