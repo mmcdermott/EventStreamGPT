@@ -2,13 +2,11 @@ import json
 from collections import defaultdict, Counter
 from pathlib import Path
 from datetime import datetime
-
-
 import numpy as np
+import scipy.stats
 import polars as pl
 import torch
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin
-
 from .config import (
     MeasurementConfig,
     PytorchDatasetConfig,
@@ -19,7 +17,6 @@ from .config import (
 from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
-
 
 def to_int_index(col: pl.Expr) -> pl.Expr:
     """Returns an integer index of the unique elements seen in this column.
@@ -55,7 +52,6 @@ def to_int_index(col: pl.Expr) -> pl.Expr:
 
     indices = col.unique(maintain_order=True).drop_nulls().search_sorted(col)
     return pl.when(col.is_null()).then(pl.lit(None)).otherwise(indices).alias(col.meta.output_name())
-
 
 class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
     """A PyTorch Dataset class built on a pre-processed `DatasetBase` instance.
@@ -490,60 +486,42 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         if self.config.do_include_subject_id:
             full_subj_data["subject_id"] = self.subject_ids[idx]
 
-        min_future_days = 180 #todo: add to config
+        # config params (all in min) 
+        min_query_duration = 60 # 1 hour
+        max_query_duration = 60*24*365 # 1 year
+        min_input_duration = 60*24 # 1 day
+
+        # sample query duration
         start_time = full_subj_data["start_time"].timestamp() / 60 # minutes 
         times = np.array([sum(full_subj_data["time_delta"][:i]) for i in range(1, len(full_subj_data["time_delta"])+1)])
-        min_future = min(times[-1], min_future_days*24*60)
-        max_end_time = start_time + times[-1] - min_future
-        max_end_idx = np.max(np.argwhere((times+start_time) < max_end_time))
+        record_duration = times[-1]
+        query_duration = np.random.randint(min_query_duration, min(max_query_duration, record_duration-min_input_duration))
 
-        print(f'there are {len(full_subj_data["time_delta"])} events')
-        print('data start at',datetime.fromtimestamp(60*(start_time)))
-        print('data cuts off inputs at',datetime.fromtimestamp(60*(start_time+times[max_end_idx])))
-        print('data actually ends at',datetime.fromtimestamp(60*(start_time+times[-1])))
-
-        if max_end_idx <= self.max_seq_len: 
-            input_start_idx = 0
-            input_end_idx = max_end_idx
-        else: 
-            input_start_idx = np.random.choice(max_end_idx - self.max_seq_len)
+        # sample input start and end 
+        max_input_end_time = start_time + record_duration - query_duration
+        max_input_end_idx = np.max(np.argwhere((times+start_time) < max_input_end_time))
+        if max_input_end_idx > self.max_seq_len: 
+            input_start_idx = np.random.choice(max_input_end_idx - self.max_seq_len)
             input_end_idx = input_start_idx + self.max_seq_len
+        else: 
+            input_start_idx = 0
+            input_end_idx = max_input_end_idx
 
-        min_query_duration_hours = 1  #todo: add to config
-        min_duration = min_query_duration_hours*60
-
-        print(f'answer to the query is calculated from {input_end_idx} to end of events {len(times)}')
-        query_start_time = np.random.randint(times[input_end_idx], times[-1]-min_duration)
-        query_end_time = np.random.randint(query_start_time+min_duration, times[-1])
-        query_start_time += start_time
-        query_end_time  += start_time
+        # sample query start offset and get indices  
+        query_start_offset = np.random.sample() * (record_duration - times[input_end_idx] - query_duration)
+        query_start_time = start_time + times[input_end_idx] + query_start_offset
+        query_end_time = query_start_time + query_duration
         query_start_idx = np.min(np.argwhere((times+start_time) >= query_start_time))
-        query_end_idx = np.max(np.argwhere((times+start_time) <= query_end_time))
+        query_end_idx = np.min(np.argwhere((times+start_time) >= query_end_time))
 
-        print(f'query duration {(query_end_time-query_start_time)/(24*60)} days')
-        print(f'query start time {datetime.fromtimestamp(60*(query_start_time))}')
-        print(f'query start idx time {datetime.fromtimestamp(60*(start_time+times[query_start_idx]))} at idx {query_start_idx}')
-        print(f'query end time {datetime.fromtimestamp(60*(query_end_time))}')
-        print(f'query end idx time {datetime.fromtimestamp(60*(start_time+times[query_end_idx]))} at idx {query_end_idx}')
+        # code 
+        codes_observed = Counter(sum( full_subj_data['dynamic_indices'][query_start_idx:query_end_idx+1], []))
+        code = np.random.choice(list(codes_observed.keys())) # (todo) sample from vocab
 
-        # should the code already be present in the answer period or be random from the list of codes? 
-        # ideally this should be sampled from all codes in the training data 
-        codes_observed = Counter(sum( full_subj_data['dynamic_indices'][query_start_idx:query_end_idx], []))
-        code = np.random.choice(list(codes_observed.keys())) 
-        query = {
-            # s, end time e, and code c with some (potentially fully open) value range (L,R)
-            'start_delta_from_input_end': query_start_time-times[input_end_idx],
-            'end_delta_from_input_end': query_end_time-times[input_end_idx],
-            'duration': query_end_time-query_start_time,
-            'code': code
-            # ignorning values for now not sure how to look up the min max range for the entire patient set
-        } 
+        # range sampled as a random interval from the support of the normal distribution sampled according to its density
+        range_min, range_max = sorted([scipy.stats.norm.ppf(np.random.rand(), loc=0, scale=1), 
+                                       scipy.stats.norm.ppf(np.random.rand(), loc=0, scale=1)])
 
-        poisson_rate = codes_observed[code] / query['duration'] # frequency / minutes ?? 
-        # need to normalize somehow?? 
-        # is poisson right for uneven sampling? 
-
-        print(f'inputs go from {input_start_idx} to {input_end_idx}')
         for k in (
                     "time_delta",
                     "dynamic_indices",
@@ -552,7 +530,18 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 ):
                     full_subj_data[k] = full_subj_data[k][input_start_idx : input_end_idx]
 
-        return full_subj_data, query, poisson_rate
+        query = {
+            # s, end time e, and code c with some (potentially fully open) value range (L,R)
+            'query_start_offset': query_start_offset,
+            'duration': query_duration,
+            'code': code,
+            'range_min': range_min, 
+            'range_max': range_max, 
+        } 
+
+        freq = codes_observed[code]
+
+        return full_subj_data, query, freq
 
     def __static_and_dynamic_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
         """An internal collate function for both static and dynamic data."""

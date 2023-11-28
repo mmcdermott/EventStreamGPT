@@ -22,6 +22,9 @@ from EventStream.data.types import PytorchBatch
 from EventStream.data.pytorch_dataset import PytorchDataset
 from EventStream.tasks.profile import add_tasks_from
 
+
+
+
 COHORT_NAME = "ESD_09-01-23-1"
 TASK_NAME = "readmission_30d_all"
 PROJECT_DIR = Path(os.environ["PROJECT_DIR"])
@@ -35,31 +38,30 @@ pyd_config = PytorchDatasetConfig(
     do_include_start_time_min=True,
     #cache_for_epochs=1,
 )
-pyd = PytorchDataset(config=pyd_config, split='train')
-# print(f"Dataset has {len(pyd)} rows")
 
-inputs, query, rate = pyd[0]
+pyd = PytorchDataset(config=pyd_config, split='train')
+
+VOCAB_OBS_FREQ = 1 # cant find this in the config ??
+
+codes = []
+vocab = Dataset.load(Path(dataset_dir)).unified_vocabulary_idxmap
+for key, cfg in pyd.measurement_configs.items(): 
+    has_value = 'regression' in cfg.modality
+    ofoc = cfg.observation_rate_over_cases
+    ofpc = cfg.observation_rate_per_case
+    for code_name, code_idx in vocab[key].items(): 
+        if code_name=="UNK": continue 
+        if '__EQ_' in code_name: has_value = False
+        obs_freq = ofoc * ofpc * VOCAB_OBS_FREQ
+        codes.append( (code_name, code_idx, has_value, obs_freq) ) 
+    
+# todo: 
+# figure out where to get the VOCAB_OBS_FREQ
+# code sampling strategy based on the observation frequency 
+# place in pyd class 
+
+print(f"Dataset has {len(pyd)} rows")
+inputs, query, freq = pyd[0]
 print('patient context',inputs.keys())
 print('query',query)
-print('poisson rate',rate)
-
-'''
-Sample Output 
-
-# printing in the dataloader getitem: 
-data start at 1991-10-10 00:00:00
-data cuts off inputs at 2014-02-24 07:00:00
-data actually ends at 2014-08-25 00:01:00
-answer to the query is calculated from 271 to end of events 724
-query duration 532.4472222222222 days
-query start time 2009-05-20 10:25:00
-query start idx time 2009-05-20 12:00:00 at idx 411
-query end time 2010-11-03 21:09:00
-query end idx time 2010-10-25 00:00:00 at idx 438
-inputs go from 15 to 271
-
-# printing from this script: 
-patient context dict_keys(['static_measurement_indices', 'static_indices', 'start_time', 'dynamic_measurement_indices', 'dynamic_indices', 'dynamic_values', 'time_delta'])
-query {'start_delta_from_input_end': 14255425.0, 'end_delta_from_input_end': 15022149.0, 'duration': 766724.0, 'code': 29198}
-poisson rate 1.3042502908478148e-06
-'''
+print('frequency',freq)
