@@ -588,6 +588,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         Raises:
             ValuesError: If any of the required columns are missing or invalid.
         """
+        subjects_df = subjects_df.lazy().collect()
         subjects_df, subjects_id_type = self._validate_initial_df(
             subjects_df, "subject_id", TemporalityType.STATIC
         )
@@ -602,7 +603,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 raise ValueError("Missing event_type column!")
             events_df = events_df.with_columns(pl.col("event_type").cast(pl.Categorical))
 
-            if "timestamp" not in events_df or events_df["timestamp"].dtype != pl.Datetime:
+            if "timestamp" not in events_df or events_df.schema["timestamp"] != pl.Datetime:
                 raise ValueError("Malformed timestamp column!")
 
         if dynamic_measurements_df is not None:
@@ -622,16 +623,18 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @TimeableMixin.TimeAs
     def _agg_by_time(self):
-        event_id_dt = self.events_df["event_id"].dtype
+        event_id_dt = pl.Int64
 
-        if self.dynamic_measurements_df["event_id"].dtype != event_id_dt:
+        if self.dynamic_measurements_df.schema["event_id"] != event_id_dt:
             self.dynamic_measurements_df = self.dynamic_measurements_df.with_columns(
                 pl.col("event_id").cast(event_id_dt)
             )
 
         if self.config.agg_by_time_scale is None:
+            logger.debug("Grouping into unique timestamps")
             grouped = self.events_df.groupby(["subject_id", "timestamp"], maintain_order=True)
         else:
+            logger.debug("Aggregating timestamps into buckets")
             grouped = self.events_df.sort(["subject_id", "timestamp"], descending=False).groupby_dynamic(
                 "timestamp",
                 every=self.config.agg_by_time_scale,
@@ -646,8 +649,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.col("event_type").unique().sort(),
                 pl.col("event_id").unique().alias("old_event_id"),
             )
-            .sort("subject_id", "timestamp", descending=False)
-            .with_row_count("event_id")
+            .with_columns(
+                pl.struct(subject_id=pl.col("subject_id"), timestamp=pl.col("timestamp"))
+                .hash(1, 2, 3, 4)
+                .alias("event_id")
+            )
             .with_columns(
                 pl.col("event_id").cast(event_id_dt),
                 pl.col("event_type")
@@ -658,18 +664,21 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
         )
 
-        new_to_old_set = grouped[["event_id", "old_event_id"]].explode("old_event_id")
+        new_to_old_set = grouped.select("event_id", "old_event_id").explode("old_event_id")
 
-        self.events_df = grouped.drop("old_event_id")
+        logger.debug("Collecting de-duplicated events df")
+        self.events_df = grouped.drop("old_event_id").collect(streaming=self.STREAMING)
 
+        logger.debug("Collecting re-mapped measurements df")
         self.dynamic_measurements_df = (
             self.dynamic_measurements_df.rename({"event_id": "old_event_id"})
             .join(new_to_old_set, on="old_event_id", how="left")
             .drop("old_event_id")
-        )
+        ).collect(streaming=self.STREAMING)
 
     def _update_subject_event_properties(self):
         if self.events_df is not None:
+            logger.debug("Collecting event types")
             self.event_types = (
                 self.events_df.get_column("event_type")
                 .value_counts(sort=True)
@@ -682,6 +691,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             self.subject_ids = set(self.n_events_per_subject.keys())
 
         if self.subjects_df is not None:
+            logger.debug("Collecting subject event counts")
             subjects_with_no_events = (
                 set(self.subjects_df.get_column("subject_id").to_list()) - self.subject_ids
             )

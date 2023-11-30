@@ -534,12 +534,6 @@ class DatasetBase(
                 input_schema.dynamic_by_df,
             )
             logger.debug("Built events and measurements dataframe")
-            if isinstance(subjects_df, pl.LazyFrame):
-                subjects_df = subjects_df.collect()
-            if isinstance(events_df, pl.LazyFrame):
-                events_df = events_df.collect()
-            if isinstance(dynamic_measurements_df, pl.LazyFrame):
-                dynamic_measurements_df = dynamic_measurements_df.collect()
 
         self.config = config
         self._is_fit = False
