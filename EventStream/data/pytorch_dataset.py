@@ -85,9 +85,10 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @property
     def full_dataset_cached_files_exist(self) -> bool:
-        copy_config = copy.deepcopy(self.config)
-        copy_config.train_subset_size = 'FULL'
-        return len(copy_config.tensorized_cached_files(self.split)) > 0
+        full_data_config = copy.deepcopy(self.config)
+        full_data_config.train_subset_size = 'FULL'
+        full_data_config.train_subset_seed = None
+        return len(full_data_config.tensorized_cached_files(self.split)) > 0
 
     @property
     def is_subset_dataset(self) -> bool:
@@ -95,16 +96,15 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def cache_if_needed(self):
-        # print('self.cached_files_exist: ', self.cached_files_exist)
-        # print('self.full_dataset_cached_files_exist: ', self.full_dataset_cached_files_exist)
-        # print('self.is_subset_dataset: ', self.is_subset_dataset)
+        print('self.cached_files_exist: ', self.cached_files_exist)
+        print('self.full_dataset_cached_files_exist: ', self.full_dataset_cached_files_exist)
+        print('self.is_subset_dataset: ', self.is_subset_dataset)
         
         if self.cached_files_exist:
             return
 
         if self.is_subset_dataset:
-            # TODO pa: cache_full_data before cache_subset
-            # # cache full, if doesn't exist
+            # cache full, if doesn't exist
             if not self.full_dataset_cached_files_exist:
                 self._cache_full_data()
             # cache subset
@@ -115,54 +115,86 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def _cache_subset(self):
-        # Load cached data from full data
+        # Load cached tensors from full data
         full_data_config = copy.deepcopy(self.config)
         full_data_config.train_subset_size = 'FULL'
-        full_data_config.do_include_subject_id = True
         full_data_config.train_subset_seed = None
-
+        full_data_config.do_include_subject_id = True
         tensors = {
             k: torch.load(fp) for k, fp in full_data_config.tensorized_cached_files(self.split).items()
         }
-        full_data_stats = json.load(self.config.tensorized_cached_dir / self.split / "data_stats.json")
 
-        unique_subj = set(tensors['subject_id'])
-        subset_subjects = np.random.choice(list(unique_subj), seed=self.config.train_subset_size, size=self.config.train_subset_size)
-        subject_idx = np.array(tensors['subject_id']).is_in(subset_subjects)
-        
-        
-        for k, T in tqdm(tensors, leave=False, desc="Caching..."):
+        # Randomly sample for new subset_size number of subjects and save new tensors
+        np.random.seed(seed=self.config.train_subset_seed)
+        subset_subjects = np.random.choice(list(set(tensors['subject_id'])), size=self.config.train_subset_size, replace=False)
+        subject_idx = np.where(np.isin(np.array(tensors['subject_id']), subset_subjects))[0] 
+        for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
             subset_T = T[subject_idx]
-            
             fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
             fp.parent.mkdir(exist_ok=True, parents=True)
             st = datetime.now()
-            print(f"Caching tensor {k} of shape {T.shape} to {fp}...")
-            torch.save(T, fp)
+            print(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
+            torch.save(subset_T, fp)
             print(f"Done in {datetime.now() - st}")
 
-        raise NotImplementedError
-        subset_stats = None
-        
-        with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode='w') as f:
+        # Load cached data on full data, and filter for sampled subjects
+        task_dir = full_data_config.cached_task_dir
+        if len(list(task_dir.glob(f"{self.split}*.parquet"))) > 0:
+            print(
+                f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
+                f"{', '.join([str(fp) for fp in task_dir.glob(f'{self.split}*.parquet')])}"
+            )
+            cached_data = pl.scan_parquet(task_dir / f"{self.split}*.parquet")
+        cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
+
+        length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
+        cached_data = cached_data.filter(length_constraint)
+
+        if "time_delta" not in cached_data.columns:
+            cached_data = cached_data.with_columns(
+                (pl.col("start_time") + pl.duration(minutes=pl.col("time").list.first())).alias("start_time"),
+                pl.col("time")
+                .list.eval(
+                    # We fill with 1 here as it will be ignored in the code anyways as the next event's
+                    # event mask will be null.
+                    # TODO(mmd): validate this in a test.
+                    (pl.element().shift(-1) - pl.element()).fill_null(1)
+                )
+                .alias("time_delta"),
+            ).drop("time")
+        stats = (
+            cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
+            .select(
+                pl.col("inter_event_time").min().alias("min"),
+                pl.col("inter_event_time").log().mean().alias("mean_log"),
+                pl.col("inter_event_time").log().std().alias("std_log"),
+            )
+            .collect()
+        )
+        print(f"Saving subset data_stats to {self.config.tensorized_cached_dir}/{self.split}/data_stats.json")
+        with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
+            subset_stats = {
+                "mean_log_inter_event_time_min": stats["mean_log"].item(),
+                "std_log_inter_event_time_min": stats["std_log"].item(),
+            }
             json.dump(subset_stats, f)
 
     @TimeableMixin.TimeAs
     def _cache_full_data(self):
-        self.config._cache_data_parameters()
-
         constructor_config = copy.deepcopy(self.config)
         constructor_config.train_subset_size = "FULL"
         constructor_config.train_subset_seed = None
         constructor_config.do_include_subsequence_indices = True
         constructor_config.do_include_subject_id = True
         constructor_config.do_include_start_time_min = True
+        constructor_config._cache_data_parameters()
 
         items = []
         constructor_pyd = ConstructorPytorchDataset(constructor_config, self.split)
 
         (constructor_config.tensorized_cached_dir / self.split).mkdir(exist_ok=True, parents=True)
 
+        print(f"Saving full data_stats to {constructor_config.tensorized_cached_dir}/{self.split}/data_stats.json")
         with open(constructor_config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
             stats = {
                 "mean_log_inter_event_time_min": constructor_pyd.mean_log_inter_event_time_min,
@@ -783,8 +815,6 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
             )
             .drop("start_time_task", "end_time_min", "start_time_min", "end_time", "task_ID")
         )
-
-        return cached_data
 
     def __len__(self):
         return len(self.cached_data)
