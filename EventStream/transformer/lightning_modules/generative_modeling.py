@@ -12,6 +12,7 @@ import torchmetrics
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
+from loguru import logger
 from torchmetrics.classification import (
     MulticlassAccuracy,
     MulticlassAUROC,
@@ -279,7 +280,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                     sync_dist=True,
                 )
             except (ValueError, IndexError) as e:
-                print(
+                logger.error(
                     f"Failed to compute {metric_name} for {measurement} "
                     f"with preds ({str_summary(preds)}) and labels ({str_summary(labels)}): {e}."
                 )
@@ -590,12 +591,12 @@ def train(cfg: PretrainConfig):
     if os.environ.get("LOCAL_RANK", "0") == "0":
         cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
-        print("Saving config files...")
+        logger.info("Saving config files...")
         config_fp = cfg.save_dir / "config.json"
         if config_fp.exists() and not cfg.do_overwrite:
             raise FileExistsError(f"{config_fp} already exists!")
         else:
-            print(f"Writing to {config_fp}")
+            logger.info(f"Writing to {config_fp}")
             config.to_json_file(config_fp)
 
         data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
@@ -618,7 +619,7 @@ def train(cfg: PretrainConfig):
 
     # TODO(mmd): Get this working!
     # if cfg.compile:
-    #     print("Compiling model!")
+    #     logger.info("Compiling model!")
     #     LM = torch.compile(LM)
 
     # Setting up torch dataloader
@@ -700,7 +701,7 @@ def train(cfg: PretrainConfig):
         held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader)
 
         if os.environ.get("LOCAL_RANK", "0") == "0":
-            print("Saving final metrics...")
+            logger.info("Saving final metrics...")
 
             with open(cfg.save_dir / "tuning_metrics.json", mode="w") as f:
                 json.dump(tuning_metrics, f)
