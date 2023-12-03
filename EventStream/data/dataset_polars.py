@@ -209,9 +209,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 else:
                     partition_kwargs = {}
 
-                df = pl.read_database(
+                df = pl.read_database_uri(
                     query=out_query,
-                    connection_uri=q.connection_uri,
+                    uri=q.connection_uri,
                     protocol=q.protocol,
                     **partition_kwargs,
                 ).lazy()
