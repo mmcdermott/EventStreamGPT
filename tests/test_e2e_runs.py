@@ -123,9 +123,6 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             ]
             self._test_command(command_parts, f"From-scratch NN Training: {task}")
 
-    def run_generate_trajectories(self):
-        raise NotImplementedError("Not done yet!")
-
     def run_get_embeddings(self):
         task = "multi_class_classification"  # Get embeddings is not sensitive to task.
         for get_embeddings_from in ("pretraining/NA", "pretraining/CI"):
@@ -188,15 +185,13 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
                     {"window_sizes": ["1h", "1d", "FULL"], "feature_inclusion_frequency": 1e-3},
                 ),
             ),
-            "model": ("random_forest_classifier",),
+            "model": (("random_forest_classifier", {"n_estimators": 2}),),
         }
 
         for task in cfg_options.pop("task"):
             for cfg in dict_product(cfg_options):
                 cmd = make_command(cfg, task)
                 self._test_command(cmd, f"Sklearn for {' '.join(cmd)}")
-                break
-            break
 
     def run_zeroshot(self):
         classification_labeler_path = root / "sample_data" / "sample_classification_labeler.py"
