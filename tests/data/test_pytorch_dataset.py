@@ -278,7 +278,7 @@ WANT_SUBJ_3_UNCUT = {
         [MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["single_label_classification"]],
         [MEASUREMENTS_IDXMAP["event_type"]],
     ],
-    "dynamic_values": [None, None, None],
+    "dynamic_values": [[None], [None, None], [None]],
 }
 
 TASK_DF = pl.DataFrame(

@@ -623,12 +623,15 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
     @TimeableMixin.TimeAs
     def _agg_by_time(self):
-        event_id_dt = pl.Int64
+        event_id_dt = self.events_df.schema["event_id"]
 
         if self.dynamic_measurements_df.schema["event_id"] != event_id_dt:
             self.dynamic_measurements_df = self.dynamic_measurements_df.with_columns(
                 pl.col("event_id").cast(event_id_dt)
             )
+
+        logger.debug("Collecting events DF. Not using streaming here as it sometimes causes segfaults.")
+        self.events_df = self.events_df.lazy().collect()
 
         if self.config.agg_by_time_scale is None:
             logger.debug("Grouping into unique timestamps")
@@ -655,7 +658,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .alias("event_id")
             )
             .with_columns(
-                pl.col("event_id").cast(event_id_dt),
+                "event_id",
                 pl.col("event_type")
                 .list.eval(pl.col("").cast(pl.Utf8))
                 .list.join("&")
@@ -666,15 +669,17 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         new_to_old_set = grouped.select("event_id", "old_event_id").explode("old_event_id")
 
-        logger.debug("Collecting de-duplicated events df")
-        self.events_df = grouped.drop("old_event_id").collect(streaming=self.STREAMING)
+        self.events_df = grouped.drop("old_event_id")
 
-        logger.debug("Collecting re-mapped measurements df")
+        # Don't use streaming here as it sometimes causes segfaults
+        logger.debug("Re-mapping measurements df")
         self.dynamic_measurements_df = (
-            self.dynamic_measurements_df.rename({"event_id": "old_event_id"})
+            self.dynamic_measurements_df.lazy()
+            .collect()
+            .rename({"event_id": "old_event_id"})
             .join(new_to_old_set, on="old_event_id", how="left")
             .drop("old_event_id")
-        ).collect(streaming=self.STREAMING)
+        )
 
     def _update_subject_event_properties(self):
         if self.events_df is not None:
@@ -709,7 +714,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case False:
                     filter_exprs.append(pl.col(col).is_null())
                 case _:
-                    filter_exprs.append(pl.col(col).is_in(list(incl_targets)))
+                    incl_list = pl.Series(list(incl_targets), dtype=df.schema[col])
+                    filter_exprs.append(pl.col(col).is_in(incl_list))
 
         return df.filter(pl.all_horizontal(filter_exprs))
 

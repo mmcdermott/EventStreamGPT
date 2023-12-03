@@ -18,7 +18,6 @@ from typing import Any, Generic, TypeVar
 import humanize
 import numpy as np
 import pandas as pd
-import polars as pl
 from loguru import logger
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
 from plotly.graph_objs._figure import Figure
