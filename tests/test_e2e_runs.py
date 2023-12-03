@@ -38,8 +38,16 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         for o in self.dir_objs.values():
             o.cleanup()
 
-    def _test_command(self, command_parts: list[str], case_name: str):
-        with self.subTest(case_name):
+    def _test_command(self, command_parts: list[str], case_name: str, use_subtest: bool = True):
+        if use_subtest:
+            with self.subTest(case_name):
+                command_out = subprocess.run(" ".join(command_parts), shell=True, capture_output=True)
+                stderr = command_out.stderr.decode()
+                stdout = command_out.stdout.decode()
+                self.assertEqual(
+                    command_out.returncode, 0, f"Command errored!\nstderr:\n{stderr}\nstdout:\n{stdout}"
+                )
+        else:
             command_out = subprocess.run(" ".join(command_parts), shell=True, capture_output=True)
             stderr = command_out.stderr.decode()
             stdout = command_out.stdout.decode()
@@ -55,7 +63,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             '"hydra.searchpath=[./configs]"',
             f"save_dir={self.paths['dataset']}",
         ]
-        self._test_command(command_parts, "Build Dataset")
+        self._test_command(command_parts, "Build Dataset", use_subtest=False)
 
     def run_pretraining(self):
         cases = [
@@ -83,7 +91,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
                 f"save_dir={case['save_dir'] / 'model'}",
             ]
 
-            self._test_command(command_parts, case_name)
+            self._test_command(command_parts, case_name, use_subtest=False)
 
     def run_finetuning(self):
         """Tests that fine-tuning can be run on a pre-trained model."""
