@@ -124,46 +124,65 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             k: torch.load(fp) for k, fp in full_data_config.tensorized_cached_files(self.split).items()
         }
 
-        # Randomly sample for new subset_size number of subjects and save new tensors
-        np.random.seed(seed=self.config.train_subset_seed)
-        subset_subjects = np.random.choice(list(set(tensors['subject_id'])), size=self.config.train_subset_size, replace=False)
-        subject_idx = np.where(np.isin(np.array(tensors['subject_id']), subset_subjects))[0] 
-        for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
-            subset_T = T[subject_idx]
-            fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
-            fp.parent.mkdir(exist_ok=True, parents=True)
-            st = datetime.now()
-            print(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
-            torch.save(subset_T, fp)
-            print(f"Done in {datetime.now() - st}")
+        if self.split == 'train':
+            # Randomly sample for new subset_size number of subjects and save new tensors
+            np.random.seed(seed=self.config.train_subset_seed)
+            subset_subjects = np.random.choice(list(set(tensors['subject_id'])), size=self.config.train_subset_size, replace=False)
+            subject_idx = np.where(np.isin(np.array(tensors['subject_id']), subset_subjects))[0] 
+            for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
+                subset_T = T[subject_idx]
+                fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
+                fp.parent.mkdir(exist_ok=True, parents=True)
+                st = datetime.now()
+                print(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
+                torch.save(subset_T, fp)
+                print(f"Done in {datetime.now() - st}")
 
-        # Load cached data on full data, and filter for sampled subjects
-        task_dir = full_data_config.tensorized_cached_dir / self.split
-        cached_data = pl.DataFrame({'subject_id': torch.load(task_dir / "subject_id.pt").numpy(), 
-                                    'time_delta': torch.load(task_dir / "time_delta.pt").numpy(),
-                                    # 'dynamic_indices': torch.load(task_dir / "dynamic_indices.pt").numpy().tolist()
-                                })
-        cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
+            # Load cached data on full data, and filter for sampled subjects
+            task_dir = full_data_config.tensorized_cached_dir / self.split
+            cached_data = pl.DataFrame({'subject_id': torch.load(task_dir / "subject_id.pt").numpy(), 
+                                        'time_delta': torch.load(task_dir / "time_delta.pt").numpy(),
+                                        # 'dynamic_indices': torch.load(task_dir / "dynamic_indices.pt").numpy().tolist()
+                                    })
+            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
 
-        # # Make sure length of dynamic_indices are greater than min_seq_len
-        # length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
-        # cached_data = cached_data.filter(length_constraint)
+            # # Make sure length of dynamic_indices are greater than min_seq_len
+            # length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
+            # cached_data = cached_data.filter(length_constraint)
 
-        stats = (
-            cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
-            .select(
-                pl.col("inter_event_time").min().alias("min"),
-                pl.col("inter_event_time").log().mean().alias("mean_log"),
-                pl.col("inter_event_time").log().std().alias("std_log"),
+            stats = (
+                cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
+                .select(
+                    pl.col("inter_event_time").min().alias("min"),
+                    pl.col("inter_event_time").log().mean().alias("mean_log"),
+                    pl.col("inter_event_time").log().std().alias("std_log"),
+                )
             )
-        )
-        print(f"Saving subset data_stats to {self.config.tensorized_cached_dir}/{self.split}/data_stats.json")
-        with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
-            subset_stats = {
-                "mean_log_inter_event_time_min": stats["mean_log"].item(),
-                "std_log_inter_event_time_min": stats["std_log"].item(),
-            }
-            json.dump(subset_stats, f)
+            print(f"Saving subset data_stats to {self.config.tensorized_cached_dir}/{self.split}/data_stats.json")
+            with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
+                subset_stats = {
+                    "mean_log_inter_event_time_min": stats["mean_log"].item(),
+                    "std_log_inter_event_time_min": stats["std_log"].item(),
+                }
+                json.dump(subset_stats, f)
+        else:
+            # Save full tensors in subset dir
+            for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
+                subset_T = T
+                fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
+                fp.parent.mkdir(exist_ok=True, parents=True)
+                st = datetime.now()
+                print(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
+                torch.save(subset_T, fp)
+                print(f"Done in {datetime.now() - st}")
+
+            # Save full_data_stats into subset data_stats
+            with open(full_data_config.tensorized_cached_dir / self.split / "data_stats.json", mode='r') as f:
+                full_data_stats = json.load(f)
+            print(f"Saving subset data_stats to {self.config.tensorized_cached_dir}/{self.split}/data_stats.json")
+            with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
+                json.dump(full_data_stats, f)
+
 
     @TimeableMixin.TimeAs
     def _cache_full_data(self):
