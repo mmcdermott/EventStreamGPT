@@ -1946,7 +1946,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     mod_struct_fields[mod_col] = mod_col_expr.alias(mod_col)
 
             if mod_struct_fields:
-                struct_fields["modifiers"] = pl.struct([mod_struct_fields[k] for k in mod_struct_field_order])
+                struct_fields["modifiers"] = pl.struct(
+                    [mod_struct_fields[k] for k in mod_struct_field_order]
+                ).alias("modifiers")
 
             struct_fields_by_m[m] = struct_fields
 
@@ -2112,6 +2114,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
                 out_dt = PL_TO_PA_DTYPE_MAP[source_df[mod_col].dtype]
                 modifiers_struct_fields.append((mod_col, out_dt))
+
+        modifiers_struct_fields = sorted(modifiers_struct_fields, key=lambda x: x[0])
 
         measurement_fields = [
             ("code", pa.string()),
