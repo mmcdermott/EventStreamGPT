@@ -1467,6 +1467,16 @@ class DatasetBase(
                 idxmaps[m] = {m: offset}
         return idxmaps
 
+    @property
+    def unified_vocabulary_flat(self) -> list[str]:
+        vocab_size = max(self.unified_vocabulary_idxmap[self.unified_measurements_vocab[-1]].values()) + 1
+        vocab = [None for _ in range(vocab_size)]
+        vocab[0] = "UNK"
+        for m, idxmap in self.unified_vocabulary_idxmap.items():
+            for e, i in idxmap.items():
+                vocab[i] = e
+        return vocab
+
     @abc.abstractmethod
     def build_DL_cached_representation(
         self, subject_ids: list[int] | None = None, do_sort_outputs: bool = False
