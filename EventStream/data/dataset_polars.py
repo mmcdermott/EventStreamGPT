@@ -546,6 +546,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         if linked_id_cols:
             for id_col, id_col_dt in linked_id_cols.items():
+                logger.debug(f"Validating {id_col}")
                 if id_col not in source_df:
                     raise ValueError(f"Missing mandatory linkage col {id_col}")
                 source_df = source_df.with_columns(pl.col(id_col).cast(id_col_dt))

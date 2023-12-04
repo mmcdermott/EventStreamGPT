@@ -184,7 +184,7 @@ class DatasetBase(
         """
         subjects_df = cls._load_input_df(
             schema.input_df,
-            [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
+            schema.columns_to_load,
             filter_on=schema.filter_on,
             subject_id_col=schema.subject_id_col,
         )
