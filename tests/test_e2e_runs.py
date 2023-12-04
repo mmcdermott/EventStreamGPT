@@ -30,7 +30,14 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
 
         self.dir_objs = {}
         self.paths = {}
-        for n in ("dataset", "pretraining/CI", "pretraining/NA", "from_scratch_finetuning", "sklearn"):
+        for n in (
+            "dataset",
+            "esds",
+            "pretraining/CI",
+            "pretraining/NA",
+            "from_scratch_finetuning",
+            "sklearn",
+        ):
             self.dir_objs[n] = TemporaryDirectory()
             self.paths[n] = Path(self.dir_objs[n].name)
 
@@ -64,6 +71,15 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             f"save_dir={self.paths['dataset']}",
         ]
         self._test_command(command_parts, "Build Dataset", use_subtest=False)
+
+    def build_ESDS_dataset(self):
+        command_parts = [
+            "./scripts/convert_to_ESDS.py",
+            f"dataset_dir={self.paths['dataset']}",
+            f"ESDS_save_dir={self.paths['esds']}",
+            "ESDS_chunk_size=25",
+        ]
+        self._test_command(command_parts, "Build ESDS Dataset", use_subtest=True)
 
     def run_pretraining(self):
         cases = [
@@ -234,6 +250,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
     def test_e2e(self):
         # Data
         self.build_dataset()
+        self.build_ESDS_dataset()
         self.build_FT_task_df()
 
         # Sklearn baselines

@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
+import pyarrow as pa
 from loguru import logger
 from mixins import TimeableMixin
 
@@ -35,6 +36,22 @@ from .vocabulary import Vocabulary
 
 # We need to do this so that categorical columns can be reliably used via category names.
 pl.enable_string_cache(True)
+
+PL_TO_PA_DTYPE_MAP = {
+    pl.Categorical: pa.string(),
+    pl.Utf8: pa.string(),
+    pl.Float32: pa.float32(),
+    pl.Float64: pa.float64(),
+    pl.Int8: pa.int8(),
+    pl.Int16: pa.int16(),
+    pl.Int32: pa.int32(),
+    pl.Int64: pa.int64(),
+    pl.UInt8: pa.uint8(),
+    pl.UInt16: pa.uint16(),
+    pl.UInt32: pa.uint32(),
+    pl.UInt64: pa.uint64(),
+    pl.Boolean: pa.bool_(),
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1858,6 +1875,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         id_cols: Sequence[str],
         measures: list[str],
         default_struct_fields: dict[str, pl.DataType] | None = None,
+        default_mod_struct_fields: dict[str, pl.DataType] | None = None,
     ) -> pl.Expr:
         """Re-formats `source_df` into the desired Event Stream Data Standard output format."""
         struct_fields_by_m = {}
@@ -1868,6 +1886,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             default_struct_fields = {}
         else:
             default_struct_fields = {**default_struct_fields}
+
+        if default_mod_struct_fields is None:
+            default_mod_struct_fields = {}
+        else:
+            default_mod_struct_fields = {**default_mod_struct_fields}
+
+        mod_struct_field_order = sorted(list(default_mod_struct_fields.keys()))
 
         for m in measures:
             if m == "event_type":
@@ -1911,17 +1936,23 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 }
             )
 
+            mod_struct_fields = {**default_mod_struct_fields}
             if cfg is not None and cfg.modifiers is not None:
                 for mod_col in cfg.modifiers:
                     mod_col_expr = pl.col(mod_col)
                     if source_df[mod_col].dtype == pl.Categorical:
                         mod_col_expr = mod_col_expr.cast(pl.Utf8)
 
-                    struct_fields[mod_col] = mod_col_expr.alias(mod_col)
+                    mod_struct_fields[mod_col] = mod_col_expr.alias(mod_col)
+
+            if mod_struct_fields:
+                struct_fields["modifiers"] = pl.struct([mod_struct_fields[k] for k in mod_struct_field_order])
 
             struct_fields_by_m[m] = struct_fields
 
         struct_field_order = ["code", "numeric_value", "text_value", "datetime_value"]
+        if default_mod_struct_fields:
+            struct_field_order.append("modifiers")
         struct_field_order += sorted([k for k in default_struct_fields.keys() if k not in struct_field_order])
         struct_exprs = [
             pl.struct([fields[k] for k in struct_field_order]).alias(m)
@@ -1949,6 +1980,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             "text_value": pl.lit(None, dtype=pl.Utf8).alias("text_value"),
             "datetime_value": pl.lit(None, dtype=pl.Datetime).alias("datetime_value"),
         }
+        default_mod_struct_fields = {}
         for m in self.unified_measurements_vocab[1:]:
             cfg = self.measurement_configs[m]
             match cfg.temporality:
@@ -1974,7 +2006,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 out_dt = source_df[mod_col].dtype
                 if out_dt == pl.Categorical:
                     out_dt = pl.Utf8
-                default_struct_fields[mod_col] = pl.lit(None, dtype=out_dt).alias(mod_col)
+                default_mod_struct_fields[mod_col] = pl.lit(None, dtype=out_dt).alias(mod_col)
 
         # 1. Process subject data into the right format.
         if subject_ids:
@@ -1988,6 +2020,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 ["subject_id"],
                 subject_measures,
                 default_struct_fields=default_struct_fields,
+                default_mod_struct_fields=default_mod_struct_fields,
             )
             .groupby("subject_id")
             .agg(pl.col("measurement").alias("static_measurements"))
@@ -2005,6 +2038,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             ["subject_id", "timestamp", "event_id"],
             time_derived_measures,
             default_struct_fields=default_struct_fields,
+            default_mod_struct_fields=default_mod_struct_fields,
         )
 
         # 3. Process measurement data into the right base format:
@@ -2021,6 +2055,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             dynamic_ids,
             dynamic_measures,
             default_struct_fields=default_struct_fields,
+            default_mod_struct_fields=default_mod_struct_fields,
         )
 
         if do_sort_outputs:
@@ -2050,4 +2085,51 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if do_sort_outputs:
             out = out.sort("subject_id")
 
-        return out
+        return out.rename({"subject_id": "patient_id"})
+
+    @property
+    def ESDS_schema(self) -> pa.schema:
+        modifiers_struct_fields = []
+
+        for m in self.unified_measurements_vocab[1:]:
+            cfg = self.measurement_configs[m]
+            match cfg.temporality:
+                case TemporalityType.STATIC:
+                    source_df = self.subjects_df
+                case TemporalityType.FUNCTIONAL_TIME_DEPENDENT:
+                    source_df = self.events_df
+                case TemporalityType.DYNAMIC:
+                    source_df = self.dynamic_measurements_df
+                case _:
+                    raise ValueError(f"Unknown temporality type {cfg.temporality} for {m}")
+
+            if cfg.modifiers is None:
+                continue
+
+            for mod_col in cfg.modifiers:
+                if mod_col not in source_df:
+                    raise IndexError(f"mod_col {mod_col} missing!")
+
+                out_dt = PL_TO_PA_DTYPE_MAP[source_df[mod_col].dtype]
+                modifiers_struct_fields.append((mod_col, out_dt))
+
+        measurement_fields = [
+            ("code", pa.string()),
+            ("numeric_value", pa.float32()),
+            ("text_value", pa.string()),
+            ("datetime_value", pa.timestamp("us")),
+        ]
+
+        if modifiers_struct_fields:
+            measurement_fields.append(("modifiers", pa.struct(modifiers_struct_fields)))
+
+        measurement = pa.struct(measurement_fields)
+        event = pa.struct([("time", pa.timestamp("us")), ("measurements", pa.list_(measurement))])
+
+        return pa.schema(
+            [
+                ("patient_id", pa.int64()),
+                ("static_measurements", pa.list_(measurement)),
+                ("events", pa.list_(event)),  # Require ordered by time
+            ]
+        )
