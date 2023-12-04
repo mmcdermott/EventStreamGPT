@@ -138,30 +138,17 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             print(f"Done in {datetime.now() - st}")
 
         # Load cached data on full data, and filter for sampled subjects
-        task_dir = full_data_config.cached_task_dir
-        if len(list(task_dir.glob(f"{self.split}*.parquet"))) > 0:
-            print(
-                f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
-                f"{', '.join([str(fp) for fp in task_dir.glob(f'{self.split}*.parquet')])}"
-            )
-            cached_data = pl.scan_parquet(task_dir / f"{self.split}*.parquet")
+        task_dir = full_data_config.tensorized_cached_dir / self.split
+        cached_data = pl.DataFrame({'subject_id': torch.load(task_dir / "subject_id.pt").numpy(), 
+                                    'time_delta': torch.load(task_dir / "time_delta.pt").numpy(),
+                                    # 'dynamic_indices': torch.load(task_dir / "dynamic_indices.pt").numpy().tolist()
+                                })
         cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
 
-        length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
-        cached_data = cached_data.filter(length_constraint)
+        # # Make sure length of dynamic_indices are greater than min_seq_len
+        # length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
+        # cached_data = cached_data.filter(length_constraint)
 
-        if "time_delta" not in cached_data.columns:
-            cached_data = cached_data.with_columns(
-                (pl.col("start_time") + pl.duration(minutes=pl.col("time").list.first())).alias("start_time"),
-                pl.col("time")
-                .list.eval(
-                    # We fill with 1 here as it will be ignored in the code anyways as the next event's
-                    # event mask will be null.
-                    # TODO(mmd): validate this in a test.
-                    (pl.element().shift(-1) - pl.element()).fill_null(1)
-                )
-                .alias("time_delta"),
-            ).drop("time")
         stats = (
             cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
             .select(
@@ -169,7 +156,6 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 pl.col("inter_event_time").log().mean().alias("mean_log"),
                 pl.col("inter_event_time").log().std().alias("std_log"),
             )
-            .collect()
         )
         print(f"Saving subset data_stats to {self.config.tensorized_cached_dir}/{self.split}/data_stats.json")
         with open(self.config.tensorized_cached_dir / self.split / "data_stats.json", mode="w") as f:
