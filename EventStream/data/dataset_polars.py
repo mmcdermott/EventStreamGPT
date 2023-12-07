@@ -35,7 +35,7 @@ from .types import (
 from .vocabulary import Vocabulary
 
 # We need to do this so that categorical columns can be reliably used via category names.
-pl.enable_string_cache(True)
+pl.enable_string_cache()
 
 PL_TO_PA_DTYPE_MAP = {
     pl.Categorical: pa.string(),
@@ -653,10 +653,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         if self.config.agg_by_time_scale is None:
             logger.debug("Grouping into unique timestamps")
-            grouped = self.events_df.groupby(["subject_id", "timestamp"], maintain_order=True)
+            grouped = self.events_df.group_by(["subject_id", "timestamp"], maintain_order=True)
         else:
             logger.debug("Aggregating timestamps into buckets")
-            grouped = self.events_df.sort(["subject_id", "timestamp"], descending=False).groupby_dynamic(
+            grouped = self.events_df.sort(["subject_id", "timestamp"], descending=False).group_by_dynamic(
                 "timestamp",
                 every=self.config.agg_by_time_scale,
                 truncate=True,
@@ -859,7 +859,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .cast(pl.Boolean)
                 .alias("is_int")
             )
-            int_keys = for_val_type_inference.groupby(vocab_keys_col).agg(is_int_expr)
+            int_keys = for_val_type_inference.group_by(vocab_keys_col).agg(is_int_expr)
 
             measurement_metadata = measurement_metadata.join(int_keys, on=vocab_keys_col, how="outer")
 
@@ -872,7 +872,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         # b. Drop if only has a single observed numerical value.
         dropped_keys = (
-            for_val_type_inference.groupby(vocab_keys_col)
+            for_val_type_inference.group_by(vocab_keys_col)
             .agg((vals_col.n_unique() == 1).cast(pl.Boolean).alias("should_drop"))
             .filter("should_drop")
         )
@@ -897,7 +897,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .alias("is_categorical")
             )
 
-            categorical_keys = for_val_type_inference.groupby(vocab_keys_col).agg(is_cat_expr)
+            categorical_keys = for_val_type_inference.group_by(vocab_keys_col).agg(is_cat_expr)
 
             measurement_metadata = measurement_metadata.join(categorical_keys, on=vocab_keys_col, how="outer")
         else:
@@ -938,7 +938,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             ).cast(pl.Boolean)
 
             dropped_keys = (
-                source_df.groupby(vocab_keys_col)
+                source_df.group_by(vocab_keys_col)
                 .agg(should_drop_expr.alias("should_drop"))
                 .filter("should_drop")
                 .with_columns(pl.lit(NumericDataModalitySubtype.DROPPED).alias("value_type"))
@@ -1014,7 +1014,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if self.config.outlier_detector_config is not None:
             with self._time_as("fit_outlier_detector"):
                 M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=True)
-                outlier_model_params = source_df.groupby(vocab_keys_col).agg(
+                outlier_model_params = source_df.group_by(vocab_keys_col).agg(
                     M.fit_from_polars(pl.col(vals_col)).alias("outlier_model")
                 )
 
@@ -1037,7 +1037,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if self.config.normalizer_config is not None:
             with self._time_as("fit_normalizer"):
                 M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=True)
-                normalizer_params = source_df.groupby(vocab_keys_col).agg(
+                normalizer_params = source_df.group_by(vocab_keys_col).agg(
                     M.fit_from_polars(pl.col(vals_col)).alias("normalizer")
                 )
                 measurement_metadata = measurement_metadata.with_columns(
@@ -1280,13 +1280,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             if m in self.measurement_vocabs:
                 idx_present_expr = pl.col(m).is_not_null() & pl.col(m).is_in(self.measurement_vocabs[m])
-                idx_value_expr = pl.col(m).map_dict(self.unified_vocabulary_idxmap[m], return_dtype=idx_dt)
+                idx_value_expr = pl.col(m).replace(
+                    self.unified_vocabulary_idxmap[m], return_dtype=idx_dt, default=None
+                )
             else:
                 idx_present_expr = pl.col(m).is_not_null()
-                idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m]).cast(idx_dt)
+                idx_value_expr = pl.lit(self.unified_vocabulary_idxmap[m][m], dtype=idx_dt)
 
-            idx_present_expr = idx_present_expr.cast(pl.Boolean).alias("present")
-            idx_value_expr = idx_value_expr.alias("index")
+            idx_present_expr = idx_present_expr.cast(pl.Boolean)
 
             if (modality == DataModality.UNIVARIATE_REGRESSION) and (
                 cfg.measurement_metadata.value_type
@@ -1296,13 +1297,20 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             elif modality == DataModality.MULTIVARIATE_REGRESSION:
                 val_expr = pl.col(cfg.values_column)
             else:
-                val_expr = pl.lit(None).cast(pl.Float64)
+                val_expr = pl.lit(None, dtype=pl.Float32)
 
             struct_exprs.append(
-                pl.struct([idx_present_expr, idx_value_expr, val_expr.alias("value")]).alias(m)
+                pl.struct(
+                    [
+                        idx_present_expr.alias("present"),
+                        idx_value_expr.alias("index"),
+                        val_expr.alias("value"),
+                    ]
+                ).alias(m)
             )
 
         measurements_idx_dt = self.get_smallest_valid_uint_type(len(self.unified_measurements_idxmap))
+
         return (
             source_df.select(*id_cols, *struct_exprs)
             .melt(
@@ -1315,7 +1323,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .select(
                 *id_cols,
                 pl.col("measurement")
-                .map_dict(self.unified_measurements_idxmap)
+                .replace(self.unified_measurements_idxmap, return_dtype=measurements_idx_dt, default=None)
                 .cast(measurements_idx_dt)
                 .alias("measurement_index"),
                 pl.col("value").struct.field("index").alias("index"),
@@ -1348,7 +1356,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         static_data = (
             self._melt_df(subjects_df, ["subject_id"], subject_measures)
-            .groupby("subject_id")
+            .group_by("subject_id")
             .agg(
                 pl.col("measurement_index").alias("static_measurement_indices"),
                 pl.col("index").alias("static_indices"),
@@ -1382,7 +1390,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         event_data = pl.concat([event_data, dynamic_data], how="diagonal")
         event_data = (
-            event_data.groupby("event_id")
+            event_data.group_by("event_id")
             .agg(
                 pl.col("timestamp").drop_nulls().first().alias("timestamp"),
                 pl.col("subject_id").drop_nulls().first().alias("subject_id"),
@@ -1391,10 +1399,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.col("value").alias("dynamic_values"),
             )
             .sort("subject_id", "timestamp")
-            .groupby("subject_id")
+            .group_by("subject_id")
             .agg(
                 pl.col("timestamp").first().alias("start_time"),
-                ((pl.col("timestamp") - pl.col("timestamp").min()).dt.nanoseconds() / (1e9 * 60)).alias(
+                ((pl.col("timestamp") - pl.col("timestamp").min()).dt.total_nanoseconds() / (1e9 * 60)).alias(
                     "time"
                 ),
                 pl.col("dynamic_measurement_indices"),
@@ -1590,7 +1598,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     df.lazy()
                     .select("measurement_id", "event_id", m)
                     .filter(pl.col(m).is_not_null())
-                    .groupby("event_id")
+                    .group_by("event_id")
                     .agg(
                         pl.col(m).is_not_null().sum().cast(count_type).alias(f"{prefix}/count"),
                         (
@@ -1619,28 +1627,24 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     key_col.is_not_null()
                     .sum()
                     .cast(count_type)
-                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(key_prefix, '')}/count"),
+                    .name.map(lambda c: f"dynamic/{m}/{c.replace(key_prefix, '')}/count"),
                     (
                         (cs.starts_with(val_prefix).is_not_null() & cs.starts_with(val_prefix).is_not_nan())
                         .sum()
-                        .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/has_values_count")
+                        .name.map(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/has_values_count")
                     ),
-                    val_col.sum().map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum"),
+                    val_col.sum().name.map(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum"),
                     (val_col**2)
                     .sum()
-                    .map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum_sqd"),
-                    val_col.min().map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/min"),
-                    val_col.max().map_alias(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/max"),
+                    .name.map(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/sum_sqd"),
+                    val_col.min().name.map(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/min"),
+                    val_col.max().name.map(lambda c: f"dynamic/{m}/{c.replace(val_prefix, '')}/max"),
                 ]
             else:
                 column_cols = [m]
                 values_cols = [m]
                 aggs = [
-                    pl.all()
-                    .is_not_null()
-                    .sum()
-                    .cast(count_type)
-                    .map_alias(lambda c: f"dynamic/{m}/{c}/count")
+                    pl.all().is_not_null().sum().cast(count_type).name.map(lambda c: f"dynamic/{m}/{c}/count")
                 ]
 
             ID_cols = ["measurement_id", "event_id"]
@@ -1655,7 +1659,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 )
                 .lazy()
                 .drop("measurement_id")
-                .groupby("event_id")
+                .group_by("event_id")
                 .agg(*aggs)
             )
 
@@ -1805,52 +1809,52 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         cols_to_max = cs.ends_with("/max")
 
         if window_size == "FULL":
-            df = df.groupby("subject_id").agg(
+            df = df.group_by("subject_id").agg(
                 "timestamp",
                 # present to counts
-                present_indicator_cols.cumsum().map_alias(time_aggd_col_alias_fntr("count")),
+                present_indicator_cols.cumsum().name.map(time_aggd_col_alias_fntr("count")),
                 # values to stats
-                value_cols.is_not_null().cumsum().map_alias(time_aggd_col_alias_fntr("count")),
+                value_cols.is_not_null().cumsum().name.map(time_aggd_col_alias_fntr("count")),
                 (
                     (value_cols.is_not_null() & value_cols.is_not_nan())
                     .cumsum()
-                    .map_alias(time_aggd_col_alias_fntr("has_values_count"))
+                    .name.map(time_aggd_col_alias_fntr("has_values_count"))
                 ),
-                value_cols.cumsum().map_alias(time_aggd_col_alias_fntr("sum")),
-                (value_cols**2).cumsum().map_alias(time_aggd_col_alias_fntr("sum_sqd")),
-                value_cols.cummin().map_alias(time_aggd_col_alias_fntr("min")),
-                value_cols.cummax().map_alias(time_aggd_col_alias_fntr("max")),
+                value_cols.cumsum().name.map(time_aggd_col_alias_fntr("sum")),
+                (value_cols**2).cumsum().name.map(time_aggd_col_alias_fntr("sum_sqd")),
+                value_cols.cummin().name.map(time_aggd_col_alias_fntr("min")),
+                value_cols.cummax().name.map(time_aggd_col_alias_fntr("max")),
                 # Raw aggregations
-                cnt_cols.cumsum().map_alias(time_aggd_col_alias_fntr()),
-                cols_to_sum.cumsum().map_alias(time_aggd_col_alias_fntr()),
-                cols_to_min.cummin().map_alias(time_aggd_col_alias_fntr()),
-                cols_to_max.cummax().map_alias(time_aggd_col_alias_fntr()),
+                cnt_cols.cumsum().name.map(time_aggd_col_alias_fntr()),
+                cols_to_sum.cumsum().name.map(time_aggd_col_alias_fntr()),
+                cols_to_min.cummin().name.map(time_aggd_col_alias_fntr()),
+                cols_to_max.cummax().name.map(time_aggd_col_alias_fntr()),
             )
             df = df.explode(*[c for c in df.columns if c != "subject_id"])
         else:
-            df = df.groupby_rolling(
+            df = df.group_by_rolling(
                 index_column="timestamp",
                 by="subject_id",
                 period=window_size,
             ).agg(
                 # present to counts
-                present_indicator_cols.sum().map_alias(time_aggd_col_alias_fntr("count")),
+                present_indicator_cols.sum().name.map(time_aggd_col_alias_fntr("count")),
                 # values to stats
-                value_cols.is_not_null().sum().map_alias(time_aggd_col_alias_fntr("count")),
+                value_cols.is_not_null().sum().name.map(time_aggd_col_alias_fntr("count")),
                 (
                     (value_cols.is_not_null() & value_cols.is_not_nan())
                     .sum()
-                    .map_alias(time_aggd_col_alias_fntr("has_values_count"))
+                    .name.map(time_aggd_col_alias_fntr("has_values_count"))
                 ),
-                value_cols.sum().map_alias(time_aggd_col_alias_fntr("sum")),
-                (value_cols**2).sum().map_alias(time_aggd_col_alias_fntr("sum_sqd")),
-                value_cols.min().map_alias(time_aggd_col_alias_fntr("min")),
-                value_cols.max().map_alias(time_aggd_col_alias_fntr("max")),
+                value_cols.sum().name.map(time_aggd_col_alias_fntr("sum")),
+                (value_cols**2).sum().name.map(time_aggd_col_alias_fntr("sum_sqd")),
+                value_cols.min().name.map(time_aggd_col_alias_fntr("min")),
+                value_cols.max().name.map(time_aggd_col_alias_fntr("max")),
                 # Raw aggregations
-                cnt_cols.sum().map_alias(time_aggd_col_alias_fntr()),
-                cols_to_sum.sum().map_alias(time_aggd_col_alias_fntr()),
-                cols_to_min.min().map_alias(time_aggd_col_alias_fntr()),
-                cols_to_max.max().map_alias(time_aggd_col_alias_fntr()),
+                cnt_cols.sum().name.map(time_aggd_col_alias_fntr()),
+                cols_to_sum.sum().name.map(time_aggd_col_alias_fntr()),
+                cols_to_min.min().name.map(time_aggd_col_alias_fntr()),
+                cols_to_max.max().name.map(time_aggd_col_alias_fntr()),
             )
 
         return self._normalize_flat_rep_df_cols(df, set_count_0_to_null=True)
@@ -2025,7 +2029,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 default_struct_fields=default_struct_fields,
                 default_mod_struct_fields=default_mod_struct_fields,
             )
-            .groupby("subject_id")
+            .group_by("subject_id")
             .agg(pl.col("measurement").alias("static_measurements"))
         )
 
@@ -2068,7 +2072,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         event_data = pl.concat([event_data, dynamic_data], how="diagonal")
         event_data = (
-            event_data.groupby("event_id")
+            event_data.group_by("event_id")
             .agg(
                 pl.col("subject_id").drop_nulls().first(),
                 pl.col("timestamp").drop_nulls().first(),
@@ -2080,7 +2084,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 ).alias("event")
             )
             .sort("subject_id", "timestamp")
-            .groupby("subject_id")
+            .group_by("subject_id")
             .agg(pl.col("event").alias("events"))
         )
 
