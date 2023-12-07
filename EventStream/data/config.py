@@ -922,6 +922,9 @@ class PytorchDatasetConfig(JSONableMixin):
                 seed = int(random.randint(1, int(1e6)))
                 logger.warning(f"train_subset_size is set, but train_subset_seed is not. Setting to {seed}")
                 self.train_subset_seed = seed
+            case None | "FULL" if self.train_subset_seed is not None:
+                logger.info(f"Removing train subset seed as train subset size is {self.train_subset_size}")
+                self.train_subset_seed = None
             case None | "FULL" | int() | float():
                 pass
             case _:
@@ -1000,6 +1003,8 @@ class PytorchDatasetConfig(JSONableMixin):
         params_list = []
         for p in params:
             v = str(getattr(self, p))
+            if (p == "train_subset_seed") and (self.train_subset_size in ("FULL", None)):
+                v = None
             params_list.append((p, v))
 
         params = tuple(params_list)
@@ -1025,6 +1030,7 @@ class PytorchDatasetConfig(JSONableMixin):
         self._cached_data_parameters_fp.parent.mkdir(exist_ok=True, parents=True)
 
         with open(self._cached_data_parameters_fp, mode="w") as f:
+            logger.info(f"Saving data parameters to {self._cached_data_parameters_fp}")
             json.dump(self._data_parameters_and_hash[0], f)
 
     def tensorized_cached_files(self, split: str) -> dict[str, Path]:
