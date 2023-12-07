@@ -77,7 +77,7 @@ class AgeFunctorMock(TimeDependentFunctor):
         return None
 
     def pl_expr(self):
-        return (pl.col("timestamp") - pl.col(DOB_COL)).dt.nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
+        return (pl.col("timestamp") - pl.col(DOB_COL)).dt.total_nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
 
 
 class TimeOfDayFunctorMock(TimeDependentFunctor):
@@ -1685,15 +1685,15 @@ WANT_DL_REP_DF = pl.DataFrame(
         "dynamic_values": pl.List(pl.List(pl.Float64)),
     },
 ).with_columns(
-    pl.when(pl.col("dynamic_indices").list.lengths() == 0)
+    pl.when(pl.col("dynamic_indices").list.len() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_indices"))
     .alias("dynamic_indices"),
-    pl.when(pl.col("dynamic_measurement_indices").list.lengths() == 0)
+    pl.when(pl.col("dynamic_measurement_indices").list.len() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_measurement_indices"))
     .alias("dynamic_measurement_indices"),
-    pl.when(pl.col("dynamic_values").list.lengths() == 0)
+    pl.when(pl.col("dynamic_values").list.len() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_values"))
     .alias("dynamic_values"),

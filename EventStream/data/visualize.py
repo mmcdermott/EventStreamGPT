@@ -161,7 +161,7 @@ class Visualizer(JSONableMixin):
                 .otherwise(0)
                 .alias("cumulative_subj_increment"),
             )
-            .groupby_dynamic(
+            .group_by_dynamic(
                 index_column="timestamp",
                 every=self.time_unit,
                 by=self.static_covariates,
@@ -179,7 +179,7 @@ class Visualizer(JSONableMixin):
             plt_kwargs = {"x": "timestamp", "color": static_covariate}
 
             events_df = (
-                in_events_df.groupby("timestamp", static_covariate)
+                in_events_df.group_by("timestamp", static_covariate)
                 .agg(
                     pl.col("n_subjects").sum(),
                     pl.col("n_events").sum(),
@@ -253,7 +253,7 @@ class Visualizer(JSONableMixin):
             return
 
         for static_covariate in self.static_covariates:
-            df = static_variables.groupby(static_covariate).agg(
+            df = static_variables.group_by(static_covariate).agg(
                 pl.col("subject_id").n_unique().alias("# Subjects")
             )
             figures.append(
@@ -280,7 +280,7 @@ class Visualizer(JSONableMixin):
                 pl.col("subject_id").n_unique().over(*self.static_covariates).alias("total_n_subjects"),
             )
             .drop_nulls("age_bucket")
-            .groupby("age_bucket", *self.static_covariates)
+            .group_by("age_bucket", *self.static_covariates)
             .agg(
                 pl.col(self.age_col).mean(),
                 pl.col("event_id").n_unique().alias("n_events"),
@@ -297,7 +297,7 @@ class Visualizer(JSONableMixin):
             plt_kwargs = {"x": self.age_col, "color": static_covariate}
 
             counts_at_age = self._normalize_to_pandas(
-                events_df.groupby("age_bucket", static_covariate)
+                events_df.group_by("age_bucket", static_covariate)
                 .agg(
                     (
                         (pl.col(self.age_col) * pl.col("n_subjects_at_age")).sum()
@@ -338,7 +338,7 @@ class Visualizer(JSONableMixin):
         return figures
 
     def plot_events_per_patient(self, events_df: pl.DataFrame) -> list[Figure]:
-        events_per_patient = events_df.groupby("subject_id", *self.static_covariates).agg(
+        events_per_patient = events_df.group_by("subject_id", *self.static_covariates).agg(
             pl.col("event_id").n_unique().alias("# of Events")
         )
 
@@ -353,7 +353,7 @@ class Visualizer(JSONableMixin):
         events_df: pl.DataFrame,
         dynamic_measurements_df: pl.DataFrame,
     ) -> list[Figure]:
-        subj_ranges = events_df.groupby("subject_id").agg(
+        subj_ranges = events_df.group_by("subject_id").agg(
             pl.col("timestamp").min().alias("start_time"),
             pl.col("timestamp").max().alias("end_time"),
         )

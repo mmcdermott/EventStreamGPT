@@ -41,7 +41,7 @@ class Preprocessor(ABC):
         input column is a polars expression, it does not contain materialized data, but rather just references
         a column operation that could be run to produce materialized data. The pre-processing logic must be
         consistent with that assumption. Must be implemented by a sub-class. The logic used in this method
-        must be applicable for use in both a select and a groupby aggregation context.
+        must be applicable for use in both a select and a group_by aggregation context.
 
         Arguments:
             column: The Polars expression for the column containing the raw data to be pre-processed.
@@ -63,7 +63,7 @@ class Preprocessor(ABC):
         expressions, they do not contain materialized data, but rather just references column operations that
         could be run to produce materialized data. The pre-processing logic must be consistent with that
         assumption. Must be implemented by a sub-class. The logic used in this method must be applicable for
-        use in both a select and a groupby aggregation context.
+        use in both a select and a group_by aggregation context.
 
         Arguments:
             column: The Polars expression for the column containing the raw data to be pre-processed.

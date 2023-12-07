@@ -753,10 +753,15 @@ class DatasetBase(
         3. Next, fit all pre-processing parameters over the observed measurements.
         4. Finally, transform all data via the fit pre-processing parameters.
         """
+        logger.info("Filtering subjects")
         self._filter_subjects()
+        logger.info("Adding time derived measurements")
         self._add_time_dependent_measurements()
+        logger.info("Fitting pre-processing parameters")
         self.fit_measurements()
+        logger.info("Transforming variables.")
         self.transform_measurements()
+        logger.info("Done with preprocessing")
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
@@ -1197,8 +1202,10 @@ class DatasetBase(
                 (b) attempt to write only those files that are not yet written to disk across the historical
                 summarization targets.
 
-        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_rolling.html # noqa: E501
+        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.group_by_rolling.html # noqa: E501
         """
+
+        logger.info("Caching flat representations")
 
         self._seed(1, "cache_flat_representation")
 
@@ -1386,6 +1393,8 @@ class DatasetBase(
                 will make fewer chunks but increase the memory cost.
             do_overwrite: Whether or not to overwrite any existing file on disk.
         """
+
+        logger.info("Caching DL representations")
 
         DL_dir = self.config.save_dir / "DL_reps"
         DL_dir.mkdir(exist_ok=True, parents=True)

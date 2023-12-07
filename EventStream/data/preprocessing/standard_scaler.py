@@ -10,7 +10,7 @@ class StandardScaler(Preprocessor):
 
     This is a concrete implementation of the Preprocessor abstract class. It is a pre-processor that
     normalizes data to have zero mean and unit variance. It is implemented as a Polars friendly pre-processor,
-    meaning that it is implemented as a Polars expression that can be used in both a select and a groupby
+    meaning that it is implemented as a Polars expression that can be used in both a select and a group_by
     aggregation context.
 
     Examples:
