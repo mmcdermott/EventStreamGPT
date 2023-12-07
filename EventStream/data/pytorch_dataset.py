@@ -11,6 +11,7 @@ from loguru import logger
 from mixins import SeedableMixin, TimeableMixin
 from tqdm.auto import tqdm
 
+from ..utils import count_or_proportion
 from .config import PytorchDatasetConfig, SeqPaddingSide, SubsequenceSamplingStrategy
 from .types import PytorchBatch
 
@@ -121,11 +122,16 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             k: torch.load(fp) for k, fp in full_data_config.tensorized_cached_files(self.split).items()
         }
 
+        full_subj_ids = list(set(tensors["subject_id"]))
+        subset_size = count_or_proportion(len(full_subj_ids), self.config.train_subset_size)
+        logger.info(
+            f"Caching subset of {subset_size} subjects from full dataset of {len(full_subj_ids)} subjects"
+        )
+
         if self.split == "train":
             # Randomly sample for new subset_size number of subjects and save new tensors
-            np.random.seed(seed=self.config.train_subset_seed)
-            subset_subjects = np.random.choice(
-                list(set(tensors["subject_id"])), size=self.config.train_subset_size, replace=False
+            subset_subjects = np.random.default_rng(self.config.train_subset_seed).choice(
+                list(set(tensors["subject_id"])), size=subset_size, replace=False
             )
             subject_idx = np.where(np.isin(np.array(tensors["subject_id"]), subset_subjects))[0]
             for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
