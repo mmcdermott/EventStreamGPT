@@ -2,6 +2,7 @@ import copy
 import json
 from collections import defaultdict
 from datetime import datetime
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
@@ -85,12 +86,19 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
     def cached_files_exist(self) -> bool:
         return len(self.config.tensorized_cached_files(self.split)) > 0
 
+    @cached_property
+    def _full_data_config(self) -> PytorchDatasetConfig:
+        config = copy.deepcopy(self.config)
+        config.train_subset_size = "FULL"
+        config.train_subset_seed = None
+        config.do_include_subsequence_indices = True
+        config.do_include_subject_id = True
+        config.do_include_start_time_min = True
+        return config
+
     @property
     def full_dataset_cached_files_exist(self) -> bool:
-        full_data_config = copy.deepcopy(self.config)
-        full_data_config.train_subset_size = "FULL"
-        full_data_config.train_subset_seed = None
-        return len(full_data_config.tensorized_cached_files(self.split)) > 0
+        return len(self._full_data_config.tensorized_cached_files(self.split)) > 0
 
     @property
     def is_subset_dataset(self) -> bool:
@@ -104,8 +112,10 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         if self.is_subset_dataset:
             # cache full, if doesn't exist
             if not self.full_dataset_cached_files_exist:
+                logger.info("Caching the full dataset to efficiently cache subset...")
                 self._cache_full_data()
             # cache subset
+            logger.info("Caching the subset dataset to efficiently cache subset...")
             self._cache_subset()
         else:
             # cache full data
@@ -114,22 +124,17 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
     @TimeableMixin.TimeAs
     def _cache_subset(self):
         # Load cached tensors from full data
-        full_data_config = copy.deepcopy(self.config)
-        full_data_config.train_subset_size = "FULL"
-        full_data_config.train_subset_seed = None
-        full_data_config.do_include_subject_id = True
         tensors = {
-            k: torch.load(fp) for k, fp in full_data_config.tensorized_cached_files(self.split).items()
+            k: torch.load(fp) for k, fp in self._full_data_config.tensorized_cached_files(self.split).items()
         }
-
-        full_subj_ids = list(set(tensors["subject_id"]))
-        subset_size = count_or_proportion(len(full_subj_ids), self.config.train_subset_size)
-        logger.info(
-            f"Caching subset of {subset_size} subjects from full dataset of {len(full_subj_ids)} subjects"
-        )
 
         if self.split == "train":
             # Randomly sample for new subset_size number of subjects and save new tensors
+            full_subj_ids = list(set(tensors["subject_id"]))
+            subset_size = count_or_proportion(len(full_subj_ids), self.config.train_subset_size)
+            logger.info(
+                f"Caching subset of {subset_size} subjects from full dataset of {len(full_subj_ids)} subjects"
+            )
             subset_subjects = np.random.default_rng(self.config.train_subset_seed).choice(
                 list(set(tensors["subject_id"])), size=subset_size, replace=False
             )
@@ -144,7 +149,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 logger.info(f"Done in {datetime.now() - st}")
 
             # Load cached data on full data
-            task_dir = full_data_config.tensorized_cached_dir / self.split
+            task_dir = self._full_data_config.tensorized_cached_dir / self.split
             cached_data = pl.DataFrame(
                 {
                     "subject_id": torch.load(task_dir / "subject_id.pt").numpy(),
@@ -191,7 +196,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 logger.info(f"Done in {datetime.now() - st}")
 
             # Save full_data_stats into subset data_stats
-            full_data_stats_fp = full_data_config.tensorized_cached_dir / self.split / "data_stats.json"
+            full_data_stats_fp = self._full_data_config.tensorized_cached_dir / self.split / "data_stats.json"
             subset_data_stats_fp = self.config.tensorized_cached_dir / self.split / "data_stats.json"
             with open(full_data_stats_fp) as f:
                 logger.info(f"Loading full data stats from {full_data_stats_fp}")
@@ -202,20 +207,14 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def _cache_full_data(self):
-        constructor_config = copy.deepcopy(self.config)
-        constructor_config.train_subset_size = "FULL"
-        constructor_config.train_subset_seed = None
-        constructor_config.do_include_subsequence_indices = True
-        constructor_config.do_include_subject_id = True
-        constructor_config.do_include_start_time_min = True
-        constructor_config._cache_data_parameters()
+        self._full_data_config._cache_data_parameters()
 
         items = []
-        constructor_pyd = ConstructorPytorchDataset(constructor_config, self.split)
+        constructor_pyd = ConstructorPytorchDataset(self._full_data_config, self.split)
 
-        (constructor_config.tensorized_cached_dir / self.split).mkdir(exist_ok=True, parents=True)
+        (self._full_data_config.tensorized_cached_dir / self.split).mkdir(exist_ok=True, parents=True)
 
-        data_stats_fp = constructor_config.tensorized_cached_dir / self.split / "data_stats.json"
+        data_stats_fp = self._full_data_config.tensorized_cached_dir / self.split / "data_stats.json"
         with open(data_stats_fp, mode="w") as f:
             stats = {
                 "mean_log_inter_event_time_min": constructor_pyd.mean_log_inter_event_time_min,
@@ -224,9 +223,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             logger.info(f"Saving full data_stats to {data_stats_fp}")
             json.dump(stats, f)
 
-        for ep in tqdm(
-            range(constructor_config.cache_for_epochs), total=constructor_config.cache_for_epochs, leave=False
-        ):
+        for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
                 items.append(it)
 
@@ -259,7 +256,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 raise TypeError(f"Unrecognized tensor type {type(T)} @ {k}!")
 
         for k, T in tqdm(tensors_to_cache, leave=False, desc="Caching..."):
-            fp = constructor_config.tensorized_cached_dir / self.split / f"{k}.pt"
+            fp = self._full_data_config.tensorized_cached_dir / self.split / f"{k}.pt"
             fp.parent.mkdir(exist_ok=True, parents=True)
             st = datetime.now()
             logger.info(f"Caching tensor {k} of shape {T.shape} to {fp}...")
