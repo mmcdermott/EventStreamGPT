@@ -119,7 +119,7 @@ class InnerSelfAttention(nn.Module):
         self.register_buffer("bias", bias)
         self.register_buffer("masked_bias", torch.tensor(-1e9))
 
-        self.attn_dropout = nn.Dropout(float(config.attention_dropout))
+        self.attn_dropout_p = config.attention_dropout
         self.resid_dropout = nn.Dropout(float(config.resid_dropout))
 
         self.embed_dim = config.hidden_size
@@ -176,45 +176,70 @@ class InnerSelfAttention(nn.Module):
             key: The key tensor.
             value: The value tensor.
             attention_mask: A mask to be applied on the attention weights.
-            head_mask: A mask to be applied on the attention heads.
+            head_mask: A mask to be applied on the attention heads. Not supported for now.
 
         Returns:
             A tuple containing the output of the attention operation and the attention weights.
         """
 
-        # Keep the attention weights computation in fp32 to avoid overflow issues
-        query = query.to(torch.float32)
-        key = key.to(torch.float32)
+        if head_mask is not None:
+            raise ValueError("layer_head_mask different than None is unsupported for now")
 
+        batch_size = query.shape[0]
+
+        mask_value = torch.finfo(value.dtype).min
+        mask_value = torch.full([], mask_value, dtype=value.dtype)
+
+        # in gpt-neo-x and gpt-j the query and keys are always in fp32
+        # thus we need to cast them to the value dtype
+        query = query.to(value.dtype)
+        key = key.to(value.dtype)
         # query, key, and value are all of shape (batch, head, seq_length, head_features)
 
-        attn_weights = torch.matmul(query, key.transpose(-1, -2))
-        # attn_weights is of shape batch, head, query_seq_length, key_seq_length
+        if batch_size == 1 and attention_mask is not None and attention_mask[0, 0, 0, -1] < -1:
+            raise ValueError(
+                "BetterTransformer does not support padding='max_length' with a batch size of 1."
+            )
 
-        query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
-        mask_value = torch.finfo(attn_weights.dtype).min
-        # Need to be a tensor, otherwise we get error:
-        # `RuntimeError: expected scalar type float but found double`.
-        # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
-        attn_weights = torch.where(causal_mask, attn_weights, mask_value)
+        dropout_p = self.attn_dropout_p if self.training else 0.0
+        if batch_size == 1 or self.training:
+            # if attention_mask is not None:
+            #    raise ValueError(f"This code path ignores attention mask yet it is not None!")
 
-        if attention_mask is not None:
-            # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
+            if query.shape[2] > 1:
+                sdpa_result = torch.nn.functional.scaled_dot_product_attention(
+                    query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=True
+                )
+            else:
+                sdpa_result = torch.nn.functional.scaled_dot_product_attention(
+                    query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=False
+                )
+        else:
+            query_length, key_length = query.size(-2), key.size(-2)
 
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-        attn_weights = attn_weights.to(value.dtype)
-        attn_weights = self.attn_dropout(attn_weights)
+            # causal_mask is always [True, ..., True] otherwise, so executing this
+            # is unnecessary
+            if query_length > 1:
+                causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(
+                    torch.bool
+                )
 
-        # Mask heads if we want to
-        if head_mask is not None:
-            attn_weights = attn_weights * head_mask
+                causal_mask = torch.where(causal_mask, 0, mask_value)
 
-        attn_output = torch.matmul(attn_weights, value)
+                # torch.Tensor.expand does no memory copy
+                causal_mask = causal_mask.expand(batch_size, -1, -1, -1)
+                if attention_mask is not None:
+                    attention_mask = causal_mask + attention_mask
 
-        return attn_output, attn_weights
+            sdpa_result = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=dropout_p, is_causal=False
+            )
+
+        # in gpt-neo-x and gpt-j the query and keys are always in fp32
+        # thus we need to cast them to the value dtype
+        sdpa_result = sdpa_result.to(value.dtype)
+
+        return sdpa_result, None
 
     def forward(
         self,

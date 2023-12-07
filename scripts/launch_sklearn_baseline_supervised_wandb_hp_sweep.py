@@ -15,6 +15,8 @@ import hydra
 import wandb
 from omegaconf import DictConfig
 
+from EventStream.logger import hydra_loguru_init
+
 # This is a (non-exhaustive) set of weights and biases sweep parameter keywords, which is used to indicate
 # when a configuration dictionary contains actual parameter choices, rather than further nested parameter
 # groups.
@@ -77,6 +79,7 @@ def collapse_cfg(k: str, v: dict[str, Any]) -> dict[str, Any]:
     config_name="sklearn_baseline_hyperparameter_sweep_base",
 )
 def main(cfg: DictConfig):
+    hydra_loguru_init()
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
     cfg["command"] = [
         "${env}",
