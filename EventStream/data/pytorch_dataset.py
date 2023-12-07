@@ -138,17 +138,21 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 torch.save(subset_T, fp)
                 print(f"Done in {datetime.now() - st}")
 
-            # Load cached data on full data, and filter for sampled subjects
+            # Load cached data on full data
             task_dir = full_data_config.tensorized_cached_dir / self.split
             cached_data = pl.DataFrame({'subject_id': torch.load(task_dir / "subject_id.pt").numpy(), 
                                         'time_delta': torch.load(task_dir / "time_delta.pt").numpy(),
+                                        'event_mask': torch.load(task_dir / "event_mask.pt").numpy(),
                                         # 'dynamic_indices': torch.load(task_dir / "dynamic_indices.pt").numpy().tolist()
                                     })
-            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
 
             # # Make sure length of dynamic_indices are greater than min_seq_len
             # length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
             # cached_data = cached_data.filter(length_constraint)
+
+            # Filter for sampled subjects and event_mask = True
+            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
+            cached_data = cached_data.select(pl.col(['time_delta', 'event_mask']).explode()).filter(pl.col("event_mask"))
 
             stats = (
                 cached_data.select(pl.col("time_delta").explode().drop_nulls().alias("inter_event_time"))
@@ -216,7 +220,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         tensors_to_cache = []
         seen_keys = set()
         for k, T in global_batch.items():
-            if k.endswith("_mask"):
+            if k.endswith("_mask") and k != 'event_mask':
                 continue
             if T is None:
                 continue
