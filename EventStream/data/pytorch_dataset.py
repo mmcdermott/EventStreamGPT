@@ -119,6 +119,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             self._cache_subset()
         else:
             # cache full data
+            logger.info("Caching the full dataset...")
             self._cache_full_data()
 
     @TimeableMixin.TimeAs
