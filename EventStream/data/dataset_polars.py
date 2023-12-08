@@ -633,6 +633,16 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 dynamic_measurements_df, "measurement_id", TemporalityType.DYNAMIC, linked_ids
             )
 
+        if subjects_df is not None and events_df is not None:
+            subject_ids_set = set(subjects_df["subject_id"].to_list())
+            events_df = self._filter_col_inclusion(events_df, {"subject_id": subject_ids_set})
+
+        if events_df is not None and dynamic_measurements_df is not None:
+            event_ids_set = set(events_df["event_id"].to_list())
+            dynamic_measurements_df = self._filter_col_inclusion(
+                dynamic_measurements_df, {"event_id": event_ids_set}
+            )
+
         return subjects_df, events_df, dynamic_measurements_df
 
     @TimeableMixin.TimeAs
