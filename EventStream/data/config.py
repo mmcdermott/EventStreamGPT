@@ -1786,7 +1786,7 @@ class DatasetConfig(JSONableMixin):
 
         agg_by_time_scale: Aggregate events into temporal buckets at this frequency. Uses the string language
             described here:
-            https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
+            https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.group_by_dynamic.html
 
     Raises:
         ValueError: If configuration parameters are invalid (e.g., proportion parameters being > 1, etc.).

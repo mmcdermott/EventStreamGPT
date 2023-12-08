@@ -31,6 +31,10 @@ GitHub issue.
 Installation of the required dependencies can be done via pip with `pip install -e .` in the root directory of
 the repository. To be able to run tests, use `pip install -e .[tests]`. To be able to build docs, use `pip install -e .[docs]`.
 
+Note that ESGPT currently only supports polars >= 0.19 (as a number of function names were changed at that
+version). If you try to use it with an old environment and see errors on function names like `groupby` vs.
+`group_by`, that is likely the cause.
+
 ## Overview
 
 This codebase contains utilities for working with event stream datasets, meaning datasets where any given sample consists of a sequence of continuous-time events. Each event can consist of various categorical or continuous measurements of various structures.

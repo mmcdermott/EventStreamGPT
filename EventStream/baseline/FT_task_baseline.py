@@ -36,7 +36,7 @@ from ..data.pytorch_dataset import ConstructorPytorchDataset
 from ..tasks.profile import add_tasks_from
 from ..utils import task_wrapper
 
-pl.enable_string_cache(True)
+pl.enable_string_cache()
 
 
 def load_flat_rep(

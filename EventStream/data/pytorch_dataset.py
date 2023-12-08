@@ -160,10 +160,6 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 }
             )
 
-            # # Make sure length of dynamic_indices are greater than min_seq_len
-            # length_constraint = pl.col("dynamic_indices").list.lengths() >= self.config.min_seq_len
-            # cached_data = cached_data.filter(length_constraint)
-
             # Filter for sampled subjects and event_mask = True
             cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
             cached_data = cached_data.select(pl.col(["time_delta", "event_mask"]).explode()).filter(
@@ -599,7 +595,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
-        length_constraint = pl.col("dynamic_indices").list.lengths() >= config.min_seq_len
+        length_constraint = pl.col("dynamic_indices").list.len() >= config.min_seq_len
         self.cached_data = self.cached_data.filter(length_constraint)
 
         if "time_delta" not in self.cached_data.columns:
