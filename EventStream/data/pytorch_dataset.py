@@ -224,10 +224,12 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             logger.info(f"Saving full data_stats to {data_stats_fp}")
             json.dump(stats, f)
 
+        logger.info("Collecting data to cache.")
         for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
                 items.append(it)
 
+        logger.info("Collating data into dense tensors to cache.")
         global_batch = constructor_pyd.collate(items, do_convert_float_nans=False)
 
         tensors_to_cache = []
