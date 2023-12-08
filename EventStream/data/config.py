@@ -1020,7 +1020,7 @@ class PytorchDatasetConfig(JSONableMixin):
         else:
             base_dir = self.cached_task_dir
 
-        return base_dir / self._data_parameters_and_hash[1]
+        return base_dir / self._data_parameters_and_hash[1] / "ALTERNATE_TODO_REMOVE"
 
     @property
     def _cached_data_parameters_fp(self) -> Path:

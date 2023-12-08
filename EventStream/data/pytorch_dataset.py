@@ -259,12 +259,12 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             fp.parent.mkdir(exist_ok=True, parents=True)
             st = datetime.now()
             logger.info(f"Caching tensor {k} of shape {T.shape} to {fp}...")
-            torch.save(T, fp)
+            torch.save(T.to_sparse_csr(), fp)
             logger.info(f"Done in {datetime.now() - st}")
 
     def fetch_tensors(self):
         self.tensors = {
-            k: torch.load(fp) for k, fp in self.config.tensorized_cached_files(self.split).items()
+            k: torch.load(fp).to_dense() for k, fp in self.config.tensorized_cached_files(self.split).items()
         }
 
         with open(self.config.tensorized_cached_dir / self.split / "data_stats.json") as f:
