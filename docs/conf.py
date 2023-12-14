@@ -99,6 +99,11 @@ collections = {
         "source": "../sample_data/examine_synthetic_data.ipynb",
         "target": "local_tutorial_notebook.ipynb",
     },
+    "video_tutorial": {
+        "driver": "copy_file",
+        "source": "../sample_data/model_tutorial.mp4",
+        "target": "model_tutorial.mp4",
+    },
 }
 
 bibtex_bibfiles = ["MIMIC_IV_tutorial/refs.bib", "api_refs.bib"]
