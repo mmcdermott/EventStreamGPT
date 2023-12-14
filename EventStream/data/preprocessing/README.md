@@ -1,7 +1,7 @@
 # Polars friendly pre-processing models.
 
 A collection of pre-processing (outlier detection and normalization) models that can be fit via polars
-expressions, either directly on a dataframe or in a groupby context. All only work with univariate data at
+expressions, either directly on a dataframe or in a group-by context. All only work with univariate data at
 present.
 
 ## StandardScaler

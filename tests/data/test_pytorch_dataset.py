@@ -19,7 +19,7 @@ from EventStream.data.config import (
     PytorchDatasetConfig,
     VocabularyConfig,
 )
-from EventStream.data.pytorch_dataset import PytorchDataset
+from EventStream.data.pytorch_dataset import ConstructorPytorchDataset as PytorchDataset
 from EventStream.data.types import PytorchBatch
 
 from ..utils import MLTypeEqualityCheckableMixin
@@ -278,7 +278,7 @@ WANT_SUBJ_3_UNCUT = {
         [MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["single_label_classification"]],
         [MEASUREMENTS_IDXMAP["event_type"]],
     ],
-    "dynamic_values": [None, None, None],
+    "dynamic_values": [[None], [None, None], [None]],
 }
 
 TASK_DF = pl.DataFrame(
@@ -394,7 +394,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     self.assertEqual(want_vals.to_pandas(), got_vals.to_pandas())
 
     def test_get_item_should_collate(self):
-        config, pyd = self.get_pyd(max_seq_len=4, min_seq_len=2)
+        _, pyd = self.get_pyd(max_seq_len=4, min_seq_len=2)
 
         items = [pyd._seeded_getitem(i, seed=1) for i in range(3)]
         pyd.collate(items)

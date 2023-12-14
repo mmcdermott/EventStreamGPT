@@ -144,7 +144,9 @@ class AgeFunctor(TimeDependentFunctor):
         self.link_static_cols = [dob_col]
 
     def pl_expr(self) -> pl.Expression:
-        return (pl.col("timestamp") - pl.col(self.dob_col)).dt.nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
+        return (
+            (pl.col("timestamp") - pl.col(self.dob_col)).dt.total_nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
+        )
 
     def update_from_prior_timepoint(
         self,

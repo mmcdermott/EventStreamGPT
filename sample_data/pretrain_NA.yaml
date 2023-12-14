@@ -30,7 +30,7 @@ config:
   intermediate_size: 256
   measurements_per_dep_graph_level:
     - ["age"]
-    - ["event_type"]
+    - ["event_type", "medication"]
     - ["department", "HR", "temp", ["lab_name", "categorical_only"]]
     - [["lab_name", "numerical_only"]]
 optimization_config:

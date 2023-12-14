@@ -18,6 +18,7 @@ from typing import Any, Generic, TypeVar
 import humanize
 import numpy as np
 import pandas as pd
+from loguru import logger
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
 from plotly.graph_objs._figure import Figure
 from tqdm.auto import tqdm
@@ -106,8 +107,6 @@ class DatasetBase(
         df: INPUT_DF_T,
         columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
         subject_id_col: str | None = None,
-        subject_ids_map: dict[Any, int] | None = None,
-        subject_id_dtype: Any | None = None,
         filter_on: dict[str, bool | list[Any]] | None = None,
     ) -> DF_T:
         """Loads an input dataframe into the format expected by the processing library."""
@@ -155,12 +154,6 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> tuple[DF_T, int]:
-        """Increments the values in `col` by a given amount and returns the resulting df."""
-        raise NotImplementedError("Must be implemented by subclass.")
-
-    @classmethod
-    @abc.abstractmethod
     def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
         """Concatenates a list of dataframes into a single dataframe."""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -189,32 +182,25 @@ class DatasetBase(
             Both the built `subjects_df` as well as a dictionary from the raw subject ID column values to the
             inferred numeric subject IDs.
         """
-        subjects_df, ID_map = cls._load_input_df(
+        subjects_df = cls._load_input_df(
             schema.input_df,
-            [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
+            schema.columns_to_load,
             filter_on=schema.filter_on,
-            subject_id_source_col=schema.subject_id_col,
+            subject_id_col=schema.subject_id_col,
         )
 
-        subjects_df = cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
-
-        return subjects_df, ID_map
+        return cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
 
     @classmethod
     def build_event_and_measurement_dfs(
         cls,
-        subject_ids_map: dict[Any, int],
         subject_id_col: str,
-        subject_id_dtype: Any,
         schemas_by_df: dict[INPUT_DF_T, list[InputDFSchema]],
     ) -> tuple[DF_T, DF_T]:
         """Builds and returns events and measurements dataframes from the input schema map.
 
         Args:
-            subject_ids_map: A mapping from the input subject ID space to the inferred, output ID space. This
-                is also used to filter dynamic input dataframes down to only valid subjects.
             subject_id_col: The name of the column containing (input) subject IDs.
-            subject_id_dtype: The dtype of the output subject ID column.
             schemas_by_df: A mapping from input dataframe to associated event/measurement schemas.
 
         Returns:
@@ -229,15 +215,17 @@ class DatasetBase(
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
             try:
-                df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
+                df = cls._load_input_df(df, all_columns, subject_id_col)
             except Exception as e:
                 raise ValueError(f"Errored while loading {df}") from e
 
             for schema in schemas:
                 if schema.filter_on:
+                    logger.debug("Filtering")
                     df = cls._filter_col_inclusion(schema.filter_on)
                 match schema.type:
                     case InputDFType.EVENT:
+                        logger.debug("Processing Event")
                         df = cls._resolve_ts_col(df, schema.ts_col, "timestamp")
                         all_events_and_measurements.append(
                             cls._process_events_and_measurements_df(
@@ -248,6 +236,7 @@ class DatasetBase(
                         )
                         event_types.append(schema.event_type)
                     case InputDFType.RANGE:
+                        logger.debug("Processing Range")
                         df = cls._resolve_ts_col(df, schema.start_ts_col, "start_time")
                         df = cls._resolve_ts_col(df, schema.end_ts_col, "end_time")
                         for et, unified_schema, sp_df in zip(
@@ -265,22 +254,14 @@ class DatasetBase(
                         raise ValueError(f"Invalid schema type {schema.type}.")
 
         all_events, all_measurements = [], []
-        running_event_id_max = 0
         for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
-            try:
-                new_events = cls._inc_df_col(events, "event_id", running_event_id_max)
-            except Exception as e:
-                raise ValueError(f"Failed to increment event_id on {event_type}") from e
-
-            if len(new_events) == 0:
-                print(f"Empty new events dataframe of type {event_type}!")
+            if events is None:
+                logger.warning(f"Empty new events dataframe of type {event_type}!")
                 continue
 
-            all_events.append(new_events)
+            all_events.append(events)
             if measurements is not None:
-                all_measurements.append(cls._inc_df_col(measurements, "event_id", running_event_id_max))
-
-            running_event_id_max = all_events[-1]["event_id"].max() + 1
+                all_measurements.append(measurements)
 
         return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
 
@@ -364,7 +345,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_subjects_df")) or self._subjects_df is None:
             subjects_fp = self.subjects_fp(self.config.save_dir)
-            print(f"Loading subjects from {subjects_fp}...")
+            logger.info(f"Loading subjects from {subjects_fp}...")
             self._subjects_df = self._read_df(subjects_fp)
 
         return self._subjects_df
@@ -382,7 +363,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_events_df")) or self._events_df is None:
             events_fp = self.events_fp(self.config.save_dir)
-            print(f"Loading events from {events_fp}...")
+            logger.info(f"Loading events from {events_fp}...")
             self._events_df = self._read_df(events_fp)
 
         return self._events_df
@@ -401,7 +382,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_dynamic_measurements_df")) or self._dynamic_measurements_df is None:
             dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
-            print(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
+            logger.info(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
             self._dynamic_measurements_df = self._read_df(dynamic_measurements_fp)
 
         return self._dynamic_measurements_df
@@ -438,7 +419,7 @@ class DatasetBase(
 
         reloaded_config = DatasetConfig.from_json_file(load_dir / "config.json")
         if reloaded_config.save_dir != load_dir:
-            print(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
+            logger.info(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
             reloaded_config.save_dir = load_dir
 
         attrs_to_add = {"config": reloaded_config}
@@ -544,15 +525,14 @@ class DatasetBase(
             if dynamic_measurements_df is not None:
                 raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
 
-            subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
-            subject_id_dtype = subjects_df["subject_id"].dtype
+            subjects_df = self.build_subjects_dfs(input_schema.static)
 
+            logger.debug("Extracting events and measurements dataframe...")
             events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
-                ID_map,
                 input_schema.static.subject_id_col,
-                subject_id_dtype,
                 input_schema.dynamic_by_df,
             )
+            logger.debug("Built events and measurements dataframe")
 
         self.config = config
         self._is_fit = False
@@ -583,15 +563,19 @@ class DatasetBase(
         self.event_types = []
         self.n_events_per_subject = {}
 
-        (
-            self.subjects_df,
-            self.events_df,
-            self.dynamic_measurements_df,
-        ) = self._validate_initial_dfs(subjects_df, events_df, dynamic_measurements_df)
+        self.events_df = events_df
+        self.dynamic_measurements_df = dynamic_measurements_df
 
         if self.events_df is not None:
             self._agg_by_time()
             self._sort_events()
+
+        (
+            self.subjects_df,
+            self.events_df,
+            self.dynamic_measurements_df,
+        ) = self._validate_initial_dfs(subjects_df, self.events_df, self.dynamic_measurements_df)
+
         self._update_subject_event_properties()
 
     @abc.abstractmethod
@@ -769,10 +753,15 @@ class DatasetBase(
         3. Next, fit all pre-processing parameters over the observed measurements.
         4. Finally, transform all data via the fit pre-processing parameters.
         """
+        logger.info("Filtering subjects")
         self._filter_subjects()
+        logger.info("Adding time derived measurements")
         self._add_time_dependent_measurements()
+        logger.info("Fitting pre-processing parameters")
         self.fit_measurements()
+        logger.info("Transforming variables.")
         self.transform_measurements()
+        logger.info("Done with preprocessing")
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
@@ -838,7 +827,7 @@ class DatasetBase(
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
-                print(f"WARNING: Measure {measure} not found! Dropping...")
+                logger.warning(f"Measure {measure} not found! Dropping...")
                 config.drop()
                 continue
 
@@ -848,7 +837,7 @@ class DatasetBase(
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
-                print(f"Found no possible events for {measure}!")
+                logger.info(f"Found no possible events for {measure}!")
                 config.drop()
                 continue
 
@@ -1213,8 +1202,10 @@ class DatasetBase(
                 (b) attempt to write only those files that are not yet written to disk across the historical
                 summarization targets.
 
-        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_rolling.html # noqa: E501
+        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.group_by_rolling.html # noqa: E501
         """
+
+        logger.info("Caching flat representations")
 
         self._seed(1, "cache_flat_representation")
 
@@ -1251,7 +1242,7 @@ class DatasetBase(
                     old_params = json.load(f)
 
                 if old_params["subjects_per_output_file"] != params["subjects_per_output_file"]:
-                    print(
+                    logger.info(
                         "Standardizing chunk size to existing record "
                         f"({old_params['subjects_per_output_file']})."
                     )
@@ -1403,6 +1394,8 @@ class DatasetBase(
             do_overwrite: Whether or not to overwrite any existing file on disk.
         """
 
+        logger.info("Caching DL representations")
+
         DL_dir = self.config.save_dir / "DL_reps"
         DL_dir.mkdir(exist_ok=True, parents=True)
 
@@ -1482,6 +1475,16 @@ class DatasetBase(
             else:
                 idxmaps[m] = {m: offset}
         return idxmaps
+
+    @property
+    def unified_vocabulary_flat(self) -> list[str]:
+        vocab_size = max(self.unified_vocabulary_idxmap[self.unified_measurements_vocab[-1]].values()) + 1
+        vocab = [None for _ in range(vocab_size)]
+        vocab[0] = "UNK"
+        for m, idxmap in self.unified_vocabulary_idxmap.items():
+            for e, i in idxmap.items():
+                vocab[i] = e
+        return vocab
 
     @abc.abstractmethod
     def build_DL_cached_representation(
