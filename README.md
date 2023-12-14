@@ -5,7 +5,7 @@
 [![lightning](https://img.shields.io/badge/-Lightning_2.0+-792ee5?logo=pytorchlightning&logoColor=white)](https://pytorchlightning.ai/)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
 [![tests](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/tests.yml/badge.svg)](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/mmcdermott/EventStreamML/branch/main/graph/badge.svg?token=F9NYFEN5FX)](https://codecov.io/gh/mmcdermott/EventStreamML)
+[![codecov](https://codecov.io/gh/mmcdermott/EventStreamGPT/branch/main/graph/badge.svg?token=F9NYFEN5FX)](https://codecov.io/gh/mmcdermott/EventStreamML)
 [![code-quality](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/EventStreamGPT/actions/workflows/code-quality-main.yaml)
 [![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/EventStreamGPT#license)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/EventStreamGPT/pulls)
@@ -28,7 +28,8 @@ GitHub issue.
 
 ## Installation
 
-Installation of the requisite packages can be done via conda with the `env.yml` file: `conda env create -n ${ENV_NAME} -f env.yml`
+Installation of the required dependencies can be done via pip with `pip install -e .` in the root directory of
+the repository. To be able to run tests, use `pip install -e .[tests]`. To be able to build docs, use `pip install -e .[docs]`.
 
 ## Overview
 
@@ -232,41 +233,15 @@ configuration object:
 @hydra_dataclass
 class FinetuneConfig:
     load_from_model_dir: str | Path = omegaconf.MISSING
-    seed: int = 1
-
-    pretrained_weights_fp: Path | None = None
-    save_dir: str | None = None
-
-    do_overwrite: bool = False
-
-    optimization_config: OptimizationConfig = OptimizationConfig()
-
     task_df_name: str | None = omegaconf.MISSING
 
-    data_config_overrides: dict[str, Any] | None = dataclasses.field(
-        default_factory=lambda: {
-            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
-            "seq_padding_side": SeqPaddingSide.RIGHT,
-        }
+    pretrained_weights_fp: Path | None = "${load_from_model_dir}/pretrained_weights"
+    save_dir: str | None = (
+        "${load_from_model_dir}/finetuning/${task_df_name}/"
+        "subset_size_${data_config.train_subset_size}/"
+        "subset_seed_{data_config.train_subset_seed}/"
+        "${now:%Y-%m-%d_%H-%M-%S}"
     )
-
-    trainer_config: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {
-            "accelerator": "auto",
-            "devices": "auto",
-            "detect_anomaly": False,
-            "default_root_dir": None,
-        }
-    )
-
-    task_specific_params: dict[str, Any] = dataclasses.field(
-        default_factory=lambda: {
-            "pooling_method": "last",
-            "num_samples": None,
-        }
-    )
-
-    config_overrides: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
     wandb_logger_kwargs: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -281,6 +256,39 @@ class FinetuneConfig:
     wandb_experiment_config_kwargs: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "save_dir": "${save_dir}",
+        }
+    )
+
+    do_overwrite: bool = False
+    seed: int = 1
+
+    # Config override parameters
+    config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "task_specific_params": {
+                "pooling_method": "last",
+                "num_samples": None,
+            }
+        }
+    )
+    optimization_config: OptimizationConfig = OptimizationConfig()
+    data_config: dict[str, Any] | None = dataclasses.field(
+        default_factory=lambda: {
+            "subsequence_sampling_strategy": SubsequenceSamplingStrategy.TO_END,
+            "seq_padding_side": SeqPaddingSide.RIGHT,
+            "task_df_name": "${task_df_name}",
+            "train_subset_size": "FULL",
+            "train_subset_seed": 1,
+        }
+    )
+
+    trainer_config: dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "accelerator": "auto",
+            "devices": "auto",
+            "detect_anomaly": False,
+            "default_root_dir": "${save_dir}/model_checkpoints",
+            "log_every_n_steps": 10,
         }
     )
 ```
@@ -365,6 +373,22 @@ following steps:
    `${task_df_name}_labeler.py`.
 3. You can then use the `scripts/zeroshot.py` script to run a zero-shot evaluation via a Hydra
    config on that task labeler and any pre-trained model.
+
+## Controlling Resource Usage
+
+This library uses [polars](https://pola-rs.github.io/polars/py-polars/html/reference/index.html), which is
+very fast, but can be memory intensive due to its extensive parallelization. One strategy one can take to
+control for this and limit the total memory usage is to limit the maximum number of threads polars is
+permitted to use while running. This can be controlled via the environment variable `POLARS_MAX_THREADS`. If
+this environment variable is set in the shell prior to running ESGPT commands, the ESGPT module will respect
+those limitations. For example:
+
+```bash
+POLARS_MAX_THREADS=1 PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" python $EVENT_STREAM_PATH/scripts/...
+```
+
+You can read more about this in the [polars
+documentation](https://pola-rs.github.io/polars/py-polars/html/reference/api/polars.threadpool_size.html).
 
 ## Testing
 

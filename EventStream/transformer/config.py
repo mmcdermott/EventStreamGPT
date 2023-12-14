@@ -160,15 +160,7 @@ class MetricsConfig(JSONableMixin):
 
     def do_log_only_loss(self, split: Split) -> bool:
         """Returns True if only loss should be logged for this split."""
-        if (
-            self.do_skip_all_metrics
-            or split not in self.include_metrics
-            or not self.include_metrics[split]
-            or (
-                (len(self.include_metrics[split]) == 1)
-                and (MetricCategories.LOSS_PARTS in self.include_metrics[split])
-            )
-        ):
+        if self.do_skip_all_metrics or split not in self.include_metrics or not self.include_metrics[split]:
             return True
         else:
             return False
@@ -214,6 +206,11 @@ class OptimizationConfig(JSONableMixin):
         init_lr: The initial learning rate used by the optimizer. Given warmup is used, this will be the peak
             learning rate after the warmup period.
         end_lr: The final learning rate at the end of all learning rate decay.
+        end_lr_frac_of_init_lr: The fraction of the initial learning rate that the end learning rate should
+            be. Must be consistent with end_lr, when both are set. If only one is set, the other will be
+            correctly inferred upon initialization. This is largely useful during hyperparameter tuning, to
+            avoid sampling hyperparameters where ``end_lr`` is larger than ``init_lr``, which is not
+            compatible with the supported learning rate scheduler.
         max_epochs: The maximum number of training epochs.
         batch_size: The batch size used during stochastic gradient descent.
         validation_batch_size: The batch size used during evaluation.
@@ -416,6 +413,9 @@ class StructuredTransformerConfig(PretrainedConfig):
         do_normalize_by_measurement_index:
             If True, the input embeddings are normalized such that each unique measurement index contributes
             equally to the embedding.
+        do_use_learnable_sinusoidal_ATE:
+            If True, then the model will produce temporal position embeddings via a sinnusoidal position
+            embedding such that the frequencies are learnable, rather than fixed and regular.
 
 
         structured_event_processing_mode: Specifies how the internal event is processed internally by the
@@ -500,6 +500,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         categorical_embedding_weight: float = 0.5,
         numerical_embedding_weight: float = 0.5,
         do_normalize_by_measurement_index: bool = False,
+        do_use_learnable_sinusoidal_ATE: bool = False,
         # Model configuration
         structured_event_processing_mode: StructuredEventProcessingMode = (
             StructuredEventProcessingMode.CONDITIONALLY_INDEPENDENT
@@ -530,6 +531,7 @@ class StructuredTransformerConfig(PretrainedConfig):
         use_cache: bool = True,
         **kwargs,
     ):
+        self.do_use_learnable_sinusoidal_ATE = do_use_learnable_sinusoidal_ATE
         # Resetting default values to appropriate types
         if vocab_sizes_by_measurement is None:
             vocab_sizes_by_measurement = {}
@@ -671,8 +673,10 @@ class StructuredTransformerConfig(PretrainedConfig):
 
         if head_dim * num_attention_heads != hidden_size:
             raise ValueError(
-                f"hidden_size must be divisible by num_attention_heads (got `hidden_size`: {hidden_size} "
-                f"and `num_attention_heads`: {num_attention_heads})."
+                "hidden_size must be consistent with head_dim and divisible by num_attention_heads. Got:\n"
+                f"  hidden_size: {hidden_size}\n"
+                f"  head_dim: {head_dim}\n"
+                f"  num_attention_heads: {num_attention_heads}"
             )
 
         if type(num_hidden_layers) is not int:
@@ -877,9 +881,10 @@ class StructuredTransformerConfig(PretrainedConfig):
             self.std_log_inter_event_time_min = dataset.std_log_inter_event_time_min
 
         if dataset.has_task:
-            if len(dataset.tasks) == 1:
-                # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
+            if self.finetuning_task is None and len(dataset.tasks) == 1:
                 self.finetuning_task = dataset.tasks[0]
+            if self.finetuning_task is not None:
+                # In the single-task fine-tuning case, we can infer a lot of this from the dataset.
                 match dataset.task_types[self.finetuning_task]:
                     case "binary_classification" | "multi_class_classification":
                         self.id2label = {
@@ -893,6 +898,8 @@ class StructuredTransformerConfig(PretrainedConfig):
                         self.problem_type = "regression"
             elif all(t == "binary_classification" for t in dataset.task_types.values()):
                 self.problem_type = "multi_label_classification"
+                self.id2label = {0: False, 1: True}
+                self.label2id = {v: i for i, v in self.id2label.items()}
                 self.num_labels = len(dataset.tasks)
             elif all(t == "regression" for t in dataset.task_types.values()):
                 self.num_labels = len(dataset.tasks)
@@ -917,7 +924,7 @@ class StructuredTransformerConfig(PretrainedConfig):
     @classmethod
     def from_dict(cls, *args, **kwargs) -> "StructuredTransformerConfig":
         raw_from_dict = super().from_dict(*args, **kwargs)
-        if raw_from_dict.measurmeent_configs:
+        if raw_from_dict.measurement_configs:
             new_meas_configs = {}
             for k, v in raw_from_dict.measurement_configs.items():
                 new_meas_configs[k] = MeasurementConfig.from_dict(v)

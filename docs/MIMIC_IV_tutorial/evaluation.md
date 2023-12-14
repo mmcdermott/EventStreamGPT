@@ -1,7 +1,46 @@
 ## Evaluating Pre-trained Models
 
-We provide pre-built lightning modules for running few-shot fine-tuning evaluation and zero-shot generative
-evaluation through user-defined labelers.
+We provide pre-built lightning modules for assessing baseline performance on fine-tuing tasks and for running
+few-shot fine-tuning evaluation and zero-shot generative evaluation through user-defined labelers.
+
+### Baseline Models
+
+Event Stream GPT can also aid in producing baseline performance results across both traditional, scikit-learn
+style models or via supervised training of ESGPT compatible neural network model architectures. For this
+tutorial, we build both kinds of baselines, hyperparameter tuning a random forest scikit-learn pipeline which
+can select between different kinds of historical aggregation windows, dimensionality reduction strategies,
+imputation methods, scalers, and model parameters as well as a non-pre-trained transformer model across the
+full parameter space therein.
+
+The scikit-learn hyperparameter search pipeline is managed by
+`scripts/launch_sklearn_baseline_supervised_wandb_hp_sweep.py`, which leverages the Hydra config
+`configs/sklearn_models/sklearn_baseline_hyperparameter_sweep_base.yaml`. Similar to the pre-training
+hyperparameter tuning script, users can leverage a provided sample weights and biases template report
+[here](https://api.wandb.ai/links/mmd/f3k2okw8) to track the results of this hyperparameter search. For a
+concrete example, in the linked report, embedded as an image below, we show that for predicting in hospital
+mortality on the MIMIC-IV pipeline, a random forest pipeline can achieve up to at least 0.7 AUROC in this
+setting.
+
+```{eval-rst}
+.. subfigure:: A
+   :gap: 8px
+   :subcaptions: below
+   :name: sample_wandb_outputs
+   :class-grid: outline
+
+   .. image:: wandb_reports/sklearn_baseline_sweep.png
+      :alt: Weights and biases reports for training a sklearn pipeline from scratch..
+
+   Sample hyperparameter tuning weights and biases report for supervised sklearn models over the MIMIC-IV
+   cohort.
+```
+
+Additionally, users can hyperparameter tune a neural network trained from scratch on just a supervised task
+(for comparison against pre-trained/fine-tuned models). Such a search can be run using the
+`scripts/launch_from_scratch_supervised_wandb_hp_sweep.py` script and
+`configs/from_scratch_supervised_hyperparameter_sweep_base.yaml` config and tracked via template wandb report
+[here](https://api.wandb.ai/links/mmd/wq6k5om0). Doing so for the readmission risk prediction task on our
+sample MIMIC-IV pipeline shows that models can achieve peak tuning-set performance of an AUROC of 0.59.
 
 ### Few-shot performance
 
@@ -14,8 +53,8 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" \
 	python $EVENT_STREAM_PATH/scripts/finetune.py \
 	load_from_model_dir="$MODEL_DIR" \
 	task_df_name="$TASK_NAME" \
-	++data_config_overrides.train_subset_size="$FT_SUBSET_SIZE" \
-	++data_config_overrides.train_subset_seed="$FT_SUBSET_SEED"
+	data_config.train_subset_size="$FT_SUBSET_SIZE" \
+	data_config.train_subset_seed="$FT_SUBSET_SEED"
 ```
 
 In this example, we ran this command for the two tasks discussed previously; 30-day readmission risk
@@ -33,12 +72,19 @@ this command, the evaluation script will do the following:
    regularization parameters.
 3. Upon completion, outputs its final metrics to `tuning_metrics.json` and `held_out_metrics.json`.
 
-For both tasks in this working example, models selected from the hyperparameter tuning results fine-tuned on
-these small fine-tuning datasets showed negligible performance (AUROCs of 0.5). This is not unexpected, given
-the relatively small size of the pre-training dataset, the small number of fine-tuning examples used here, and
-the fact that model performance is not our focus here, so these were not fully optimized. Nevertheless, this
-workflow demonstrates how you can use this system to perform few-shot fine-tuning in your own datasets and
-tasks.
+When fine-tuning a model, there are still some hyperparameters that can be tuned on the specific task in
+question, including dropout rates, batch sizes and learning rates, and weight decay parameters. We also
+support hyperparameter tuning over these parameters via the `scripts/launch_finetuning_wandb_hp_sweep.py`
+command, which uses the Hydra configuration file defined in
+`configs/finetuning_hyperparameter_sweep_base.yaml` to run a weights and biases sweep over only these
+modifiable fine-tuning parameters. Much like in pre-training and for the baseline models, there is a template
+report users can leverage to analyze the results of these sweeps, available
+[here](https://api.wandb.ai/links/mmd/479cunf7).
+
+When we run this procedure for the Readmission Risk prediction task over MIMIC-IV, we find that fine-tuned
+models are able to obtain peak tuning-set performance of an AUROC of 0.61, which is slightly higher than the
+trained-from-scratch nueral network performance, suggesting that even on this small dataset, we do observe
+some benefits from generative pre-training.
 
 ### Zero-shot Performance
 
@@ -67,8 +113,8 @@ PYTHONPATH="$EVENT_STREAM_PATH:$PYTHONPATH" \
 	python $EVENT_STREAM_PATH/scripts/zeroshot.py \
 	load_from_model_dir="$MODEL_DIR" \
 	task_df_name="$TASK_NAME" \
-	task_specific_params.num_samples=3 ++data_config_overrides.do_include_start_time_min=True \
-	++data_config_overrides.seq_padding_side=left ++data_config_overrides.max_seq_len=128
+	config.task_specific_params.num_samples=3 data_config.do_include_start_time_min=True \
+	data_config.seq_padding_side=left data_config.max_seq_len=128
 ```
 
 This code will execute the following steps:

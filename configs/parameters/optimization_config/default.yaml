@@ -1,3 +1,5 @@
+num_dataloader_workers:
+  value: ???
 max_epochs:
   value: 100
 patience:

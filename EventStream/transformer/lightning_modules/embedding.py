@@ -1,3 +1,5 @@
+"""A PyTorch Lightning runnable module for getting embeddings from a pre-trained ESGPT model."""
+
 import os
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,8 @@ from .fine_tuning import FinetuneConfig
 
 
 class EmbeddingsOnlyModel(StructuredTransformerPreTrainedModel):
+    """A "model" which simply retrieves the final embeddings from the encoder and returns them."""
+
     def __init__(self, config: StructuredTransformerConfig):
         super().__init__(config)
         if self.config.structured_event_processing_mode == StructuredEventProcessingMode.NESTED_ATTENTION:
@@ -152,4 +156,5 @@ def get_embeddings(cfg: FinetuneConfig):
                 print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
             else:
                 print(f"Saving {sp} embeddings to {embeddings_fp}.")
+                embeddings_fp.parent.mkdir(exist_ok=True, parents=True)
                 torch.save(embeddings, embeddings_fp)

@@ -8,6 +8,8 @@ import enum
 import functools
 import json
 import re
+import sys
+import traceback
 from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
@@ -378,6 +380,8 @@ def task_wrapper(task_func: Callable) -> Callable:
             # some hyperparameter combinations might be invalid or cause out-of-memory errors
             # so when using hparam search plugins like Optuna, you might want to disable
             # raising the below exception to avoid multirun failure
+            print(f"EXCEPTION: {ex}")
+            print(traceback.print_exc(), file=sys.stderr)
             raise ex
         finally:
             # always close wandb run (even if exception occurs so multirun won't fail)

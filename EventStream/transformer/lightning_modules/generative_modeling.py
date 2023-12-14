@@ -156,7 +156,11 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                                 [Averaging.MACRO, Averaging.WEIGHTED],
                             ),
                         }
-                        metric_kwargs = {"num_classes": vocab_size, "ignore_index": 0}
+                        metric_kwargs = {
+                            "num_classes": vocab_size,
+                            "ignore_index": 0,
+                            "validate_args": self.metrics_config.do_validate_args,
+                        }
                     case DataModality.MULTI_LABEL_CLASSIFICATION:
                         cat = MetricCategories.CLASSIFICATION
                         metrics = {
@@ -173,7 +177,10 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                                 [Averaging.MACRO, Averaging.WEIGHTED, Averaging.MICRO],
                             ),
                         }
-                        metric_kwargs = {"num_labels": vocab_size}
+                        metric_kwargs = {
+                            "num_labels": vocab_size,
+                            "validate_args": self.metrics_config.do_validate_args,
+                        }
                     case DataModality.UNIVARIATE_REGRESSION:
                         cat = MetricCategories.REGRESSION
                         metrics = {
@@ -194,10 +201,11 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
                     case _:
                         raise ValueError(f"Unrecognized modality {task_type}!")
 
-                if not self.metrics_config.do_validate_args:
-                    metric_kwargs["validate_args"] = False
-
-                auc_kwargs = {**metric_kwargs, "thresholds": self.metrics_config.n_auc_thresholds}
+                auc_kwargs = {
+                    **metric_kwargs,
+                    "thresholds": self.metrics_config.n_auc_thresholds,
+                    "compute_on_cpu": True,
+                }
                 for metric, (metric_cls, averagings) in metrics.items():
                     if metric in (Metrics.AUROC, Metrics.AUPRC):
                         metric_cls_kwargs = {**auc_kwargs}
@@ -485,7 +493,7 @@ class ESTForGenerativeSequenceModelingLM(L.LightningModule):
         }
 
 
-SKIP_CFG_PARAMS = {"seq_attention_layers", "dep_graph_attention_layers"}
+SKIP_CFG_PARAMS = {"seq_attention_layers", "dep_graph_attention_layers", "hidden_size"}
 
 
 @hydra_dataclass
@@ -503,10 +511,16 @@ class PretrainConfig:
             },
         }
     )
-    optimization_config: OptimizationConfig = OptimizationConfig()
-    data_config: PytorchDatasetConfig = PytorchDatasetConfig()
-    pretraining_metrics_config: MetricsConfig = MetricsConfig(do_skip_all_metrics=True)
-    final_validation_metrics_config: MetricsConfig = MetricsConfig(do_skip_all_metrics=False)
+    optimization_config: OptimizationConfig = dataclasses.field(default_factory=lambda: OptimizationConfig())
+    data_config: PytorchDatasetConfig = dataclasses.field(default_factory=lambda: PytorchDatasetConfig())
+    pretraining_metrics_config: MetricsConfig = dataclasses.field(
+        default_factory=lambda: MetricsConfig(
+            include_metrics={Split.TRAIN: {MetricCategories.LOSS_PARTS: True}},
+        )
+    )
+    final_validation_metrics_config: MetricsConfig = dataclasses.field(
+        default_factory=lambda: MetricsConfig(do_skip_all_metrics=False)
+    )
 
     trainer_config: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -537,9 +551,8 @@ class PretrainConfig:
         }
     )
 
-    num_dataloader_workers: int = 1
-
     do_final_validation_on_metrics: bool = True
+    do_use_filesystem_sharing: bool = True
 
     # compile: bool = True
 
@@ -561,7 +574,8 @@ def train(cfg: PretrainConfig):
     """
 
     L.seed_everything(cfg.seed)
-    torch.multiprocessing.set_sharing_strategy("file_system")
+    if cfg.do_use_filesystem_sharing:
+        torch.multiprocessing.set_sharing_strategy("file_system")
 
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")

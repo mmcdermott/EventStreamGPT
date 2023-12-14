@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
 from plotly.graph_objs._figure import Figure
+from tqdm.auto import tqdm
 
 from ..utils import lt_count_or_proportion
 from .config import (
@@ -435,14 +436,17 @@ class DatasetBase(
 
         attrs_fp = load_dir / "E.pkl"
 
-        attrs_to_add = {
-            "config": DatasetConfig.from_json_file(load_dir / "config.json"),
-        }
+        reloaded_config = DatasetConfig.from_json_file(load_dir / "config.json")
+        if reloaded_config.save_dir != load_dir:
+            print(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
+            reloaded_config.save_dir = load_dir
+
+        attrs_to_add = {"config": reloaded_config}
         inferred_measurement_configs_fp = load_dir / "inferred_measurement_configs.json"
         if inferred_measurement_configs_fp.is_file():
             with open(inferred_measurement_configs_fp) as f:
                 attrs_to_add["inferred_measurement_configs"] = {
-                    k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
+                    k: MeasurementConfig.from_dict(v, base_dir=load_dir) for k, v in json.load(f).items()
                 }
 
         return super()._load(attrs_fp, **attrs_to_add)
@@ -478,10 +482,9 @@ class DatasetBase(
         self.config.to_json_file(config_fp, do_overwrite=do_overwrite)
 
         if self._is_fit:
-            inferred_measurement_metadata_dir = self.config.save_dir / "inferred_measurement_metadata"
+            self.config.save_dir / "inferred_measurement_metadata"
             for k, v in self.inferred_measurement_configs.items():
-                fp = inferred_measurement_metadata_dir / f"{k}.csv"
-                v.cache_measurement_metadata(fp)
+                v.cache_measurement_metadata(self.config.save_dir, f"inferred_measurement_metadata/{k}.csv")
 
             inferred_measurement_configs_fp = self.config.save_dir / "inferred_measurement_configs.json"
             inferred_measurement_configs = {
@@ -839,7 +842,9 @@ class DatasetBase(
                 config.drop()
                 continue
 
-            total_possible, total_observed = self._total_possible_and_observed(measure, config, source_df)
+            total_possible, total_observed, raw_total_observed = self._total_possible_and_observed(
+                measure, config, source_df
+            )
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
@@ -847,7 +852,8 @@ class DatasetBase(
                 config.drop()
                 continue
 
-            config.observation_frequency = total_observed / total_possible
+            config.observation_rate_over_cases = total_observed / total_possible
+            config.observation_rate_per_case = raw_total_observed / total_observed
 
             # 2. Drop the column if observations occur too rarely.
             if lt_count_or_proportion(
@@ -882,13 +888,14 @@ class DatasetBase(
     @abc.abstractmethod
     def _total_possible_and_observed(
         self, measure: str, config: MeasurementConfig, source_df: DF_T
-    ) -> tuple[int, int]:
-        """Returns the total possible/actual instances where `measure` could be/was observed.
+    ) -> tuple[int, int, int]:
+        """Returns the total possible/actual/all raw instances where `measure` could be/was observed.
 
         Possible means number of subjects (for static measurements) or number of unique events (for dynamic or
         functional time dependent measurements). Actual means where the given measurement column takes on a
-        non-null value. For a multivariate regression measurement, the column that must be non-null is the key
-        column, not the value column.
+        non-null value. All means the count of total observations, accounting for duplicate observations per
+        possible instance. For a multivariate regression measurement, the column that must be non-null is the
+        key column, not the value column.
 
         Args:
             measure: The name of the measurement.
@@ -1058,6 +1065,303 @@ class DatasetBase(
             if config.vocabulary is not None:
                 vocabs[m] = config.vocabulary.vocabulary
         return vocabs
+
+    @abc.abstractmethod
+    def _get_flat_ts_rep(self, **kwargs) -> DF_T:
+        raise NotImplementedError("Must be overwritten in base class.")
+
+    @abc.abstractmethod
+    def _get_flat_static_rep(self, **kwargs) -> DF_T:
+        raise NotImplementedError("Must be overwritten in base class.")
+
+    @classmethod
+    @abc.abstractmethod
+    def _summarize_over_window(self, df: DF_T, window_size: str):
+        raise NotImplementedError("Must be overwritten in base class.")
+
+    def _resolve_flat_rep_cache_params(
+        self,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        include_only_measurements: Sequence[str] | None = None,
+    ) -> tuple[dict[str, float] | None, set[str]]:
+        if include_only_measurements is None:
+            if isinstance(feature_inclusion_frequency, dict):
+                include_only_measurements = sorted(list(feature_inclusion_frequency.keys()))
+            else:
+                include_only_measurements = sorted(list(self.measurement_configs.keys()))
+        else:
+            include_only_measurements = sorted(list(set(include_only_measurements)))
+
+        if isinstance(feature_inclusion_frequency, float):
+            feature_inclusion_frequency = {m: feature_inclusion_frequency for m in include_only_measurements}
+        return feature_inclusion_frequency, include_only_measurements
+
+    def _get_flat_rep_feature_cols(
+        self,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        window_sizes: list[str] | None = None,
+        include_only_measurements: set[str] | None = None,
+    ) -> list[str]:
+        feature_inclusion_frequency, include_only_measurements = self._resolve_flat_rep_cache_params(
+            feature_inclusion_frequency, include_only_measurements
+        )
+        feature_columns = []
+        for m, cfg in self.measurement_configs.items():
+            if m not in include_only_measurements:
+                continue
+
+            features = None
+            if cfg.vocabulary is not None:
+                vocab = copy.deepcopy(cfg.vocabulary)
+                if feature_inclusion_frequency is not None:
+                    m_freq = feature_inclusion_frequency[m]
+                    vocab.filter(total_observations=None, min_valid_element_freq=m_freq)
+                features = vocab.vocabulary
+            elif cfg.modality == DataModality.UNIVARIATE_REGRESSION:
+                features = [m]
+            else:
+                raise ValueError(f"Config with modality {cfg.modality} should have a Vocabulary!")
+
+            match cfg.temporality:
+                case TemporalityType.STATIC:
+                    temps = [str(cfg.temporality)]
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION:
+                            aggs = ["value"]
+                        case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            aggs = ["present"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+                case TemporalityType.FUNCTIONAL_TIME_DEPENDENT if window_sizes is None:
+                    temps = [str(cfg.temporality)]
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION:
+                            aggs = ["value"]
+                        case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            aggs = ["present"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+                case TemporalityType.FUNCTIONAL_TIME_DEPENDENT if window_sizes is not None:
+                    temps = window_sizes
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION:
+                            aggs = ["count", "has_values_count", "sum", "sum_sqd", "min", "max"]
+                        case DataModality.SINGLE_LABEL_CLASSIFICATION:
+                            aggs = ["count"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+                case TemporalityType.DYNAMIC:
+                    temps = [str(cfg.temporality)] if window_sizes is None else window_sizes
+                    match cfg.modality:
+                        case DataModality.UNIVARIATE_REGRESSION | DataModality.MULTIVARIATE_REGRESSION:
+                            aggs = ["count", "has_values_count", "sum", "sum_sqd", "min", "max"]
+                        case DataModality.MULTI_LABEL_CLASSIFICATION:
+                            aggs = ["count"]
+                        case _:
+                            raise ValueError(f"{cfg.modality} invalid with {cfg.temporality}")
+
+            for temp in temps:
+                for feature in features:
+                    for agg in aggs:
+                        feature_columns.append(f"{temp}/{m}/{feature}/{agg}")
+
+        return sorted(feature_columns)
+
+    @TimeableMixin.TimeAs
+    def cache_flat_representation(
+        self,
+        subjects_per_output_file: int | None = None,
+        feature_inclusion_frequency: float | dict[str, float] | None = None,
+        window_sizes: list[str] | None = None,
+        include_only_measurements: set[str] | None = None,
+        do_overwrite: bool = False,
+        do_update: bool = True,
+    ):
+        """Writes a flat (historically summarized) representation of the dataset to disk.
+
+        This file caches a set of files useful for building flat representations of the dataset to disk,
+        suitable for, e.g., sklearn style modeling for downstream tasks. It will produce a few sets of files:
+
+        * A new directory ``self.config.save_dir / "flat_reps"`` which contains the following:
+        * A subdirectory ``raw`` which contains: (1) a json file with the configuration arguments and (2) a
+          set of parquet files containing flat (e.g., wide) representations of summarized events per subject,
+          broken out by split and subject chunk.
+        * A set of subdirectories ``past/*`` which contains summarized views over the past ``*`` time period
+          per subject per event, for all time periods in ``window_sizes``, if any.
+
+        Args:
+            subjects_per_output_file: The number of subjects that should be included in each output file.
+                Lowering this number increases the number of files written, making the process of creating and
+                leveraging these files slower but more memory efficient.
+            feature_inclusion_frequency: The base feature inclusion frequency that should be used to dictate
+                what features can be included in the flat representation. It can either be a float, in which
+                case it applies across all measurements, or `None`, in which case no filtering is applied, or
+                a dictionary from measurement type to a float dictating a per-measurement-type inclusion
+                cutoff.
+            window_sizes: Beyond writing out a raw, per-event flattened representation, the dataset also has
+                the capability to summarize these flattened representations over the historical windows
+                specified in this argument. These are strings specifying time deltas, using this syntax:
+                `link`_. Each window size will be summarized to a separate directory, and will share the same
+                subject file split as is used in the raw representation files.
+            include_only_measurements: Measurement types can also be filtered out wholesale from both
+                representations. If this list is not None, only these measurements will be included.
+            do_overwrite: If `True`, this function will overwrite the data already stored in the target save
+                directory.
+            do_update: If `True`, this function will (a) ensure that the parameters are the same or are
+                mappable to one another (critically, _it may_ default to an existing subject split if one has
+                been used historically, overwriting the specified `subjects_per_output_file` parameter!), then
+                (b) attempt to write only those files that are not yet written to disk across the historical
+                summarization targets.
+
+        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_rolling.html # noqa: E501
+        """
+
+        self._seed(1, "cache_flat_representation")
+
+        feature_inclusion_frequency, include_only_measurements = self._resolve_flat_rep_cache_params(
+            feature_inclusion_frequency, include_only_measurements
+        )
+
+        flat_dir = self.config.save_dir / "flat_reps"
+        flat_dir.mkdir(exist_ok=True, parents=True)
+
+        sp_subjects = {}
+        for split, split_subjects in self.split_subjects.items():
+            if subjects_per_output_file is None:
+                sp_subjects[split] = [[int(x) for x in split_subjects]]
+            else:
+                sp_subjects[split] = [
+                    [int(e) for e in x]
+                    for x in np.array_split(
+                        np.random.permutation(list(split_subjects)),
+                        len(split_subjects) // subjects_per_output_file,
+                    )
+                ]
+
+        params = {
+            "subjects_per_output_file": subjects_per_output_file,
+            "feature_inclusion_frequency": feature_inclusion_frequency,
+            "include_only_measurements": include_only_measurements,
+            "subject_chunks_by_split": sp_subjects,
+        }
+        params_fp = flat_dir / "params.json"
+        if params_fp.exists():
+            if do_update:
+                with open(params_fp) as f:
+                    old_params = json.load(f)
+
+                if old_params["subjects_per_output_file"] != params["subjects_per_output_file"]:
+                    print(
+                        "Standardizing chunk size to existing record "
+                        f"({old_params['subjects_per_output_file']})."
+                    )
+                    params["subjects_per_output_file"] = old_params["subjects_per_output_file"]
+                    params["subject_chunks_by_split"] = old_params["subject_chunks_by_split"]
+
+                old_params["include_only_measurements"] = sorted(old_params["include_only_measurements"])
+
+                if old_params != params:
+                    err_strings = ["Asked to update but parameters differ:"]
+                    old = set(old_params.keys())
+                    new = set(params.keys())
+                    if old != new:
+                        err_strings.append("Keys differ: ")
+                        if old - new:
+                            err_strings.append(f"  old - new = {old - new}")
+                        if new - old:
+                            err_strings.append(f"  new - old = {old - new}")
+
+                    for k in old & new:
+                        old_val = old_params[k]
+                        new_val = params[k]
+
+                        if old_val != new_val:
+                            err_strings.append(f"Values differ for {k}:")
+                            err_strings.append(f"  Old: {old_val}")
+                            err_strings.append(f"  New: {new_val}")
+
+                    raise ValueError("\n".join(err_strings))
+            elif not do_overwrite:
+                raise FileExistsError(f"do_overwrite is {do_overwrite} and {params_fp} exists!")
+
+        with open(params_fp, mode="w") as f:
+            json.dump(params, f)
+
+        # 0. Identify Output Columns
+        # We set window_sizes to None here because we want to get the feature column names for the raw flat
+        # representation, not the summarized one.
+        feature_columns = self._get_flat_rep_feature_cols(
+            feature_inclusion_frequency=feature_inclusion_frequency,
+            window_sizes=None,
+            include_only_measurements=include_only_measurements,
+        )
+
+        # 1. Produce static representation
+        static_subdir = flat_dir / "static"
+
+        static_dfs = {}
+        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
+            static_dfs[sp] = []
+            sp_dir = static_subdir / sp
+
+            for i, subjects_list in enumerate(tqdm(subjects, desc="Subject chunks", leave=False)):
+                fp = sp_dir / f"{i}.parquet"
+                static_dfs[sp].append(fp)
+                if fp.exists():
+                    if do_update:
+                        continue
+                    elif not do_overwrite:
+                        raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
+
+                df = self._get_flat_static_rep(
+                    feature_columns=feature_columns,
+                    include_only_subjects=subjects_list,
+                )
+
+                self._write_df(df, fp, do_overwrite=do_overwrite)
+
+        # 2. Produce raw representation
+        ts_subdir = flat_dir / "at_ts"
+
+        ts_dfs = {}
+        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
+            ts_dfs[sp] = []
+            sp_dir = ts_subdir / sp
+
+            for i, subjects_list in enumerate(tqdm(subjects, desc="Subject chunks", leave=False)):
+                fp = sp_dir / f"{i}.parquet"
+                ts_dfs[sp].append(fp)
+                if fp.exists():
+                    if do_update:
+                        continue
+                    elif not do_overwrite:
+                        raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
+
+                df = self._get_flat_ts_rep(
+                    feature_columns=feature_columns,
+                    include_only_subjects=subjects_list,
+                )
+
+                self._write_df(df, fp, do_overwrite=do_overwrite)
+
+        if window_sizes is None:
+            return
+
+        # 3. Produce summarized history representations
+        history_subdir = flat_dir / "over_history"
+
+        for window_size in tqdm(window_sizes, desc="History window sizes"):
+            for sp, df_fps in tqdm(list(ts_dfs.items()), desc="Windowing Splits", leave=False):
+                for i, df_fp in enumerate(tqdm(df_fps, desc="Subject chunks", leave=False)):
+                    fp = history_subdir / sp / window_size / f"{i}.parquet"
+                    if fp.exists():
+                        if do_update:
+                            continue
+                        elif not do_overwrite:
+                            raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
+
+                    df = self._summarize_over_window(df_fp, window_size)
+                    self._write_df(df, fp)
 
     @TimeableMixin.TimeAs
     def cache_deep_learning_representation(

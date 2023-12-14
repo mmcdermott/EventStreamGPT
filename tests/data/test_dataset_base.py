@@ -69,11 +69,13 @@ class ESDMock(DatasetBase[dict, dict]):
     def _update_attr_df(self, attr: str, df: dict):
         self.functions_called["_update_attr_df"].append((attr, df))
 
-    def backup_numerical_measurements(self):
-        self.functions_called["backup_numerical_measurements"].append(())
+    def _get_flat_static_rep(self, **kwargs) -> dict:
+        self.functions_called("_get_flat_rep").append(((), kwargs))
+        return {}
 
-    def restore_numerical_measurements(self):
-        self.functions_called["restore_numerical_measurements"].append(())
+    def _get_flat_ts_rep(self, **kwargs) -> dict:
+        self.functions_called("_get_flat_rep").append(((), kwargs))
+        return {}
 
     def _transform_numerical_measurement(
         self, measure: str, config: MeasurementConfig, source_df: dict
@@ -107,7 +109,7 @@ class ESDMock(DatasetBase[dict, dict]):
         self.functions_called["_total_possible_and_observed"].append(
             copy.deepcopy((measure, config, source_df))
         )
-        return 3, 3
+        return 3, 3, 6
 
     def build_DL_cached_representation(self):
         self.functions_called["build_DL_cached_representation"].append(())
@@ -142,6 +144,11 @@ class ESDMock(DatasetBase[dict, dict]):
             (df, event_type, columns_schema, ts_col)
         )
         return {}, None
+
+    @classmethod
+    def _summarize_over_window(cls, df: dict, window_size: str):
+        cls.FUNCTIONS_CALLED["_summarize_over_window"].append((df, window_size))
+        return df
 
     @classmethod
     def _split_range_events_df(
@@ -489,7 +496,8 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         partial_retained_config = MeasurementConfig(
             **{
                 **base_measurement_config_kwargs,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
+                "observation_rate_per_case": 2.0,
                 "name": "retained",
             }
         )
@@ -500,7 +508,8 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "values_column": "value",
                 "modality": DataModality.MULTIVARIATE_REGRESSION,
                 "_measurement_metadata": empty_measurement_metadata,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
+                "observation_rate_per_case": 2.0,
             }
         )
         want_functions_called = {
@@ -521,7 +530,8 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                             **base_measurement_config_kwargs,
                             "modality": DataModality.MULTIVARIATE_REGRESSION,
                             "values_column": "value",
-                            "observation_frequency": 1.0,
+                            "observation_rate_over_cases": 1.0,
+                            "observation_rate_per_case": 2,
                             "name": "numeric",
                             "_measurement_metadata": empty_measurement_metadata,
                         }
@@ -545,7 +555,8 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
             **{
                 **base_measurement_config_kwargs,
                 "vocabulary": mock_vocab,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
+                "observation_rate_per_case": 2,
                 "name": "retained",
             }
         )
@@ -557,7 +568,8 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
                 "modality": DataModality.MULTIVARIATE_REGRESSION,
                 "_measurement_metadata": empty_measurement_metadata,
                 "vocabulary": mock_vocab,
-                "observation_frequency": 1.0,
+                "observation_rate_over_cases": 1.0,
+                "observation_rate_per_case": 2,
             }
         )
         want_inferred_measurement_configs = {

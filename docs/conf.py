@@ -30,6 +30,25 @@ author = "Matthew McDermott"
 release = "0.0.1"
 version = "0.0.1"
 
+
+def ensure_pandoc_installed(_):
+    """Source: https://stackoverflow.com/questions/62398231/building-docs-fails-due-to-missing-pandoc"""
+    import pypandoc
+
+    # Download pandoc if necessary. If pandoc is already installed and on
+    # the PATH, the installed version will be used. Otherwise, we will
+    # download a copy of pandoc into docs/bin/ and add that to our PATH.
+    pandoc_dir = str(__location__ / "bin")
+    # Add dir containing pandoc binary to the PATH environment variable
+    if pandoc_dir not in os.environ["PATH"].split(os.pathsep):
+        os.environ["PATH"] += os.pathsep + pandoc_dir
+
+    pypandoc.ensure_pandoc_installed(
+        targetfolder=pandoc_dir,
+        delete_installer=True,
+    )
+
+
 # -- Run sphinx-apidoc -------------------------------------------------------
 # This ensures we don't need to run apidoc manually.
 
@@ -67,6 +86,7 @@ extensions = [
     "myst_parser",
     "sphinxcontrib.collections",
     "nbsphinx",
+    "sphinx_immaterial",
 ]
 
 collections_dir = __location__ / "_collections"
@@ -167,7 +187,7 @@ todo_emit_warnings = True
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "sphinx_material"
+html_theme = "sphinx_immaterial"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -327,3 +347,7 @@ intersphinx_mapping = {
 }
 
 print(f"loading configurations for {project} {version} ...", file=sys.stderr)
+
+
+def setup(app):
+    app.connect("builder-inited", ensure_pandoc_installed)

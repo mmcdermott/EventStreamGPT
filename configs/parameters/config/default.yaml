@@ -3,6 +3,9 @@ head_dim:
   max: 64
 hidden_size:
   value: "null"
+intermediate_size:
+  min: 32
+  max: 1028
 num_attention_heads:
   min: 1
   max: 16
@@ -55,6 +58,8 @@ static_embedding_weight:
 categorical_embedding_weight:
   min: 0.0
   max: 1.0
+do_use_learnable_sinusoidal_ATE:
+  values: [True, False]
 
 measurements_per_dep_graph_level:
   values: ???

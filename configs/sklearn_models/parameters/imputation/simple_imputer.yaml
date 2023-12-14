@@ -1,0 +1,9 @@
+CLS:
+  value: "SimpleImputer"
+
+strategy:
+  values: ["constant", "mean", "median", "most_frequent"]
+fill_value:
+  value: 0
+add_indicator:
+  values: [True, False]

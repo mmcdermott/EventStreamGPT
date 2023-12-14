@@ -1,0 +1,22 @@
+CLS:
+  value: "ESDFlatFeatureLoader"
+
+window_sizes:
+  values:
+    - ["6h", "1d", "3d"]
+    - ["1d", "7d", "30d"]
+    - ["3d", "10d", "90d"]
+    - ["7d", "30d", "180d"]
+    - ["1d", "30d", "730d", "FULL"]
+    - ["180d", "365d", "1825d", "3650d", "FULL"]
+    - ["1d", "7d", "FULL"]
+    - ["1d", "FULL"]
+    - ["FULL"]
+    - ["1d", "365d"]
+    - ["30d"]
+feature_inclusion_frequency:
+  distribution: log_uniform_values
+  min: 1e-7
+  max: 1e-2
+convert_to_mean_var:
+  values: [True, False]

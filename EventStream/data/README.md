@@ -176,10 +176,14 @@ A subset of notable fields include:
    stored, and vocabularies can be filtered to only elements occurring sufficiently frequently via a
    function and "idxmaps" (maps from vocabulary elements to their integer index) are also available via an
    accessor. These can be built from observations during pre-processing dynamically.
-6. `observation_frequency` stores how frequently that measurement was observed with a non-null value (or a
-   non-null key in the case of `MULTIVARIATE_REGRESSION` measurements) among all possible instances it could
-   have been observed (e.g., all possible subjects for `STATIC` measurements, or otherwise all possible
+6. `observation_rate_over_cases` stores how frequently that measurement was observed with a non-null value (or
+   a non-null key in the case of `MULTIVARIATE_REGRESSION` measurements) among all possible instances it could
+   have been observed (e.g., all possible subjects for `STATIC` measurements or otherwise all possible
    events).
+7. `observation_rate_per_case` stores how many times that measurement was observed with a non-null value (or a
+   non-null key in the case of `MULTIVARIATE_REGRESSION` measurements) per possible instance where it was
+   observed at all (e.g., all possible subjects with an observation of the measure for `STATIC` measurements
+   or all possible events with an observation of the measure).
 
 This configuration file is readable from and writable to JSON files. Full details of the options for this
 configuration object can be found in its source documentation.

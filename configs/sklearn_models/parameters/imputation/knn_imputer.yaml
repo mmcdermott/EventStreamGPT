@@ -1,0 +1,10 @@
+CLS:
+  value: "KNNImputer"
+
+n_neighbors:
+  min: 2
+  max: 10
+weights:
+  values: ["uniform", "distance"]
+add_indicator:
+  values: [True, False]

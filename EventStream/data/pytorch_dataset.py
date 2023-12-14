@@ -153,10 +153,10 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             self.has_task = True
 
-            if len(list(task_dir.glob("{split}*.parquet"))) > 0:
+            if len(list(task_dir.glob(f"{split}*.parquet"))) > 0:
                 print(
                     f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
-                    f"{', '.join([str(fp) for fp in task_dir.glob('{split}*.parquet')])}"
+                    f"{', '.join([str(fp) for fp in task_dir.glob(f'{split}*.parquet')])}"
                 )
                 self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
                 with open(task_info_fp) as f:
@@ -186,7 +186,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                             self.task_vocabs[t] = [False, True]
                         case "multi_class_classification":
                             self.task_vocabs[t] = list(
-                                range(task_df.select(pl.col(t).max()).collect().item())
+                                range(task_df.select(pl.col(t).max()).collect().item() + 1)
                             )
 
                 task_info_fp = task_dir / "task_info.json"
@@ -226,7 +226,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 self.cached_data = pl.scan_parquet(task_dir / f"{split}*.parquet")
             else:
                 raise FileNotFoundError(
-                    f"Neither {task_df_fp} nor {raw_task_df_fp} exist, but config.task_df_name = "
+                    f"Neither {task_dir}/*.parquet nor {raw_task_df_fp} exist, but config.task_df_name = "
                     f"{config.task_df_name}!"
                 )
         else:
@@ -384,25 +384,27 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             <class 'polars.config.Config'>
             >>> PytorchDataset._build_task_cached_df(task_df, cached_data)
             shape: (3, 8)
-            ┌──────────┬──────────┬───────┬────────────┬────────────┬────────────┬────────┬────────┐
-            │ subject_ ┆ start_ti ┆ time  ┆ dynamic_me ┆ dynamic_in ┆ dynamic_va ┆ label1 ┆ label2 │
-            │ id       ┆ me       ┆ ---   ┆ asurement_ ┆ dices      ┆ lues       ┆ ---    ┆ ---    │
-            │ ---      ┆ ---      ┆ list[ ┆ indices    ┆ ---        ┆ ---        ┆ i64    ┆ i64    │
-            │ i64      ┆ datetime ┆ f64]  ┆ ---        ┆ list[list[ ┆ list[list[ ┆        ┆        │
-            │          ┆ [μs]     ┆       ┆ list[list[ ┆ i64]]      ┆ f64]]      ┆        ┆        │
-            │          ┆          ┆       ┆ i64]]      ┆            ┆            ┆        ┆        │
-            ╞══════════╪══════════╪═══════╪════════════╪════════════╪════════════╪════════╪════════╡
-            │ 0        ┆ 2020-01- ┆ [0.0, ┆ [[0, 1,    ┆ [[6, 11,   ┆ [[null,    ┆ 0      ┆ 0      │
-            │          ┆ 01       ┆ 1440. ┆ 1], [0,    ┆ 12], [1,   ┆ 0.2, 1.0], ┆        ┆        │
-            │          ┆ 00:00:00 ┆ 0]    ┆ 2]]        ┆ 40]]       ┆ [null,     ┆        ┆        │
-            │          ┆          ┆       ┆            ┆            ┆ 0.0]]      ┆        ┆        │
-            │ 1        ┆ 2020-02- ┆ []    ┆ []         ┆ []         ┆ []         ┆ 1      ┆ 1      │
-            │          ┆ 01       ┆       ┆            ┆            ┆            ┆        ┆        │
-            │          ┆ 00:00:00 ┆       ┆            ┆            ┆            ┆        ┆        │
-            │ 2        ┆ 2020-03- ┆ [1440 ┆ [[0, 4]]   ┆ [[5, 87]]  ┆ [[null,    ┆ 0      ┆ 5      │
-            │          ┆ 01       ┆ .0]   ┆            ┆            ┆ null]]     ┆        ┆        │
-            │          ┆ 00:00:00 ┆       ┆            ┆            ┆            ┆        ┆        │
-            └──────────┴──────────┴───────┴────────────┴────────────┴────────────┴────────┴────────┘
+            ┌───────────┬───────────┬───────────┬──────────┬──────────┬──────────┬────────┬────────┐
+            │ subject_i ┆ start_tim ┆ time      ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ label1 ┆ label2 │
+            │ d         ┆ e         ┆ ---       ┆ measurem ┆ indices  ┆ values   ┆ ---    ┆ ---    │
+            │ ---       ┆ ---       ┆ list[f64] ┆ ent_indi ┆ ---      ┆ ---      ┆ i64    ┆ i64    │
+            │ i64       ┆ datetime[ ┆           ┆ ces      ┆ list[lis ┆ list[lis ┆        ┆        │
+            │           ┆ μs]       ┆           ┆ ---      ┆ t[i64]]  ┆ t[f64]]  ┆        ┆        │
+            │           ┆           ┆           ┆ list[lis ┆          ┆          ┆        ┆        │
+            │           ┆           ┆           ┆ t[i64]]  ┆          ┆          ┆        ┆        │
+            ╞═══════════╪═══════════╪═══════════╪══════════╪══════════╪══════════╪════════╪════════╡
+            │ 0         ┆ 2020-01-0 ┆ [0.0,     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 0      │
+            │           ┆ 1         ┆ 1440.0]   ┆ 1], [0,  ┆ 12], [1, ┆ 0.2,     ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆ 2]]      ┆ 40]]     ┆ 1.0],    ┆        ┆        │
+            │           ┆           ┆           ┆          ┆          ┆ [null,   ┆        ┆        │
+            │           ┆           ┆           ┆          ┆          ┆ 0.0]]    ┆        ┆        │
+            │ 1         ┆ 2020-02-0 ┆ []        ┆ []       ┆ []       ┆ []       ┆ 1      ┆ 1      │
+            │           ┆ 1         ┆           ┆          ┆          ┆          ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
+            │ 2         ┆ 2020-03-0 ┆ [1440.0]  ┆ [[0, 4]] ┆ [[5,     ┆ [[null,  ┆ 0      ┆ 5      │
+            │           ┆ 1         ┆           ┆          ┆ 87]]     ┆ null]]   ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
+            └───────────┴───────────┴───────────┴──────────┴──────────┴──────────┴────────┴────────┘
         """
         time_dep_cols = [c for c in ("time", "time_delta") if c in cached_data.columns]
         time_dep_cols.extend(["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"])
@@ -478,6 +480,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         """
 
         full_subj_data = {c: v for c, v in zip(self.columns, self.cached_data[idx])}
+        for k in ["static_indices", "static_measurement_indices"]:
+            if full_subj_data[k] is None:
+                full_subj_data[k] = []
         if self.config.do_include_subject_id:
             full_subj_data["subject_id"] = self.subject_ids[idx]
         if self.config.do_include_start_time_min:

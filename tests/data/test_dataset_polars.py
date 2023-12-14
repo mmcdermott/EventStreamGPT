@@ -89,12 +89,12 @@ class TimeOfDayFunctorMock(TimeDependentFunctor):
     def pl_expr(self):
         return (
             pl.when(pl.col("timestamp").dt.hour() < 6)
-            .then("EARLY_AM")
+            .then(pl.lit("EARLY_AM"))
             .when(pl.col("timestamp").dt.hour() < 12)
-            .then("AM")
+            .then(pl.lit("AM"))
             .when(pl.col("timestamp").dt.hour() < 21)
-            .then("PM")
-            .otherwise("LATE_PM")
+            .then(pl.lit("PM"))
+            .otherwise(pl.lit("LATE_PM"))
         )
 
 
@@ -601,19 +601,22 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTI_LABEL_CLASSIFICATION,
         vocabulary=Vocabulary(["UNK", "foo", "bar"], [0, 2 / 3, 1 / 3]),
-        observation_frequency=5 / 9,
+        observation_rate_over_cases=5 / 9,
+        observation_rate_per_case=1.0,
     ),
     "dynamic_dropped_insufficient_occurrences": MeasurementConfig(
         name="dynamic_dropped_insufficient_occurrences",
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.DROPPED,
-        observation_frequency=1 / 9,
+        observation_rate_over_cases=1 / 9,
+        observation_rate_per_case=1.0,
     ),
     "static": MeasurementConfig(
         name="static",
         temporality=TemporalityType.STATIC,
         modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-        observation_frequency=1,
+        observation_rate_over_cases=1,
+        observation_rate_per_case=1.0,
         vocabulary=Vocabulary(["UNK", "bar", "foo"], [0, 0.5, 0.5]),
     ),
     "time_dependent_age_lt_90": MeasurementConfig(
@@ -639,14 +642,16 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
             ),
             name="time_dependent_age_lt_90",
         ),
-        observation_frequency=1,
+        observation_rate_over_cases=1,
+        observation_rate_per_case=1,
         vocabulary=None,
     ),
     "time_dependent_age_all": MeasurementConfig(
         name="time_dependent_age_all",
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
         functor=AgeFunctorMock(),
-        observation_frequency=1,
+        observation_rate_over_cases=1,
+        observation_rate_per_case=1,
         vocabulary=None,
         _measurement_metadata=pd.Series(
             [
@@ -662,7 +667,8 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         name="time_dependent_time_of_day",
         temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
         functor=TimeOfDayFunctorMock(),
-        observation_frequency=1,
+        observation_rate_over_cases=1,
+        observation_rate_per_case=1,
         vocabulary=Vocabulary(["UNK", "EARLY_AM", "PM", "LATE_PM"], [0, 4, 3, 2]),
     ),
     # Keys and Values:
@@ -710,7 +716,8 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
                 ["mrbo1", "mrbo2", "mrbo3"], name="multivariate_regression_bounded_outliers"
             ),
         ),
-        observation_frequency=2 / 9,
+        observation_rate_over_cases=2 / 9,
+        observation_rate_per_case=6,
         vocabulary=Vocabulary(["UNK", "mrbo1", "mrbo2", "mrbo3"], [0, 1, 1, 1]),
     ),
     "multivariate_regression_preset_value_type": MeasurementConfig(
@@ -750,7 +757,8 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
                 name="multivariate_regression_preset_value_type",
             ),
         ),
-        observation_frequency=2 / 9,
+        observation_rate_over_cases=2 / 9,
+        observation_rate_per_case=8,
         vocabulary=Vocabulary(
             [
                 "UNK",
@@ -771,7 +779,8 @@ WANT_INFERRED_MEASUREMENT_CONFIGS = {
         temporality=TemporalityType.DYNAMIC,
         modality=DataModality.MULTIVARIATE_REGRESSION,
         values_column="mrnp_vals",
-        observation_frequency=2 / 9,
+        observation_rate_over_cases=2 / 9,
+        observation_rate_per_case=17 / 2,
         vocabulary=Vocabulary(
             [
                 "UNK",
@@ -1707,6 +1716,14 @@ class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
         got_expl = got_DL_rep.select(exploded_expr)
 
         self.assertEqual(want_expl, got_expl)
+
+        with self.subTest("Caching a flat representation should run"):
+            with TemporaryDirectory() as d:
+                save_dir = Path(d) / "save_dir"
+                E.config.save_dir = save_dir
+                E.cache_flat_representation()
+
+                # To-do: Produce expected flat output.
 
         with self.subTest("Save/load should work"):
             with TemporaryDirectory() as d:
