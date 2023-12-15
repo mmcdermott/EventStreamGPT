@@ -394,6 +394,10 @@ documentation](https://pola-rs.github.io/polars/py-polars/html/reference/api/pol
 
 EventStream code is tested in the global tests folder. These tests can be run via `python -m unittest` in the global directory. These tests are not exhaustive, particularly in covering the operation of EventStreamTransformer, but they are relatively comprehensive over core EventStreamData functionality.
 
+## Frequently Asked Questions
+
+Please see [this google doc](https://docs.google.com/document/d/1N_MNeqtnrCypkWKXlQjmvoxzV_k4kP_LY0_YfjkFEjA/edit?usp=sharing) for a running list of some common questions or errors that people have encountered.
+
 ## Contributing
 
 Contributions to the EventStream project are welcome! If you encounter any issues, have feature requests, or would like to submit improvements, please follow these steps:
