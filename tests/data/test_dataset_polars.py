@@ -77,7 +77,7 @@ class AgeFunctorMock(TimeDependentFunctor):
         return None
 
     def pl_expr(self):
-        return (pl.col("timestamp") - pl.col(DOB_COL)).dt.nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
+        return (pl.col("timestamp") - pl.col(DOB_COL)).dt.total_nanoseconds() / 1e9 / 60 / 60 / 24 / 365.25
 
 
 class TimeOfDayFunctorMock(TimeDependentFunctor):
@@ -250,6 +250,20 @@ want_event_TODs = {
     k: "EARLY_AM" if v.hour < 6 else "UNK" if v.hour < 12 else "PM" if v.hour < 21 else "LATE_PM"
     for k, v in want_event_times.items()
 }
+
+event_nums = list(want_event_agg_mapping.keys())
+event_ids_df = pl.DataFrame(
+    {
+        "event_num": event_nums,
+        "subject_id": [in_event_subjects[want_event_agg_mapping[en][0]] for en in event_nums],
+        "timestamp": [want_event_times[en] for en in event_nums],
+    }
+).with_columns(
+    pl.struct(subject_id=pl.col("subject_id"), timestamp=pl.col("timestamp"))
+    .hash(1, 2, 3, 4)
+    .alias("event_id")
+)
+want_event_ids = {en: eid for en, eid in zip(event_ids_df["event_num"], event_ids_df["event_id"])}
 
 subject_dobs = {
     1: datetime(2000, 1, 1),
@@ -860,7 +874,7 @@ WANT_SUBJECTS_DF = pl.DataFrame(
 
 WANT_EVENTS_DF = pl.DataFrame(
     data={
-        "event_id": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "event_id": [want_event_ids[en] for en in range(1, 14)],
         "event_type": [
             "MVR",
             "DDIC",
@@ -885,7 +899,7 @@ WANT_EVENTS_DF = pl.DataFrame(
         "time_dependent_time_of_day": [want_event_TODs[i] for i in range(1, 14)],
     },
     schema={
-        "event_id": pl.UInt8,
+        "event_id": pl.UInt64,
         "event_type": pl.Categorical,
         "subject_id": pl.UInt8,
         "timestamp": pl.Datetime,
@@ -901,17 +915,20 @@ WANT_MEASUREMENTS_DF = pl.DataFrame(
     data={
         "measurement_id": list(range(30)),
         "event_id": [
-            *([0] * 8 + [5] * 9),
-            *([1] * 2 + [6] * 2),
-            2,
-            3,
-            4,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
+            want_event_ids[en + 1]
+            for en in [
+                *([0] * 8 + [5] * 9),
+                *([1] * 2 + [6] * 2),
+                2,
+                3,
+                4,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+            ]
         ],
         # Has pre-set vocab ['foo', 'bar'], occurs on 'DPV' events.
         "dynamic_preset_vocab": [
@@ -1166,7 +1183,7 @@ WANT_MEASUREMENTS_DF = pl.DataFrame(
     },
     schema={
         "measurement_id": pl.UInt8,
-        "event_id": pl.UInt8,
+        "event_id": pl.UInt64,
         "dynamic_preset_vocab": pl.Categorical,
         "dynamic_dropped_insufficient_occurrences": pl.Categorical,
         "multivariate_regression_bounded_outliers": pl.Categorical,
@@ -1668,15 +1685,15 @@ WANT_DL_REP_DF = pl.DataFrame(
         "dynamic_values": pl.List(pl.List(pl.Float64)),
     },
 ).with_columns(
-    pl.when(pl.col("dynamic_indices").list.lengths() == 0)
+    pl.when(pl.col("dynamic_indices").list.len() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_indices"))
     .alias("dynamic_indices"),
-    pl.when(pl.col("dynamic_measurement_indices").list.lengths() == 0)
+    pl.when(pl.col("dynamic_measurement_indices").list.len() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_measurement_indices"))
     .alias("dynamic_measurement_indices"),
-    pl.when(pl.col("dynamic_values").list.lengths() == 0)
+    pl.when(pl.col("dynamic_values").list.len() == 0)
     .then(pl.lit(None))
     .otherwise(pl.col("dynamic_values"))
     .alias("dynamic_values"),

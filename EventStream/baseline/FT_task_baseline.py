@@ -16,6 +16,7 @@ import polars as pl
 import polars.selectors as cs
 import wandb
 from hydra.core.config_store import ConfigStore
+from loguru import logger
 from omegaconf import OmegaConf
 from sklearn.decomposition import NMF, PCA
 from sklearn.ensemble import RandomForestClassifier
@@ -31,11 +32,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from ..data.dataset_polars import Dataset
-from ..data.pytorch_dataset import PytorchDataset
+from ..data.pytorch_dataset import ConstructorPytorchDataset
 from ..tasks.profile import add_tasks_from
 from ..utils import task_wrapper
 
-pl.enable_string_cache(True)
+pl.enable_string_cache()
 
 
 def load_flat_rep(
@@ -649,7 +650,7 @@ def eval_binary_classification(Y: np.ndarray, probs: np.ndarray) -> dict[str, fl
 
 
 def train_sklearn_pipeline(cfg: SklearnConfig):
-    print(f"Saving config to {cfg.save_dir / 'config.yaml'}")
+    logger.info(f"Saving config to {cfg.save_dir / 'config.yaml'}")
     cfg.save_dir.mkdir(exist_ok=True, parents=True)
     OmegaConf.save(cfg, cfg.save_dir / "config.yaml")
 
@@ -658,7 +659,7 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     task_dfs = add_tasks_from(ESD.config.save_dir / "task_dfs")
     task_df = task_dfs[cfg.task_df_name]
 
-    task_type, normalized_label = PytorchDataset.normalize_task(
+    task_type, normalized_label = ConstructorPytorchDataset.normalize_task(
         pl.col(cfg.finetuning_task_label), task_df.schema[cfg.finetuning_task_label]
     )
 
@@ -674,7 +675,7 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
 
     # TODO(mmd): Window sizes may violate start_time constraints in task dfs!
 
-    print(f"Loading representations for {', '.join(cfg.feature_selector.window_sizes)}")
+    logger.info(f"Loading representations for {', '.join(cfg.feature_selector.window_sizes)}")
     subjects_included = {}
 
     if cfg.train_subset_size not in (None, "FULL"):
@@ -706,24 +707,26 @@ def train_sklearn_pipeline(cfg: SklearnConfig):
     Xs_and_Ys = {}
     for split in ("train", "tuning", "held_out"):
         st = datetime.now()
-        print(f"Loading dataset for {split}")
+        logger.info(f"Loading dataset for {split}")
         df = flat_reps[split].with_columns(normalized_label.alias(cfg.finetuning_task_label)).collect()
 
         X = df.drop(["subject_id", "timestamp", cfg.finetuning_task_label])
         Y = df[cfg.finetuning_task_label].to_numpy()
-        print(f"Done with {split} dataset with X of shape {X.shape} " f"(elapsed: {datetime.now() - st})")
+        logger.info(
+            f"Done with {split} dataset with X of shape {X.shape} " f"(elapsed: {datetime.now() - st})"
+        )
         Xs_and_Ys[split] = (X, Y)
 
-    print("Initializing model!")
+    logger.info("Initializing model!")
     model = cfg.get_model(dataset=ESD)
 
-    print("Fitting model!")
+    logger.info("Fitting model!")
     model.fit(*Xs_and_Ys["train"])
-    print(f"Saving model to {cfg.save_dir}")
+    logger.info(f"Saving model to {cfg.save_dir}")
     with open(cfg.save_dir / "model.pkl", mode="wb") as f:
         pickle.dump(model, f)
 
-    print("Evaluating model!")
+    logger.info("Evaluating model!")
     all_metrics = {}
     for split in ("tuning", "held_out"):
         X, Y = Xs_and_Ys[split]

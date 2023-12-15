@@ -12,7 +12,7 @@ class StddevCutoffOutlierDetector(Preprocessor):
     This is a concrete implementation of the Preprocessor abstract class. It is a pre-processor that
     identifies outliers, here defined to be data points more than a specifiable number of standard deviations
     away from the mean. It is implemented as a Polars friendly pre-processor, meaning that it is implemented
-    as a Polars expression that can be used in both a select and a groupby aggregation context.
+    as a Polars expression that can be used in both a select and a group_by aggregation context.
 
     Attributes:
         stddev_cutoff: The number of standard deviations from the mean to use as the cutoff for identifying

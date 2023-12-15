@@ -6,6 +6,7 @@ from typing import Any
 
 import lightning as L
 import torch
+from loguru import logger
 
 from ...data.pytorch_dataset import PytorchDataset
 from ..config import StructuredEventProcessingMode, StructuredTransformerConfig
@@ -153,8 +154,10 @@ def get_embeddings(cfg: FinetuneConfig):
 
         if os.environ.get("LOCAL_RANK", "0") == "0":
             if embeddings_fp.is_file() and not cfg.do_overwrite:
-                print(f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`.")
+                logger.info(
+                    f"Embeddings already exist at {embeddings_fp}. To overwrite, set `do_overwrite=True`."
+                )
             else:
-                print(f"Saving {sp} embeddings to {embeddings_fp}.")
+                logger.info(f"Saving {sp} embeddings to {embeddings_fp}.")
                 embeddings_fp.parent.mkdir(exist_ok=True, parents=True)
                 torch.save(embeddings, embeddings_fp)

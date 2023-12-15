@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-pl.enable_string_cache(True)
+pl.enable_string_cache()
 
 
 def add_tasks_from(
@@ -151,7 +151,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
     """
     label_cols = [c for c in task_df.columns if c not in KEY_COLS]
     return (
-        task_df.groupby("subject_id")
+        task_df.group_by("subject_id")
         .agg(
             pl.count().alias("samples_per_subject"),
             *[pl.col(c).mean() for c in label_cols],
