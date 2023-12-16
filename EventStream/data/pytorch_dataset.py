@@ -595,7 +595,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
-        length_constraint = pl.col("dynamic_indices").list.len() >= config.min_seq_len
+        length_constraint = pl.col("dynamic_indices").list.lengths() >= config.min_seq_len
         self.cached_data = self.cached_data.filter(length_constraint)
 
         if "time_delta" not in self.cached_data.columns:
