@@ -11,6 +11,7 @@ import dataclasses
 import math
 import multiprocessing
 from collections.abc import Callable, Sequence
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Union
 
@@ -732,7 +733,24 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case False:
                     filter_exprs.append(pl.col(col).is_null())
                 case _:
-                    incl_list = pl.Series(list(incl_targets), dtype=df.schema[col])
+                    try:
+                        incl_list = pl.Series(list(incl_targets), dtype=df.schema[col])
+                    except TypeError as e:
+                        incl_targets_by_type = defaultdict(list)
+                        for t in incl_targets:
+                            incl_targets_by_type[str(type(t))].append(t)
+
+                        by_type_summ = []
+                        for tp, vals in incl_targets_by_type.items():
+                            by_type_summ.append(
+                                f"{tp}: {len(vals)} values: {', '.join(str(x) for x in vals[:5])}..."
+                            )
+
+                        by_type_summ = '\n'.join(by_type_summ)
+
+                        raise ValueError(
+                            f"Failed to convert incl_targets to {df.schema[col]}:\n{by_type_summ}"
+                        ) from e
                     filter_exprs.append(pl.col(col).is_in(incl_list))
 
         return df.filter(pl.all_horizontal(filter_exprs))
