@@ -4,6 +4,8 @@ from collections import defaultdict
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
+from safetensors.torch import save_file, load_file
+from nested_ragged_tensors.ragged_tensors import JointNestedRaggedTensorDict
 
 import numpy as np
 import polars as pl
@@ -68,7 +70,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         self.fetch_metadata()
 
     def __len__(self):
-        return self.tensors["time_delta"].shape[0]
+        return len(self.sparse_tensors)
 
     @property
     def has_task(self) -> bool:
@@ -124,6 +126,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def _cache_subset(self):
+
+        raise NotImplementedError()
         # Load cached tensors from full data
         tensors = {
             k: torch.load(fp) for k, fp in self._full_data_config.tensorized_cached_files(self.split).items()
@@ -221,51 +225,37 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             json.dump(stats, f)
 
         logger.info("Collecting data to cache.")
+        data_as_lists = defaultdict(list)
         for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
-                items.append(it)
+                for k, val in it.items():
+                    data_as_lists[k].append(val)
 
-        logger.info("Collating data into dense tensors to cache.")
-        global_batch = constructor_pyd.collate(items, do_convert_float_nans=False)
+        logger.info("Constructing tensors to cache.")
+        logger.info("Dataset keys: {data_as_lists.keys()}")
 
-        tensors_to_cache = []
-        seen_keys = set()
-        for k, T in global_batch.items():
-            if k.endswith("_mask") and k != "event_mask":
-                continue
-            if T is None:
-                continue
-            if isinstance(T, torch.Tensor):
-                if k in seen_keys:
-                    raise KeyError(f"Duplicate tensor save key {k}!")
-                tensors_to_cache.append((k, T))
-                seen_keys.add(k)
-            elif isinstance(T, dict):
-                for kk, TT in T.items():
-                    if TT is None:
-                        continue
-                    elif not isinstance(TT, torch.Tensor):
-                        raise TypeError(f"Unrecognized tensor type {type(TT)} @ {k}/{kk}!")
+        sparse_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
+        dense_keys = [k for k in data_as_lists.keys() if k not in sparse_keys]
 
-                    if kk in seen_keys:
-                        raise KeyError(f"Duplicate tensor save key {kk}!")
-                    tensors_to_cache.append((kk, TT))
-                    seen_keys.add(kk)
-            else:
-                raise TypeError(f"Unrecognized tensor type {type(T)} @ {k}!")
+        # Dense tensors
+        logger.info(f"Collating dense tensors from {dense_keys}")
+        dense_tensors = {k: torch.utils.data.default_collate(data_as_lists[k]) for k in dense_keys}
+        fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.pt"
+        logger.info("Saving dense tensors to {fp}")
+        save_file(dense_tensors, fp)
 
-        for k, T in tqdm(tensors_to_cache, leave=False, desc="Caching..."):
-            fp = self._full_data_config.tensorized_cached_dir / self.split / f"{k}.pt"
-            fp.parent.mkdir(exist_ok=True, parents=True)
-            st = datetime.now()
-            logger.info(f"Caching tensor {k} of shape {T.shape} to {fp}...")
-            torch.save(T, fp)
-            logger.info(f"Done in {datetime.now() - st}")
+        # Ragged tensors
+        logger.info(f"Constructing ragged tensors across {sparse_keys}")
+        sparse_tensors = JointNestedRaggedTensorDict({k: data_as_lists[k] for k in sparse_keys})
+        fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.pt"
+        logger.info("Saving sparse tensors to {fp}")
+        sparse_tensors.save(fp)
 
     def fetch_tensors(self):
-        self.tensors = {
-            k: torch.load(fp) for k, fp in self.config.tensorized_cached_files(self.split).items()
-        }
+        self.dense_tensors = load_file(self._full_data_config.tensorized_cached_dir / self.split / "dense.pt")
+        self.sparse_tensors = JointNestedRaggedTensorDict.load(
+            self._full_data_config.tensorized_cached_dir / self.split / "sparse.pt"
+        )
 
         with open(self.config.tensorized_cached_dir / self.split / "data_stats.json") as f:
             stats = json.load(f)
@@ -313,7 +303,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         6. ``static_measurement_indices`` captures which measurement vocabulary was used to source a given
            data element.
         """
-        return {k: T[idx] for k, T in self.tensors.items()}
+        return {k: T[idx] for k, T in self.dense_tensors.items()}, {k: T[idx] for k, T in self.sparse_tensors.items()}
 
     @TimeableMixin.TimeAs
     def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
@@ -329,7 +319,12 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             A fully collated, tensorized, and padded batch.
         """
 
-        collated = torch.utils.data.default_collate(batch)
+        dense, sparse = zip(*batch)
+
+        dense_collated = torch.utils.data.default_collate(dense)
+
+        sparse = JointNestedRaggedTensorDict.vstack(sparse).to_dense()
+        collated = {**dense_collated, **sparse}
 
         self._register_start("collate_post_padding_processing")
         out_batch = {}
