@@ -126,85 +126,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def _cache_subset(self):
-
         raise NotImplementedError()
-        # Load cached tensors from full data
-        tensors = {
-            k: torch.load(fp) for k, fp in self._full_data_config.tensorized_cached_files(self.split).items()
-        }
-
-        if self.split == "train":
-            # Randomly sample for new subset_size number of subjects and save new tensors
-            full_subj_ids = list(set(tensors["subject_id"]))
-            subset_size = count_or_proportion(len(full_subj_ids), self.config.train_subset_size)
-            logger.info(
-                f"Caching subset of {subset_size} subjects from full dataset of {len(full_subj_ids)} subjects"
-            )
-            subset_subjects = np.random.default_rng(self.config.train_subset_seed).choice(
-                list(set(tensors["subject_id"])), size=subset_size, replace=False
-            )
-            subject_idx = np.where(np.isin(np.array(tensors["subject_id"]), subset_subjects))[0]
-            for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
-                subset_T = T[subject_idx]
-                fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
-                fp.parent.mkdir(exist_ok=True, parents=True)
-                st = datetime.now()
-                logger.info(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
-                torch.save(subset_T, fp)
-                logger.info(f"Done in {datetime.now() - st}")
-
-            # Load cached data on full data
-            task_dir = self._full_data_config.tensorized_cached_dir / self.split
-            cached_data = pl.DataFrame(
-                {
-                    "subject_id": torch.load(task_dir / "subject_id.pt").numpy(),
-                    "time_delta": torch.load(task_dir / "time_delta.pt").numpy(),
-                    "event_mask": torch.load(task_dir / "event_mask.pt").numpy(),
-                    # 'dynamic_indices': torch.load(task_dir / "dynamic_indices.pt").numpy().tolist()
-                }
-            )
-
-            # Filter for sampled subjects and event_mask = True
-            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
-            cached_data = cached_data.select(pl.col(["time_delta", "event_mask"]).explode()).filter(
-                pl.col("event_mask")
-            )
-
-            stats = cached_data.select(
-                pl.col("time_delta").explode().drop_nulls().alias("inter_event_time")
-            ).select(
-                pl.col("inter_event_time").min().alias("min"),
-                pl.col("inter_event_time").log().mean().alias("mean_log"),
-                pl.col("inter_event_time").log().std().alias("std_log"),
-            )
-            subset_data_stats_fp = self.config.tensorized_cached_dir / self.split / "data_stats.json"
-            with open(subset_data_stats_fp, mode="w") as f:
-                subset_stats = {
-                    "mean_log_inter_event_time_min": stats["mean_log"].item(),
-                    "std_log_inter_event_time_min": stats["std_log"].item(),
-                }
-                logger.info(f"Saving subset data_stats to {subset_data_stats_fp}")
-                json.dump(subset_stats, f)
-        else:
-            # Save full tensors in subset dir
-            for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
-                subset_T = T
-                fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
-                fp.parent.mkdir(exist_ok=True, parents=True)
-                st = datetime.now()
-                logger.info(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
-                torch.save(subset_T, fp)
-                logger.info(f"Done in {datetime.now() - st}")
-
-            # Save full_data_stats into subset data_stats
-            full_data_stats_fp = self._full_data_config.tensorized_cached_dir / self.split / "data_stats.json"
-            subset_data_stats_fp = self.config.tensorized_cached_dir / self.split / "data_stats.json"
-            with open(full_data_stats_fp) as f:
-                logger.info(f"Loading full data stats from {full_data_stats_fp}")
-                full_data_stats = json.load(f)
-            with open(subset_data_stats_fp, mode="w") as f:
-                logger.info(f"Saving {self.split} full data stats to subset dir {subset_data_stats_fp}")
-                json.dump(full_data_stats, f)
 
     @TimeableMixin.TimeAs
     def _cache_full_data(self):
@@ -335,16 +257,24 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         dense_collated = torch.utils.data.default_collate(dense)
 
-        sparse = JointNestedRaggedTensorDict.vstack(sparse).to_dense()
-        collated = {**dense_collated, **sparse}
+        sparse = JointNestedRaggedTensorDict.vstack(sparse)
+        sparse.tensors["dim1/event_mask"] = torch.BoolTensor([True for _ in sparse.tensors["dim1/time_delta"]])
+        sparse.tensors["dim2/dynamic_values_mask"] = torch.BoolTensor(
+            [True for _ in sparse.tensors["dim2/dynamic_values"]]
+        )
+        collated = {**dense_collated, **sparse.to_dense()}
 
         self._register_start("collate_post_padding_processing")
         out_batch = {}
 
         # Add event and data masks on the basis of which elements are present, then convert the tensor
         # elements to the appropriate types.
-        out_batch["event_mask"] = ~collated["time_delta"].isnan()
-        out_batch["dynamic_values_mask"] = ~collated["dynamic_values"].isnan()
+        out_batch["event_mask"] = (
+            collated["event_mask"] & ~collated["time_delta"].isnan()
+        )
+        out_batch["dynamic_values_mask"] = (
+            collated["dynamic_values_mask"] & ~collated["dynamic_values"].isnan()
+        )
         out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"], nan=0)
         out_batch["dynamic_indices"] = torch.nan_to_num(collated["dynamic_indices"], 0).long()
         out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"].long()
