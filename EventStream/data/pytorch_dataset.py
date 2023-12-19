@@ -251,7 +251,14 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         # Ragged tensors
         logger.info(f"Constructing ragged tensors across {sparse_keys}")
-        sparse_tensors = JointNestedRaggedTensorDict({k: data_as_lists[k] for k in sparse_keys})
+        sparse_tensors_dict = {k: data_as_lists[k] for k in sparse_keys}
+        sparse_tensors_dict["dynamic_values"] = [
+            [
+                [v if v is not None else float('nan') for v in measurements]
+                for measurements in events
+            ] for events in sparse_tensors_dict["dynamic_values"]
+        ]
+        sparse_tensors = JointNestedRaggedTensorDict(sparse_tensors_dict)
         fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.pt"
         logger.info("Saving sparse tensors to {fp}")
         sparse_tensors.save(fp)
