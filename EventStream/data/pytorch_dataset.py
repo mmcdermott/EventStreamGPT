@@ -236,10 +236,15 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         sparse_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
         dense_keys = [k for k in data_as_lists.keys() if k not in sparse_keys]
+        tensor_types = {
+            "subject_id": torch.LongTensor,
+            "static_indices": torch.LongTensor,
+            "static_measurement_indices": torch.LongTensor,
+        }
 
         # Dense tensors
         logger.info(f"Collating dense tensors from {dense_keys}")
-        dense_tensors = {k: torch.utils.data.default_collate(data_as_lists[k]) for k in dense_keys}
+        dense_tensors = {k: tensor_types.get(k, torch.Tensor)(data_as_lists[k]) for k in dense_keys}
         fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.pt"
         logger.info("Saving dense tensors to {fp}")
         save_file(dense_tensors, fp)
