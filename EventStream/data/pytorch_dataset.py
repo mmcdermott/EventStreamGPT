@@ -4,8 +4,8 @@ from collections import defaultdict
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
-from safetensors.torch import save_file, load_file
-from nested_ragged_tensors.ragged_tensors import JointNestedRaggedTensorDict
+from safetensors.numpy import save_file, load_file
+from nested_ragged_tensors.ragged_numpy import JointNestedRaggedTensorDict
 
 import numpy as np
 import polars as pl
@@ -159,15 +159,17 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         sparse_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
         dense_keys = [k for k in data_as_lists.keys() if k not in sparse_keys]
         tensor_types = {
-            "subject_id": torch.LongTensor,
-            "static_indices": torch.LongTensor,
-            "static_measurement_indices": torch.LongTensor,
+            "subject_id": np.int64,
+            "static_indices": np.int64,
+            "static_measurement_indices": np.int64,
         }
 
         # Dense tensors
         logger.info(f"Collating dense tensors from {dense_keys}")
-        dense_tensors = {k: tensor_types.get(k, torch.Tensor)(data_as_lists[k]) for k in dense_keys}
-        fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.pt"
+        dense_tensors = {
+            k: np.array(data_as_lists[k], dtype=tensor_types.get(k, np.float32)) for k in dense_keys
+        }
+        fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.npz"
         logger.info("Saving dense tensors to {fp}")
         save_file(dense_tensors, fp)
 
@@ -181,14 +183,14 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             ] for events in sparse_tensors_dict["dynamic_values"]
         ]
         sparse_tensors = JointNestedRaggedTensorDict(sparse_tensors_dict)
-        fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.pt"
+        fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
         logger.info("Saving sparse tensors to {fp}")
         sparse_tensors.save(fp)
 
     def fetch_tensors(self):
-        self.dense_tensors = load_file(self._full_data_config.tensorized_cached_dir / self.split / "dense.pt")
+        self.dense_tensors = load_file(self._full_data_config.tensorized_cached_dir / self.split / "dense.npz")
         self.sparse_tensors = JointNestedRaggedTensorDict.load(
-            self._full_data_config.tensorized_cached_dir / self.split / "sparse.pt"
+            self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
         )
 
         with open(self.config.tensorized_cached_dir / self.split / "data_stats.json") as f:
@@ -258,11 +260,12 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         dense_collated = torch.utils.data.default_collate(dense)
 
         sparse = JointNestedRaggedTensorDict.vstack(sparse)
-        sparse.tensors["dim1/event_mask"] = torch.BoolTensor([True for _ in sparse.tensors["dim1/time_delta"]])
-        sparse.tensors["dim2/dynamic_values_mask"] = torch.BoolTensor(
+        sparse.tensors["dim1/event_mask"] = np.array([True for _ in sparse.tensors["dim1/time_delta"]])
+        sparse.tensors["dim2/dynamic_values_mask"] = np.array(
             [True for _ in sparse.tensors["dim2/dynamic_values"]]
         )
-        collated = {**dense_collated, **sparse.to_dense()}
+
+        collated = {**dense_collated, **{k: torch.from_numpy(v) for k, v in sparse.to_dense().items()}}
 
         self._register_start("collate_post_padding_processing")
         out_batch = {}
@@ -275,10 +278,10 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         out_batch["dynamic_values_mask"] = (
             collated["dynamic_values_mask"] & ~collated["dynamic_values"].isnan()
         )
-        out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"], nan=0)
+        out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"].float(), nan=0)
         out_batch["dynamic_indices"] = torch.nan_to_num(collated["dynamic_indices"], 0).long()
         out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"].long()
-        out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"], nan=0)
+        out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"].float(), nan=0)
         out_batch["static_indices"] = collated["static_indices"].long()
         out_batch["static_measurement_indices"] = collated["static_measurement_indices"].long()
 
