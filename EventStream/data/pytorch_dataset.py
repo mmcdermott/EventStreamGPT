@@ -346,11 +346,11 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         out_batch["event_mask"] = ~collated["time_delta"].isnan()
         out_batch["dynamic_values_mask"] = ~collated["dynamic_values"].isnan()
         out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"], nan=0)
-        out_batch["dynamic_indices"] = collated["dynamic_indices"]
-        out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"]
+        out_batch["dynamic_indices"] = torch.nan_to_num(collated["dynamic_indices"], 0).long()
+        out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"].long()
         out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"], nan=0)
-        out_batch["static_indices"] = collated["static_indices"]
-        out_batch["static_measurement_indices"] = collated["static_indices"]
+        out_batch["static_indices"] = collated["static_indices"].long()
+        out_batch["static_measurement_indices"] = collated["static_measurement_indices"].long()
 
         if self.config.do_include_start_time_min:
             out_batch["start_time"] = collated["start_time"].float()
