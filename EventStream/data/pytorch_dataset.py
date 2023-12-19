@@ -315,7 +315,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         6. ``static_measurement_indices`` captures which measurement vocabulary was used to source a given
            data element.
         """
-        return {k: T[idx] for k, T in self.dense_tensors.items()}, {k: T[idx] for k, T in self.sparse_tensors.items()}
+        return {k: T[idx] for k, T in self.dense_tensors.items()}, self.sparse_tensors[idx]
 
     @TimeableMixin.TimeAs
     def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
