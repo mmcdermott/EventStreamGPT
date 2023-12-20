@@ -679,7 +679,9 @@ class DatasetBase(
         split_names = [split_names[i] for i in split_names_idx]
         split_fracs = [split_fracs[i] for i in split_names_idx]
 
-        subjects = np.random.permutation(list(self.subject_ids))
+        subjects = np.random.permutation(np.array(list(self.subject_ids), dtype=np.uint64))
+        if subjects.dtype != np.uint64:
+            raise TypeError(f"Subjects type {subjects.dtype} invalid!")
         split_lens = (np.array(split_fracs[:-1]) * len(subjects)).round().astype(int)
         split_lens = np.append(split_lens, len(subjects) - split_lens.sum())
 
@@ -1224,7 +1226,7 @@ class DatasetBase(
                 sp_subjects[split] = [
                     [int(e) for e in x]
                     for x in np.array_split(
-                        np.random.permutation(list(split_subjects)),
+                        np.random.permutation(np.array(list(split_subjects), dtype=np.uint64)),
                         len(split_subjects) // subjects_per_output_file,
                     )
                 ]
@@ -1402,7 +1404,7 @@ class DatasetBase(
         if subjects_per_output_file is None:
             subject_chunks = [None]
         else:
-            subjects = np.random.permutation(list(self.subject_ids))
+            subjects = np.random.permutation(np.array(list(self.subject_ids), dtype=np.uint64))
             subject_chunks = np.array_split(
                 subjects,
                 np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),

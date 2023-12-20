@@ -749,7 +749,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                         by_type_summ = '\n'.join(by_type_summ)
 
                         raise ValueError(
-                            f"Failed to convert incl_targets to {df.schema[col]}:\n{by_type_summ}"
+                            f"Failed to convert {col} incl_targets to {df.schema[col]}:\n{by_type_summ}"
                         ) from e
                     filter_exprs.append(pl.col(col).is_in(incl_list))
 
