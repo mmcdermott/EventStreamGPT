@@ -1037,7 +1037,7 @@ class PytorchDatasetConfig(JSONableMixin):
         if not (self.tensorized_cached_dir / split).is_dir():
             return {}
 
-        return {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.pt")}
+        return {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.npz")}
 
 
 @dataclasses.dataclass

@@ -5,7 +5,9 @@ from datetime import datetime
 from functools import cached_property
 from pathlib import Path
 from safetensors.numpy import save_file, load_file
-from nested_ragged_tensors.ragged_numpy import JointNestedRaggedTensorDict
+from nested_ragged_tensors.ragged_numpy import (
+    JointNestedRaggedTensorDict, NP_FLOAT_TYPES, NP_INT_TYPES, NP_UINT_TYPES
+)
 
 import numpy as np
 import polars as pl
@@ -193,6 +195,15 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
         )
 
+        # TODO(mmd): this is inefficient
+        if not self.config.do_include_start_time_min:
+            del self.dense_tensors["start_time"]
+        if not self.config.do_include_subsequence_indices:
+            del self.dense_tensors["start_idx"]
+            del self.dense_tensors["end_idx"]
+        if not self.config.do_include_subject_id:
+            del self.dense_tensors["subject_id"]
+
         with open(self.config.tensorized_cached_dir / self.split / "data_stats.json") as f:
             stats = json.load(f)
 
@@ -259,27 +270,32 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         dense_collated = torch.utils.data.default_collate(dense)
 
-        sparse = JointNestedRaggedTensorDict.vstack(sparse)
-        sparse.tensors["dim1/event_mask"] = np.array([True for _ in sparse.tensors["dim1/time_delta"]])
-        sparse.tensors["dim2/dynamic_values_mask"] = np.array(
-            [True for _ in sparse.tensors["dim2/dynamic_values"]]
-        )
+        sparse = JointNestedRaggedTensorDict.vstack(sparse).to_dense()
+        sparse['event_mask'] = sparse.pop('dim1/mask')
+        sparse['dynamic_values_mask'] = sparse.pop('dim2/mask') & ~np.isnan(sparse["dynamic_values"])
 
-        collated = {**dense_collated, **{k: torch.from_numpy(v) for k, v in sparse.to_dense().items()}}
+        sparse_collated = {}
+        for k, v in sparse.items():
+            if k.endswith("mask"):
+                sparse_collated[k] = torch.from_numpy(v)
+            elif v.dtype in NP_UINT_TYPES + NP_INT_TYPES:
+                sparse_collated[k] = torch.from_numpy(v.astype(int)).long()
+            elif v.dtype in NP_FLOAT_TYPES:
+                sparse_collated[k] = torch.from_numpy(v.astype(float)).float()
+            else:
+                raise TypeError(f"{v.dtype} is invalid for {k}")
+
+        collated = {**dense_collated, **sparse_collated}
 
         self._register_start("collate_post_padding_processing")
         out_batch = {}
 
         # Add event and data masks on the basis of which elements are present, then convert the tensor
         # elements to the appropriate types.
-        out_batch["event_mask"] = (
-            collated["event_mask"] & ~collated["time_delta"].isnan()
-        )
-        out_batch["dynamic_values_mask"] = (
-            collated["dynamic_values_mask"] & ~collated["dynamic_values"].isnan()
-        )
-        out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"].float(), nan=0)
-        out_batch["dynamic_indices"] = torch.nan_to_num(collated["dynamic_indices"], 0).long()
+        out_batch["event_mask"] = collated["event_mask"]
+        out_batch["dynamic_values_mask"] = collated["dynamic_values_mask"]
+        out_batch["time_delta"] = collated["time_delta"].float()
+        out_batch["dynamic_indices"] = collated["dynamic_indices"].long()
         out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"].long()
         out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"].float(), nan=0)
         out_batch["static_indices"] = collated["static_indices"].long()
