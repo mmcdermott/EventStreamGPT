@@ -19,6 +19,7 @@ from tqdm.auto import tqdm
 from ..utils import count_or_proportion
 from .config import PytorchDatasetConfig, SeqPaddingSide, SubsequenceSamplingStrategy
 from .types import PytorchBatch
+import sys
 
 DATA_ITEM_T = dict[str, list[float]]
 
@@ -145,6 +146,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 list(set(full_dense_tensors["subject_id"])), size=subset_size, replace=False
             )
             subject_idx = np.where(np.isin(np.array(full_dense_tensors["subject_id"]), subset_subjects))[0]
+            sys.setrecursionlimit(len(full_subj_ids)) 
 
             # Save subset dense tensors
             dense_tensors = {
