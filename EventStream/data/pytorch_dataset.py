@@ -157,7 +157,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             save_file(dense_tensors, fp)
             
             # Save subset ragged tensors
-            sparse_tensors = full_sparse_tensors[subject_idx] #JointNestedRaggedTensorDict.vstack([full_sparse_tensors[int(i)] for i in subject_idx])
+            sparse_tensors = full_sparse_tensors[subject_idx]
             fp = subset_cache_dir / "sparse.npz"
             logger.info(f"Saving sparse tensors to {fp}")
             sparse_tensors.save(fp)
