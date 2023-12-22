@@ -236,7 +236,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                     data_as_lists[k].append(val)
 
         logger.info("Constructing tensors to cache.")
-        logger.info("Dataset keys: {data_as_lists.keys()}")
+        logger.info(f"Dataset keys: {data_as_lists.keys()}")
 
         sparse_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
         dense_keys = [k for k in data_as_lists.keys() if k not in sparse_keys]
@@ -252,7 +252,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             k: np.array(data_as_lists[k], dtype=tensor_types.get(k, np.float32)) for k in dense_keys
         }
         fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.npz"
-        logger.info("Saving dense tensors to {fp}")
+        logger.info(f"Saving dense tensors to {fp}")
         save_file(dense_tensors, fp)
 
         # Ragged tensors
@@ -266,7 +266,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         ]
         sparse_tensors = JointNestedRaggedTensorDict(sparse_tensors_dict)
         fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
-        logger.info("Saving sparse tensors to {fp}")
+        logger.info(f"Saving sparse tensors to {fp}")
         sparse_tensors.save(fp)
 
     def fetch_tensors(self):
