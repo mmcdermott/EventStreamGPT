@@ -73,7 +73,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         self.fetch_metadata()
 
     def __len__(self):
-        return len(self.sparse_tensors)
+        return len(self.sparse_static_tensors)
 
     @property
     def has_task(self) -> bool:
@@ -135,7 +135,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
         # Load full cached data
         full_dense_tensors = load_file(full_cache_dir / "dense.npz")
-        full_sparse_tensors = JointNestedRaggedTensorDict.load(full_cache_dir / "sparse.npz")
+        full_sparse_dynamic_tensors = JointNestedRaggedTensorDict.load(full_cache_dir / "sparse_dynamic.npz")
+        full_sparse_static_tensors = JointNestedRaggedTensorDict.load(full_cache_dir / "sparse_static.npz")
 
         if self.split == "train":
             # Randomly sample for new subset_size number of subjects
@@ -146,7 +147,6 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 list(set(full_dense_tensors["subject_id"])), size=subset_size, replace=False
             )
             subject_idx = np.where(np.isin(np.array(full_dense_tensors["subject_id"]), subset_subjects))[0]
-            sys.setrecursionlimit(len(full_subj_ids)) 
 
             # Save subset dense tensors
             dense_tensors = {
@@ -155,24 +155,29 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             fp = subset_cache_dir / "dense.npz"
             logger.info(f"Saving dense tensors to {fp}")
             save_file(dense_tensors, fp)
-            
-            # Save subset ragged tensors
-            sparse_tensors = full_sparse_tensors[subject_idx]
-            fp = subset_cache_dir / "sparse.npz"
-            logger.info(f"Saving sparse tensors to {fp}")
-            sparse_tensors.save(fp)
+
+            # Save subset dynamic ragged tensors
+            sparse_dynamic_tensors = full_sparse_dynamic_tensors[subject_idx]
+            fp = subset_cache_dir / "sparse_dynamic.npz"
+            logger.info(f"Saving sparse dynamic tensors to {fp}")
+            sparse_dynamic_tensors.save(fp)
+
+            # Save subset static ragged tensors
+            sparse_static_tensors = full_sparse_static_tensors[subject_idx]
+            fp = subset_cache_dir / "sparse_static.npz"
+            logger.info(f"Saving sparse static tensors to {fp}")
+            sparse_static_tensors.save(fp)
 
             # Save subset data stats
-            full_sparse_tensors_dense = full_sparse_tensors.to_dense()
+            sparse_dynamic_tensors_dense = sparse_dynamic_tensors.to_dense()
             cached_data = pl.DataFrame(
                 {
-                    "subject_id": full_dense_tensors['subject_id'],
-                    "time_delta": full_sparse_tensors_dense['time_delta'],
-                    "event_mask": full_sparse_tensors_dense['dim1/mask']
+                    "subject_id": full_dense_tensors['subject_id'][subject_idx],
+                    "time_delta": sparse_dynamic_tensors_dense['time_delta'],
+                    "event_mask": sparse_dynamic_tensors_dense['dim1/mask'],
                 }
             )
             # Filter for sampled subjects and event_mask = True
-            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
             cached_data = cached_data.select(pl.col(["time_delta", "event_mask"]).explode()).filter(
                 pl.col("event_mask")
             )
@@ -198,10 +203,15 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             logger.info(f"Saving dense tensors to {fp}")
             save_file(full_dense_tensors, fp)
 
-            # Save subset ragged tensors
-            fp = subset_cache_dir / "sparse.npz"
-            logger.info(f"Saving sparse tensors to {fp}")
-            full_sparse_tensors.save(fp)
+            # Save subset dynamic ragged tensors
+            fp = subset_cache_dir / "sparse_dynamic.npz"
+            logger.info(f"Saving sparse dynamic tensors to {fp}")
+            full_sparse_dynamic_tensors.save(fp)
+
+            # Save subset static ragged tensors
+            fp = subset_cache_dir / "sparse_static.npz"
+            logger.info(f"Saving sparse static tensors to {fp}")
+            full_sparse_static_tensors.save(fp)
 
             # Save full_data_stats into subset data_stats
             full_data_stats_fp = full_cache_dir / "data_stats.json"
@@ -240,8 +250,9 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         logger.info("Constructing tensors to cache.")
         logger.info(f"Dataset keys: {data_as_lists.keys()}")
 
-        sparse_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
-        dense_keys = [k for k in data_as_lists.keys() if k not in sparse_keys]
+        sparse_1_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
+        sparse_2_keys = ['static_indices', 'static_measurement_indices']
+        dense_keys = [k for k in data_as_lists.keys() if k not in sparse_1_keys + sparse_2_keys]
         tensor_types = {
             "subject_id": np.int64,
             "static_indices": np.int64,
@@ -259,8 +270,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         save_file(dense_tensors, fp)
 
         # Ragged tensors
-        logger.info(f"Constructing ragged tensors across {sparse_keys}")
-        sparse_tensors_dict = {k: data_as_lists[k] for k in sparse_keys}
+        logger.info(f"Constructing ragged tensors across {sparse_1_keys}")
+        sparse_tensors_dict = {k: data_as_lists[k] for k in sparse_1_keys}
         sparse_tensors_dict["dynamic_values"] = [
             [
                 [v if v is not None else float('nan') for v in measurements]
@@ -268,15 +279,23 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             ] for events in sparse_tensors_dict["dynamic_values"]
         ]
         sparse_tensors = JointNestedRaggedTensorDict(sparse_tensors_dict)
-        fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
+        fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse_dynamic.npz"
+        logger.info(f"Saving sparse tensors to {fp}")
+        sparse_tensors.save(fp)
+
+        logger.info(f"Constructing ragged tensors across {sparse_2_keys}")
+        sparse_tensors_dict = {k: data_as_lists[k] for k in sparse_2_keys}
+        sparse_tensors = JointNestedRaggedTensorDict(sparse_tensors_dict)
+        fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse_static.npz"
         logger.info(f"Saving sparse tensors to {fp}")
         sparse_tensors.save(fp)
 
     def fetch_tensors(self):
-        self.dense_tensors = load_file(self._full_data_config.tensorized_cached_dir / self.split / "dense.npz")
-        self.sparse_tensors = JointNestedRaggedTensorDict.load(
-            self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
-        )
+        cache_dir = self.config.tensorized_cached_dir / self.split 
+
+        self.dense_tensors = load_file(cache_dir / "dense.npz")
+        self.sparse_dynamic_tensors = JointNestedRaggedTensorDict.load(cache_dir / "sparse_dynamic.npz")
+        self.sparse_static_tensors = JointNestedRaggedTensorDict.load(cache_dir / "sparse_static.npz")
 
         # TODO(mmd): this is inefficient
         if not self.config.do_include_start_time_min:
@@ -333,7 +352,11 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         6. ``static_measurement_indices`` captures which measurement vocabulary was used to source a given
            data element.
         """
-        return {k: T[idx] for k, T in self.dense_tensors.items()}, self.sparse_tensors[idx]
+        return (
+            {k: T[idx] for k, T in self.dense_tensors.items()},
+            self.sparse_dynamic_tensors[idx],
+            self.sparse_static_tensors[idx],
+        )
 
     @TimeableMixin.TimeAs
     def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
@@ -349,16 +372,18 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             A fully collated, tensorized, and padded batch.
         """
 
-        dense, sparse = zip(*batch)
+        dense, sparse_dynamic, sparse_static = zip(*batch)
 
         dense_collated = torch.utils.data.default_collate(dense)
 
-        sparse = JointNestedRaggedTensorDict.vstack(sparse).to_dense()
+        sparse = JointNestedRaggedTensorDict.vstack(sparse_dynamic).to_dense()
         sparse['event_mask'] = sparse.pop('dim1/mask')
         sparse['dynamic_values_mask'] = sparse.pop('dim2/mask') & ~np.isnan(sparse["dynamic_values"])
 
+        sparse_static = JointNestedRaggedTensorDict.vstack(sparse_static).to_dense()
+
         sparse_collated = {}
-        for k, v in sparse.items():
+        for k, v in list(sparse.items()) + list(sparse_static.items()):
             if k.endswith("mask"):
                 sparse_collated[k] = torch.from_numpy(v)
             elif v.dtype in NP_UINT_TYPES + NP_INT_TYPES:
