@@ -129,6 +129,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
 
     @TimeableMixin.TimeAs
     def _cache_subset(self): 
+        self.config._cache_data_parameters()
+
         full_cache_dir = self._full_data_config.tensorized_cached_dir / self.split 
         subset_cache_dir = self.config.tensorized_cached_dir / self.split 
         (subset_cache_dir).mkdir(exist_ok=True, parents=True)
