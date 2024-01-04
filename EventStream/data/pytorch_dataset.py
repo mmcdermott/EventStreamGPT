@@ -167,10 +167,11 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         }
 
         # Dense tensors
-        logger.info(f"Collating dense tensors from {dense_keys}")
-        dense_tensors = {
-            k: np.array(data_as_lists[k], dtype=tensor_types.get(k, np.float32)) for k in dense_keys
-        }
+        dense_tensors = {}
+        for k in dense_keys:
+            logger.info(f"Collating {k} as a dense tensor")
+            dense_tensors[k] = np.array(data_as_lists[k], dtype=tensor_types.get(k, np.float32))
+
         fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.npz"
         logger.info("Saving dense tensors to {fp}")
         save_file(dense_tensors, fp)
