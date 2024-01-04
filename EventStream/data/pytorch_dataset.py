@@ -19,6 +19,7 @@ from tqdm.auto import tqdm
 from ..utils import count_or_proportion
 from .config import PytorchDatasetConfig, SeqPaddingSide, SubsequenceSamplingStrategy
 from .types import PytorchBatch
+import sys
 
 DATA_ITEM_T = dict[str, list[float]]
 
@@ -127,8 +128,89 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             self._cache_full_data()
 
     @TimeableMixin.TimeAs
-    def _cache_subset(self):
-        raise NotImplementedError()
+    def _cache_subset(self): 
+        full_cache_dir = self._full_data_config.tensorized_cached_dir / self.split 
+        subset_cache_dir = self.config.tensorized_cached_dir / self.split 
+        (subset_cache_dir).mkdir(exist_ok=True, parents=True)
+
+        # Load full cached data
+        full_dense_tensors = load_file(full_cache_dir / "dense.npz")
+        full_sparse_tensors = JointNestedRaggedTensorDict.load(full_cache_dir / "sparse.npz")
+
+        if self.split == "train":
+            # Randomly sample for new subset_size number of subjects
+            full_subj_ids = list(set(full_dense_tensors["subject_id"]))
+            subset_size = count_or_proportion(len(full_subj_ids), self.config.train_subset_size)
+            logger.info(f"Sampling {subset_size} subjects from full dataset of {len(full_subj_ids)} subjects")
+            subset_subjects = np.random.default_rng(self.config.train_subset_seed).choice(
+                list(set(full_dense_tensors["subject_id"])), size=subset_size, replace=False
+            )
+            subject_idx = np.where(np.isin(np.array(full_dense_tensors["subject_id"]), subset_subjects))[0]
+            sys.setrecursionlimit(len(full_subj_ids)) 
+
+            # Save subset dense tensors
+            dense_tensors = {
+                k: T[subject_idx] for k, T in full_dense_tensors.items()
+            }
+            fp = subset_cache_dir / "dense.npz"
+            logger.info(f"Saving dense tensors to {fp}")
+            save_file(dense_tensors, fp)
+            
+            # Save subset ragged tensors
+            sparse_tensors = full_sparse_tensors[subject_idx]
+            fp = subset_cache_dir / "sparse.npz"
+            logger.info(f"Saving sparse tensors to {fp}")
+            sparse_tensors.save(fp)
+
+            # Save subset data stats
+            full_sparse_tensors_dense = full_sparse_tensors.to_dense()
+            cached_data = pl.DataFrame(
+                {
+                    "subject_id": full_dense_tensors['subject_id'],
+                    "time_delta": full_sparse_tensors_dense['time_delta'],
+                    "event_mask": full_sparse_tensors_dense['dim1/mask']
+                }
+            )
+            # Filter for sampled subjects and event_mask = True
+            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
+            cached_data = cached_data.select(pl.col(["time_delta", "event_mask"]).explode()).filter(
+                pl.col("event_mask")
+            )
+            # Calculate new stats from time_delta, and save
+            stats = cached_data.select(
+                pl.col("time_delta").explode().drop_nulls().alias("inter_event_time")
+            ).select(
+                pl.col("inter_event_time").min().alias("min"),
+                pl.col("inter_event_time").log().mean().alias("mean_log"),
+                pl.col("inter_event_time").log().std().alias("std_log"),
+            )
+            subset_stats = {
+                    "mean_log_inter_event_time_min": stats["mean_log"].item(),
+                    "std_log_inter_event_time_min": stats["std_log"].item(),
+                }
+            subset_data_stats_fp = subset_cache_dir / "data_stats.json"
+            with open(subset_data_stats_fp, mode="w") as f:
+                logger.info(f"Saving subset data_stats to {subset_data_stats_fp}")
+                json.dump(subset_stats, f)
+        else:
+            # Save subset dense tensors
+            fp = subset_cache_dir / "dense.npz"
+            logger.info(f"Saving dense tensors to {fp}")
+            save_file(full_dense_tensors, fp)
+
+            # Save subset ragged tensors
+            fp = subset_cache_dir / "sparse.npz"
+            logger.info(f"Saving sparse tensors to {fp}")
+            full_sparse_tensors.save(fp)
+
+            # Save full_data_stats into subset data_stats
+            full_data_stats_fp = full_cache_dir / "data_stats.json"
+            subset_data_stats_fp = subset_cache_dir / "data_stats.json"
+            with open(full_data_stats_fp, mode="r") as f:
+                full_data_stats = json.load(f)
+            with open(subset_data_stats_fp, mode="w") as f:
+                logger.info(f"Saving full data stats to subset dir {subset_data_stats_fp}")
+                json.dump(full_data_stats, f)
 
     @TimeableMixin.TimeAs
     def _cache_full_data(self):
@@ -156,7 +238,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                     data_as_lists[k].append(val)
 
         logger.info("Constructing tensors to cache.")
-        logger.info("Dataset keys: {data_as_lists.keys()}")
+        logger.info(f"Dataset keys: {data_as_lists.keys()}")
 
         sparse_keys = ['time_delta', 'dynamic_indices', 'dynamic_values', 'dynamic_measurement_indices']
         dense_keys = [k for k in data_as_lists.keys() if k not in sparse_keys]
@@ -173,7 +255,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             dense_tensors[k] = np.array(data_as_lists[k], dtype=tensor_types.get(k, np.float32))
 
         fp = self._full_data_config.tensorized_cached_dir / self.split / "dense.npz"
-        logger.info("Saving dense tensors to {fp}")
+        logger.info(f"Saving dense tensors to {fp}")
         save_file(dense_tensors, fp)
 
         # Ragged tensors
@@ -187,7 +269,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
         ]
         sparse_tensors = JointNestedRaggedTensorDict(sparse_tensors_dict)
         fp = self._full_data_config.tensorized_cached_dir / self.split / "sparse.npz"
-        logger.info("Saving sparse tensors to {fp}")
+        logger.info(f"Saving sparse tensors to {fp}")
         sparse_tensors.save(fp)
 
     def fetch_tensors(self):
