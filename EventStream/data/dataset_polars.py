@@ -10,8 +10,8 @@ Attributes:
 import dataclasses
 import math
 import multiprocessing
-from collections.abc import Callable, Sequence
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Union
 
@@ -746,7 +746,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                                 f"{tp}: {len(vals)} values: {', '.join(str(x) for x in vals[:5])}..."
                             )
 
-                        by_type_summ = '\n'.join(by_type_summ)
+                        by_type_summ = "\n".join(by_type_summ)
 
                         raise ValueError(
                             f"Failed to convert incl_targets to {df.schema[col]}:\n{by_type_summ}"
