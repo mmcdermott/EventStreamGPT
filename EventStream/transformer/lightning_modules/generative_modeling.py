@@ -598,7 +598,9 @@ def train(cfg: PretrainConfig):
             print(f"Writing to {config_fp}")
             config.to_json_file(config_fp)
 
-        data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
+        data_config.to_json_file(
+            cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite
+        )
         optimization_config.to_json_file(
             cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
         )
@@ -680,7 +682,6 @@ def train(cfg: PretrainConfig):
     # Fitting model
     trainer = L.Trainer(**trainer_kwargs)
     trainer.fit(model=LM, train_dataloaders=train_dataloader, val_dataloaders=tuning_dataloader)
-
     LM.save_pretrained(cfg.save_dir)
 
     if cfg.do_final_validation_on_metrics:
