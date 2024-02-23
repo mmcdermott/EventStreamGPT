@@ -522,8 +522,8 @@ class PretrainConfig:
         default_factory=lambda: MetricsConfig(
             include_metrics={
                 Split.TUNING: {MetricCategories.LOSS_PARTS: True},
-                Split.HELD_OUT: {MetricCategories.LOSS_PARTS: True}
-                },
+                Split.HELD_OUT: {MetricCategories.LOSS_PARTS: True},
+            },
         )
     )
 
@@ -603,9 +603,7 @@ def train(cfg: PretrainConfig):
             print(f"Writing to {config_fp}")
             config.to_json_file(config_fp)
 
-        data_config.to_json_file(
-            cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite
-        )
+        data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
         optimization_config.to_json_file(
             cfg.save_dir / "optimization_config.json", do_overwrite=cfg.do_overwrite
         )

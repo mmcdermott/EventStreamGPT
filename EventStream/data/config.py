@@ -913,7 +913,7 @@ class PytorchDatasetConfig(JSONableMixin):
                 pass
             case _:
                 raise TypeError(f"train_subset_size is of unrecognized type {type(self.train_subset_size)}.")
-        
+
         match self.tuning_subset_size:
             case int() as n if n < 0:
                 raise ValueError(f"If integral, tuning_subset_size must be positive! Got {n}")
@@ -926,7 +926,9 @@ class PytorchDatasetConfig(JSONableMixin):
             case None | "FULL" | int() | float():
                 pass
             case _:
-                raise TypeError(f"tuning_subset_size is of unrecognized type {type(self.tuning_subset_size)}.")
+                raise TypeError(
+                    f"tuning_subset_size is of unrecognized type {type(self.tuning_subset_size)}."
+                )
 
     def to_dict(self) -> dict:
         """Represents this configuration object as a plain dictionary."""

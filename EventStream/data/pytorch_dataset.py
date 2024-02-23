@@ -288,7 +288,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         self.cached_data = self.cached_data.collect()
 
-        if self.config.train_subset_size not in (None, "FULL") and self.split == "train" and self.config.train_subset_size <= len(self.cached_data):
+        if (
+            self.config.train_subset_size not in (None, "FULL")
+            and self.split == "train"
+            and self.config.train_subset_size <= len(self.cached_data)
+        ):
             match self.config.train_subset_size:
                 case int() as n if n > 0:
                     kwargs = {"n": n}
@@ -302,10 +306,14 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
-        if self.config.tuning_subset_size not in (None, "FULL") and self.split == "tuning" and self.config.tuning_subset_size <= len(self.cached_data):
+        if (
+            self.config.tuning_subset_size not in (None, "FULL")
+            and self.split == "tuning"
+            and self.config.tuning_subset_size <= len(self.cached_data)
+        ):
             match self.config.tuning_subset_size:
                 case int() as n if n > 0:
-                    kwargs = {"n": n} 
+                    kwargs = {"n": n}
                 case float() as frac if 0 < frac < 1:
                     kwargs = {"fraction": frac}
                 case _:
