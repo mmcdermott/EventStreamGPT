@@ -2,7 +2,6 @@
 import math
 
 import torch
-from pytorch_lognormal_mixture import LogNormalMixtureDistribution
 
 
 class NLLSafeExponentialDist(torch.distributions.exponential.Exponential):
@@ -158,84 +157,3 @@ class NLLSafeLogNormalDist(torch.distributions.log_normal.LogNormal):
         var = torch.clamp(self.scale**2, min=eps)
         log_var = torch.clamp(2 * self.log_scale, min=math.log(eps))
         return 0.5 * (log_var + ((torch.log(T) - self.loc) ** 2) / var)
-
-
-class NLLSafeLogNormalMixtureDist(LogNormalMixtureDistribution):
-    """A class that implements the lognormal mixture distribution with a numerically stable negative log-
-    likelihood.
-
-    THIS DOES NOT WORK -- this actually can't be disentangled nicely because you can't wrap the sum through
-    the log. All terms end up being relevant.
-    """
-
-    def __init__(
-        self,
-        locs: torch.FloatTensor,
-        log_scales: torch.FloatTensor,
-        log_weights: torch.FloatTensor,
-        mean_log_inter_time: float,
-        std_log_inter_time: float,
-    ):
-        self.log_weights = log_weights
-
-        self.mean_log_inter_time = mean_log_inter_time
-        self.std_log_inter_time = std_log_inter_time
-
-        self.locs = locs
-        self.log_scales = log_scales
-
-        super().__init__(locs, log_scales, log_weights, mean_log_inter_time, std_log_inter_time)
-
-    def NLL(self, T: torch.Tensor) -> torch.Tensor:
-        """Negative log-likelihood of ``T`` w.r.t. the distribution **up to model independent addition**.
-
-        Args:
-            T: The input tensor.
-
-        Returns:
-            The negative log-likelihood up to an additive term that does not depend on the model parameters of
-            the lognormal distribution with parameters specified by `self.loc` and `self.log_scale`. The
-            additive term in particular is ``T.log() + (1/2)*math.log(2*math.pi)``
-
-            with mean 0, std 1
-            #>>> mean = -3.2
-            #>>> std = 0.1
-            tensor([0.3557, 1.3180])
-
-            with mean -3.2, std 0.1
-            tensor([124.1945,  52.2644])
-
-
-        Examples:
-            >>> locs = torch.Tensor([[0.0, -1.0], [2.0, -0.4]])
-            >>> log_scales = torch.Tensor([[0.0, -1.2], [1.0, 0.2]])
-            >>> mean = 0
-            >>> std = 1
-            >>> log_weights = torch.Tensor([0.2, 0.2])
-            >>> dist = NLLSafeLogNormalMixtureDist(locs, log_scales, log_weights, mean, std)
-            >>> T = torch.Tensor([-0.2, 0.8])
-            >>> -dist.log_prob(T)
-            Traceback (most recent call last):
-                ...
-            ValueError: Expected value argument (Tensor of shape ...) to be within the support...
-            >>> dist.NLL(T)
-            Traceback (most recent call last):
-                ...
-            AssertionError: T must be non-negative; has min value -2.00e-01
-            >>> T = torch.Tensor([0.2, 0.8])
-            >>> -dist.log_prob(T)
-            tensor([0.3557, 1.3180])
-            >>> dist.NLL(T) + T.log() + (1/2)*math.log(2*math.pi)
-            tensor([0.3557, 1.3180])
-        """
-
-        locs = (self.locs + self.mean_log_inter_time) * self.std_log_inter_time
-        log_scales = self.log_scales * self.std_log_inter_time
-
-        # Compute the NLL of each component
-        nlls = NLLSafeLogNormalDist(locs, log_scales).NLL(T)
-
-        # Compute the NLL of the mixture
-        nll = torch.logsumexp(nlls + self.log_weights, dim=-1)
-
-        return nll
