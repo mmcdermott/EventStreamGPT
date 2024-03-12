@@ -16,9 +16,6 @@ class NLLSafeExponentialDist(torch.distributions.exponential.Exponential):
         log_rate: torch.FloatTensor,
         log_mean: float | torch.FloatTensor = 0,
     ):
-        # E[self] = 1/exp(self.log_rate)
-        #         = 1/exp(-log_mean + log_rate/log_var)
-        #         = mean * (1/exp(log_rate/log_var))
         self.log_rate = -log_mean + log_rate
 
         rate = torch.exp(self.log_rate)
