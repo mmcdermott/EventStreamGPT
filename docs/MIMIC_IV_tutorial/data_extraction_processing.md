@@ -43,7 +43,7 @@ command:
 #### Hydra-specific parameters
 
 The `defaults:` block at the top is a Hydra specific inclusion, and ensures the script knows to merge this
-configuration file. Similarly, the `hydra.searchpath=[$ESGPT_PATH/confgis]` command line argument also ensures
+configuration file. Similarly, the `hydra.searchpath=[$ESGPT_PATH/configs]` command line argument also ensures
 Hydra knows to look for the base config in the ESGPT repository's configs path.
 
 #### Inputs
