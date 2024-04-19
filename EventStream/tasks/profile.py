@@ -153,7 +153,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
     return (
         task_df.group_by("subject_id")
         .agg(
-            pl.count().alias("samples_per_subject"),
+            pl.len().alias("samples_per_subject"),
             *[pl.col(c).mean() for c in label_cols],
         )
         .select(

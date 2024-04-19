@@ -552,7 +552,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 source_df = source_df.with_columns(pl.col(id_col).cast(id_col_dt))
 
         if id_col_name not in source_df:
-            source_df = source_df.with_row_count(name=id_col_name)
+            source_df = source_df.with_row_index(name=id_col_name)
 
         id_col, id_col_dt = self._validate_id_col(source_df.get_column(id_col_name))
         source_df = source_df.with_columns(id_col)
