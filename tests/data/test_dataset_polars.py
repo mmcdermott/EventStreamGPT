@@ -13,7 +13,6 @@ import polars as pl
 
 from EventStream.data.config import DatasetConfig, MeasurementConfig
 from EventStream.data.dataset_polars import Dataset
-from EventStream.data.preprocessing import Preprocessor
 from EventStream.data.time_dependent_functor import TimeDependentFunctor
 from EventStream.data.types import (
     DataModality,
@@ -23,46 +22,6 @@ from EventStream.data.types import (
 from EventStream.data.vocabulary import Vocabulary
 
 from ..utils import ConfigComparisonsMixin
-
-
-class NormalizerMock(Preprocessor):
-    def __init__(self, *args, **kwargs):
-        pass
-
-    @classmethod
-    def params_schema(self) -> dict[str, pl.DataType]:
-        return {"min": pl.Float64}
-
-    def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
-        return pl.struct([column.min().alias("min")])
-
-    @classmethod
-    def predict_from_polars(cls, column: pl.Expr, model: pl.Expr) -> pl.Expr:
-        return column - model.struct.field("min").round(0)
-
-
-class OutlierDetectorMock(Preprocessor):
-    def __init__(self, *args, **kwargs):
-        pass
-
-    @classmethod
-    def params_schema(self) -> dict[str, pl.DataType]:
-        return {"mean": pl.Float64}
-
-    def fit_from_polars(self, column: pl.Expr) -> pl.Expr:
-        return pl.struct([column.mean().alias("mean")])
-
-    @classmethod
-    def predict_from_polars(cls, column: pl.Expr, model: pl.Expr) -> pl.Expr:
-        return ((column - model.struct.field("mean")) > 10).cast(pl.Boolean)
-
-
-class ESDMock(Dataset):
-    PREPROCESSORS = {
-        "outlier": OutlierDetectorMock,
-        "normalizer": NormalizerMock,
-    }
-
 
 DOB_COL = "dob"
 
@@ -106,8 +65,7 @@ TEST_CONFIG = DatasetConfig(
     min_valid_vocab_element_observations=2,
     min_true_float_frequency=1 / 2,
     min_unique_numerical_observations=0.99,
-    outlier_detector_config={"cls": "outlier"},
-    normalizer_config={"cls": "normalizer"},
+    outlier_detector_config=None,
     agg_by_time_scale=None,
     measurement_configs={
         "pre_dropped": MeasurementConfig(temporality=TemporalityType.DYNAMIC, modality=DataModality.DROPPED),
@@ -280,7 +238,9 @@ train_ages_lt_90 = np.array(train_ages_lt_90)
 train_all_ages = np.array(train_all_ages)
 
 outlier_mean_lt_90 = train_ages_lt_90.mean()
+outlier_std_lt_90 = train_ages_lt_90.std()
 outlier_mean_all = train_all_ages.mean()
+outlier_std_all = train_all_ages.std()
 
 inliers_lt_90 = train_ages_lt_90[train_ages_lt_90 - outlier_mean_lt_90 < 10]
 inliers_all = train_all_ages[train_all_ages - outlier_mean_all < 10]
@@ -1685,7 +1645,7 @@ WANT_DL_REP_DF = pl.DataFrame(
 
 class TestDatasetEndToEnd(ConfigComparisonsMixin, unittest.TestCase):
     def test_end_to_end(self):
-        E = ESDMock(
+        E = Dataset(
             config=TEST_CONFIG,
             subjects_df=IN_SUBJECTS_DF,
             events_df=IN_EVENTS_DF,
