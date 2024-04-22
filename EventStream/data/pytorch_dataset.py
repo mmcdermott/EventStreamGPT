@@ -708,7 +708,11 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
         self.cached_data = self.cached_data.collect()
 
-        if self.config.train_subset_size not in (None, "FULL") and self.split == "train":
+        if (
+            self.config.train_subset_size not in (None, "FULL")
+            and self.split == "train"
+            and self.config.train_subset_size <= len(self.cached_data)
+        ):
             match self.config.train_subset_size:
                 case int() as n if n > 0:
                     kwargs = {"n": n}
@@ -721,6 +725,24 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                     )
 
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
+
+        if (
+            self.config.tuning_subset_size not in (None, "FULL")
+            and self.split == "tuning"
+            and self.config.tuning_subset_size <= len(self.cached_data)
+        ):
+            match self.config.tuning_subset_size:
+                case int() as n if n > 0:
+                    kwargs = {"n": n}
+                case float() as frac if 0 < frac < 1:
+                    kwargs = {"fraction": frac}
+                case _:
+                    raise TypeError(
+                        f"Can't process subset size of {type(self.config.tuning_subset_size)}, "
+                        f"{self.config.tuning_subset_size}"
+                    )
+
+            self.cached_data = self.cached_data.sample(seed=self.config.tuning_subset_seed, **kwargs)
 
         with self._time_as("convert_to_rows"):
             self.subject_ids = self.cached_data["subject_id"].to_list()

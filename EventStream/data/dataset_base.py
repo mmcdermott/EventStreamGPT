@@ -572,6 +572,7 @@ class DatasetBase(
         self,
         split_fracs: Sequence[float],
         split_names: Sequence[str] | None = None,
+        mandatory_set_IDs: dict[str, set[int] | None] | None = None,
     ):
         """Splits the underlying dataset into random sets by `subject_id`.
 
@@ -585,6 +586,11 @@ class DatasetBase(
                 'tuning', 'held_out']. If more than 3, it defaults to `['split_0', 'split_1', ...]`. Split
                 names of `train`, `tuning`, and `held_out` have special significance and are used elsewhere in
                 the model, so if `split_names` does not reflect those other things may not work down the line.
+            mandatory_set_IDs: Maps split name to an optional set of subject IDs that make up that split. If a
+                split name is included in mandatory_set_IDs, it should _not_ be included in `split_fracs` as
+                the size of the split is determined by the IDs in this object. Any IDs in this object will be
+                excluded from _all_ other splits and split_fractions will be taken over the remaining, unused
+                IDs.
 
         Raises:
             ValueError: if `split_fracs` contains anything outside the range of (0, 1], sums to something > 1,
@@ -614,6 +620,20 @@ class DatasetBase(
                 f"{len(split_fracs)}"
             )
 
+        if mandatory_set_IDs is None:
+            mandatory_set_IDs = {}
+
+        intersecting_split_names = set(split_names).intersection(mandatory_set_IDs.keys())
+        if intersecting_split_names:
+            raise ValueError(
+                "Splits with specified sizes overlap with those with pre-set populations! "
+                f"{', '.join(intersecting_split_names)}"
+            )
+
+        subjects_to_split = set(self.subject_ids) - set(
+            itertools.chain.from_iterable(mandatory_set_IDs.values())
+        )
+
         # As split fractions may not result in integer split sizes, we shuffle the split names and fractions
         # so that the splits that exceed the desired size are not always the last ones in the original passed
         # order.
@@ -621,13 +641,14 @@ class DatasetBase(
         split_names = [split_names[i] for i in split_names_idx]
         split_fracs = [split_fracs[i] for i in split_names_idx]
 
-        subjects = np.random.permutation(list(self.subject_ids))
+        subjects = np.random.permutation(list(subjects_to_split))
         split_lens = (np.array(split_fracs[:-1]) * len(subjects)).round().astype(int)
         split_lens = np.append(split_lens, len(subjects) - split_lens.sum())
 
         subjects_per_split = np.split(subjects, split_lens.cumsum())
 
         self.split_subjects = {k: set(v) for k, v in zip(split_names, subjects_per_split)}
+        self.split_subjects = {**self.split_subjects, **mandatory_set_IDs}
 
     @classmethod
     @abc.abstractmethod
