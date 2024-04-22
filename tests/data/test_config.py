@@ -183,8 +183,10 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         want_measurement_metadata = pd.DataFrame(
             {
                 "value_type": [],
-                "outlier_model": pd.Series([], dtype=object),
-                "normalizer": pd.Series([], dtype=object),
+                "mean": pd.Series([], dtype=float),
+                "std": pd.Series([], dtype=float),
+                "thresh_small": pd.Series([], dtype=float),
+                "thresh_large": pd.Series([], dtype=float),
             },
             index=pd.Index([]),
         )
@@ -199,7 +201,8 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
 
         config.add_missing_mandatory_metadata_cols()
         want_measurement_metadata = pd.Series(
-            [None, None, None], index=pd.Index(["value_type", "outlier_model", "normalizer"])
+            [None, None, None, None, None],
+            index=pd.Index(["value_type", "mean", "std", "thresh_small", "thresh_large"]),
         )
         self.assertEqual(want_measurement_metadata, config.measurement_metadata)
 
@@ -249,21 +252,11 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                 "config": dict(
                     modality=DataModality.UNIVARIATE_REGRESSION,
                     _measurement_metadata=pd.Series(
-                        [{"mean": 2}, {"foo": "bar"}],
-                        index=pd.Index(["outlier_model", "normalizer"]),
+                        [2],
+                        index=pd.Index(["mean"]),
                         name="key",
                     ),
                 ),
-            },
-            {
-                "msg": "Should fail for malformed univariate cases.",
-                "config": dict(
-                    modality=DataModality.UNIVARIATE_REGRESSION,
-                    _measurement_metadata=pd.Series(
-                        [{"mean": 2}, "'b' + 7"], index=pd.Index(["outlier_model", "normalizer"])
-                    ),
-                ),
-                "want_raise": ValueError,
             },
             {
                 "msg": "Should work for properly formed multivariate cases.",
@@ -273,26 +266,10 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
                     _measurement_metadata=pd.DataFrame(
                         {
                             "censor_lower_bound": [1, 0.2, 0.1],
-                            "outlier_model": [{"mean": 2}, None, {"std": 3}],
                         },
                         index=pd.Index(["foo", "bar", "baz"], name="key"),
                     ),
                 ),
-            },
-            {
-                "msg": "Should fail for malformed multivariate cases.",
-                "config": dict(
-                    modality=DataModality.MULTIVARIATE_REGRESSION,
-                    values_column="val",
-                    _measurement_metadata=pd.DataFrame(
-                        {
-                            "censor_lower_bound": [1, 0.2, 0.1],
-                            "outlier_model": ["'a'+3", {"mean": 1}, {"std": 3}],
-                        },
-                        index=pd.Index(["foo", "bar", "baz"], name="key"),
-                    ),
-                ),
-                "want_raise": ValueError,
             },
         ]
 
@@ -340,8 +317,10 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
         want_metadata = pd.DataFrame(
             {
                 "value_type": pd.Series([], dtype=str),
-                "outlier_model": pd.Series([], dtype=object),
-                "normalizer": pd.Series([], dtype=object),
+                "mean": pd.Series([], dtype=float),
+                "std": pd.Series([], dtype=float),
+                "thresh_small": pd.Series([], dtype=float),
+                "thresh_large": pd.Series([], dtype=float),
             },
             index=pd.Index([], name="foo"),
         )
@@ -359,7 +338,8 @@ class TestMeasurementConfig(ConfigComparisonsMixin, unittest.TestCase):
 
         config.add_empty_metadata()
         want_metadata = pd.Series(
-            [None, None, None], index=pd.Index(["value_type", "outlier_model", "normalizer"])
+            [None, None, None, None, None],
+            index=pd.Index(["value_type", "mean", "std", "thresh_small", "thresh_large"]),
         )
         self.assertEqual(want_metadata, config.measurement_metadata)
 
@@ -471,8 +451,7 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
                 min_unique_numerical_observations=1e-6,
             ),
             dict(
-                outlier_detector_config={"cls": None},
-                normalizer_config={"cls": None},
+                outlier_detector_config={},
             ),
         ]
         for kwargs in valid_kwargs:
@@ -495,10 +474,7 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
                 min_unique_numerical_observations=2.0,
             ),
             dict(
-                outlier_detector_config={"not_cls": None},
-            ),
-            dict(
-                normalizer_config={"not_cls": None},
+                outlier_detector_config="foo",
             ),
         ]
         for kwargs in invalid_kwargs:
@@ -513,7 +489,7 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_true_float_frequency=None,
             min_unique_numerical_observations=None,
             outlier_detector_config=None,
-            normalizer_config=None,
+            center_and_scale=True,
             save_dir=None,
             min_events_per_subject=None,
             agg_by_time_scale="1h",
@@ -534,7 +510,6 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             ),
         }
         nontrivial_outlier_config = {"cls": "outlier", "foo": "bar"}
-        nontrivial_normalizer_config = {"cls": "normalizer", "baz": "bam"}
 
         cases = [
             {
@@ -556,12 +531,10 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
                 "msg": "Should work when sub-model configs are not None",
                 "config": DatasetConfig(
                     outlier_detector_config=nontrivial_outlier_config,
-                    normalizer_config=nontrivial_normalizer_config,
                 ),
                 "want_dict": {
                     **default_dict,
                     "outlier_detector_config": nontrivial_outlier_config,
-                    "normalizer_config": nontrivial_normalizer_config,
                 },
             },
         ]
@@ -600,7 +573,6 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_true_float_frequency=0.75,
             min_unique_numerical_observations=0.25,
             outlier_detector_config={"cls": "outlier", "foo": "bar"},
-            normalizer_config={"cls": "normalizer", "baz": "bam"},
         )
         config2 = DatasetConfig(
             measurement_configs={
@@ -627,7 +599,6 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_true_float_frequency=0.75,
             min_unique_numerical_observations=0.25,
             outlier_detector_config={"cls": "outlier", "foo": "bar"},
-            normalizer_config={"cls": "normalizer", "baz": "bam"},
         )
 
         self.assertTrue(config1 == config2)
@@ -657,37 +628,6 @@ class TestDatasetConfig(ConfigComparisonsMixin, unittest.TestCase):
             min_true_float_frequency=0.75,
             min_unique_numerical_observations=0.25,
             outlier_detector_config={"cls": "outlier", "foo": "bar"},
-            normalizer_config={"cls": "normalizer", "baz": "bam"},
         )
 
         self.assertFalse(config1 == config3)
-
-        config4 = DatasetConfig(
-            measurement_configs={
-                "A_key": MeasurementConfig(
-                    temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.MULTI_LABEL_CLASSIFICATION,
-                ),
-                "B_key": MeasurementConfig(
-                    temporality=TemporalityType.DYNAMIC,
-                    modality=DataModality.MULTIVARIATE_REGRESSION,
-                    values_column="B_val",
-                ),
-                "C": MeasurementConfig(
-                    temporality=TemporalityType.STATIC,
-                    modality=DataModality.SINGLE_LABEL_CLASSIFICATION,
-                ),
-                "D": MeasurementConfig(
-                    temporality=TemporalityType.FUNCTIONAL_TIME_DEPENDENT,
-                    functor=AgeFunctor("dob"),
-                ),
-            },
-            min_valid_column_observations=10,
-            min_valid_vocab_element_observations=0.5,
-            min_true_float_frequency=0.75,
-            min_unique_numerical_observations=0.25,
-            outlier_detector_config={"cls": "outlier", "foo": "bar"},
-            normalizer_config={"cls": "normalizer", "baz": 3},
-        )
-
-        self.assertFalse(config1 == config4)

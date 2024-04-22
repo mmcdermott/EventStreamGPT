@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import hashlib
+import json
 import random
 from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Sequence
@@ -14,6 +16,7 @@ from typing import Any, Union
 
 import omegaconf
 import pandas as pd
+from loguru import logger
 
 from ..utils import (
     COUNT_OR_PROPORTION,
@@ -853,6 +856,10 @@ class PytorchDatasetConfig(JSONableMixin):
         Traceback (most recent call last):
             ...
         TypeError: train_subset_size is of unrecognized type <class 'str'>.
+        >>> import sys
+        >>> from loguru import logger
+        >>> logger.remove()
+        >>> _ = logger.add(sys.stdout, format="{message}")
         >>> config = PytorchDatasetConfig(
         ...     save_dir='./dataset',
         ...     max_seq_len=256,
@@ -864,7 +871,7 @@ class PytorchDatasetConfig(JSONableMixin):
         ...     task_df_name=None,
         ...     do_include_start_time_min=False
         ... )
-        WARNING! train_subset_size is set, but train_subset_seed is not. Setting to...
+        train_subset_size is set, but train_subset_seed is not. Setting to...
         >>> assert config.train_subset_seed is not None
     """
 
@@ -886,7 +893,19 @@ class PytorchDatasetConfig(JSONableMixin):
     do_include_subject_id: bool = False
     do_include_start_time_min: bool = False
 
+    # Trades off between speed/disk/mem and support
+    cache_for_epochs: int = 1
+
     def __post_init__(self):
+        if self.cache_for_epochs is None:
+            self.cache_for_epochs = 1
+
+        if self.subsequence_sampling_strategy != "random" and self.cache_for_epochs > 1:
+            raise ValueError(
+                f"It does not make sense to cache for {self.cache_for_epochs} with non-random "
+                "subsequence sampling."
+            )
+
         if self.seq_padding_side not in SeqPaddingSide.values():
             raise ValueError(f"seq_padding_side invalid; must be in {', '.join(SeqPaddingSide.values())}")
         if type(self.min_seq_len) is not int or self.min_seq_len < 0:
@@ -907,8 +926,11 @@ class PytorchDatasetConfig(JSONableMixin):
                 raise ValueError(f"If float, train_subset_size must be in (0, 1)! Got {frac}")
             case int() | float() if (self.train_subset_seed is None):
                 seed = int(random.randint(1, int(1e6)))
-                print(f"WARNING! train_subset_size is set, but train_subset_seed is not. Setting to {seed}")
+                logger.warning(f"train_subset_size is set, but train_subset_seed is not. Setting to {seed}")
                 self.train_subset_seed = seed
+            case None | "FULL" if self.train_subset_seed is not None:
+                logger.info(f"Removing train subset seed as train subset size is {self.train_subset_size}")
+                self.train_subset_seed = None
             case None | "FULL" | int() | float():
                 pass
             case _:
@@ -941,6 +963,119 @@ class PytorchDatasetConfig(JSONableMixin):
         """Creates a new instance of this class from a plain dictionary."""
         as_dict["save_dir"] = Path(as_dict["save_dir"])
         return cls(**as_dict)
+
+    @property
+    def vocabulary_config_fp(self) -> Path:
+        return self.save_dir / "vocabulary_config.json"
+
+    @property
+    def vocabulary_config(self) -> VocabularyConfig:
+        return VocabularyConfig.from_json_file(self.vocabulary_config_fp)
+
+    @property
+    def measurement_config_fp(self) -> Path:
+        return self.save_dir / "inferred_measurement_configs.json"
+
+    @property
+    def measurement_configs(self) -> dict[str, MeasurementConfig]:
+        with open(self.measurement_config_fp) as f:
+            measurement_configs = {k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()}
+            return {k: v for k, v in measurement_configs.items() if not v.is_dropped}
+
+    @property
+    def DL_reps_dir(self) -> Path:
+        return self.save_dir / "DL_reps"
+
+    @property
+    def cached_task_dir(self) -> Path | None:
+        if self.task_df_name is None:
+            return None
+        else:
+            return self.save_dir / "DL_reps" / "for_task" / self.task_df_name
+
+    @property
+    def raw_task_df_fp(self) -> Path | None:
+        if self.task_df_name is None:
+            return None
+        else:
+            return self.save_dir / "task_dfs" / f"{self.task_df_name}.parquet"
+
+    @property
+    def task_info_fp(self) -> Path | None:
+        if self.task_df_name is None:
+            return None
+        else:
+            return self.cached_task_dir / "task_info.json"
+
+    @property
+    def _data_parameters_and_hash(self) -> tuple[dict[str, Any], str]:
+        params = sorted(
+            (
+                "save_dir",
+                "max_seq_len",
+                "min_seq_len",
+                "seq_padding_side",
+                "subsequence_sampling_strategy",
+                "train_subset_size",
+                "train_subset_seed",
+                "task_df_name",
+            )
+        )
+
+        params_list = []
+        for p in params:
+            v = str(getattr(self, p))
+            if (p == "train_subset_seed") and (self.train_subset_size in ("FULL", None)):
+                v = None
+            params_list.append((p, v))
+
+        params = tuple(params_list)
+        h = hashlib.blake2b(digest_size=8)
+        h.update(str(params).encode())
+
+        return {k: v for k, v in params}, h.hexdigest()
+
+    @property
+    def tensorized_cached_dir(self) -> Path:
+        if self.task_df_name is None:
+            base_dir = self.DL_reps_dir / "tensorized_cached"
+        else:
+            base_dir = self.cached_task_dir
+
+        return base_dir / self._data_parameters_and_hash[1]
+
+    @property
+    def _cached_data_parameters_fp(self) -> Path:
+        return self.tensorized_cached_dir / "data_parameters.json"
+
+    def _cache_data_parameters(self):
+        self._cached_data_parameters_fp.parent.mkdir(exist_ok=True, parents=True)
+
+        with open(self._cached_data_parameters_fp, mode="w") as f:
+            logger.info(f"Saving data parameters to {self._cached_data_parameters_fp}")
+            json.dump(self._data_parameters_and_hash[0], f)
+
+    def tensorized_cached_files(self, split: str) -> dict[str, Path]:
+        if not (self.tensorized_cached_dir / split).is_dir():
+            return {}
+
+        all_files = {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.pt")}
+        files_str = ", ".join(all_files.keys())
+
+        for param, need_keys in [
+            ("do_include_start_time_min", ["start_time"]),
+            ("do_include_subsequence_indices", ["start_idx", "end_idx"]),
+            ("do_include_subject_id", ["subject_id"]),
+        ]:
+            param_val = getattr(self, param)
+            for need_key in need_keys:
+                if param_val:
+                    if need_key not in all_files.keys():
+                        raise KeyError(f"Missing {need_key} but {param} is True! Have {files_str}")
+                elif need_key in all_files:
+                    all_files.pop(need_key)
+
+        return all_files
 
 
 @dataclasses.dataclass
@@ -1032,10 +1167,10 @@ class MeasurementConfig(JSONableMixin):
             * value_type: To which kind of value (e.g., integer, categorical, float) this key corresponds.
               Must be an element of the enum `NumericMetadataValueType`. Optional. If not pre-specified,
               will be inferred from the data.
-            * outlier_model: The parameters (in dictionary form) for the fit outlier model. Optional. If
-              not pre-specified, will be inferred from the data.
-            * normalizer: The parameters (in dictionary form) for the fit normalizer model. Optional. If
-              not pre-specified, will be inferred from the data.
+            * thresh_large: The learned upper bound for inlier values.
+            * thresh_small: The learned lower bound for inlier values.
+            * mean: The mean to which values will be standardized.
+            * std: The standard deviation to which values will be standardized.
 
         modifiers: Stores a list of additional column names that modify this measurement that should be
             tracked with this measurement record through the dataset.
@@ -1139,8 +1274,10 @@ class MeasurementConfig(JSONableMixin):
     PREPROCESSING_METADATA_COLUMNS = OrderedDict(
         {
             "value_type": str,
-            "outlier_model": object,
-            "normalizer": object,
+            "mean": float,
+            "std": float,
+            "thresh_small": float,
+            "thresh_large": float,
         }
     )
 
@@ -1325,29 +1462,12 @@ class MeasurementConfig(JSONableMixin):
                     f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
                 )
             out = out.iloc[:, 0]
-            for col in ("outlier_model", "normalizer"):
-                if col in out and type(out[col]) is str:
-                    try:
-                        out[col] = eval(out[col])
-                    except (TypeError, ValueError) as e:
-                        raise ValueError(
-                            f"Failed to eval {col} for measure {self.name} with value {out[col]}"
-                        ) from e
         elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
             raise ValueError(
                 "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
                 f"measurements should have measurement metadata paths stored. Got {fp} on "
                 f"{self.modality} measurement!"
             )
-        else:
-            for col in ("outlier_model", "normalizer"):
-                if col in out:
-                    try:
-                        out[col] = out[col].apply(lambda x: eval(x) if type(x) is str else x)
-                    except (TypeError, ValueError) as e:
-                        raise ValueError(
-                            f"Failed to eval {col} for measure {self.name} with values {list(out[col])[:5]}"
-                        ) from e
         return out
 
     @measurement_metadata.setter
@@ -1663,17 +1783,14 @@ class DatasetConfig(JSONableMixin):
             mirror scikit-learn outlier detection model APIs. If `None`, numerical outlier values are not
             removed.
 
-        normalizer_config: Configuration options for normalization. If not `None`, must contain the key
-            `'cls'`, which points to the class used normalization. All other keys and values are keyword
-            arguments to be passed to the specified class. The API of these objects is expected to mirror
-            scikit-learn normalization system APIs. If `None`, numerical values are not normalized.
+        center_and_scale: Whether or not to center and scale numerical values.
 
         save_dir: The output save directory for this dataset. Will be converted to a `pathlib.Path` upon
             creation if it is not already one.
 
         agg_by_time_scale: Aggregate events into temporal buckets at this frequency. Uses the string language
             described here:
-            https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_dynamic.html
+            https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.group_by_dynamic.html
 
     Raises:
         ValueError: If configuration parameters are invalid (e.g., proportion parameters being > 1, etc.).
@@ -1712,7 +1829,7 @@ class DatasetConfig(JSONableMixin):
             'min_true_float_frequency': None,
             'min_unique_numerical_observations': None,
             'outlier_detector_config': None,
-            'normalizer_config': None,
+            'center_and_scale': True,
             'save_dir': '/path/to/save/dir'}
         >>> cfg2 = DatasetConfig.from_dict(cfg.to_dict())
         >>> assert cfg == cfg2
@@ -1765,7 +1882,7 @@ class DatasetConfig(JSONableMixin):
     min_unique_numerical_observations: COUNT_OR_PROPORTION | None = None
 
     outlier_detector_config: dict[str, Any] | None = None
-    normalizer_config: dict[str, Any] | None = None
+    center_and_scale: bool = True
 
     save_dir: Path | None = None
 
@@ -1816,10 +1933,10 @@ class DatasetConfig(JSONableMixin):
                         f"{var} must be a fraction (float between 0 and 1). Got {type(val)} of {val}"
                     )
 
-        for var in ("outlier_detector_config", "normalizer_config"):
+        for var in ("outlier_detector_config",):
             val = getattr(self, var)
-            if val is not None and (type(val) is not dict or "cls" not in val):
-                raise ValueError(f"{var} must be either None or a dictionary with 'cls' as a key! Got {val}")
+            if val is not None and (type(val) is not dict):
+                raise ValueError(f"{var} must be either None or a dictionary! Got {val}")
 
         for k, v in self.measurement_configs.items():
             try:

@@ -24,6 +24,6 @@ setup(
         "scripts/pretrain.py",
         "scripts/finetune.py",
         "scripts/get_embeddings.py",
-        "scripts/launch_wandb_hp_sweep.py",
+        "scripts/launch_pretraining_wandb_hp_sweep.py",
     ],
 )

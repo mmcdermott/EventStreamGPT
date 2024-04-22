@@ -26,7 +26,7 @@ def main(cfg: DictConfig):
 
         (
             ESD.events_df
-            .groupby('subject_id')
+            .group_by('subject_id')
             .agg(pl.col('timestamp').sample().first().alias('end_time'))
             .with_columns(
                 pl.lit(label_fn(len(ESD.subject_ids))).cast(pl_dtype).alias('label'),

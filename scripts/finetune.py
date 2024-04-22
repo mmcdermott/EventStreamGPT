@@ -15,6 +15,7 @@ import hydra
 import torch
 from omegaconf import OmegaConf
 
+from EventStream.logger import hydra_loguru_init
 from EventStream.transformer.lightning_modules.fine_tuning import FinetuneConfig, train
 
 torch.set_float32_matmul_precision("high")
@@ -22,6 +23,7 @@ torch.set_float32_matmul_precision("high")
 
 @hydra.main(version_base=None, config_name="finetune_config")
 def main(cfg: FinetuneConfig):
+    hydra_loguru_init()
     if type(cfg) is not FinetuneConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
 
