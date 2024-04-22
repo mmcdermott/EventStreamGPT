@@ -266,64 +266,6 @@ class DatasetBase(
         return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
 
     @classmethod
-    def _get_preprocessing_model(
-        cls,
-        model_config: dict[str, Any],
-        for_fit: bool = False,
-    ) -> Any:
-        """Returns the appropriate model class or instance given the config for pre-processing.
-
-        This fetches the appropriate pre-processing model class (stored in ``model_config['cls']``) and either
-        returns it directly (if not `for_fit`) or instantiates it with the non-``'cls'`` config parameters and
-        returns the instance.
-
-        Args:
-            model_config: The configuration for the particular pre-processing model in question.
-            for_fit: Whether the retrieved model will be used for fitting (in which case it must be
-                instantiated with the passed configuration) or for transforming/predicting (in which case the
-                fit parameters will be stored with the data and so only the class is needed).
-
-        Returns:
-            Either the model class (as indicated via ``model_config['cls']``) or an instance of the class as
-            defined by non-``'cls'`` keyword parameters in `model_config`.
-
-        Raises:
-            KeyError: if ``'cls'`` is not in `model_config` or ``model_config['cls']`` is not in
-                `PREPROCESSORS`.
-
-        Examples:
-            >>> class MockPreprocessor:
-            ...     def __init__(self, name: str):
-            ...         self.name = name
-            ...     def __repr__(self) -> str:
-            ...         return f"MockPreprocessor(name={repr(self.name)})"
-            >>> DatasetBase.PREPROCESSORS = {'mock': MockPreprocessor}
-            >>> DatasetBase._get_preprocessing_model({'cls': 'mock', 'name': 'test'}, True)
-            MockPreprocessor(name='test')
-            >>> DatasetBase._get_preprocessing_model({'cls': 'mock', 'name': 'test'}, False)
-            <class '...MockPreprocessor'>
-            >>> DatasetBase._get_preprocessing_model({'name': 'test'}, True)
-            Traceback (most recent call last):
-                ...
-            KeyError: "Missing mandatory preprocessor class configuration parameter `'cls'`."
-            >>> DatasetBase._get_preprocessing_model({'cls': 'invalid', 'name': 'test'}, True)
-            Traceback (most recent call last):
-                ...
-            KeyError: 'Invalid preprocessor model class invalid! DatasetBase options are mock'
-        """
-        model_config = copy.deepcopy(model_config)
-        if "cls" not in model_config:
-            raise KeyError("Missing mandatory preprocessor class configuration parameter `'cls'`.")
-        if model_config["cls"] not in cls.PREPROCESSORS:
-            raise KeyError(
-                f"Invalid preprocessor model class {model_config['cls']}! {cls.__name__} options are "
-                f"{', '.join(cls.PREPROCESSORS.keys())}"
-            )
-
-        model_cls = cls.PREPROCESSORS[model_config.pop("cls")]
-        return model_cls(**model_config) if for_fit else model_cls
-
-    @classmethod
     @abc.abstractmethod
     def _read_df(cls, fp: Path, **kwargs) -> DF_T:
         """Reads a dataframe from `fp`."""
