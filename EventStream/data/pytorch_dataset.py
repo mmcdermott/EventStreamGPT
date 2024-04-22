@@ -460,7 +460,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 {pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, pl.Int8, pl.Int16, pl.Int32, pl.Int64},
                 None,
             ),
-            ({pl.Categorical}, to_int_index),
+            ({pl.Categorical(ordering="physical"), pl.Categorical(ordering="lexical")}, to_int_index),
             ({pl.Utf8}, to_int_index),
         ],
         "binary_classification": [({pl.Boolean}, lambda Y: Y.cast(pl.Float32))],
