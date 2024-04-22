@@ -631,7 +631,7 @@ class DatasetBase(
             )
 
         subjects_to_split = set(self.subject_ids) - set(
-            itertools.chain.from_iterable(mandatory_set_IDs.values)
+            itertools.chain.from_iterable(mandatory_set_IDs.values())
         )
 
         # As split fractions may not result in integer split sizes, we shuffle the split names and fractions
