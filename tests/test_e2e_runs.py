@@ -30,7 +30,14 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
 
         self.dir_objs = {}
         self.paths = {}
-        for n in ("dataset", "pretraining/CI", "pretraining/NA", "from_scratch_finetuning", "sklearn"):
+        for n in (
+            "dataset",
+            "esds",
+            "pretraining/CI",
+            "pretraining/NA",
+            "from_scratch_finetuning",
+            "sklearn",
+        ):
             self.dir_objs[n] = TemporaryDirectory()
             self.paths[n] = Path(self.dir_objs[n].name)
 
@@ -38,8 +45,16 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         for o in self.dir_objs.values():
             o.cleanup()
 
-    def _test_command(self, command_parts: list[str], case_name: str):
-        with self.subTest(case_name):
+    def _test_command(self, command_parts: list[str], case_name: str, use_subtest: bool = True):
+        if use_subtest:
+            with self.subTest(case_name):
+                command_out = subprocess.run(" ".join(command_parts), shell=True, capture_output=True)
+                stderr = command_out.stderr.decode()
+                stdout = command_out.stdout.decode()
+                self.assertEqual(
+                    command_out.returncode, 0, f"Command errored!\nstderr:\n{stderr}\nstdout:\n{stdout}"
+                )
+        else:
             command_out = subprocess.run(" ".join(command_parts), shell=True, capture_output=True)
             stderr = command_out.stderr.decode()
             stdout = command_out.stdout.decode()
@@ -55,7 +70,16 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             '"hydra.searchpath=[./configs]"',
             f"save_dir={self.paths['dataset']}",
         ]
-        self._test_command(command_parts, "Build Dataset")
+        self._test_command(command_parts, "Build Dataset", use_subtest=False)
+
+    def build_ESDS_dataset(self):
+        command_parts = [
+            "./scripts/convert_to_ESDS.py",
+            f"dataset_dir={self.paths['dataset']}",
+            f"ESDS_save_dir={self.paths['esds']}",
+            "ESDS_chunk_size=25",
+        ]
+        self._test_command(command_parts, "Build ESDS Dataset", use_subtest=True)
 
     def run_pretraining(self):
         cases = [
@@ -83,7 +107,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
                 f"save_dir={case['save_dir'] / 'model'}",
             ]
 
-            self._test_command(command_parts, case_name)
+            self._test_command(command_parts, case_name, use_subtest=False)
 
     def run_finetuning(self):
         """Tests that fine-tuning can be run on a pre-trained model."""
@@ -114,9 +138,6 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
                 f"task_df_name={task}",
             ]
             self._test_command(command_parts, f"From-scratch NN Training: {task}")
-
-    def run_generate_trajectories(self):
-        raise NotImplementedError("Not done yet!")
 
     def run_get_embeddings(self):
         task = "multi_class_classification"  # Get embeddings is not sensitive to task.
@@ -180,15 +201,13 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
                     {"window_sizes": ["1h", "1d", "FULL"], "feature_inclusion_frequency": 1e-3},
                 ),
             ),
-            "model": ("random_forest_classifier",),
+            "model": (("random_forest_classifier", {"n_estimators": 2}),),
         }
 
         for task in cfg_options.pop("task"):
             for cfg in dict_product(cfg_options):
                 cmd = make_command(cfg, task)
                 self._test_command(cmd, f"Sklearn for {' '.join(cmd)}")
-                break
-            break
 
     def run_zeroshot(self):
         classification_labeler_path = root / "sample_data" / "sample_classification_labeler.py"
@@ -231,6 +250,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
     def test_e2e(self):
         # Data
         self.build_dataset()
+        self.build_ESDS_dataset()
         self.build_FT_task_df()
 
         # Sklearn baselines
