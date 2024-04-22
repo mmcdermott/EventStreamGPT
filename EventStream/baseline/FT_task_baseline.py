@@ -188,6 +188,7 @@ def load_flat_rep(
                     if do_cache_filtered_task:
                         cached_fp.parent.mkdir(exist_ok=True, parents=True)
                         df.collect().write_parquet(cached_fp, use_pyarrow=True)
+                        df = pl.scan_parquet(cached_fp).select("subject_id", "timestamp", *window_features)
 
                 df = df.select("subject_id", "timestamp", *window_features)
                 if subjects_included.get(sp, None) is not None:
