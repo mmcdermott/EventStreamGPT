@@ -221,7 +221,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             logger.info(f"Saving full data_stats to {data_stats_fp}")
             json.dump(stats, f)
 
-        logger.info("Collecting data to cache.")
+        logger.info("Collecting data to cache @ initial seed of 1.")
+        constructor_pyd._seed(1)
         for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
                 items.append(it)
