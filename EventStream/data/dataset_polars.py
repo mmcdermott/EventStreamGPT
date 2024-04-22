@@ -38,7 +38,8 @@ from .vocabulary import Vocabulary
 pl.enable_string_cache()
 
 PL_TO_PA_DTYPE_MAP = {
-    pl.Categorical: pa.string(),
+    pl.Categorical(ordering="physical"): pa.string(),
+    pl.Categorical(ordering="lexical"): pa.string(),
     pl.Utf8: pa.string(),
     pl.Float32: pa.float32(),
     pl.Float64: pa.float64(),
@@ -552,7 +553,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 source_df = source_df.with_columns(pl.col(id_col).cast(id_col_dt))
 
         if id_col_name not in source_df:
-            source_df = source_df.with_row_count(name=id_col_name)
+            source_df = source_df.with_row_index(name=id_col_name)
 
         id_col, id_col_dt = self._validate_id_col(source_df.get_column(id_col_name))
         source_df = source_df.with_columns(id_col)
@@ -710,7 +711,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
 
             n_events_pd = self.events_df.get_column("subject_id").value_counts(sort=False).to_pandas()
-            self.n_events_per_subject = n_events_pd.set_index("subject_id")["counts"].to_dict()
+            self.n_events_per_subject = n_events_pd.set_index("subject_id")["count"].to_dict()
             self.subject_ids = set(self.n_events_per_subject.keys())
 
         if self.subjects_df is not None:
@@ -861,7 +862,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
             int_keys = for_val_type_inference.group_by(vocab_keys_col).agg(is_int_expr)
 
-            measurement_metadata = measurement_metadata.join(int_keys, on=vocab_keys_col, how="outer")
+            measurement_metadata = measurement_metadata.join(
+                int_keys, on=vocab_keys_col, how="outer_coalesce"
+            )
 
             key_is_int = pl.col(vocab_keys_col).is_in(int_keys.filter("is_int")[vocab_keys_col])
             for_val_type_inference = for_val_type_inference.with_columns(
@@ -899,7 +902,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             categorical_keys = for_val_type_inference.group_by(vocab_keys_col).agg(is_cat_expr)
 
-            measurement_metadata = measurement_metadata.join(categorical_keys, on=vocab_keys_col, how="outer")
+            measurement_metadata = measurement_metadata.join(
+                categorical_keys, on=vocab_keys_col, how="outer_coalesce"
+            )
         else:
             measurement_metadata = measurement_metadata.with_columns(pl.lit(False).alias("is_categorical"))
 
@@ -949,7 +954,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 measurement_metadata.join(
                     dropped_keys,
                     on=vocab_keys_col,
-                    how="outer",
+                    how="outer_coalesce",
                     suffix="_right",
                 )
                 .with_columns(pl.coalesce(["value_type", "value_type_right"]).alias("value_type"))
@@ -1112,7 +1117,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             try:
                 value_counts = observations.value_counts()
                 vocab_elements = value_counts.get_column(measure).to_list()
-                el_counts = value_counts.get_column("counts")
+                el_counts = value_counts.get_column("count")
                 return Vocabulary(vocabulary=vocab_elements, obs_frequencies=el_counts)
             except AssertionError as e:
                 raise AssertionError(f"Failed to build vocabulary for {measure}") from e
@@ -1411,7 +1416,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
         )
 
-        out = static_data.join(event_data, on="subject_id", how="outer")
+        out = static_data.join(event_data, on="subject_id", how="outer_coalesce")
         if do_sort_outputs:
             out = out.sort("subject_id")
 
@@ -1615,7 +1620,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 )
                 continue
             elif cfg.modality == "multivariate_regression":
-                column_cols = [m, m]
+                select_cols = [
+                    pl.col(m).alias(f"{m}_{m}"),
+                    pl.col(m).alias(f"{cfg.values_column}_{m}"),
+                    m,
+                    cfg.values_column,
+                ]
+                column_cols = [f"{m}_{m}", f"{cfg.values_column}_{m}"]
                 values_cols = [m, cfg.values_column]
                 key_prefix = f"{m}_{m}_"
                 val_prefix = f"{cfg.values_column}_{m}_"
@@ -1643,13 +1654,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             else:
                 column_cols = [m]
                 values_cols = [m]
+                select_cols = [m]
                 aggs = [
                     pl.all().is_not_null().sum().cast(count_type).name.map(lambda c: f"dynamic/{m}/{c}/count")
                 ]
 
             ID_cols = ["measurement_id", "event_id"]
             out_dfs[m] = (
-                df.select(*ID_cols, *set(column_cols + values_cols))
+                df.select(*ID_cols, *select_cols)
                 .filter(pl.col(m).is_in(allowed_vocab))
                 .pivot(
                     index=ID_cols,
@@ -2088,7 +2100,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .agg(pl.col("event").alias("events"))
         )
 
-        out = static_data.join(event_data, on="subject_id", how="outer")
+        out = static_data.join(event_data, on="subject_id", how="outer_coalesce")
         if do_sort_outputs:
             out = out.sort("subject_id")
 
