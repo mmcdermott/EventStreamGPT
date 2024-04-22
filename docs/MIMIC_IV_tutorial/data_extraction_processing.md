@@ -21,15 +21,15 @@ language: yaml
 ---
 ```
 
-With this configuration file saved to path `.../configs/dataset.yml`, and with `EFGPT_PATH` defined to point
-to the root of the EFGPT repo, then the dataset pipeline can be built with the command
+With this configuration file saved to path `.../configs/dataset.yml`, and with `ESGPT_PATH` defined to point
+to the root of the ESGPT repo, then the dataset pipeline can be built with the command
 
 ```bash
-PYTHONPATH="$EFGPT_PATH:$PYTHONPATH" python \
-	$EFGPT_PATH/scripts/build_dataset.py \
+PYTHONPATH="$ESGPT_PATH:$PYTHONPATH" python \
+	$ESGPT_PATH/scripts/build_dataset.py \
 	--config-path=$(pwd)/configs \
 	--config-name=dataset \
-	"hydra.searchpath=[$EFGPT_PATH/configs]" [configuration args...]
+	"hydra.searchpath=[$ESGPT_PATH/configs]" [configuration args...]
 ```
 
 The only mandatory command line configuration argument with this setup is the `cohort_name` argument. As can
@@ -43,8 +43,8 @@ command:
 #### Hydra-specific parameters
 
 The `defaults:` block at the top is a Hydra specific inclusion, and ensures the script knows to merge this
-configuration file. Similarly, the `hydra.searchpath=[$EFGPT_PATH/confgis]` command line argument also ensures
-Hydra knows to look for the base config in the EFGPT repository's configs path.
+configuration file. Similarly, the `hydra.searchpath=[$ESGPT_PATH/configs]` command line argument also ensures
+Hydra knows to look for the base config in the ESGPT repository's configs path.
 
 #### Inputs
 

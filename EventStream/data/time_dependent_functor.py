@@ -187,8 +187,10 @@ class AgeFunctor(TimeDependentFunctor):
             >>> prior_values = (prior_ages - age_mean) / age_std
             >>> new_delta = torch.FloatTensor([1, 10, 2]) * (60*24*365.25)
             >>> measurement_metadata = pd.Series({
-            ...     "normalizer": {"mean_": age_mean, "std_": age_std},
-            ...     "outlier_model": {"thresh_large_": thresh_large, "thresh_small_": thresh_small},
+            ...     "mean": age_mean,
+            ...     "std": age_std,
+            ...     "thresh_large": thresh_large,
+            ...     "thresh_small": thresh_small,
             ... })
             >>> functor = AgeFunctor(dob_col="birth_date")
             >>> new_indices, new_ages = functor.update_from_prior_timepoint(
@@ -205,11 +207,18 @@ class AgeFunctor(TimeDependentFunctor):
             tensor([21., 40., 42.])
         """
 
-        mean = measurement_metadata["normalizer"]["mean_"]
-        std = measurement_metadata["normalizer"]["std_"]
+        mean = float(measurement_metadata["mean"]) if "mean" in measurement_metadata else 0
+        std = float(measurement_metadata["std"]) if "std" in measurement_metadata else 1
 
-        thresh_large = measurement_metadata["outlier_model"]["thresh_large_"]
-        thresh_small = measurement_metadata["outlier_model"]["thresh_small_"]
+        if "thresh_large" in measurement_metadata:
+            thresh_large = float(measurement_metadata["thresh_large"])
+        else:
+            thresh_large = float("inf")
+
+        if "thresh_small" in measurement_metadata:
+            thresh_small = float(measurement_metadata["thresh_small"])
+        else:
+            thresh_small = float("-inf")
 
         prior_age = (prior_values * std) + mean
 

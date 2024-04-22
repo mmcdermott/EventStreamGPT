@@ -25,7 +25,6 @@ from mixins import TimeableMixin
 from ..utils import lt_count_or_proportion
 from .config import MeasurementConfig
 from .dataset_base import DatasetBase
-from .preprocessing import Preprocessor, StandardScaler, StddevCutoffOutlierDetector
 from .types import (
     DataModality,
     InputDataType,
@@ -38,7 +37,8 @@ from .vocabulary import Vocabulary
 pl.enable_string_cache()
 
 PL_TO_PA_DTYPE_MAP = {
-    pl.Categorical: pa.string(),
+    pl.Categorical(ordering="physical"): pa.string(),
+    pl.Categorical(ordering="lexical"): pa.string(),
     pl.Utf8: pa.string(),
     pl.Float32: pa.float32(),
     pl.Float64: pa.float64(),
@@ -104,16 +104,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             from source and produce the `subjects_df`, `events_df`, `dynamic_measurements_df` input view.
     """
 
-    # Dictates what models can be fit on numerical metadata columns, for both outlier detection and
-    # normalization.
-    PREPROCESSORS: dict[str, Preprocessor] = {
-        # Outlier Detectors
-        "stddev_cutoff": StddevCutoffOutlierDetector,
-        # Normalizers
-        "standard_scaler": StandardScaler,
-    }
-    """A dictionary containing the valid pre-processors that can be used by this model class."""
-
     METADATA_SCHEMA = {
         "drop_upper_bound": pl.Float64,
         "drop_upper_bound_inclusive": pl.Boolean,
@@ -121,8 +111,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         "drop_lower_bound_inclusive": pl.Boolean,
         "censor_upper_bound": pl.Float64,
         "censor_lower_bound": pl.Float64,
-        "outlier_model": lambda outlier_params_schema: pl.Struct(outlier_params_schema),
-        "normalizer": lambda normalizer_params_schema: pl.Struct(normalizer_params_schema),
+        "thresh_high": pl.Float64,
+        "thresh_low": pl.Float64,
+        "mean": pl.Float64,
+        "std": pl.Float64,
         "value_type": pl.Categorical,
     }
     """The Polars schema of the numerical measurement metadata dataframes which track fit parameters."""
@@ -406,13 +398,6 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             "value_type": self.METADATA_SCHEMA["value_type"],
         }
 
-        if self.config.outlier_detector_config is not None:
-            M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=False)
-            schema["outlier_model"] = self.METADATA_SCHEMA["outlier_model"](M.params_schema())
-        if self.config.normalizer_config is not None:
-            M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=False)
-            schema["normalizer"] = self.METADATA_SCHEMA["normalizer"](M.params_schema())
-
         metadata = config.measurement_metadata
         if metadata is None:
             return schema
@@ -424,6 +409,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             "censor_lower_bound",
             "drop_upper_bound_inclusive",
             "drop_lower_bound_inclusive",
+            "thresh_low",
+            "thresh_high",
+            "mean",
+            "std",
         ):
             if col in metadata:
                 schema[col] = self.METADATA_SCHEMA[col]
@@ -552,7 +541,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 source_df = source_df.with_columns(pl.col(id_col).cast(id_col_dt))
 
         if id_col_name not in source_df:
-            source_df = source_df.with_row_count(name=id_col_name)
+            source_df = source_df.with_row_index(name=id_col_name)
 
         id_col, id_col_dt = self._validate_id_col(source_df.get_column(id_col_name))
         source_df = source_df.with_columns(id_col)
@@ -710,7 +699,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
 
             n_events_pd = self.events_df.get_column("subject_id").value_counts(sort=False).to_pandas()
-            self.n_events_per_subject = n_events_pd.set_index("subject_id")["counts"].to_dict()
+            self.n_events_per_subject = n_events_pd.set_index("subject_id")["count"].to_dict()
             self.subject_ids = set(self.n_events_per_subject.keys())
 
         if self.subjects_df is not None:
@@ -861,7 +850,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
             int_keys = for_val_type_inference.group_by(vocab_keys_col).agg(is_int_expr)
 
-            measurement_metadata = measurement_metadata.join(int_keys, on=vocab_keys_col, how="outer")
+            measurement_metadata = measurement_metadata.join(
+                int_keys, on=vocab_keys_col, how="outer_coalesce"
+            )
 
             key_is_int = pl.col(vocab_keys_col).is_in(int_keys.filter("is_int")[vocab_keys_col])
             for_val_type_inference = for_val_type_inference.with_columns(
@@ -899,7 +890,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
             categorical_keys = for_val_type_inference.group_by(vocab_keys_col).agg(is_cat_expr)
 
-            measurement_metadata = measurement_metadata.join(categorical_keys, on=vocab_keys_col, how="outer")
+            measurement_metadata = measurement_metadata.join(
+                categorical_keys, on=vocab_keys_col, how="outer_coalesce"
+            )
         else:
             measurement_metadata = measurement_metadata.with_columns(pl.lit(False).alias("is_categorical"))
 
@@ -949,7 +942,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 measurement_metadata.join(
                     dropped_keys,
                     on=vocab_keys_col,
-                    how="outer",
+                    how="outer_coalesce",
                     suffix="_right",
                 )
                 .with_columns(pl.coalesce(["value_type", "value_type_right"]).alias("value_type"))
@@ -1012,36 +1005,34 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         # 4. Infer outlier detector and normalizer parameters.
         if self.config.outlier_detector_config is not None:
+            stddev_cutoff = self.config.outlier_detector_config["stddev_cutoff"]
             with self._time_as("fit_outlier_detector"):
-                M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=True)
-                outlier_model_params = source_df.group_by(vocab_keys_col).agg(
-                    M.fit_from_polars(pl.col(vals_col)).alias("outlier_model")
-                )
-
-                measurement_metadata = measurement_metadata.with_columns(
-                    pl.col("outlier_model").cast(outlier_model_params["outlier_model"].dtype)
-                )
-                source_df = source_df.with_columns(
-                    pl.col("outlier_model").cast(outlier_model_params["outlier_model"].dtype)
+                outlier_model_params = (
+                    source_df.groupby(vocab_keys_col)
+                    .agg(
+                        pl.col(vals_col).mean().alias("mean"),
+                        pl.col(vals_col).std().alias("std"),
+                    )
+                    .select(
+                        vocab_keys_col,
+                        (pl.col("mean") + stddev_cutoff * pl.col("std")).alias("thresh_large"),
+                        (pl.col("mean") - stddev_cutoff * pl.col("std")).alias("thresh_small"),
+                    )
                 )
 
                 measurement_metadata = measurement_metadata.update(outlier_model_params, on=vocab_keys_col)
-                source_df = source_df.update(
-                    measurement_metadata.select(vocab_keys_col, "outlier_model"), on=vocab_keys_col
-                )
+                source_df = source_df.update(outlier_model_params, on=vocab_keys_col)
 
-                is_inlier = ~M.predict_from_polars(pl.col(vals_col), pl.col("outlier_model"))
+                is_inlier = (pl.col(vals_col) > pl.col("thresh_small")) & (
+                    pl.col(vals_col) < pl.col("thresh_large")
+                )
                 source_df = source_df.filter(is_inlier)
 
         # 5. Fit a normalizer model.
-        if self.config.normalizer_config is not None:
+        if self.config.center_and_scale:
             with self._time_as("fit_normalizer"):
-                M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=True)
-                normalizer_params = source_df.group_by(vocab_keys_col).agg(
-                    M.fit_from_polars(pl.col(vals_col)).alias("normalizer")
-                )
-                measurement_metadata = measurement_metadata.with_columns(
-                    pl.col("normalizer").cast(normalizer_params["normalizer"].dtype)
+                normalizer_params = source_df.groupby(vocab_keys_col).agg(
+                    pl.col(vals_col).mean().alias("mean"), pl.col(vals_col).std().alias("std")
                 )
                 measurement_metadata = measurement_metadata.update(normalizer_params, on=vocab_keys_col)
 
@@ -1112,7 +1103,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             try:
                 value_counts = observations.value_counts()
                 vocab_elements = value_counts.get_column(measure).to_list()
-                el_counts = value_counts.get_column("counts")
+                el_counts = value_counts.get_column("count")
                 return Vocabulary(vocabulary=vocab_elements, obs_frequencies=el_counts)
             except AssertionError as e:
                 raise AssertionError(f"Failed to build vocabulary for {measure}") from e
@@ -1190,9 +1181,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         # 5. Add inlier/outlier indices and remove learned outliers.
         if self.config.outlier_detector_config is not None:
-            M = self._get_preprocessing_model(self.config.outlier_detector_config, for_fit=False)
-
-            inliers_col = ~M.predict_from_polars(vals_col, pl.col("outlier_model")).alias(inliers_col_name)
+            inliers_col = ((vals_col > pl.col("thresh_small")) & (vals_col < pl.col("thresh_large"))).alias(
+                inliers_col_name
+            )
             vals_col = pl.when(inliers_col).then(vals_col).otherwise(np.NaN)
 
             present_source = present_source.with_columns(inliers_col, vals_col)
@@ -1206,10 +1197,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             return null_source.drop(cols_to_drop_at_end)
 
         # 6. Normalize values.
-        if self.config.normalizer_config is not None:
-            M = self._get_preprocessing_model(self.config.normalizer_config, for_fit=False)
-
-            vals_col = M.predict_from_polars(vals_col, pl.col("normalizer"))
+        if self.config.center_and_scale:
+            vals_col = (vals_col - pl.col("mean")) / pl.col("std")
             present_source = present_source.with_columns(vals_col)
 
         source_df = present_source.vstack(null_source)
@@ -1411,7 +1400,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
         )
 
-        out = static_data.join(event_data, on="subject_id", how="outer")
+        out = static_data.join(event_data, on="subject_id", how="outer_coalesce")
         if do_sort_outputs:
             out = out.sort("subject_id")
 
@@ -1615,7 +1604,13 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 )
                 continue
             elif cfg.modality == "multivariate_regression":
-                column_cols = [m, m]
+                select_cols = [
+                    pl.col(m).alias(f"{m}_{m}"),
+                    pl.col(m).alias(f"{cfg.values_column}_{m}"),
+                    m,
+                    cfg.values_column,
+                ]
+                column_cols = [f"{m}_{m}", f"{cfg.values_column}_{m}"]
                 values_cols = [m, cfg.values_column]
                 key_prefix = f"{m}_{m}_"
                 val_prefix = f"{cfg.values_column}_{m}_"
@@ -1643,13 +1638,14 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             else:
                 column_cols = [m]
                 values_cols = [m]
+                select_cols = [m]
                 aggs = [
                     pl.all().is_not_null().sum().cast(count_type).name.map(lambda c: f"dynamic/{m}/{c}/count")
                 ]
 
             ID_cols = ["measurement_id", "event_id"]
             out_dfs[m] = (
-                df.select(*ID_cols, *set(column_cols + values_cols))
+                df.select(*ID_cols, *select_cols)
                 .filter(pl.col(m).is_in(allowed_vocab))
                 .pivot(
                     index=ID_cols,
@@ -1860,19 +1856,17 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         return self._normalize_flat_rep_df_cols(df, set_count_0_to_null=True)
 
     def _denormalize(self, events_df: DF_T, col: str) -> DF_T:
-        if self.config.normalizer_config is None:
+        if not self.config.center_and_scale:
             return events_df
-        elif self.config.normalizer_config["cls"] != "standard_scaler":
-            raise ValueError(f"De-normalizing from {self.config.normalizer_config} not yet supported!")
 
         config = self.measurement_configs[col]
         if config.modality != DataModality.UNIVARIATE_REGRESSION:
             raise ValueError(f"De-normalizing {config.modality} is not currently supported.")
 
-        normalizer_params = config.measurement_metadata.normalizer
-        return events_df.with_columns(
-            ((pl.col(col) * normalizer_params["std_"]) + normalizer_params["mean_"]).alias(col)
-        )
+        mean = float(config.measurement_metadata.loc["mean"])
+        std = float(config.measurement_metadata.loc["std"])
+
+        return events_df.with_columns((pl.col(col) * std + mean).alias(col))
 
     def _ESDS_melt_df(
         self,
@@ -2088,7 +2082,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             .agg(pl.col("event").alias("events"))
         )
 
-        out = static_data.join(event_data, on="subject_id", how="outer")
+        out = static_data.join(event_data, on="subject_id", how="outer_coalesce")
         if do_sort_outputs:
             out = out.sort("subject_id")
 

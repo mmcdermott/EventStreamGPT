@@ -610,20 +610,24 @@ class LearnableFrequencySinusoidalTemporalPositionEncoding(torch.nn.Module):
         # div_term = torch.exp(torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim))
 
         size = math.ceil(embedding_dim / 2)
-        div_term = torch.empty(
+        sin_div_term = torch.empty(
             size,
         )
-        torch.nn.init.normal_(div_term)
+        cos_div_term = torch.empty(
+            size,
+        )
+        torch.nn.init.normal_(sin_div_term)
+        torch.nn.init.normal_(cos_div_term)
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
         # embedding. This is not a principled decision, but enabling odd embedding dimensions helps avoid edge
         # cases during hyperparameter tuning when searching over possible embedding spaces.
         if self.embedding_dim % 2 == 0:
-            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=True)
-            self.cos_div_term = torch.nn.Parameter(div_term, requires_grad=True)
+            self.sin_div_term = torch.nn.Parameter(sin_div_term, requires_grad=True)
+            self.cos_div_term = torch.nn.Parameter(cos_div_term, requires_grad=True)
         else:
-            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=True)
-            self.cos_div_term = torch.nn.Parameter(div_term[:-1], requires_grad=True)
+            self.sin_div_term = torch.nn.Parameter(sin_div_term, requires_grad=True)
+            self.cos_div_term = torch.nn.Parameter(cos_div_term[:-1], requires_grad=True)
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
         """Forward pass.
@@ -671,17 +675,22 @@ class TemporalPositionEncoding(torch.nn.Module):
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
-        div_term = torch.exp(torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim))
+        sin_div_term = torch.exp(
+            torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim)
+        )
+        cos_div_term = torch.exp(
+            torch.arange(0, embedding_dim, 2) * (-math.log(max_timepoint) / embedding_dim)
+        )
 
         # We still want this to work for odd embedding dimensions, so we'll lop off the end of the cos
         # embedding. This is not a principled decision, but enabling odd embedding dimensions helps avoid edge
         # cases during hyperparameter tuning when searching over possible embedding spaces.
         if self.embedding_dim % 2 == 0:
-            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=False)
-            self.cos_div_term = torch.nn.Parameter(div_term, requires_grad=False)
+            self.sin_div_term = torch.nn.Parameter(sin_div_term, requires_grad=False)
+            self.cos_div_term = torch.nn.Parameter(cos_div_term, requires_grad=False)
         else:
-            self.sin_div_term = torch.nn.Parameter(div_term, requires_grad=False)
-            self.cos_div_term = torch.nn.Parameter(div_term[:-1], requires_grad=False)
+            self.sin_div_term = torch.nn.Parameter(sin_div_term, requires_grad=False)
+            self.cos_div_term = torch.nn.Parameter(cos_div_term[:-1], requires_grad=False)
 
     def forward(self, batch: PytorchBatch) -> torch.Tensor:
         """Forward pass.

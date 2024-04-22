@@ -82,7 +82,7 @@ def add_tasks_from(
         ┌────────────┬────────────┬─────────────────────┬─────┐
         │ subject_id ┆ start_time ┆ end_time            ┆ foo │
         │ ---        ┆ ---        ┆ ---                 ┆ --- │
-        │ i64        ┆ f32        ┆ datetime[μs]        ┆ i64 │
+        │ i64        ┆ null       ┆ datetime[μs]        ┆ i64 │
         ╞════════════╪════════════╪═════════════════════╪═════╡
         │ 1          ┆ null       ┆ 2023-01-04 00:00:00 ┆ 0   │
         │ 2          ┆ null       ┆ 1984-01-02 00:00:00 ┆ 5   │
@@ -95,7 +95,7 @@ def add_tasks_from(
         ┌────────────┬────────────┬─────────────────────┬──────┐
         │ subject_id ┆ start_time ┆ end_time            ┆ bar  │
         │ ---        ┆ ---        ┆ ---                 ┆ ---  │
-        │ i64        ┆ f32        ┆ datetime[μs]        ┆ f64  │
+        │ i64        ┆ null       ┆ datetime[μs]        ┆ f64  │
         ╞════════════╪════════════╪═════════════════════╪══════╡
         │ 1          ┆ null       ┆ 2010-01-04 00:00:00 ┆ 3.12 │
         │ 3          ┆ null       ┆ 1985-01-02 00:00:00 ┆ 8.1  │
@@ -153,7 +153,7 @@ def summarize_binary_task(task_df: pl.LazyFrame):
     return (
         task_df.group_by("subject_id")
         .agg(
-            pl.count().alias("samples_per_subject"),
+            pl.len().alias("samples_per_subject"),
             *[pl.col(c).mean() for c in label_cols],
         )
         .select(

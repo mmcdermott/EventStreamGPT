@@ -472,8 +472,10 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         empty_measurement_metadata = pd.DataFrame(
             {
                 "value_type": pd.Series([], dtype=object),
-                "outlier_model": pd.Series([], dtype=object),
-                "normalizer": pd.Series([], dtype=object),
+                "mean": pd.Series([], dtype=float),
+                "std": pd.Series([], dtype=float),
+                "thresh_small": pd.Series([], dtype=float),
+                "thresh_large": pd.Series([], dtype=float),
             },
             index=pd.Index([], name="numeric"),
         )
