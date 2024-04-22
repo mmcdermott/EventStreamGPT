@@ -223,6 +223,7 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
                 logger.info(f"Saving full data stats to subset dir {subset_data_stats_fp}")
                 json.dump(full_data_stats, f)
 
+    # TODO(mmd): Add seeding here
     @TimeableMixin.TimeAs
     def _cache_full_data(self):
         self._full_data_config._cache_data_parameters()
@@ -240,7 +241,8 @@ class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
             logger.info(f"Saving full data_stats to {data_stats_fp}")
             json.dump(stats, f)
 
-        logger.info("Collecting data to cache.")
+        logger.info("Collecting data to cache @ initial seed of 1.")
+        constructor_pyd._seed(1)
         data_as_lists = defaultdict(list)
         for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
             for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
@@ -520,7 +522,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
                 {pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, pl.Int8, pl.Int16, pl.Int32, pl.Int64},
                 None,
             ),
-            ({pl.Categorical}, to_int_index),
+            ({pl.Categorical(ordering="physical"), pl.Categorical(ordering="lexical")}, to_int_index),
             ({pl.Utf8}, to_int_index),
         ],
         "binary_classification": [({pl.Boolean}, lambda Y: Y.cast(pl.Float32))],
@@ -657,7 +659,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
-        length_constraint = pl.col("dynamic_indices").list.lengths() >= config.min_seq_len
+        length_constraint = pl.col("dynamic_indices").list.len() >= config.min_seq_len
         self.cached_data = self.cached_data.filter(length_constraint)
 
         if "time_delta" not in self.cached_data.columns:
@@ -886,7 +888,7 @@ class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.D
 
         return (
             cached_data.with_columns(time_col_expr.alias("time"))
-            .join(task_df.with_row_count("task_ID"), on="subject_id", how="inner", suffix="_task")
+            .join(task_df.with_row_index("task_ID"), on="subject_id", how="inner", suffix="_task")
             .with_columns(
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
