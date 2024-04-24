@@ -11,6 +11,7 @@ import dataclasses
 import math
 import multiprocessing
 from collections.abc import Callable, Sequence
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Union
 
@@ -1688,14 +1689,17 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                         )
 
                 if cfg.vocabulary is None:
-                    observation_frequency = cfg.observation_rate_per_case * cfg.observation_rate_over_cases
+                    observation_frequency = 1
                 else:
                     if feature not in cfg.vocabulary.idxmap:
                         raise ValueError(f"Column name {col} malformed: Feature {feature} not in {meas}!")
                     else:
                         observation_frequency = cfg.vocabulary.obs_frequencies[cfg.vocabulary[feature]]
 
-                total_observations = int(math.ceil(observation_frequency * n_possible))
+                total_observations = int(math.ceil(
+                    cfg.observation_rate_per_case * cfg.observation_rate_over_cases *
+                    observation_frequency * n_possible
+                ))
 
                 return self.get_smallest_valid_uint_type(total_observations)
             case _:
@@ -1820,11 +1824,39 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 cols_to_max.cummax().map_alias(time_aggd_col_alias_fntr()),
             )
             df = df.explode(*[c for c in df.columns if c != "subject_id"])
+        elif window_size == "-FULL":
+            df = df.groupby("subject_id").agg(
+                "timestamp",
+                # present to counts
+                present_indicator_cols.cumsum(reverse=True).map_alias(time_aggd_col_alias_fntr("count")),
+                # values to stats
+                value_cols.is_not_null().cumsum(reverse=True).map_alias(time_aggd_col_alias_fntr("count")),
+                (
+                    (value_cols.is_not_null() & value_cols.is_not_nan())
+                    .cumsum(reverse=True)
+                    .map_alias(time_aggd_col_alias_fntr("has_values_count"))
+                ),
+                value_cols.cumsum(reverse=True).map_alias(time_aggd_col_alias_fntr("sum")),
+                (value_cols**2).cumsum(reverse=True).map_alias(time_aggd_col_alias_fntr("sum_sqd")),
+                value_cols.cummin(reverse=True).map_alias(time_aggd_col_alias_fntr("min")),
+                value_cols.cummax(reverse=True).map_alias(time_aggd_col_alias_fntr("max")),
+                # Raw aggregations
+                cnt_cols.cumsum(reverse=True).map_alias(time_aggd_col_alias_fntr()),
+                cols_to_sum.cumsum(reverse=True).map_alias(time_aggd_col_alias_fntr()),
+                cols_to_min.cummin(reverse=True).map_alias(time_aggd_col_alias_fntr()),
+                cols_to_max.cummax(reverse=True).map_alias(time_aggd_col_alias_fntr()),
+            )
+            df = df.explode(*[c for c in df.columns if c != "subject_id"])
         else:
+            rolling_kwargs = {"index_column": "timestamp", "by": "subject_id"}
+            if window_size.startswith("-"):
+                rolling_kwargs["period"] = window_size[1:]
+                rolling_kwargs["offset"] = timedelta(0)
+            else:
+                rolling_kwargs["period"] = window_size
+
             df = df.groupby_rolling(
-                index_column="timestamp",
-                by="subject_id",
-                period=window_size,
+                **rolling_kwargs
             ).agg(
                 # present to counts
                 present_indicator_cols.sum().map_alias(time_aggd_col_alias_fntr("count")),
