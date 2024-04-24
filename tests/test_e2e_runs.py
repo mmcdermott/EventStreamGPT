@@ -198,7 +198,10 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             "feature_selector": (
                 (
                     "esd_flat_feature_loader",
-                    {"window_sizes": ["1h", "1d", "FULL"], "feature_inclusion_frequency": 1e-3},
+                    {
+                        "window_sizes": ["1h", "1d", "FULL", "-1h", "-FULL"],
+                        "feature_inclusion_frequency": 1e-3,
+                    },
                 ),
             ),
             "model": (("random_forest_classifier", {"n_estimators": 2}),),
