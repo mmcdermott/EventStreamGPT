@@ -62,8 +62,6 @@ class Visualizer(JSONableMixin):
             dataframe.
         n_age_buckets: If `plot_by_age` is `True`, this controls how many buckets ages are discretized into to
             limit plot granularity.
-        min_sub_to_plot_age_dist: If set, do not plot sub-population distributions over age if the total
-            number of patients in the sub-population is below this value. Useful for limiting variance.
 
     Raises:
         ValueError: If
@@ -109,8 +107,6 @@ class Visualizer(JSONableMixin):
     age_col: str | None = None
     dob_col: str | None = None
     n_age_buckets: int | None = 200
-
-    min_sub_to_plot_age_dist: int | None = 50
 
     def __post_init__(self):
         if self.subset_size is not None and self.subset_random_seed is None:
@@ -165,7 +161,7 @@ class Visualizer(JSONableMixin):
                 .otherwise(0)
                 .alias("cumulative_subj_increment"),
             )
-            .groupby_dynamic(
+            .group_by_dynamic(
                 index_column="timestamp",
                 every=self.time_unit,
                 by=self.static_covariates,
@@ -183,7 +179,7 @@ class Visualizer(JSONableMixin):
             plt_kwargs = {"x": "timestamp", "color": static_covariate}
 
             events_df = (
-                in_events_df.groupby("timestamp", static_covariate)
+                in_events_df.group_by("timestamp", static_covariate)
                 .agg(
                     pl.col("n_subjects").sum(),
                     pl.col("n_events").sum(),
@@ -251,86 +247,13 @@ class Visualizer(JSONableMixin):
 
         return figures
 
-    def plot_age_distribution_over_time(
-        self, subjects_df: pl.DataFrame, subj_ranges: pl.DataFrame
-    ) -> list[Figure]:
-        figures = []
-        if not self.plot_by_time:
-            return figures
-        if self.dob_col is None:
-            return figures
-
-        start_time = subj_ranges["start_time"].min()
-        end_time = subj_ranges["end_time"].max()
-
-        subj_ranges = subj_ranges.join(
-            subjects_df.select("subject_id", self.dob_col, *self.static_covariates),
-            on="subject_id",
-        )
-
-        time_points = pl.select(pl.date_range(start_time, end_time, interval=self.time_unit)).select(
-            pl.col("date").list.explode().alias("timestamp")
-        )
-        n_time_bins = len(time_points) + 1
-
-        cross_df_all = (
-            subj_ranges.join(time_points, how="cross")
-            .filter(
-                (pl.col("start_time") <= pl.col("timestamp")) & (pl.col("timestamp") <= pl.col("end_time"))
-            )
-            .select(
-                "timestamp",
-                "subject_id",
-                *self.static_covariates,
-                (
-                    (pl.col("timestamp") - pl.col(self.dob_col)).dt.nanoseconds()
-                    / (1e9 * 60 * 60 * 24 * 365.25)
-                ).alias(self.age_col),
-                pl.col("subject_id").n_unique().over("timestamp").alias("num_subjects"),
-            )
-            .filter(pl.col("num_subjects") > 20)
-        )
-
-        for static_covariate in self.static_covariates:
-            cross_df = (
-                cross_df_all.with_columns(
-                    pl.col("subject_id").n_unique().over("timestamp", static_covariate).alias("num_subjects")
-                )
-                .filter(pl.col("num_subjects") > 20)
-                .with_columns((1 / pl.col("num_subjects")).alias("% Subjects @ time"))
-            )
-
-            if self.min_sub_to_plot_age_dist is not None:
-                val_counts = subjects_df[static_covariate].value_counts()
-                valid_categories = val_counts.filter(pl.col("counts") > self.min_sub_to_plot_age_dist)[
-                    static_covariate
-                ].to_list()
-
-                cross_df = cross_df.filter(pl.col(static_covariate).is_in(valid_categories))
-
-            figures.append(
-                px.density_heatmap(
-                    self._normalize_to_pandas(cross_df, static_covariate),
-                    x="timestamp",
-                    y=self.age_col,
-                    z="% Subjects @ time",
-                    facet_col=static_covariate,
-                    nbinsy=self.n_age_buckets,
-                    nbinsx=n_time_bins,
-                    histnorm=None,
-                    histfunc="sum",
-                )
-            )
-
-        return figures
-
     def plot_static_variables_breakdown(self, static_variables: pl.DataFrame) -> list[Figure]:
         figures = []
         if not self.static_covariates:
             return
 
         for static_covariate in self.static_covariates:
-            df = static_variables.groupby(static_covariate).agg(
+            df = static_variables.group_by(static_covariate).agg(
                 pl.col("subject_id").n_unique().alias("# Subjects")
             )
             figures.append(
@@ -357,7 +280,7 @@ class Visualizer(JSONableMixin):
                 pl.col("subject_id").n_unique().over(*self.static_covariates).alias("total_n_subjects"),
             )
             .drop_nulls("age_bucket")
-            .groupby("age_bucket", *self.static_covariates)
+            .group_by("age_bucket", *self.static_covariates)
             .agg(
                 pl.col(self.age_col).mean(),
                 pl.col("event_id").n_unique().alias("n_events"),
@@ -374,7 +297,7 @@ class Visualizer(JSONableMixin):
             plt_kwargs = {"x": self.age_col, "color": static_covariate}
 
             counts_at_age = self._normalize_to_pandas(
-                events_df.groupby("age_bucket", static_covariate)
+                events_df.group_by("age_bucket", static_covariate)
                 .agg(
                     (
                         (pl.col(self.age_col) * pl.col("n_subjects_at_age")).sum()
@@ -415,7 +338,7 @@ class Visualizer(JSONableMixin):
         return figures
 
     def plot_events_per_patient(self, events_df: pl.DataFrame) -> list[Figure]:
-        events_per_patient = events_df.groupby("subject_id", *self.static_covariates).agg(
+        events_per_patient = events_df.group_by("subject_id", *self.static_covariates).agg(
             pl.col("event_id").n_unique().alias("# of Events")
         )
 
@@ -430,7 +353,7 @@ class Visualizer(JSONableMixin):
         events_df: pl.DataFrame,
         dynamic_measurements_df: pl.DataFrame,
     ) -> list[Figure]:
-        subj_ranges = events_df.groupby("subject_id").agg(
+        subj_ranges = events_df.group_by("subject_id").agg(
             pl.col("timestamp").min().alias("start_time"),
             pl.col("timestamp").max().alias("end_time"),
         )
@@ -444,7 +367,6 @@ class Visualizer(JSONableMixin):
         figs = []
         figs.extend(self.plot_static_variables_breakdown(static_variables))
         figs.extend(self.plot_counts_over_time(events_df))
-        figs.extend(self.plot_age_distribution_over_time(subjects_df, subj_ranges))
         figs.extend(self.plot_counts_over_age(events_df))
         figs.extend(self.plot_events_per_patient(events_df))
 

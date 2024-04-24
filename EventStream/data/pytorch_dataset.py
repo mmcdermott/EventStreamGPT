@@ -1,22 +1,386 @@
+import copy
 import json
 from collections import defaultdict
+from datetime import datetime
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 import torch
-from mixins import SaveableMixin, SeedableMixin, TimeableMixin
+from loguru import logger
+from mixins import SeedableMixin, TimeableMixin
+from tqdm.auto import tqdm
 
-from .config import (
-    MeasurementConfig,
-    PytorchDatasetConfig,
-    SeqPaddingSide,
-    SubsequenceSamplingStrategy,
-    VocabularyConfig,
-)
+from ..utils import count_or_proportion
+from .config import PytorchDatasetConfig, SeqPaddingSide, SubsequenceSamplingStrategy
 from .types import PytorchBatch
 
 DATA_ITEM_T = dict[str, list[float]]
+
+
+class PytorchDataset(TimeableMixin, torch.utils.data.Dataset):
+    """A PyTorch Dataset class.
+
+    This class enables accessing the deep-learning friendly representation produced by
+    `Dataset.build_DL_cached_representation` in a PyTorch Dataset format. The `getitem` method of this class
+    will return a dictionary containing a subject's data from this deep learning representation, with event
+    sequences sliced to be within max sequence length according to configuration parameters, and the `collate`
+    method of this class will collate those output dictionaries into a `PytorchBatch` object usable by
+    downstream pipelines.
+
+    Upon construction, this class will try to load a number of dataset files from disk. These files should be
+    saved in accordance with the `Dataset.save` method; in particular,
+
+    * There should be pre-cached deep-learning representation parquet dataframes stored in ``config.save_dir /
+      'DL_reps' / f"{split}*.parquet"``
+    * There should be a vocabulary config object in json form stored in ``config.save_dir /
+      'vocabulary_config.json'``
+    * There should be a set of inferred measurement configs stored in ``config.save_dir /
+      'inferred_measurement_configs.json'``
+    * If a task dataframe name is specified in the configuration object, then there should be either a
+      pre-cached task-specifid DL representation dataframe in ``config.save_dir / 'DL_reps' / 'for_task' /
+      config.task_df_name / f"{split}.parquet"``, or a "raw" task dataframe, containing subject IDs, start and
+      end times, and labels, stored in ``config.save_dir / task_dfs / f"{config.task_df_name}.parquet"``. In
+      the case that the latter is all that exists, then the former will be constructed by limiting the input
+      cached dataframe down to the appropriate sequences and adding label columns. This newly constructed
+      datafrmae will then be saved in the former filepath for future use. This construction process should
+      happen first on the train split, so that inferred task vocabularies are shared across splits.
+
+    Args:
+        config: Configuration options for the dataset.
+        split: The split of data which should be used in this dataset (e.g., ``'train'``, ``'tuning'``,
+            ``'held_out'``). This will dictate where the system looks for pre-cached deep-learning
+            representation files.
+    """
+
+    def __init__(self, config: PytorchDatasetConfig, split: str, just_cache: bool = False):
+        super().__init__()
+
+        self.config = config
+        self.split = split
+
+        self.cache_if_needed()
+        if just_cache:
+            return
+
+        self.fetch_tensors()
+        self.fetch_metadata()
+
+    def __len__(self):
+        return self.tensors["time_delta"].shape[0]
+
+    @property
+    def has_task(self) -> bool:
+        return self.config.task_df_name is not None
+
+    @property
+    def seq_padding_side(self) -> SeqPaddingSide:
+        return self.config.seq_padding_side
+
+    @property
+    def max_seq_len(self) -> int:
+        return self.config.max_seq_len
+
+    @property
+    def cached_files_exist(self) -> bool:
+        return len(self.config.tensorized_cached_files(self.split)) > 0
+
+    @cached_property
+    def _full_data_config(self) -> PytorchDatasetConfig:
+        config = copy.deepcopy(self.config)
+        config.train_subset_size = "FULL"
+        config.train_subset_seed = None
+        config.do_include_subsequence_indices = True
+        config.do_include_subject_id = True
+        config.do_include_start_time_min = True
+        return config
+
+    @property
+    def full_dataset_cached_files_exist(self) -> bool:
+        return len(self._full_data_config.tensorized_cached_files(self.split)) > 0
+
+    @property
+    def is_subset_dataset(self) -> bool:
+        return self.config.train_subset_size != "FULL"
+
+    @TimeableMixin.TimeAs
+    def cache_if_needed(self):
+        if self.cached_files_exist:
+            return
+
+        if self.is_subset_dataset:
+            # cache full, if doesn't exist
+            if not self.full_dataset_cached_files_exist:
+                logger.info("Caching the full dataset to efficiently cache subset...")
+                self._cache_full_data()
+            # cache subset
+            logger.info("Caching the subset dataset to efficiently cache subset...")
+            self._cache_subset()
+        else:
+            # cache full data
+            logger.info("Caching the full dataset...")
+            self._cache_full_data()
+
+    @TimeableMixin.TimeAs
+    def _cache_subset(self):
+        # Load cached tensors from full data
+        tensors = {
+            k: torch.load(fp) for k, fp in self._full_data_config.tensorized_cached_files(self.split).items()
+        }
+
+        if self.split == "train":
+            # Randomly sample for new subset_size number of subjects and save new tensors
+            full_subj_ids = list(set(tensors["subject_id"]))
+            subset_size = count_or_proportion(len(full_subj_ids), self.config.train_subset_size)
+            logger.info(
+                f"Caching subset of {subset_size} subjects from full dataset of {len(full_subj_ids)} subjects"
+            )
+            subset_subjects = np.random.default_rng(self.config.train_subset_seed).choice(
+                list(set(tensors["subject_id"])), size=subset_size, replace=False
+            )
+            subject_idx = np.where(np.isin(np.array(tensors["subject_id"]), subset_subjects))[0]
+            for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
+                subset_T = T[subject_idx]
+                fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
+                fp.parent.mkdir(exist_ok=True, parents=True)
+                st = datetime.now()
+                logger.info(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
+                torch.save(subset_T, fp)
+                logger.info(f"Done in {datetime.now() - st}")
+
+            # Load cached data on full data
+            task_dir = self._full_data_config.tensorized_cached_dir / self.split
+            cached_data = pl.DataFrame(
+                {
+                    "subject_id": torch.load(task_dir / "subject_id.pt").numpy(),
+                    "time_delta": torch.load(task_dir / "time_delta.pt").numpy(),
+                    "event_mask": torch.load(task_dir / "event_mask.pt").numpy(),
+                    # 'dynamic_indices': torch.load(task_dir / "dynamic_indices.pt").numpy().tolist()
+                }
+            )
+
+            # Filter for sampled subjects and event_mask = True
+            cached_data = cached_data.filter(pl.col("subject_id").is_in(subset_subjects))
+            cached_data = cached_data.select(pl.col(["time_delta", "event_mask"]).explode()).filter(
+                pl.col("event_mask")
+            )
+
+            stats = cached_data.select(
+                pl.col("time_delta").explode().drop_nulls().alias("inter_event_time")
+            ).select(
+                pl.col("inter_event_time").min().alias("min"),
+                pl.col("inter_event_time").log().mean().alias("mean_log"),
+                pl.col("inter_event_time").log().std().alias("std_log"),
+            )
+            subset_data_stats_fp = self.config.tensorized_cached_dir / self.split / "data_stats.json"
+            with open(subset_data_stats_fp, mode="w") as f:
+                subset_stats = {
+                    "mean_log_inter_event_time_min": stats["mean_log"].item(),
+                    "std_log_inter_event_time_min": stats["std_log"].item(),
+                }
+                logger.info(f"Saving subset data_stats to {subset_data_stats_fp}")
+                json.dump(subset_stats, f)
+        else:
+            # Save full tensors in subset dir
+            for k, T in tqdm(tensors.items(), leave=False, desc="Caching..."):
+                subset_T = T
+                fp = self.config.tensorized_cached_dir / self.split / f"{k}.pt"
+                fp.parent.mkdir(exist_ok=True, parents=True)
+                st = datetime.now()
+                logger.info(f"Caching tensor {k} of shape {subset_T.shape} to {fp}...")
+                torch.save(subset_T, fp)
+                logger.info(f"Done in {datetime.now() - st}")
+
+            # Save full_data_stats into subset data_stats
+            full_data_stats_fp = self._full_data_config.tensorized_cached_dir / self.split / "data_stats.json"
+            subset_data_stats_fp = self.config.tensorized_cached_dir / self.split / "data_stats.json"
+            with open(full_data_stats_fp) as f:
+                logger.info(f"Loading full data stats from {full_data_stats_fp}")
+                full_data_stats = json.load(f)
+            with open(subset_data_stats_fp, mode="w") as f:
+                logger.info(f"Saving {self.split} full data stats to subset dir {subset_data_stats_fp}")
+                json.dump(full_data_stats, f)
+
+    # TODO(mmd): Add seeding here
+    @TimeableMixin.TimeAs
+    def _cache_full_data(self):
+        self._full_data_config._cache_data_parameters()
+
+        items = []
+        constructor_pyd = ConstructorPytorchDataset(self._full_data_config, self.split)
+
+        (self._full_data_config.tensorized_cached_dir / self.split).mkdir(exist_ok=True, parents=True)
+
+        data_stats_fp = self._full_data_config.tensorized_cached_dir / self.split / "data_stats.json"
+        with open(data_stats_fp, mode="w") as f:
+            stats = {
+                "mean_log_inter_event_time_min": constructor_pyd.mean_log_inter_event_time_min,
+                "std_log_inter_event_time_min": constructor_pyd.std_log_inter_event_time_min,
+            }
+            logger.info(f"Saving full data_stats to {data_stats_fp}")
+            json.dump(stats, f)
+
+        logger.info("Collecting data to cache @ initial seed of 1.")
+        constructor_pyd._seed(1)
+        for ep in tqdm(range(self.config.cache_for_epochs), total=self.config.cache_for_epochs, leave=False):
+            for it in tqdm(constructor_pyd, total=len(constructor_pyd)):
+                items.append(it)
+
+        logger.info("Collating data into dense tensors to cache.")
+        global_batch = constructor_pyd.collate(items, do_convert_float_nans=False)
+
+        tensors_to_cache = []
+        seen_keys = set()
+        for k, T in global_batch.items():
+            if k.endswith("_mask") and k != "event_mask":
+                continue
+            if T is None:
+                continue
+            if isinstance(T, torch.Tensor):
+                if k in seen_keys:
+                    raise KeyError(f"Duplicate tensor save key {k}!")
+                tensors_to_cache.append((k, T))
+                seen_keys.add(k)
+            elif isinstance(T, dict):
+                for kk, TT in T.items():
+                    if TT is None:
+                        continue
+                    elif not isinstance(TT, torch.Tensor):
+                        raise TypeError(f"Unrecognized tensor type {type(TT)} @ {k}/{kk}!")
+
+                    if kk in seen_keys:
+                        raise KeyError(f"Duplicate tensor save key {kk}!")
+                    tensors_to_cache.append((kk, TT))
+                    seen_keys.add(kk)
+            else:
+                raise TypeError(f"Unrecognized tensor type {type(T)} @ {k}!")
+
+        for k, T in tqdm(tensors_to_cache, leave=False, desc="Caching..."):
+            fp = self._full_data_config.tensorized_cached_dir / self.split / f"{k}.pt"
+            fp.parent.mkdir(exist_ok=True, parents=True)
+            st = datetime.now()
+            logger.info(f"Caching tensor {k} of shape {T.shape} to {fp}...")
+            torch.save(T, fp)
+            logger.info(f"Done in {datetime.now() - st}")
+
+    def fetch_tensors(self):
+        self.tensors = {
+            k: torch.load(fp) for k, fp in self.config.tensorized_cached_files(self.split).items()
+        }
+
+        with open(self.config.tensorized_cached_dir / self.split / "data_stats.json") as f:
+            stats = json.load(f)
+
+            self.mean_log_inter_event_time_min = stats["mean_log_inter_event_time_min"]
+            self.std_log_inter_event_time_min = stats["std_log_inter_event_time_min"]
+
+    def fetch_metadata(self):
+        self.vocabulary_config = self.config.vocabulary_config
+        self.measurement_configs = self.config.measurement_configs
+
+        if self.has_task:
+            with open(self.config.task_info_fp) as f:
+                task_info = json.load(f)
+                self.tasks = sorted(task_info["tasks"])
+                self.task_vocabs = task_info["vocabs"]
+                self.task_types = task_info["types"]
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        """Returns a Returns a dictionary corresponding to a single subject's data.
+
+        The output of this will not be tensorized as that work will need to be re-done in the collate function
+        regardless. The output will have structure:
+        ``
+        {
+            'time_delta': [seq_len],
+            'dynamic_indices': [seq_len, n_data_per_event] (ragged),
+            'dynamic_values': [seq_len, n_data_per_event] (ragged),
+            'dynamic_measurement_indices': [seq_len, n_data_per_event] (ragged),
+            'static_indices': [seq_len, n_data_per_event] (ragged),
+            'static_measurement_indices': [seq_len, n_data_per_event] (ragged),
+        }
+        ``
+
+        1. ``time_delta`` captures the time between each event and the subsequent event.
+        2. ``dynamic_indices`` captures the categorical metadata elements listed in `self.data_cols` in a
+           unified vocabulary space spanning all metadata vocabularies.
+        3. ``dynamic_values`` captures the numerical metadata elements listed in `self.data_cols`. If no
+           numerical elements are listed in `self.data_cols` for a given categorical column, the according
+           index in this output will be `np.NaN`.
+        4. ``dynamic_measurement_indices`` captures which measurement vocabulary was used to source a given
+           data element.
+        5. ``static_indices`` captures the categorical metadata elements listed in `self.static_cols` in a
+           unified vocabulary.
+        6. ``static_measurement_indices`` captures which measurement vocabulary was used to source a given
+           data element.
+        """
+        return {k: T[idx] for k, T in self.tensors.items()}
+
+    @TimeableMixin.TimeAs
+    def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+        """Combines the ragged dictionaries produced by `__getitem__` into a tensorized batch.
+
+        This function handles conversion of arrays to tensors and padding of elements within the batch across
+        static data elements, sequence events, and dynamic data elements.
+
+        Args:
+            batch: A list of `__getitem__` format output dictionaries.
+
+        Returns:
+            A fully collated, tensorized, and padded batch.
+        """
+
+        collated = torch.utils.data.default_collate(batch)
+
+        self._register_start("collate_post_padding_processing")
+        out_batch = {}
+
+        # Add event and data masks on the basis of which elements are present, then convert the tensor
+        # elements to the appropriate types.
+        out_batch["event_mask"] = ~collated["time_delta"].isnan()
+        out_batch["dynamic_values_mask"] = ~collated["dynamic_values"].isnan()
+        out_batch["time_delta"] = torch.nan_to_num(collated["time_delta"], nan=0)
+        out_batch["dynamic_indices"] = collated["dynamic_indices"]
+        out_batch["dynamic_measurement_indices"] = collated["dynamic_measurement_indices"]
+        out_batch["dynamic_values"] = torch.nan_to_num(collated["dynamic_values"], nan=0)
+        out_batch["static_indices"] = collated["static_indices"]
+        out_batch["static_measurement_indices"] = collated["static_indices"]
+
+        if self.config.do_include_start_time_min:
+            out_batch["start_time"] = collated["start_time"].float()
+        if self.config.do_include_subsequence_indices:
+            out_batch["start_idx"] = collated["start_idx"].long()
+            out_batch["end_idx"] = collated["end_idx"].long()
+        if self.config.do_include_subject_id:
+            out_batch["subject_id"] = collated["subject_id"].long()
+
+        out_batch = PytorchBatch(**out_batch)
+        self._register_end("collate_post_padding_processing")
+
+        if self.config.task_df_name is None:
+            return out_batch
+
+        self._register_start("collate_task_labels")
+        out_labels = {}
+
+        for task in self.tasks:
+            task_type = self.task_types[task]
+
+            match task_type:
+                case "multi_class_classification":
+                    out_labels[task] = collated[task].long()
+                case "binary_classification":
+                    out_labels[task] = collated[task].float()
+                case "regression":
+                    out_labels[task] = collated[task].float()
+                case _:
+                    raise TypeError(f"Don't know how to tensorify task of type {task_type}!")
+
+        out_batch.stream_labels = out_labels
+        self._register_end("collate_task_labels")
+
+        return out_batch
 
 
 def to_int_index(col: pl.Expr) -> pl.Expr:
@@ -55,8 +419,8 @@ def to_int_index(col: pl.Expr) -> pl.Expr:
     return pl.when(col.is_null()).then(pl.lit(None)).otherwise(indices).alias(col.meta.output_name())
 
 
-class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
-    """A PyTorch Dataset class built on a pre-processed `DatasetBase` instance.
+class ConstructorPytorchDataset(SeedableMixin, TimeableMixin, torch.utils.data.Dataset):
+    """A PyTorch Dataset class which constructs necessary items from scratch.
 
     This class enables accessing the deep-learning friendly representation produced by
     `Dataset.build_DL_cached_representation` in a PyTorch Dataset format. The `getitem` method of this class
@@ -96,7 +460,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 {pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, pl.Int8, pl.Int16, pl.Int32, pl.Int64},
                 None,
             ),
-            ({pl.Categorical}, to_int_index),
+            ({pl.Categorical(ordering="physical"), pl.Categorical(ordering="lexical")}, to_int_index),
             ({pl.Utf8}, to_int_index),
         ],
         "binary_classification": [({pl.Boolean}, lambda Y: Y.cast(pl.Float32))],
@@ -133,28 +497,20 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         self.task_types = {}
         self.task_vocabs = {}
 
-        self.vocabulary_config = VocabularyConfig.from_json_file(
-            self.config.save_dir / "vocabulary_config.json"
-        )
-
-        inferred_measurement_config_fp = self.config.save_dir / "inferred_measurement_configs.json"
-        with open(inferred_measurement_config_fp) as f:
-            inferred_measurement_configs = {
-                k: MeasurementConfig.from_dict(v) for k, v in json.load(f).items()
-            }
-        self.measurement_configs = {k: v for k, v in inferred_measurement_configs.items() if not v.is_dropped}
+        self.vocabulary_config = self.config.vocabulary_config
+        self.measurement_configs = self.config.measurement_configs
 
         self.split = split
 
         if self.config.task_df_name is not None:
-            task_dir = self.config.save_dir / "DL_reps" / "for_task" / config.task_df_name
-            raw_task_df_fp = self.config.save_dir / "task_dfs" / f"{self.config.task_df_name}.parquet"
-            task_info_fp = task_dir / "task_info.json"
+            task_dir = self.config.cached_task_dir
+            raw_task_df_fp = self.config.raw_task_df_fp
+            task_info_fp = self.config.task_info_fp
 
             self.has_task = True
 
             if len(list(task_dir.glob(f"{split}*.parquet"))) > 0:
-                print(
+                logger.info(
                     f"Re-loading task data for {self.config.task_df_name} from {task_dir}:\n"
                     f"{', '.join([str(fp) for fp in task_dir.glob(f'{split}*.parquet')])}"
                 )
@@ -203,20 +559,22 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                             f"Task info differs from on disk!\nDisk:\n{loaded_task_info}\n"
                             f"Local:\n{task_info}\nSplit: {self.split}"
                         )
-                    print(f"Re-built existing {task_info_fp}! Not overwriting...")
+                    logger.info(f"Re-built existing {task_info_fp}! Not overwriting...")
                 else:
                     task_info_fp.parent.mkdir(exist_ok=True, parents=True)
                     with open(task_info_fp, mode="w") as f:
                         json.dump(task_info, f)
 
                 if self.split != "train":
-                    print(f"WARNING: Constructing task-specific dataset on non-train split {self.split}!")
+                    logger.warning(f"Constructing task-specific dataset on non-train split {self.split}!")
                 for cached_data_fp in Path(self.config.save_dir / "DL_reps").glob(f"{split}*.parquet"):
                     task_df_fp = task_dir / cached_data_fp.name
                     if task_df_fp.is_file():
                         continue
 
-                    print(f"Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}...")
+                    logger.info(
+                        f"Caching DL task dataframe for data file {cached_data_fp} at {task_df_fp}..."
+                    )
 
                     task_cached_data = self._build_task_cached_df(task_df, pl.scan_parquet(cached_data_fp))
 
@@ -239,7 +597,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         self.seq_padding_side = config.seq_padding_side
         self.max_seq_len = config.max_seq_len
 
-        length_constraint = pl.col("dynamic_indices").list.lengths() >= config.min_seq_len
+        length_constraint = pl.col("dynamic_indices").list.len() >= config.min_seq_len
         self.cached_data = self.cached_data.filter(length_constraint)
 
         if "time_delta" not in self.cached_data.columns:
@@ -250,7 +608,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     # We fill with 1 here as it will be ignored in the code anyways as the next event's
                     # event mask will be null.
                     # TODO(mmd): validate this in a test.
-                    (pl.col("").shift(-1) - pl.col("")).fill_null(1)
+                    (pl.element().shift(-1) - pl.element()).fill_null(1)
                 )
                 .alias("time_delta"),
             ).drop("time")
@@ -269,7 +627,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             bad_inter_event_times = self.cached_data.filter(pl.col("time_delta").list.min() <= 0).collect()
             bad_subject_ids = [str(x) for x in list(bad_inter_event_times["subject_id"])]
             warning_strs = [
-                f"WARNING: Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
+                f"Observed inter-event times <= 0 for {len(bad_inter_event_times)} subjects!",
                 f"ESD Subject IDs: {', '.join(bad_subject_ids)}",
                 f"Global min: {stats['min'].item()}",
             ]
@@ -279,7 +637,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                 warning_strs.append(f"Wrote malformed data records to {fp}")
             warning_strs.append("Removing malformed subjects")
 
-            print("\n".join(warning_strs))
+            logger.warning("\n".join(warning_strs))
 
             self.cached_data = self.cached_data.filter(pl.col("time_delta").list.min() > 0)
 
@@ -288,7 +646,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         self.cached_data = self.cached_data.collect()
 
-        if self.config.train_subset_size not in (None, "FULL") and self.split == "train":
+        if (
+            self.config.train_subset_size not in (None, "FULL")
+            and self.split == "train"
+            and self.config.train_subset_size <= len(self.cached_data)
+        ):
             match self.config.train_subset_size:
                 case int() as n if n > 0:
                     kwargs = {"n": n}
@@ -302,8 +664,28 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
             self.cached_data = self.cached_data.sample(seed=self.config.train_subset_seed, **kwargs)
 
+        if (
+            self.config.tuning_subset_size not in (None, "FULL")
+            and self.split == "tuning"
+            and self.config.tuning_subset_size <= len(self.cached_data)
+        ):
+            match self.config.tuning_subset_size:
+                case int() as n if n > 0:
+                    kwargs = {"n": n}
+                case float() as frac if 0 < frac < 1:
+                    kwargs = {"fraction": frac}
+                case _:
+                    raise TypeError(
+                        f"Can't process subset size of {type(self.config.tuning_subset_size)}, "
+                        f"{self.config.tuning_subset_size}"
+                    )
+
+            self.cached_data = self.cached_data.sample(seed=self.config.tuning_subset_seed, **kwargs)
+
         with self._time_as("convert_to_rows"):
             self.subject_ids = self.cached_data["subject_id"].to_list()
+            if "time" in self.cached_data.columns:
+                self.cached_data = self.cached_data.drop("time")
             self.cached_data = self.cached_data.drop("subject_id")
             self.columns = self.cached_data.columns
             self.cached_data = self.cached_data.rows()
@@ -382,7 +764,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             ... })
             >>> pl.Config.set_tbl_width_chars(88)
             <class 'polars.config.Config'>
-            >>> PytorchDataset._build_task_cached_df(task_df, cached_data)
+            >>> ConstructorPytorchDataset._build_task_cached_df(task_df, cached_data)
             shape: (3, 8)
             ┌───────────┬───────────┬───────────┬──────────┬──────────┬──────────┬────────┬────────┐
             │ subject_i ┆ start_tim ┆ time      ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ label1 ┆ label2 │
@@ -405,6 +787,53 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             │           ┆ 1         ┆           ┆          ┆ 87]]     ┆ null]]   ┆        ┆        │
             │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
             └───────────┴───────────┴───────────┴──────────┴──────────┴──────────┴────────┴────────┘
+            >>> task_df = pl.DataFrame({
+            ...     "subject_id": [0, 0, 1, 2, 5],
+            ...     "start_time": [
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 1, 1),
+            ...         datetime(2020, 1, 11),
+            ...         datetime(2020, 3, 1, 13),
+            ...         datetime(2020, 1, 2)
+            ...     ],
+            ...     "end_time": [
+            ...         datetime(2020, 1, 3),
+            ...         datetime(2020, 1, 2),
+            ...         datetime(2020, 1, 21),
+            ...         datetime(2020, 3, 4),
+            ...         datetime(2020, 1, 3)
+            ...     ],
+            ...     "label1": [0, 0, 1, 0, 1],
+            ...     "label2": [0, 1, 1, 5, 1]
+            ... })
+            >>> pl.Config.set_tbl_width_chars(88)
+            <class 'polars.config.Config'>
+            >>> ConstructorPytorchDataset._build_task_cached_df(task_df, cached_data)
+            shape: (4, 8)
+            ┌───────────┬───────────┬───────────┬──────────┬──────────┬──────────┬────────┬────────┐
+            │ subject_i ┆ start_tim ┆ time      ┆ dynamic_ ┆ dynamic_ ┆ dynamic_ ┆ label1 ┆ label2 │
+            │ d         ┆ e         ┆ ---       ┆ measurem ┆ indices  ┆ values   ┆ ---    ┆ ---    │
+            │ ---       ┆ ---       ┆ list[f64] ┆ ent_indi ┆ ---      ┆ ---      ┆ i64    ┆ i64    │
+            │ i64       ┆ datetime[ ┆           ┆ ces      ┆ list[lis ┆ list[lis ┆        ┆        │
+            │           ┆ μs]       ┆           ┆ ---      ┆ t[i64]]  ┆ t[f64]]  ┆        ┆        │
+            │           ┆           ┆           ┆ list[lis ┆          ┆          ┆        ┆        │
+            │           ┆           ┆           ┆ t[i64]]  ┆          ┆          ┆        ┆        │
+            ╞═══════════╪═══════════╪═══════════╪══════════╪══════════╪══════════╪════════╪════════╡
+            │ 0         ┆ 2020-01-0 ┆ [0.0,     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 0      │
+            │           ┆ 1         ┆ 1440.0]   ┆ 1], [0,  ┆ 12], [1, ┆ 0.2,     ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆ 2]]      ┆ 40]]     ┆ 1.0],    ┆        ┆        │
+            │           ┆           ┆           ┆          ┆          ┆ [null,   ┆        ┆        │
+            │           ┆           ┆           ┆          ┆          ┆ 0.0]]    ┆        ┆        │
+            │ 0         ┆ 2020-01-0 ┆ [0.0]     ┆ [[0, 1,  ┆ [[6, 11, ┆ [[null,  ┆ 0      ┆ 1      │
+            │           ┆ 1         ┆           ┆ 1]]      ┆ 12]]     ┆ 0.2,     ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆ 1.0]]    ┆        ┆        │
+            │ 1         ┆ 2020-02-0 ┆ []        ┆ []       ┆ []       ┆ []       ┆ 1      ┆ 1      │
+            │           ┆ 1         ┆           ┆          ┆          ┆          ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
+            │ 2         ┆ 2020-03-0 ┆ [1440.0]  ┆ [[0, 4]] ┆ [[5,     ┆ [[null,  ┆ 0      ┆ 5      │
+            │           ┆ 1         ┆           ┆          ┆ 87]]     ┆ null]]   ┆        ┆        │
+            │           ┆ 00:00:00  ┆           ┆          ┆          ┆          ┆        ┆        │
+            └───────────┴───────────┴───────────┴──────────┴──────────┴──────────┴────────┴────────┘
         """
         time_dep_cols = [c for c in ("time", "time_delta") if c in cached_data.columns]
         time_dep_cols.extend(["dynamic_indices", "dynamic_values", "dynamic_measurement_indices"])
@@ -414,13 +843,12 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         elif "time_delta" in cached_data.columns:
             time_col_expr = pl.col("time_delta").cumsum().over("subject_id")
 
-        start_idx_expr = (
-            time_col_expr.list.explode().search_sorted(pl.col("start_time_min")).over("subject_id")
-        )
-        end_idx_expr = time_col_expr.list.explode().search_sorted(pl.col("end_time_min")).over("subject_id")
+        start_idx_expr = pl.col("time").list.explode().search_sorted(pl.col("start_time_min")).over("task_ID")
+        end_idx_expr = pl.col("time").list.explode().search_sorted(pl.col("end_time_min")).over("task_ID")
 
         return (
-            cached_data.join(task_df, on="subject_id", how="inner", suffix="_task")
+            cached_data.with_columns(time_col_expr.alias("time"))
+            .join(task_df.with_row_index("task_ID"), on="subject_id", how="inner", suffix="_task")
             .with_columns(
                 start_time_min=(pl.col("start_time_task") - pl.col("start_time")) / np.timedelta64(1, "m"),
                 end_time_min=(pl.col("end_time") - pl.col("start_time")) / np.timedelta64(1, "m"),
@@ -431,10 +859,8 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
                     for t in time_dep_cols
                 },
             )
-            .drop("start_time_task", "end_time_min", "start_time_min", "end_time")
+            .drop("start_time_task", "end_time_min", "start_time_min", "end_time", "task_ID")
         )
-
-        return cached_data
 
     def __len__(self):
         return len(self.cached_data)
@@ -529,9 +955,11 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         return full_subj_data
 
-    def __static_and_dynamic_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+    def __static_and_dynamic_collate(
+        self, batch: list[DATA_ITEM_T], do_convert_float_nans: bool = True
+    ) -> PytorchBatch:
         """An internal collate function for both static and dynamic data."""
-        out_batch = self.__dynamic_only_collate(batch)
+        out_batch = self.__dynamic_only_collate(batch, do_convert_float_nans=do_convert_float_nans)
 
         # Get the maximum number of static elements in the batch.
         max_n_static = max(len(e["static_indices"]) for e in batch)
@@ -570,7 +998,9 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
 
         return out_batch
 
-    def __dynamic_only_collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+    def __dynamic_only_collate(
+        self, batch: list[DATA_ITEM_T], do_convert_float_nans: bool = True
+    ) -> PytorchBatch:
         """An internal collate function for dynamic data alone."""
         # Get the local max sequence length and n_data elements for padding.
         max_seq_len = max(len(e["time_delta"]) for e in batch)
@@ -640,13 +1070,14 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         out_batch["event_mask"] = ~out_batch["time_delta"].isnan()
         out_batch["dynamic_values_mask"] = ~out_batch["dynamic_values"].isnan()
 
-        out_batch["time_delta"] = torch.nan_to_num(out_batch["time_delta"], nan=0)
-
         out_batch["dynamic_indices"] = torch.nan_to_num(out_batch["dynamic_indices"], nan=0).long()
         out_batch["dynamic_measurement_indices"] = torch.nan_to_num(
             out_batch["dynamic_measurement_indices"], nan=0
         ).long()
-        out_batch["dynamic_values"] = torch.nan_to_num(out_batch["dynamic_values"], nan=0)
+
+        if do_convert_float_nans:
+            out_batch["time_delta"] = torch.nan_to_num(out_batch["time_delta"], nan=0)
+            out_batch["dynamic_values"] = torch.nan_to_num(out_batch["dynamic_values"], nan=0)
 
         if self.config.do_include_start_time_min:
             out_batch["start_time"] = torch.FloatTensor([e["start_time"] for e in batch])
@@ -688,7 +1119,7 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
         return out_batch
 
     @TimeableMixin.TimeAs
-    def collate(self, batch: list[DATA_ITEM_T]) -> PytorchBatch:
+    def collate(self, batch: list[DATA_ITEM_T], do_convert_float_nans: bool = True) -> PytorchBatch:
         """Combines the ragged dictionaries produced by `__getitem__` into a tensorized batch.
 
         This function handles conversion of arrays to tensors and padding of elements within the batch across
@@ -701,6 +1132,6 @@ class PytorchDataset(SaveableMixin, SeedableMixin, TimeableMixin, torch.utils.da
             A fully collated, tensorized, and padded batch.
         """
         if self.do_produce_static_data:
-            return self.__static_and_dynamic_collate(batch)
+            return self.__static_and_dynamic_collate(batch, do_convert_float_nans=do_convert_float_nans)
         else:
-            return self.__dynamic_only_collate(batch)
+            return self.__dynamic_only_collate(batch, do_convert_float_nans=do_convert_float_nans)
