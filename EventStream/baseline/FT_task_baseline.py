@@ -76,7 +76,7 @@ def load_flat_rep(
             dataset.
         do_cache_filtered_task: If `True`, the flat representations will, after being filtered to just the
             relevant rows for the task, be cached to disk for faster re-use.
-        overwrite_cache_filtered_task: If `True`, the flat representations will be regenerated. If `False`, 
+        overwrite_cache_filtered_task: If `True`, the flat representations will be regenerated. If `False`,
             the cached file will be loaded if exists.
         subjects_included: A dictionary by split of the subjects to include in the task. Omitted splits are
             used wholesale.
@@ -185,8 +185,12 @@ def load_flat_rep(
                 if task_df_name is not None:
                     filter_join_df = sp_join_df.select(join_keys).filter(pl.col("subject_id").is_in(subjects))
 
-                    df = filter_join_df.join_asof(df, by='subject_id', on='timestamp', 
-                                                  strategy='forward' if '-' in window_size else 'backward')
+                    df = filter_join_df.join_asof(
+                        df,
+                        by="subject_id",
+                        on="timestamp",
+                        strategy="forward" if "-" in window_size else "backward",
+                    )
 
                     if do_cache_filtered_task:
                         cached_fp.parent.mkdir(exist_ok=True, parents=True)
