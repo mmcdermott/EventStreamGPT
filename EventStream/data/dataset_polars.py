@@ -1407,12 +1407,17 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.col("value").alias("dynamic_values"),
             )
             .sort("subject_id", "timestamp")
-            .group_by("subject_id")
+            .group_by("subject_id", maintain_order=True)
             .agg(
                 pl.col("timestamp").first().alias("start_time"),
                 ((pl.col("timestamp") - pl.col("timestamp").min()).dt.total_nanoseconds() / (1e9 * 60)).alias(
                     "time"
                 ),
+                (pl.col("timestamp").diff().dt.total_seconds() / 60.0)
+                .shift(-1)
+                .cast(pl.Float32)
+                .fill_null(float("nan"))
+                .alias("time_delta"),
                 pl.col("dynamic_measurement_indices"),
                 pl.col("dynamic_indices"),
                 pl.col("dynamic_values"),

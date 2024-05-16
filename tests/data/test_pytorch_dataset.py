@@ -19,7 +19,7 @@ from EventStream.data.config import (
     PytorchDatasetConfig,
     VocabularyConfig,
 )
-from EventStream.data.pytorch_dataset import ConstructorPytorchDataset as PytorchDataset
+from EventStream.data.pytorch_dataset import PytorchDataset
 from EventStream.data.types import PytorchBatch
 
 from ..utils import MLTypeEqualityCheckableMixin
