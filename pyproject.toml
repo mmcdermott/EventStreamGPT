@@ -18,7 +18,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-polars = "^0.20.22"
+polars = "^0.20.26"
 plotly = "^5.16.1"
 ml-mixins = "^0.0.5"
 humanize = "^4.8.0"
