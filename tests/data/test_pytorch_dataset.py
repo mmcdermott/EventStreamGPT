@@ -418,7 +418,10 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                     got_vals = pl.DataFrame({"c": C["vals"]}).select(got_normalizer).get_column("c")
                     want_vals = pl.DataFrame({"c": C["want_vals"]}).get_column("c")
 
-                    self.assertEqual(want_vals.to_pandas(), got_vals.to_pandas())
+                    self.assertTrue(
+                        (got_vals == want_vals).all(),
+                        f"want_vals:\n{want_vals.to_pandas()}\ngot_vals:\n{got_vals.to_pandas()}",
+                    )
 
     def test_get_item_should_collate(self):
         _, pyd = self.get_pyd(max_seq_len=4, min_seq_len=2)
