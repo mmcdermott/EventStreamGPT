@@ -13,12 +13,9 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import polars as pl
 import torch
+from nested_ragged_tensors.ragged_numpy import JointNestedRaggedTensorDict
 
-from EventStream.data.config import (
-    MeasurementConfig,
-    PytorchDatasetConfig,
-    VocabularyConfig,
-)
+from EventStream.data.config import PytorchDatasetConfig, VocabularyConfig
 from EventStream.data.pytorch_dataset import PytorchDataset
 from EventStream.data.types import PytorchBatch
 
@@ -60,6 +57,9 @@ subj_1_event_times = [
         datetime(2000, 2, 1),
     ]
 ]
+subj_1_event_time_deltas = [
+    subj_1_event_times[i] - subj_1_event_times[i - 1] for i in range(1, len(subj_1_event_times))
+] + [float("nan")]
 subj_2_event_times = [
     (t - start_times[1]) / timedelta(minutes=1)
     for t in [
@@ -67,6 +67,9 @@ subj_2_event_times = [
         datetime(2000, 1, 2),
     ]
 ]
+subj_2_event_time_deltas = [
+    subj_2_event_times[i] - subj_2_event_times[i - 1] for i in range(1, len(subj_2_event_times))
+] + [float("nan")]
 subj_3_event_times = [
     (t - start_times[2]) / timedelta(minutes=1)
     for t in [
@@ -75,12 +78,16 @@ subj_3_event_times = [
         datetime(2001, 1, 1, 14),
     ]
 ]
+subj_3_event_time_deltas = [
+    subj_3_event_times[i] - subj_3_event_times[i - 1] for i in range(1, len(subj_3_event_times))
+] + [float("nan")]
 
 DL_REP_DF = pl.DataFrame(
     {
         "subject_id": [1, 2, 3, 4, 5],
         "start_time": start_times,
-        "time": [subj_1_event_times, subj_2_event_times, subj_3_event_times, None, None],
+        "time": [subj_1_event_times, subj_2_event_times, subj_3_event_times, [], []],
+        "time_delta": [subj_1_event_time_deltas, subj_2_event_time_deltas, subj_3_event_time_deltas, [], []],
         # 'static': ['foo', 'foo', 'bar', 'bar', 'bar'],
         "static_indices": [
             [
@@ -137,8 +144,8 @@ DL_REP_DF = pl.DataFrame(
                 ],
                 [UNIFIED_VOCABULARY_IDXMAP["event_type"]["ET1"]],
             ],
-            None,
-            None,
+            [],
+            [],
         ],
         "dynamic_measurement_indices": [
             [
@@ -172,21 +179,22 @@ DL_REP_DF = pl.DataFrame(
                 ],
                 [MEASUREMENTS_IDXMAP["event_type"]],
             ],
-            None,
-            None,
+            [],
+            [],
         ],
         "dynamic_values": [
             [[None, None, None, None], [None, 0.1, 0.3, 1.2], [None, np.NaN], [None]],
             [[None], [None, 0.2]],
             [[None], [None, None], [None]],
-            None,
-            None,
+            [],
+            [],
         ],
     },
     schema={
         "subject_id": pl.UInt8,
         "start_time": pl.Datetime,
         "time": pl.List(pl.Float64),
+        "time_delta": pl.List(pl.Float32),
         "static_indices": pl.List(pl.UInt64),
         "static_measurement_indices": pl.List(pl.UInt64),
         "dynamic_indices": pl.List(pl.List(pl.UInt64)),
@@ -308,42 +316,65 @@ def get_seeded_start_index(seed, curr_len, max_seq_len):
 
 
 class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
+    def setUp(self):
+        self.dir_obj = TemporaryDirectory()
+        self.path = Path(self.dir_obj.name)
+
+        self.split = "fake_split"
+
+        shards_fp = self.path / "DL_shards.json"
+        shards = {
+            f"{self.split}/0": list(set(DL_REP_DF["subject_id"].to_list())),
+        }
+        shards_fp.write_text(json.dumps(shards))
+
+        DL_fp = self.path / "DL_reps" / f"{self.split}/0.parquet"
+        DL_fp.parent.mkdir(parents=True, exist_ok=True)
+        DL_REP_DF.write_parquet(DL_fp)
+
+        NRT_fp = self.path / "NRT_reps" / f"{self.split}/0.pt"
+        NRT_fp.parent.mkdir(parents=True, exist_ok=True)
+
+        jnrt_dict = {
+            k: DL_REP_DF[k].to_list()
+            for k in ["time_delta", "dynamic_indices", "dynamic_measurement_indices"]
+        }
+        jnrt_dict["dynamic_values"] = (
+            DL_REP_DF["dynamic_values"]
+            .list.eval(pl.element().list.eval(pl.element().fill_null(float("nan"))))
+            .to_list()
+        )
+        jnrt_dict = JointNestedRaggedTensorDict(jnrt_dict)
+        jnrt_dict.save(NRT_fp)
+
+        self.valid_task_name = "fake_task"
+
+        raw_task_df_fp = self.path / "task_dfs" / f"{self.valid_task_name}.parquet"
+        raw_task_df_fp.parent.mkdir(parents=True, exist_ok=True)
+        TASK_DF.write_parquet(raw_task_df_fp)
+
+        VocabularyConfig().to_json_file(self.path / "vocabulary_config.json")
+
+        measurement_configs = {}
+
+        inferred_measurement_config_fp = self.path / "inferred_measurement_configs.json"
+        with open(inferred_measurement_config_fp, mode="w") as f:
+            json.dump({k: v.to_dict() for k, v in measurement_configs.items()}, f)
+
+    def tearDown(self):
+        self.dir_obj.cleanup()
+
     def get_pyd(
         self,
-        split: str = "fake_split",
-        task_df: pl.DataFrame | None = None,
-        task_df_name: str = "fake_task",
-        vocabulary_config: VocabularyConfig = VocabularyConfig(),
-        measurement_configs: dict[str, MeasurementConfig] | None = None,
+        task_df_name: str | None = None,
         **config_kwargs,
     ):
-        with TemporaryDirectory() as d:
-            save_dir = Path(d)
+        config_kwargs = {"save_dir": self.path, **config_kwargs}
+        if task_df_name is not None:
+            config_kwargs["task_df_name"] = task_df_name
 
-            DL_fp = save_dir / "DL_reps" / f"{split}.parquet"
-            DL_fp.parent.mkdir(parents=True, exist_ok=True)
-            DL_REP_DF.write_parquet(DL_fp)
-
-            config_kwargs = {"save_dir": save_dir, **config_kwargs}
-            if task_df is not None:
-                config_kwargs["task_df_name"] = task_df_name
-
-                raw_task_df_fp = save_dir / "task_dfs" / f"{task_df_name}.parquet"
-                raw_task_df_fp.parent.mkdir(parents=True, exist_ok=True)
-                task_df.write_parquet(raw_task_df_fp)
-
-            vocabulary_config.to_json_file(save_dir / "vocabulary_config.json")
-
-            if measurement_configs is None:
-                measurement_configs = {}
-
-            inferred_measurement_config_fp = save_dir / "inferred_measurement_configs.json"
-            with open(inferred_measurement_config_fp, mode="w") as f:
-                json.dump({k: v.to_dict() for k, v in measurement_configs.items()}, f)
-
-            config = PytorchDatasetConfig(**config_kwargs)
-
-            pyd = PytorchDataset(config=config, split=split)
+        config = PytorchDatasetConfig(**config_kwargs)
+        pyd = PytorchDataset(config=config, split=self.split)
         return config, pyd
 
     def test_normalize_task(self):
@@ -424,7 +455,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
                 "msg": "Should re-set cached data based on task df",
                 "max_seq_len": 4,
                 "min_seq_len": 2,
-                "task_df": TASK_DF,
+                "task_df_name": self.valid_task_name,
                 "want_items": [
                     {
                         "binary": True,
@@ -460,8 +491,8 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         for C in cases:
             get_pyd_kwargs = {"max_seq_len": C["max_seq_len"], "min_seq_len": C["min_seq_len"]}
-            if "task_df" in C:
-                get_pyd_kwargs.update({"task_df": C["task_df"]})
+            if "task_df_name" in C:
+                get_pyd_kwargs["task_df_name"] = C["task_df_name"]
 
             with self.subTest(C["msg"]):
                 config, pyd = self.get_pyd(**get_pyd_kwargs)
