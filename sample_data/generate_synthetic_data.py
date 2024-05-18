@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 """Synthetic Data Generation
-This notebook generates some simple synthetic data for us to use to demonstrate the ESGPT pipeline. We'll generate a few files:
+This file generates some simple synthetic data for us to use to demonstrate the ESGPT pipeline. We'll generate
+a few files:
 
   1. ``subjects.csv``, which contains static data about each subject.
   2. ``admission_vitals.csv``, which contains records of admissions, transfers, and vitals signs.
   3. ``lab_tests.csv``, which contains records of lab test measurements.
 
-This is all synthetic data designed solely for demonstrating this pipeline. It is not real data, derived from real data, or designed to mimic real data in any way other than plausible file structure.
+This is all synthetic data designed solely for demonstrating this pipeline. It is not real data, derived from
+real data, or designed to mimic real data in any way other than plausible file structure.
 """
 
 import rootutils
