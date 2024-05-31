@@ -1059,23 +1059,7 @@ class PytorchDatasetConfig(JSONableMixin):
         if not (self.tensorized_cached_dir / split).is_dir():
             return {}
 
-        all_files = {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.pt")}
-        files_str = ", ".join(all_files.keys())
-
-        for param, need_keys in [
-            ("do_include_start_time_min", ["start_time"]),
-            ("do_include_subsequence_indices", ["start_idx", "end_idx"]),
-            ("do_include_subject_id", ["subject_id"]),
-        ]:
-            param_val = getattr(self, param)
-            for need_key in need_keys:
-                if param_val:
-                    if need_key not in all_files.keys():
-                        raise KeyError(f"Missing {need_key} but {param} is True! Have {files_str}")
-                elif need_key in all_files:
-                    all_files.pop(need_key)
-
-        return all_files
+        return {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.npz")}
 
 
 @dataclasses.dataclass

@@ -18,8 +18,10 @@ from typing import Any, Generic, TypeVar
 import humanize
 import numpy as np
 import pandas as pd
+import polars as pl
 from loguru import logger
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
+from nested_ragged_tensors.ragged_numpy import JointNestedRaggedTensorDict
 from plotly.graph_objs._figure import Figure
 from tqdm.auto import tqdm
 
@@ -1358,28 +1360,67 @@ class DatasetBase(
         """
 
         logger.info("Caching DL representations")
+        if subjects_per_output_file is None:
+            logger.warning("Sharding is recommended for DL representations.")
 
         DL_dir = self.config.save_dir / "DL_reps"
-        DL_dir.mkdir(exist_ok=True, parents=True)
+        NRT_dir = self.config.save_dir / "NRT_reps"
 
-        if subjects_per_output_file is None:
-            subject_chunks = [None]
+        shards_fp = self.config.save_dir / "DL_shards.json"
+        if shards_fp.exists():
+            shards = json.loads(shards_fp.read_text())
         else:
-            subjects = np.random.permutation(list(self.subject_ids))
-            subject_chunks = np.array_split(
-                subjects,
-                np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),
-            )
-            subject_chunks = [list(c) for c in subject_chunks]
+            shards = {}
 
-        for chunk_idx, subjects_list in self._tqdm(list(enumerate(subject_chunks))):
-            cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
+            if subjects_per_output_file is None:
+                subject_chunks = [self.subject_ids]
+            else:
+                subjects = np.random.permutation(list(self.subject_ids))
+                subject_chunks = np.array_split(
+                    subjects,
+                    np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),
+                )
 
-            for split, subjects in self.split_subjects.items():
-                fp = DL_dir / f"{split}_{chunk_idx}.{self.DF_SAVE_FORMAT}"
+            subject_chunks = [[int(x) for x in c] for c in subject_chunks]
 
-                split_cached_df = self._filter_col_inclusion(cached_df, {"subject_id": subjects})
-                self._write_df(split_cached_df, fp, do_overwrite=do_overwrite)
+            for chunk_idx, subjects_list in enumerate(subject_chunks):
+                for split, subjects in self.split_subjects.items():
+                    shard_key = f"{split}/{chunk_idx}"
+                    included_subjects = set(subjects_list).intersection({int(x) for x in subjects})
+                    shards[shard_key] = list(included_subjects)
+
+            shards_fp.write_text(json.dumps(shards))
+
+        for shard_key, subjects_list in self._tqdm(list(shards.items()), desc="Shards"):
+            DL_fp = DL_dir / f"{shard_key}.{self.DF_SAVE_FORMAT}"
+            DL_fp.parent.mkdir(exist_ok=True, parents=True)
+
+            if DL_fp.exists() and not do_overwrite:
+                logger.info(f"Skipping {DL_fp} as it already exists.")
+                cached_df = self._read_df(DL_fp)
+            else:
+                logger.info(f"Caching {shard_key} to {DL_fp}")
+                cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
+                self._write_df(cached_df, DL_fp, do_overwrite=do_overwrite)
+
+            NRT_fp = NRT_dir / f"{shard_key}.pt"
+            NRT_fp.parent.mkdir(exist_ok=True, parents=True)
+            if NRT_fp.exists() and not do_overwrite:
+                logger.info(f"Skipping {NRT_fp} as it already exists.")
+            else:
+                logger.info(f"Caching NRT for {shard_key} to {NRT_fp}")
+                # TODO(mmd): This breaks the API isolation a bit, as we assume polars here. But that's fine.
+                jnrt_dict = {
+                    k: cached_df[k].to_list()
+                    for k in ["time_delta", "dynamic_indices", "dynamic_measurement_indices"]
+                }
+                jnrt_dict["dynamic_values"] = (
+                    cached_df["dynamic_values"]
+                    .list.eval(pl.element().list.eval(pl.element().fill_null(float("nan"))))
+                    .to_list()
+                )
+                jnrt_dict = JointNestedRaggedTensorDict(jnrt_dict)
+                jnrt_dict.save(NRT_fp)
 
     @property
     def vocabulary_config(self) -> VocabularyConfig:

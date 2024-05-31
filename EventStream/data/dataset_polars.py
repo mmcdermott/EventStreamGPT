@@ -10,6 +10,7 @@ Attributes:
 import dataclasses
 import math
 import multiprocessing
+from collections import defaultdict
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 from pathlib import Path
@@ -722,7 +723,24 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 case False:
                     filter_exprs.append(pl.col(col).is_null())
                 case _:
-                    incl_list = pl.Series(list(incl_targets), dtype=df.schema[col])
+                    try:
+                        incl_list = pl.Series(list(incl_targets), dtype=df.schema[col])
+                    except TypeError as e:
+                        incl_targets_by_type = defaultdict(list)
+                        for t in incl_targets:
+                            incl_targets_by_type[str(type(t))].append(t)
+
+                        by_type_summ = []
+                        for tp, vals in incl_targets_by_type.items():
+                            by_type_summ.append(
+                                f"{tp}: {len(vals)} values: {', '.join(str(x) for x in vals[:5])}..."
+                            )
+
+                        by_type_summ = "\n".join(by_type_summ)
+
+                        raise ValueError(
+                            f"Failed to convert incl_targets to {df.schema[col]}:\n{by_type_summ}"
+                        ) from e
                     filter_exprs.append(pl.col(col).is_in(incl_list))
 
         return df.filter(pl.all_horizontal(filter_exprs))
@@ -1389,12 +1407,17 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.col("value").alias("dynamic_values"),
             )
             .sort("subject_id", "timestamp")
-            .group_by("subject_id")
+            .group_by("subject_id", maintain_order=True)
             .agg(
                 pl.col("timestamp").first().alias("start_time"),
                 ((pl.col("timestamp") - pl.col("timestamp").min()).dt.total_nanoseconds() / (1e9 * 60)).alias(
                     "time"
                 ),
+                (pl.col("timestamp").diff().dt.total_seconds() / 60.0)
+                .shift(-1)
+                .cast(pl.Float32)
+                .fill_null(float("nan"))
+                .alias("time_delta"),
                 pl.col("dynamic_measurement_indices"),
                 pl.col("dynamic_indices"),
                 pl.col("dynamic_values"),
