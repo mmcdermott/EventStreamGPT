@@ -1417,7 +1417,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if include_only_subjects is None:
             df = self.subjects_df
         else:
-            df = self.subjects_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
+            self.subjects_df = self.subjects_df.with_columns(pl.col("subject_id").cast(pl.Utf8))
+            df = self.subjects_df.filter(pl.col("subject_id").is_in([str(id) for id in include_only_subjects]))
 
         valid_measures = {}
         for feat_col in feature_columns:
@@ -1477,7 +1478,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if include_only_subjects is None:
             df = self.events_df
         else:
-            df = self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects)))
+            self.events_df = self.events_df.with_columns(pl.col("subject_id").cast(pl.Utf8))
+            df = self.events_df.filter(pl.col("subject_id").is_in([str(id) for id in include_only_subjects]))
 
         valid_measures = {}
         for feat_col in feature_columns:
@@ -1540,8 +1542,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if include_only_subjects is None:
             df = self.dynamic_measurements_df
         else:
+            self.events_df = self.events_df.with_columns(pl.col("subject_id").cast(pl.Utf8))
             df = self.dynamic_measurements_df.join(
-                self.events_df.filter(pl.col("subject_id").is_in(list(include_only_subjects))).select(
+                self.events_df.filter(pl.col("subject_id").is_in([str(id) for id in include_only_subjects])).select(
                     "event_id"
                 ),
                 on="event_id",
