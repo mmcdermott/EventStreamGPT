@@ -223,17 +223,17 @@ class DatasetBase(
         all_events_and_measurements = []
         event_types = []
 
-        for df, schemas in schemas_by_df.items():
+        for df_name, schemas in schemas_by_df.items():
             all_columns = []
 
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
             try:
-                df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
+                df = cls._load_input_df(df_name, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
             except Exception as e:
-                raise ValueError(f"Errored while loading {df}") from e
+                raise ValueError(f"Errored while loading {df_name}") from e
 
-            for schema in schemas:
+            for schema in tqdm(schemas, desc=f"Processing events and measurements df for {df_name.split('/')[-1]}"):
                 if schema.filter_on:
                     df = cls._filter_col_inclusion(schema.filter_on)
                 match schema.type:
@@ -266,7 +266,7 @@ class DatasetBase(
 
         all_events, all_measurements = [], []
         running_event_id_max = 0
-        for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
+        for event_type, (events, measurements) in tqdm(zip(event_types, all_events_and_measurements), desc="Incrementing and combining events and measurements"):
             try:
                 new_events = cls._inc_df_col(events, "event_id", running_event_id_max)
             except Exception as e:

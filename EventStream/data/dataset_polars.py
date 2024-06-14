@@ -705,7 +705,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             )
 
             n_events_pd = self.events_df.get_column("subject_id").value_counts(sort=False).to_pandas()
-            self.n_events_per_subject = n_events_pd.set_index("subject_id")["counts"].to_dict()
+            self.n_events_per_subject = n_events_pd.set_index("subject_id")["count"].to_dict()
             self.subject_ids = set(self.n_events_per_subject.keys())
 
         if self.subjects_df is not None:
@@ -853,7 +853,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .alias("is_int")
             )
             int_keys = for_val_type_inference.groupby(vocab_keys_col).agg(is_int_expr)
-
+             
             measurement_metadata = measurement_metadata.join(int_keys, on=vocab_keys_col, how="outer")
 
             key_is_int = pl.col(vocab_keys_col).is_in(int_keys.filter("is_int")[vocab_keys_col])
@@ -1105,7 +1105,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             try:
                 value_counts = observations.value_counts()
                 vocab_elements = value_counts.get_column(measure).to_list()
-                el_counts = value_counts.get_column("counts")
+                el_counts = value_counts.get_column("count")
                 return Vocabulary(vocabulary=vocab_elements, obs_frequencies=el_counts)
             except AssertionError as e:
                 raise AssertionError(f"Failed to build vocabulary for {measure}") from e
