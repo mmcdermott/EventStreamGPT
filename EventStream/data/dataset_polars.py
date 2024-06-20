@@ -718,7 +718,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         filter_exprs = []
         for col, incl_targets in col_inclusion_targets.items():
             if col == "subject_id":
-                incl_targets = np.array(incl_targets).astype(np.int64)
+                # incl_targets = np.array(incl_targets).astype(np.int64)
+                incl_targets = [np.uint64(x) for x in incl_targets]
             match incl_targets:
                 case True:
                     filter_exprs.append(pl.col(col).is_not_null())
