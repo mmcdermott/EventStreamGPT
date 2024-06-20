@@ -853,7 +853,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .alias("is_int")
             )
             int_keys = for_val_type_inference.groupby(vocab_keys_col).agg(is_int_expr)
-             
+
             measurement_metadata = measurement_metadata.join(int_keys, on=vocab_keys_col, how="outer")
 
             key_is_int = pl.col(vocab_keys_col).is_in(int_keys.filter("is_int")[vocab_keys_col])
@@ -1418,7 +1418,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             df = self.subjects_df
         else:
             self.subjects_df = self.subjects_df.with_columns(pl.col("subject_id").cast(pl.Utf8))
-            df = self.subjects_df.filter(pl.col("subject_id").is_in([str(id) for id in include_only_subjects]))
+            df = self.subjects_df.filter(
+                pl.col("subject_id").is_in([str(id) for id in include_only_subjects])
+            )
 
         valid_measures = {}
         for feat_col in feature_columns:
@@ -1544,9 +1546,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         else:
             self.events_df = self.events_df.with_columns(pl.col("subject_id").cast(pl.Utf8))
             df = self.dynamic_measurements_df.join(
-                self.events_df.filter(pl.col("subject_id").is_in([str(id) for id in include_only_subjects])).select(
-                    "event_id"
-                ),
+                self.events_df.filter(
+                    pl.col("subject_id").is_in([str(id) for id in include_only_subjects])
+                ).select("event_id"),
                 on="event_id",
                 how="inner",
             )
