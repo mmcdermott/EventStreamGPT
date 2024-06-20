@@ -583,8 +583,12 @@ def train(cfg: PretrainConfig):
     if cfg.do_use_filesystem_sharing:
         torch.multiprocessing.set_sharing_strategy("file_system")
 
+    print('cfg.data_config', cfg.data_config)
     train_pyd = PytorchDataset(cfg.data_config, split="train")
     tuning_pyd = PytorchDataset(cfg.data_config, split="tuning")
+
+    print('train_pyd', train_pyd)
+    print('tuning_pyd', tuning_pyd)
 
     config = cfg.config
     optimization_config = cfg.optimization_config

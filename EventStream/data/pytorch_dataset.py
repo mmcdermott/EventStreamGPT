@@ -144,6 +144,10 @@ class PytorchDataset(SeedableMixin, torch.utils.data.Dataset):
         logger.info("Reading patient descriptors")
         self.read_patient_descriptors()
 
+        orig_len = len(self)
+        orig_n_subjects = len(set(self.subject_ids))
+        print(f'Len of {split}_pyd is {orig_len} and n subjects is {orig_n_subjects}')
+
         if self.config.min_seq_len is not None and self.config.min_seq_len > 1:
             logger.info(f"Restricting to subjects with at least {config.min_seq_len} events")
             self.filter_to_min_seq_len()
