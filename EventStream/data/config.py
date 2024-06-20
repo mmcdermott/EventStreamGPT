@@ -806,6 +806,10 @@ class PytorchDatasetConfig(JSONableMixin):
             training subset. If `None` or "FULL", then the full training data is used.
         train_subset_seed: If the training data should be subsampled randomly, this specifies the seed for
             that random subsampling.
+        tuning_subset_size: If the tuning data should be subsampled randomly, this specifies the size of the
+            tuning subset. If `None` or "FULL", then the full tuning data is used.
+        tuning_subset_seed: If the tuning data should be subsampled randomly, this specifies the seed for
+            that random subsampling.
         task_df_name: If the raw dataset should be limited to a task dataframe view, this specifies the name
             of the task dataframe, and indirectly the path on disk from where that task dataframe will be
             read (save_dir / "task_dfs" / f"{task_df_name}.parquet").
@@ -880,6 +884,8 @@ class PytorchDatasetConfig(JSONableMixin):
 
     train_subset_size: int | float | str = "FULL"
     train_subset_seed: int | None = None
+    tuning_subset_size: int | float | str = "FULL"
+    tuning_subset_seed: int | None = None
 
     task_df_name: str | None = None
 
@@ -929,6 +935,22 @@ class PytorchDatasetConfig(JSONableMixin):
                 pass
             case _:
                 raise TypeError(f"train_subset_size is of unrecognized type {type(self.train_subset_size)}.")
+
+        match self.tuning_subset_size:
+            case int() as n if n < 0:
+                raise ValueError(f"If integral, tuning_subset_size must be positive! Got {n}")
+            case float() as frac if frac <= 0 or frac >= 1:
+                raise ValueError(f"If float, tuning_subset_size must be in (0, 1)! Got {frac}")
+            case int() | float() if (self.tuning_subset_seed is None):
+                seed = int(random.randint(1, int(1e6)))
+                print(f"WARNING! tuning_subset_size is set, but tuning_subset_seed is not. Setting to {seed}")
+                self.tuning_subset_seed = seed
+            case None | "FULL" | int() | float():
+                pass
+            case _:
+                raise TypeError(
+                    f"tuning_subset_size is of unrecognized type {type(self.tuning_subset_size)}."
+                )
 
     def to_dict(self) -> dict:
         """Represents this configuration object as a plain dictionary."""
@@ -1037,23 +1059,7 @@ class PytorchDatasetConfig(JSONableMixin):
         if not (self.tensorized_cached_dir / split).is_dir():
             return {}
 
-        all_files = {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.pt")}
-        files_str = ", ".join(all_files.keys())
-
-        for param, need_keys in [
-            ("do_include_start_time_min", ["start_time"]),
-            ("do_include_subsequence_indices", ["start_idx", "end_idx"]),
-            ("do_include_subject_id", ["subject_id"]),
-        ]:
-            param_val = getattr(self, param)
-            for need_key in need_keys:
-                if param_val:
-                    if need_key not in all_files.keys():
-                        raise KeyError(f"Missing {need_key} but {param} is True! Have {files_str}")
-                elif need_key in all_files:
-                    all_files.pop(need_key)
-
-        return all_files
+        return {fp.stem: fp for fp in (self.tensorized_cached_dir / split).glob("*.npz")}
 
 
 @dataclasses.dataclass
@@ -1145,10 +1151,10 @@ class MeasurementConfig(JSONableMixin):
             * value_type: To which kind of value (e.g., integer, categorical, float) this key corresponds.
               Must be an element of the enum `NumericMetadataValueType`. Optional. If not pre-specified,
               will be inferred from the data.
-            * outlier_model: The parameters (in dictionary form) for the fit outlier model. Optional. If
-              not pre-specified, will be inferred from the data.
-            * normalizer: The parameters (in dictionary form) for the fit normalizer model. Optional. If
-              not pre-specified, will be inferred from the data.
+            * thresh_large: The learned upper bound for inlier values.
+            * thresh_small: The learned lower bound for inlier values.
+            * mean: The mean to which values will be standardized.
+            * std: The standard deviation to which values will be standardized.
 
         modifiers: Stores a list of additional column names that modify this measurement that should be
             tracked with this measurement record through the dataset.
@@ -1252,8 +1258,10 @@ class MeasurementConfig(JSONableMixin):
     PREPROCESSING_METADATA_COLUMNS = OrderedDict(
         {
             "value_type": str,
-            "outlier_model": object,
-            "normalizer": object,
+            "mean": float,
+            "std": float,
+            "thresh_small": float,
+            "thresh_large": float,
         }
     )
 
@@ -1438,29 +1446,12 @@ class MeasurementConfig(JSONableMixin):
                     f"it has shape {out.shape} (expecting out.shape[1] == 1)!"
                 )
             out = out.iloc[:, 0]
-            for col in ("outlier_model", "normalizer"):
-                if col in out and type(out[col]) is str:
-                    try:
-                        out[col] = eval(out[col])
-                    except (TypeError, ValueError) as e:
-                        raise ValueError(
-                            f"Failed to eval {col} for measure {self.name} with value {out[col]}"
-                        ) from e
         elif self.modality != DataModality.MULTIVARIATE_REGRESSION:
             raise ValueError(
                 "Only DataModality.UNIVARIATE_REGRESSION and DataModality.MULTIVARIATE_REGRESSION "
                 f"measurements should have measurement metadata paths stored. Got {fp} on "
                 f"{self.modality} measurement!"
             )
-        else:
-            for col in ("outlier_model", "normalizer"):
-                if col in out:
-                    try:
-                        out[col] = out[col].apply(lambda x: eval(x) if type(x) is str else x)
-                    except (TypeError, ValueError) as e:
-                        raise ValueError(
-                            f"Failed to eval {col} for measure {self.name} with values {list(out[col])[:5]}"
-                        ) from e
         return out
 
     @measurement_metadata.setter
@@ -1776,10 +1767,7 @@ class DatasetConfig(JSONableMixin):
             mirror scikit-learn outlier detection model APIs. If `None`, numerical outlier values are not
             removed.
 
-        normalizer_config: Configuration options for normalization. If not `None`, must contain the key
-            `'cls'`, which points to the class used normalization. All other keys and values are keyword
-            arguments to be passed to the specified class. The API of these objects is expected to mirror
-            scikit-learn normalization system APIs. If `None`, numerical values are not normalized.
+        center_and_scale: Whether or not to center and scale numerical values.
 
         save_dir: The output save directory for this dataset. Will be converted to a `pathlib.Path` upon
             creation if it is not already one.
@@ -1825,7 +1813,7 @@ class DatasetConfig(JSONableMixin):
             'min_true_float_frequency': None,
             'min_unique_numerical_observations': None,
             'outlier_detector_config': None,
-            'normalizer_config': None,
+            'center_and_scale': True,
             'save_dir': '/path/to/save/dir'}
         >>> cfg2 = DatasetConfig.from_dict(cfg.to_dict())
         >>> assert cfg == cfg2
@@ -1878,7 +1866,7 @@ class DatasetConfig(JSONableMixin):
     min_unique_numerical_observations: COUNT_OR_PROPORTION | None = None
 
     outlier_detector_config: dict[str, Any] | None = None
-    normalizer_config: dict[str, Any] | None = None
+    center_and_scale: bool = True
 
     save_dir: Path | None = None
 
@@ -1929,10 +1917,10 @@ class DatasetConfig(JSONableMixin):
                         f"{var} must be a fraction (float between 0 and 1). Got {type(val)} of {val}"
                     )
 
-        for var in ("outlier_detector_config", "normalizer_config"):
+        for var in ("outlier_detector_config",):
             val = getattr(self, var)
-            if val is not None and (type(val) is not dict or "cls" not in val):
-                raise ValueError(f"{var} must be either None or a dictionary with 'cls' as a key! Got {val}")
+            if val is not None and (type(val) is not dict):
+                raise ValueError(f"{var} must be either None or a dictionary! Got {val}")
 
         for k, v in self.measurement_configs.items():
             try:
