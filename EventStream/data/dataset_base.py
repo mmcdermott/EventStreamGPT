@@ -1381,13 +1381,10 @@ class DatasetBase(
                     np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),
                 )
 
-            subject_chunks = [[x for x in c] for c in subject_chunks]
-
             for chunk_idx, subjects_list in enumerate(subject_chunks):
                 for split, subjects in self.split_subjects.items():
                     shard_key = f"{split}/{chunk_idx}"
-                    included_subjects = set(subjects_list).intersection(subjects)
-                    shards[shard_key] = list(included_subjects)
+                    shards[shard_key] = list(set(subjects_list).intersection(subjects))
 
             shards_fp.write_text(json.dumps(shards))
 

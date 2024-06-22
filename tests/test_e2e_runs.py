@@ -81,13 +81,23 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
 
         self.assertEqual(all_subjects, all_subj_in_DL_shards)
 
-        train_DL_subjects = set(train_DL_reps["subject_id"].unique().to_list())
-        tuning_DL_subjects = set(tuning_DL_reps["subject_id"].unique().to_list())
-        held_out_DL_subjects = set(held_out_DL_reps["subject_id"].unique().to_list())
+        all_train_DL_shard_subj = set().union(*(v for k, v in DL_shards.items() if k.startswith("train")))
+        all_tuning_DL_shard_subj = set().union(*(v for k, v in DL_shards.items() if k.startswith("tuning")))
+        all_held_out_DL_shard_subj = set().union(
+            *(v for k, v in DL_shards.items() if k.startswith("held_out"))
+        )
 
-        self.assertEqual(len(train_DL_subjects & tuning_DL_subjects), 0)
-        self.assertEqual(len(train_DL_subjects & held_out_DL_subjects), 0)
-        self.assertEqual(len(tuning_DL_subjects & held_out_DL_subjects), 0)
+        self.assertEqual(len(all_train_DL_shard_subj & all_tuning_DL_shard_subj), 0)
+        self.assertEqual(len(all_train_DL_shard_subj & all_held_out_DL_shard_subj), 0)
+        self.assertEqual(len(all_tuning_DL_shard_subj & all_held_out_DL_shard_subj), 0)
+
+        train_DL_subjects = set(train_DL_reps["subject_id"].to_list())
+        tuning_DL_subjects = set(tuning_DL_reps["subject_id"].to_list())
+        held_out_DL_subjects = set(held_out_DL_reps["subject_id"].to_list())
+
+        self.assertEqual(all_train_DL_shard_subj, {str(x) for x in train_DL_subjects})
+        self.assertEqual(all_tuning_DL_shard_subj, {str(x) for x in tuning_DL_subjects})
+        self.assertEqual(all_held_out_DL_shard_subj, {str(x) for x in held_out_DL_subjects})
 
         self.assertTrue(len(train_DL_subjects) > len(tuning_DL_subjects))
         self.assertTrue(len(train_DL_subjects) > len(held_out_DL_subjects))
