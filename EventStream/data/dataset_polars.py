@@ -739,7 +739,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
                         incl_list = incl_list.cast(df.schema[col])
 
-                        logger.debug(f"Converted to Series of type {incl_list.dtype} with size {len(incl_list)}")
+                        logger.debug(
+                            f"Converted to Series of type {incl_list.dtype} with size {len(incl_list)}"
+                        )
                     except TypeError as e:
                         incl_targets_by_type = defaultdict(list)
                         for t in incl_targets:
@@ -1374,7 +1376,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # 1. Process subject data into the right format.
         if subject_ids:
             subjects_df = self._filter_col_inclusion(self.subjects_df, {"subject_id": subject_ids})
-            assert len(subject_ids) == len(subjects_df), f'Size of given subject_ids are {len(subject_ids)}, but after _filter_col_inclusion the size of subjects_df are {len(subjects_df)}'
+            if len(subject_ids) != len(subjects_df):
+                raise ValueError(
+                    f"Size of given subject_ids are {len(subject_ids)}, but after _filter_col_inclusion "
+                    f"the size of subjects_df are {len(subjects_df)}"
+                )
         else:
             subjects_df = self.subjects_df
 
@@ -1386,7 +1392,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.col("index").alias("static_indices"),
             )
         )
-        logger.debug(f'Size of static_data: {static_data.shape[0]}')
+        logger.debug(f"Size of static_data: {static_data.shape[0]}")
 
         # 2. Process event data into the right format.
         if subject_ids:
@@ -1396,7 +1402,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             events_df = self.events_df
             event_ids = None
         event_data = self._melt_df(events_df, ["subject_id", "timestamp", "event_id"], event_measures)
-        logger.debug(f'Size of event_data: {event_data.shape[0]}')
+        logger.debug(f"Size of event_data: {event_data.shape[0]}")
 
         # 3. Process measurement data into the right base format:
         if event_ids:
@@ -1411,7 +1417,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         if do_sort_outputs:
             dynamic_data = dynamic_data.sort("event_id", "measurement_id")
-        logger.debug(f'Size of dynamic_data: {dynamic_data.shape[0]}')
+        logger.debug(f"Size of dynamic_data: {dynamic_data.shape[0]}")
 
         # 4. Join dynamic and event data.
 

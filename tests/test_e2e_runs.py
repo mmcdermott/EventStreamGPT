@@ -75,6 +75,10 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
 
         all_subj_in_DL_shards = set().union(*DL_shards.values())
 
+        all_subj_in_DL_shards = set(
+            pl.Series(list(all_subj_in_DL_shards)).cast(ESD_subjects["subject_id"].dtype).to_list()
+        )
+
         self.assertEqual(all_subjects, all_subj_in_DL_shards)
 
         train_DL_subjects = set(train_DL_reps["subject_id"].unique().to_list())
