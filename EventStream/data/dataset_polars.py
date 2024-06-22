@@ -699,8 +699,10 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .to_list()
             )
 
-            n_events_pd = self.events_df.get_column("subject_id").value_counts(sort=False).to_pandas()
-            self.n_events_per_subject = n_events_pd.set_index("subject_id")["count"].to_dict()
+            n_events = self.events_df.group_by("subject_id").agg(pl.len().alias("count"))
+            self.n_events_per_subject = {
+                subject_id: count for subject_id, count in zip(n_events["subject_id"], n_events["count"])
+            }
             self.subject_ids = set(self.n_events_per_subject.keys())
 
         if self.subjects_df is not None:
