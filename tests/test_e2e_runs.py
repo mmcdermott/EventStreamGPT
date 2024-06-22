@@ -311,26 +311,26 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
     def test_e2e(self):
         # Data
         self.build_dataset()
-        # self.build_ESDS_dataset()
-        # self.build_FT_task_df()
+        self.build_ESDS_dataset()
+        self.build_FT_task_df()
 
-        # # Sklearn baselines
-        # self.run_sklearn_baseline()
+        # Sklearn baselines
+        self.run_sklearn_baseline()
 
-        # # From-scratch training
-        # self.run_from_scratch_training()
+        # From-scratch training
+        self.run_from_scratch_training()
 
-        # # Pre-training
-        # self.run_pretraining()
+        # Pre-training
+        self.run_pretraining()
 
-        # # Fine-tuning
-        # self.run_finetuning()
+        # Fine-tuning
+        self.run_finetuning()
 
-        # # Get embeddings
-        # self.run_get_embeddings()
+        # Get embeddings
+        self.run_get_embeddings()
 
-        # # Zero-shot
-        # self.run_zeroshot()
+        # Zero-shot
+        self.run_zeroshot()
 
 
 if __name__ == "__main__":
