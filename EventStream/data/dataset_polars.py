@@ -1372,12 +1372,11 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     raise ValueError(f"Unknown temporality type {temporality} for {m}")
 
         # 1. Process subject data into the right format.
-        logger.debug(f'Size of subject_ids: {len(subject_ids)} and self.subjects_df: {self.subjects_df.shape[0]}')
         if subject_ids:
             subjects_df = self._filter_col_inclusion(self.subjects_df, {"subject_id": subject_ids})
+            assert len(subject_ids) == len(subjects_df), f'Size of given subject_ids are {len(subject_ids)}, but after _filter_col_inclusion the size of subjects_df are {len(subjects_df)}'
         else:
             subjects_df = self.subjects_df
-        logger.debug(f'Size of subjects_df after _filter_col_inclusion: {len(subjects_df)}')
 
         static_data = (
             self._melt_df(subjects_df, ["subject_id"], subject_measures)
