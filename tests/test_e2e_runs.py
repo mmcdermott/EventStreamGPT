@@ -45,6 +45,9 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         for o in self.dir_objs.values():
             o.cleanup()
 
+    def _test_dataset_output(raw_data_root: Path, dataset_save_dir: Path):
+        pass
+
     def _test_command(self, command_parts: list[str], case_name: str, use_subtest: bool = True):
         if use_subtest:
             with self.subTest(case_name):
@@ -71,6 +74,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             f"save_dir={self.paths['dataset']}",
         ]
         self._test_command(command_parts, "Build Dataset", use_subtest=False)
+        self._test_dataset_output((root / 'sample_data' / 'raw'), self.paths["dataset"])
 
     def build_ESDS_dataset(self):
         command_parts = [
