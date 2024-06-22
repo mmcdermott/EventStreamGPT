@@ -36,25 +36,25 @@ def to_int_index(col: pl.Expr) -> pl.Expr:
         ...     'c': ['foo', 'bar', 'foo', 'bar', 'baz', None, 'bar', 'aba'],
         ...     'd': [1, 2, 3, 4, 5, 6, 7, 8]
         ... })
-        >>> X.with_columns(to_int_index(pl.col('c')))
-        shape: (8, 2)
-        ┌──────┬─────┐
-        │ c    ┆ d   │
-        │ ---  ┆ --- │
-        │ u32  ┆ i64 │
-        ╞══════╪═════╡
-        │ 4    ┆ 1   │
-        │ 1    ┆ 2   │
-        │ 4    ┆ 3   │
-        │ 1    ┆ 4   │
-        │ 2    ┆ 5   │
-        │ null ┆ 6   │
-        │ 1    ┆ 7   │
-        │ 0    ┆ 8   │
-        └──────┴─────┘
+        >>> X.with_columns(to_int_index(pl.col('c')).alias("c_index"))
+        shape: (8, 3)
+        ┌──────┬─────┬─────────┐
+        │ c    ┆ d   ┆ c_index │
+        │ ---  ┆ --- ┆ ---     │
+        │ str  ┆ i64 ┆ u32     │
+        ╞══════╪═════╪═════════╡
+        │ foo  ┆ 1   ┆ 3       │
+        │ bar  ┆ 2   ┆ 1       │
+        │ foo  ┆ 3   ┆ 3       │
+        │ bar  ┆ 4   ┆ 1       │
+        │ baz  ┆ 5   ┆ 2       │
+        │ null ┆ 6   ┆ null    │
+        │ bar  ┆ 7   ┆ 1       │
+        │ aba  ┆ 8   ┆ 0       │
+        └──────┴─────┴─────────┘
     """
 
-    indices = col.unique(maintain_order=True).drop_nulls().search_sorted(col)
+    indices = col.drop_nulls().unique().sort().search_sorted(col, side="left")
     return pl.when(col.is_null()).then(pl.lit(None)).otherwise(indices).alias(col.meta.output_name())
 
 
@@ -442,7 +442,7 @@ class PytorchDataset(SeedableMixin, torch.utils.data.Dataset):
            unified vocabulary space spanning all metadata vocabularies.
         3. ``dynamic_values`` captures the numerical metadata elements listed in `self.data_cols`. If no
            numerical elements are listed in `self.data_cols` for a given categorical column, the according
-           index in this output will be `np.NaN`.
+           index in this output will be `float('nan')`.
         4. ``dynamic_measurement_indices`` captures which measurement vocabulary was used to source a given
            data element.
         5. ``static_indices`` captures the categorical metadata elements listed in `self.static_cols` in a
