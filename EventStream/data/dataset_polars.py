@@ -739,7 +739,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
                         incl_list = incl_list.cast(df.schema[col])
 
-                        logger.debug(f"Converted to Series of type {incl_list.dtype}")
+                        logger.debug(f"Converted to Series of type {incl_list.dtype} with size {len(incl_list)}")
                     except TypeError as e:
                         incl_targets_by_type = defaultdict(list)
                         for t in incl_targets:
@@ -1372,10 +1372,12 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     raise ValueError(f"Unknown temporality type {temporality} for {m}")
 
         # 1. Process subject data into the right format.
+        logger.debug(f'Size of subject_ids: {len(subject_ids)} and self.subjects_df: {self.subjects_df.shape[0]}')
         if subject_ids:
             subjects_df = self._filter_col_inclusion(self.subjects_df, {"subject_id": subject_ids})
         else:
             subjects_df = self.subjects_df
+        logger.debug(f'Size of subjects_df after _filter_col_inclusion: {len(subjects_df)}')
 
         static_data = (
             self._melt_df(subjects_df, ["subject_id"], subject_measures)
@@ -1385,6 +1387,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 pl.col("index").alias("static_indices"),
             )
         )
+        logger.debug(f'Size of static_data: {static_data.shape[0]}')
 
         # 2. Process event data into the right format.
         if subject_ids:
@@ -1394,6 +1397,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             events_df = self.events_df
             event_ids = None
         event_data = self._melt_df(events_df, ["subject_id", "timestamp", "event_id"], event_measures)
+        logger.debug(f'Size of event_data: {event_data.shape[0]}')
 
         # 3. Process measurement data into the right base format:
         if event_ids:
@@ -1408,6 +1412,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
 
         if do_sort_outputs:
             dynamic_data = dynamic_data.sort("event_id", "measurement_id")
+        logger.debug(f'Size of dynamic_data: {dynamic_data.shape[0]}')
 
         # 4. Join dynamic and event data.
 

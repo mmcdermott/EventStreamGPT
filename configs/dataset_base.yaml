@@ -19,7 +19,7 @@ center_and_scale: True
 
 hydra:
   job:
-    name: build_${cohort_name}
+    name: build_dataset
   run:
     dir: ${save_dir}/.logs
   sweep:

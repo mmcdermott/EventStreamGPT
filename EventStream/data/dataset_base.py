@@ -1367,7 +1367,7 @@ class DatasetBase(
         NRT_dir = self.config.save_dir / "NRT_reps"
 
         shards_fp = self.config.save_dir / "DL_shards.json"
-        if shards_fp.exists():
+        if shards_fp.exists() and not do_overwrite:
             shards = json.loads(shards_fp.read_text())
         else:
             shards = {}
