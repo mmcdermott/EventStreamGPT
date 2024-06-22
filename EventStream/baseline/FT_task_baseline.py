@@ -148,8 +148,9 @@ def load_flat_rep(
 
     by_split = {}
     for sp, all_sp_subjects in ESD.split_subjects.items():
+        all_sp_subjects = pl.Series(list(all_sp_subjects)).cast(ESD.subject_id_dtype)
         if task_df_name is not None:
-            sp_join_df = join_df.filter(pl.col("subject_id").is_in(list(all_sp_subjects)))
+            sp_join_df = join_df.filter(pl.col("subject_id").is_in(all_sp_subjects))
 
         static_df = pl.scan_parquet(flat_dir / "static" / sp / "*.parquet")
         if task_df_name is not None:
@@ -175,13 +176,17 @@ def load_flat_rep(
                         df = pl.scan_parquet(cached_fp).select("subject_id", "timestamp", *window_features)
                         if subjects_included.get(sp, None) is not None:
                             subjects = list(set(subjects).intersection(subjects_included[sp]))
-                            df = df.filter(pl.col("subject_id").is_in(subjects))
+                            df = df.filter(
+                                pl.col("subject_id").is_in(pl.Series(subjects).cast(ESD.subject_id_dtype))
+                            )
                         window_dfs.append(df)
                         continue
 
                 df = pl.scan_parquet(fp)
                 if task_df_name is not None:
-                    filter_join_df = sp_join_df.select(join_keys).filter(pl.col("subject_id").is_in(subjects))
+                    filter_join_df = sp_join_df.select(join_keys).filter(
+                        pl.col("subject_id").is_in(pl.Series(subjects).cast(ESD.subject_id_dtype))
+                    )
 
                     df = df.join(filter_join_df, on=join_keys, how="inner")
 
@@ -193,7 +198,7 @@ def load_flat_rep(
                 df = df.select("subject_id", "timestamp", *window_features)
                 if subjects_included.get(sp, None) is not None:
                     subjects = list(set(subjects).intersection(subjects_included[sp]))
-                    df = df.filter(pl.col("subject_id").is_in(subjects))
+                    df = df.filter(pl.col("subject_id").is_in(pl.Series(subjects).cast(ESD.subject_id_dtype)))
 
                 window_dfs.append(df)
 

@@ -81,16 +81,16 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         tuning_DL_subjects = set(tuning_DL_reps["subject_id"].unique().to_list())
         held_out_DL_subjects = set(held_out_DL_reps["subject_id"].unique().to_list())
 
-        all_DL_subjects = train_DL_subjects | tuning_DL_subjects | held_out_DL_subjects
-
-        self.assertEqual(all_DL_subjects, all_subjects)
-
         self.assertEqual(len(train_DL_subjects & tuning_DL_subjects), 0)
         self.assertEqual(len(train_DL_subjects & held_out_DL_subjects), 0)
         self.assertEqual(len(tuning_DL_subjects & held_out_DL_subjects), 0)
 
         self.assertTrue(len(train_DL_subjects) > len(tuning_DL_subjects))
         self.assertTrue(len(train_DL_subjects) > len(held_out_DL_subjects))
+
+        all_DL_subjects = train_DL_subjects | tuning_DL_subjects | held_out_DL_subjects
+
+        self.assertEqual(all_DL_subjects, all_subjects)
 
     def _test_command(self, command_parts: list[str], case_name: str, use_subtest: bool = True):
         if use_subtest:
