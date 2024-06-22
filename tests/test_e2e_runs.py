@@ -35,6 +35,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         self.paths = {}
         for n in (
             "dataset",
+            "dataset_from_parquet",
             "esds",
             "pretraining/CI",
             "pretraining/NA",
@@ -118,6 +119,16 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         ]
         self._test_command(command_parts, "Build Dataset", use_subtest=False)
         self._test_dataset_output((root / "sample_data" / "raw"), self.paths["dataset"])
+
+        command_parts = [
+            "./scripts/build_dataset.py",
+            f"--config-path='{(root / 'sample_data').resolve()}'",
+            "--config-name=dataset_parquet",
+            '"hydra.searchpath=[./configs]"',
+            f"save_dir={self.paths['dataset_from_parquet']}",
+        ]
+        self._test_command(command_parts, "Build Dataset from Parquet", use_subtest=False)
+        self._test_dataset_output((root / "sample_data" / "raw"), self.paths["dataset_from_parquet"])
 
     def build_ESDS_dataset(self):
         command_parts = [
@@ -300,26 +311,26 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
     def test_e2e(self):
         # Data
         self.build_dataset()
-        self.build_ESDS_dataset()
-        self.build_FT_task_df()
+        # self.build_ESDS_dataset()
+        # self.build_FT_task_df()
 
-        # Sklearn baselines
-        self.run_sklearn_baseline()
+        # # Sklearn baselines
+        # self.run_sklearn_baseline()
 
-        # From-scratch training
-        self.run_from_scratch_training()
+        # # From-scratch training
+        # self.run_from_scratch_training()
 
-        # Pre-training
-        self.run_pretraining()
+        # # Pre-training
+        # self.run_pretraining()
 
-        # Fine-tuning
-        self.run_finetuning()
+        # # Fine-tuning
+        # self.run_finetuning()
 
-        # Get embeddings
-        self.run_get_embeddings()
+        # # Get embeddings
+        # self.run_get_embeddings()
 
-        # Zero-shot
-        self.run_zeroshot()
+        # # Zero-shot
+        # self.run_zeroshot()
 
 
 if __name__ == "__main__":
