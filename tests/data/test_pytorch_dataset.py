@@ -179,7 +179,7 @@ DL_REP_DF = pl.DataFrame(
             [],
         ],
         "dynamic_values": [
-            [[None, None, None, None], [None, 0.1, 0.3, 1.2], [None, np.NaN], [None]],
+            [[None, None, None, None], [None, 0.1, 0.3, 1.2], [None, float("nan")], [None]],
             [[None], [None, 0.2]],
             [[None], [None, None], [None]],
             [],
@@ -241,7 +241,7 @@ WANT_SUBJ_1_UNCUT = {
         [MEASUREMENTS_IDXMAP["event_type"], MEASUREMENTS_IDXMAP["multivariate_regression"]],
         [MEASUREMENTS_IDXMAP["event_type"]],
     ],
-    "dynamic_values": [[None, None, None, None], [None, 0.1, 0.3, 1.2], [None, np.NaN], [None]],
+    "dynamic_values": [[None, None, None, None], [None, 0.1, 0.3, 1.2], [None, float("nan")], [None]],
 }
 
 WANT_SUBJ_2_UNCUT = {

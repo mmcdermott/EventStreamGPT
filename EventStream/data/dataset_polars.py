@@ -16,7 +16,6 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Union
 
-import numpy as np
 import pandas as pd
 import polars as pl
 import polars.selectors as cs
@@ -432,8 +431,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         censor_upper_bound: pl.Expr | None = None,
         **ignored_kwargs,
     ) -> pl.Expr:
-        """Appropriately either drops (returns np.NaN) or censors (returns the censor value) the value `val`
-        based on the bounds in `row`.
+        """Appropriately either drops (returns float('nan')) or censors (returns the censor value) the value
+        `val` based on the bounds in `row`.
 
         TODO(mmd): could move this code to an outlier model in Preprocessing and have it be one that is
         pre-set in metadata.
@@ -441,19 +440,19 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         Args:
             val: The value to drop, censor, or return unchanged.
             drop_lower_bound: A lower bound such that if `val` is either below or at or below this level,
-                `np.NaN` will be returned. If `None` or `np.NaN`, no bound will be applied.
-            drop_lower_bound_inclusive: If `True`, returns `np.NaN` if ``val <= row['drop_lower_bound']``.
-                Else, returns `np.NaN` if ``val < row['drop_lower_bound']``.
+                `float('nan')` will be returned. If `None` or `float('nan')`, no bound will be applied.
+            drop_lower_bound_inclusive: If `True`, returns `float('nan')` if ``val <=
+                row['drop_lower_bound']``. Else, returns `float('nan')` if ``val < row['drop_lower_bound']``.
             drop_upper_bound: An upper bound such that if `val` is either above or at or above this level,
-                `np.NaN` will be returned. If `None` or `np.NaN`, no bound will be applied.
-            drop_upper_bound_inclusive: If `True`, returns `np.NaN` if ``val >= row['drop_upper_bound']``.
-                Else, returns `np.NaN` if ``val > row['drop_upper_bound']``.
+                `float('nan')` will be returned. If `None` or `float('nan')`, no bound will be applied.
+            drop_upper_bound_inclusive: If `True`, returns `float('nan')` if ``val >=
+                row['drop_upper_bound']``. Else, returns `float('nan')` if ``val > row['drop_upper_bound']``.
             censor_lower_bound: A lower bound such that if `val` is below this level but above
-                `drop_lower_bound`, `censor_lower_bound` will be returned. If `None` or `np.NaN`, no bound
-                will be applied.
+                `drop_lower_bound`, `censor_lower_bound` will be returned. If `None` or `float('nan')`, no
+                bound will be applied.
             censor_upper_bound: An upper bound such that if `val` is above this level but below
-                `drop_upper_bound`, `censor_upper_bound` will be returned. If `None` or `np.NaN`, no bound
-                will be applied.
+                `drop_upper_bound`, `censor_upper_bound` will be returned. If `None` or `float('nan')`, no
+                bound will be applied.
         """
 
         conditions = []
@@ -462,7 +461,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             conditions.append(
                 (
                     (col < drop_lower_bound) | ((col == drop_lower_bound) & drop_lower_bound_inclusive),
-                    np.NaN,
+                    float("nan"),
                 )
             )
 
@@ -470,7 +469,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             conditions.append(
                 (
                     (col > drop_upper_bound) | ((col == drop_upper_bound) & drop_upper_bound_inclusive),
-                    np.NaN,
+                    float("nan"),
                 )
             )
 
@@ -1179,7 +1178,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                     ]
                 )
             )
-            .then(np.NaN)
+            .then(float("nan"))
             .when(value_type == NumericDataModalitySubtype.INTEGER)
             .then(vals_col.round(0))
             .otherwise(vals_col)
@@ -1203,7 +1202,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             inliers_col = ((vals_col > pl.col("thresh_small")) & (vals_col < pl.col("thresh_large"))).alias(
                 inliers_col_name
             )
-            vals_col = pl.when(inliers_col).then(vals_col).otherwise(np.NaN)
+            vals_col = pl.when(inliers_col).then(vals_col).otherwise(float("nan"))
 
             present_source = present_source.with_columns(inliers_col, vals_col)
             null_source = null_source.with_columns(pl.lit(None).cast(pl.Boolean).alias(inliers_col_name))
@@ -1241,7 +1240,7 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         if config.modality == DataModality.MULTIVARIATE_REGRESSION:
             transform_expr.append(
                 pl.when(~pl.col(measure).is_in(config.vocabulary.vocabulary))
-                .then(np.NaN)
+                .then(float("nan"))
                 .otherwise(pl.col(config.values_column))
                 .alias(config.values_column)
             )
