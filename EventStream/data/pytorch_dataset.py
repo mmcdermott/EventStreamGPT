@@ -461,7 +461,7 @@ class PytorchDataset(SeedableMixin, torch.utils.data.Dataset):
 
         subject_id, st, end = self.index[idx]
 
-        shard = self.subj_map[subject_id]
+        shard = self.subj_map[str(subject_id)]
         subject_idx = self.subj_indices[subject_id]
         static_row = self.static_dfs[shard][subject_idx].to_dict()
 
@@ -471,7 +471,7 @@ class PytorchDataset(SeedableMixin, torch.utils.data.Dataset):
         }
 
         if self.config.do_include_subject_id:
-            out["subject_id"] = subject_id
+            out["subject_id"] = static_row["subject_id"].item()
 
         seq_len = end - st
         if seq_len > self.max_seq_len:
