@@ -50,19 +50,31 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
 
     def _test_dataset_output(self, raw_data_root: Path, dataset_save_dir: Path):
         DL_save_dir = dataset_save_dir / "DL_reps"
-        train_DL_reps = pl.read_parquet(DL_save_dir / "train" / "*.parquet", use_pyarrow=True)
-        tuning_DL_reps = pl.read_parquet(DL_save_dir / "tuning" / "*.parquet", use_pyarrow=True)
-        held_out_DL_reps = pl.read_parquet(DL_save_dir / "held_out" / "*.parquet", use_pyarrow=True)
+
+        train_files = list((DL_save_dir / "train").glob("*.parquet"))
+        tuning_files = list((DL_save_dir / "tuning").glob("*.parquet"))
+        held_out_files = list((DL_save_dir / "held_out").glob("*.parquet"))
+
+        self.assertTrue(len(train_files) > 0)
+        self.assertTrue(len(tuning_files) > 0)
+        self.assertTrue(len(held_out_files) > 0)
+
+        train_DL_reps = pl.concat([pl.read_parquet(f, use_pyarrow=False) for f in train_files])
+        tuning_DL_reps = pl.concat([pl.read_parquet(f, use_pyarrow=False) for f in tuning_files])
+        held_out_DL_reps = pl.concat([pl.read_parquet(f, use_pyarrow=False) for f in held_out_files])
 
         DL_shards = json.loads((dataset_save_dir / "DL_shards.json").read_text())
 
-        ESD_subjects = pl.read_parquet(dataset_save_dir / "subjects_df.parquet", use_pyarrow=True)
+        ESD_subjects = pl.read_parquet(dataset_save_dir / "subjects_df.parquet", use_pyarrow=False)
 
         # Check that the DL shards are correctly partitioned.
         all_subjects = set(ESD_subjects["subject_id"].unique().to_list())
 
         self.assertEqual(len(all_subjects), len(ESD_subjects))
-        self.assertEqual(all_subjects, set().union(DL_shards.values()))
+
+        all_subj_in_DL_shards = set().union(*DL_shards.values())
+
+        self.assertEqual(all_subjects, all_subj_in_DL_shards)
 
         train_DL_subjects = set(train_DL_reps["subject_id"].unique().to_list())
         tuning_DL_subjects = set(tuning_DL_reps["subject_id"].unique().to_list())
@@ -288,26 +300,26 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
     def test_e2e(self):
         # Data
         self.build_dataset()
-        # self.build_ESDS_dataset()
-        # self.build_FT_task_df()
+        self.build_ESDS_dataset()
+        self.build_FT_task_df()
 
-        # # Sklearn baselines
-        # self.run_sklearn_baseline()
+        # Sklearn baselines
+        self.run_sklearn_baseline()
 
-        # # From-scratch training
-        # self.run_from_scratch_training()
+        # From-scratch training
+        self.run_from_scratch_training()
 
-        # # Pre-training
-        # self.run_pretraining()
+        # Pre-training
+        self.run_pretraining()
 
-        # # Fine-tuning
-        # self.run_finetuning()
+        # Fine-tuning
+        self.run_finetuning()
 
-        # # Get embeddings
-        # self.run_get_embeddings()
+        # Get embeddings
+        self.run_get_embeddings()
 
-        # # Zero-shot
-        # self.run_zeroshot()
+        # Zero-shot
+        self.run_zeroshot()
 
 
 if __name__ == "__main__":

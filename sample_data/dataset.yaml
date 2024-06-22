@@ -10,7 +10,7 @@ subject_id_col: "MRN"
 raw_data_dir: "./sample_data/raw/"
 save_dir: "./sample_data/processed/${cohort_name}"
 
-DL_chunk_size: null
+DL_chunk_size: 25
 
 inputs:
   subjects:
