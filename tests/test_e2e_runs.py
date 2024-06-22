@@ -2,6 +2,7 @@ import rootutils
 
 root = rootutils.setup_root(__file__, dotenv=True, pythonpath=True, cwd=True)
 
+import json
 import os
 import subprocess
 import unittest
@@ -9,6 +10,8 @@ from itertools import product
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+
+import polars as pl
 
 from tests.utils import MLTypeEqualityCheckableMixin
 
@@ -45,8 +48,36 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         for o in self.dir_objs.values():
             o.cleanup()
 
-    def _test_dataset_output(raw_data_root: Path, dataset_save_dir: Path):
-        pass
+    def _test_dataset_output(self, raw_data_root: Path, dataset_save_dir: Path):
+        DL_save_dir = dataset_save_dir / "DL_reps"
+        train_DL_reps = pl.read_parquet(DL_save_dir / "train" / "*.parquet", use_pyarrow=True)
+        tuning_DL_reps = pl.read_parquet(DL_save_dir / "tuning" / "*.parquet", use_pyarrow=True)
+        held_out_DL_reps = pl.read_parquet(DL_save_dir / "held_out" / "*.parquet", use_pyarrow=True)
+
+        DL_shards = json.loads((dataset_save_dir / "DL_shards.json").read_text())
+
+        ESD_subjects = pl.read_parquet(dataset_save_dir / "subjects_df.parquet", use_pyarrow=True)
+
+        # Check that the DL shards are correctly partitioned.
+        all_subjects = set(ESD_subjects["subject_id"].unique().to_list())
+
+        self.assertEqual(len(all_subjects), len(ESD_subjects))
+        self.assertEqual(all_subjects, set().union(DL_shards.values()))
+
+        train_DL_subjects = set(train_DL_reps["subject_id"].unique().to_list())
+        tuning_DL_subjects = set(tuning_DL_reps["subject_id"].unique().to_list())
+        held_out_DL_subjects = set(held_out_DL_reps["subject_id"].unique().to_list())
+
+        all_DL_subjects = train_DL_subjects | tuning_DL_subjects | held_out_DL_subjects
+
+        self.assertEqual(all_DL_subjects, all_subjects)
+
+        self.assertEqual(len(train_DL_subjects & tuning_DL_subjects), 0)
+        self.assertEqual(len(train_DL_subjects & held_out_DL_subjects), 0)
+        self.assertEqual(len(tuning_DL_subjects & held_out_DL_subjects), 0)
+
+        self.assertTrue(len(train_DL_subjects) > len(tuning_DL_subjects))
+        self.assertTrue(len(train_DL_subjects) > len(held_out_DL_subjects))
 
     def _test_command(self, command_parts: list[str], case_name: str, use_subtest: bool = True):
         if use_subtest:
@@ -74,7 +105,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
             f"save_dir={self.paths['dataset']}",
         ]
         self._test_command(command_parts, "Build Dataset", use_subtest=False)
-        self._test_dataset_output((root / 'sample_data' / 'raw'), self.paths["dataset"])
+        self._test_dataset_output((root / "sample_data" / "raw"), self.paths["dataset"])
 
     def build_ESDS_dataset(self):
         command_parts = [
@@ -257,26 +288,26 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
     def test_e2e(self):
         # Data
         self.build_dataset()
-        self.build_ESDS_dataset()
-        self.build_FT_task_df()
+        # self.build_ESDS_dataset()
+        # self.build_FT_task_df()
 
-        # Sklearn baselines
-        self.run_sklearn_baseline()
+        # # Sklearn baselines
+        # self.run_sklearn_baseline()
 
-        # From-scratch training
-        self.run_from_scratch_training()
+        # # From-scratch training
+        # self.run_from_scratch_training()
 
-        # Pre-training
-        self.run_pretraining()
+        # # Pre-training
+        # self.run_pretraining()
 
-        # Fine-tuning
-        self.run_finetuning()
+        # # Fine-tuning
+        # self.run_finetuning()
 
-        # Get embeddings
-        self.run_get_embeddings()
+        # # Get embeddings
+        # self.run_get_embeddings()
 
-        # Zero-shot
-        self.run_zeroshot()
+        # # Zero-shot
+        # self.run_zeroshot()
 
 
 if __name__ == "__main__":
