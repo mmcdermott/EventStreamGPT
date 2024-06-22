@@ -35,6 +35,7 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         self.paths = {}
         for n in (
             "dataset",
+            "dataset_from_parquet",
             "esds",
             "pretraining/CI",
             "pretraining/NA",
@@ -118,6 +119,16 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         ]
         self._test_command(command_parts, "Build Dataset", use_subtest=False)
         self._test_dataset_output((root / "sample_data" / "raw"), self.paths["dataset"])
+
+        command_parts = [
+            "./scripts/build_dataset.py",
+            f"--config-path='{(root / 'sample_data').resolve()}'",
+            "--config-name=dataset_parquet",
+            '"hydra.searchpath=[./configs]"',
+            f"save_dir={self.paths['dataset_from_parquet']}",
+        ]
+        self._test_command(command_parts, "Build Dataset from Parquet", use_subtest=False)
+        self._test_dataset_output((root / "sample_data" / "raw"), self.paths["dataset_from_parquet"])
 
     def build_ESDS_dataset(self):
         command_parts = [
