@@ -700,7 +700,9 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
                 .to_list()
             )
 
+            logger.debug("Collecting subject event counts")
             n_events = self.events_df.group_by("subject_id").agg(pl.len().alias("count"))
+            n_events = n_events.drop_nulls("subject_id")
             # here we cast to str to avoid issues with the subject_id column being various other types as we
             # will eventually JSON serialize it.
             n_events = n_events.with_columns(pl.col("subject_id").cast(pl.Utf8))
@@ -710,9 +712,16 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
             self.subject_ids = set(self.n_events_per_subject.keys())
 
         if self.subjects_df is not None:
-            logger.debug("Collecting subject event counts")
-            subjects_df_subjects = self.subjects_df.select(pl.col("subject_id").cast(pl.Utf8))
-            subjects_with_no_events = set(subjects_df_subjects["subject_id"].to_list()) - self.subject_ids
+            subjects_df_subjects = (
+                self.subjects_df
+                .drop_nulls("subject_id")
+                .select(pl.col("subject_id").cast(pl.Utf8))
+            )
+            subjects_df_subj_ids = set(subjects_df_subjects["subject_id"].to_list())
+            subj_no_in_df = self.subject_ids - subjects_df_subj_ids
+            if len(subj_no_in_df) > 0:
+                logger.warning(f"Found {len(subj_no_in_df)} subjects not in subject df!")
+            subjects_with_no_events = subjects_df_subj_ids - self.subject_ids
             for sid in subjects_with_no_events:
                 self.n_events_per_subject[sid] = 0
             self.subject_ids.update(subjects_with_no_events)
