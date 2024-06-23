@@ -461,6 +461,15 @@ class PytorchDataset(SeedableMixin, torch.utils.data.Dataset):
 
         subject_id, st, end = self.index[idx]
 
+        if str(subject_id) not in self.subj_map:
+            err_str = [f"Subject {subject_id} ({type(subject_id)} -- as str) not found in the shard map!"]
+
+            if len(self.subj_map) < 10:
+                err_str.append("Subject IDs in map:")
+                err_str.extend(f"  * {k} ({type(k)}): {v}" for k, v in self.subj_map.items())
+
+            raise ValueError("\n".join(err_str))
+
         shard = self.subj_map[str(subject_id)]
         subject_idx = self.subj_indices[subject_id]
         static_row = self.static_dfs[shard][subject_idx].to_dict()

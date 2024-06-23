@@ -320,7 +320,7 @@ class TestPytorchDataset(MLTypeEqualityCheckableMixin, unittest.TestCase):
 
         shards_fp = self.path / "DL_shards.json"
         shards = {
-            f"{self.split}/0": list(set(DL_REP_DF["subject_id"].to_list())),
+            f"{self.split}/0": [str(x) for x in set(DL_REP_DF["subject_id"].to_list())],
         }
         shards_fp.write_text(json.dumps(shards))
 
