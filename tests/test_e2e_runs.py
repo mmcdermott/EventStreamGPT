@@ -56,6 +56,10 @@ class TestESTForGenerativeSequenceModelingLM(MLTypeEqualityCheckableMixin, unitt
         tuning_files = list((DL_save_dir / "tuning").glob("*.parquet"))
         held_out_files = list((DL_save_dir / "held_out").glob("*.parquet"))
 
+        assert len(set(train_files) & set(tuning_files)) == 0
+        assert len(set(train_files) & set(held_out_files)) == 0
+        assert len(set(tuning_files) & set(held_out_files)) == 0
+
         self.assertTrue(len(train_files) > 0)
         self.assertTrue(len(tuning_files) > 0)
         self.assertTrue(len(held_out_files) > 0)

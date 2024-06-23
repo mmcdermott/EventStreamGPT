@@ -1375,7 +1375,7 @@ class DatasetBase(
             if subjects_per_output_file is None:
                 subject_chunks = [self.subject_ids]
             else:
-                subjects = np.random.permutation(list(self.subject_ids))
+                subjects = np.random.permutation(list(set(self.subject_ids)))
                 subject_chunks = np.array_split(
                     subjects,
                     np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),
