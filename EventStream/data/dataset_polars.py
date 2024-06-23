@@ -1385,11 +1385,8 @@ class Dataset(DatasetBase[DF_T, INPUT_DF_T]):
         # 1. Process subject data into the right format.
         if subject_ids:
             subjects_df = self._filter_col_inclusion(self.subjects_df, {"subject_id": subject_ids})
-            if len(subject_ids) != len(subjects_df):
-                raise ValueError(
-                    f"Size of given subject_ids are {len(subject_ids)}, but after _filter_col_inclusion "
-                    f"the size of subjects_df are {len(subjects_df)}"
-                )
+            logger.warning( f"Size of given subject_ids are {len(subject_ids)}, but after _filter_col_inclusion "
+                    f"the size of subjects_df are {len(subjects_df)}")
         else:
             subjects_df = self.subjects_df
 
