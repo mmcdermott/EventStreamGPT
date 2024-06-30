@@ -1239,9 +1239,12 @@ class DatasetBase(
                     raise ValueError("\n".join(err_strings))
             elif not do_overwrite:
                 raise FileExistsError(f"do_overwrite is {do_overwrite} and {params_fp} exists!")
-
-        with open(params_fp, mode="w") as f:
-            json.dump(params, f)
+            else:
+                with open(params_fp) as f:
+                    params = json.load(f)
+        else:
+            with open(params_fp, mode="w") as f:
+                json.dump(params, f)
 
         # 0. Identify Output Columns
         # We set window_sizes to None here because we want to get the feature column names for the raw flat

@@ -8,6 +8,7 @@ subject_id_col: ???
 seed: 1
 split: [0.8, 0.1]
 do_overwrite: False
+do_update: False
 DL_chunk_size: 20000
 min_valid_vocab_element_observations: 25
 min_valid_column_observations: 50

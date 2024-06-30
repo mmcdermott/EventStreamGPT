@@ -35,8 +35,8 @@ def main(cfg: DictConfig):
         feature_inclusion_frequency=feature_inclusion_frequency,  # 0.1
         window_sizes=window_sizes,
         include_only_measurements=include_only_measurements,
-        do_overwrite=False,
-        do_update=True,
+        do_overwrite=cfg.pop("do_overwrite"),
+        do_update=cfg.pop("do_update"),
     )
     ESD.cache_flat_representation(**cache_kwargs)
 
