@@ -1268,10 +1268,11 @@ class DatasetBase(
                 static_dfs[sp].append(fp)
                 if fp.exists():
                     if do_update:
+                        logger.debug(f'Skipping static representation for split: {sp}, {i}.parquet')
                         continue
                     elif not do_overwrite:
                         raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
-
+                logger.debug('Creating static representation')
                 df = self._get_flat_static_rep(
                     feature_columns=feature_columns,
                     include_only_subjects=subjects_list,
@@ -1292,10 +1293,11 @@ class DatasetBase(
                 ts_dfs[sp].append(fp)
                 if fp.exists():
                     if do_update:
+                        logger.debug(f'Skipping raw representation for split: {sp}, {i}.parquet')
                         continue
                     elif not do_overwrite:
                         raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
-
+                logger.debug('Creating raw representation')
                 df = self._get_flat_ts_rep(
                     feature_columns=feature_columns,
                     include_only_subjects=subjects_list,
@@ -1315,10 +1317,11 @@ class DatasetBase(
                     fp = history_subdir / sp / window_size / f"{i}.parquet"
                     if fp.exists():
                         if do_update:
+                            logger.debug(f'Skipping summarized history representation for split: {sp}, window: {window_size}, {i}.parquet')
                             continue
                         elif not do_overwrite:
                             raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
-
+                    logger.debug('Creating summarized history representation')
                     df = self._summarize_over_window(df_fp, window_size)
                     self._write_df(df, fp)
 
