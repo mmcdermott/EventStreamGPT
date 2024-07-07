@@ -1256,7 +1256,7 @@ class DatasetBase(
         static_subdir = flat_dir / "static"
 
         static_dfs = {}
-        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
+        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits for static"):
             static_dfs[sp] = []
             sp_dir = static_subdir / sp
 
@@ -1264,7 +1264,8 @@ class DatasetBase(
                 fp = sp_dir / f"{i}.parquet"
                 static_dfs[sp].append(fp)
                 if fp.exists():
-                    if do_update:
+                    if do_update and not do_overwrite:
+                        logger.debug(f'Skipping static representation for split: {sp}, {i}.parquet')
                         continue
                     elif not do_overwrite:
                         raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
@@ -1280,7 +1281,7 @@ class DatasetBase(
         ts_subdir = flat_dir / "at_ts"
 
         ts_dfs = {}
-        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits"):
+        for sp, subjects in tqdm(list(params["subject_chunks_by_split"].items()), desc="Flattening Splits for raw"):
             ts_dfs[sp] = []
             sp_dir = ts_subdir / sp
 
@@ -1288,7 +1289,8 @@ class DatasetBase(
                 fp = sp_dir / f"{i}.parquet"
                 ts_dfs[sp].append(fp)
                 if fp.exists():
-                    if do_update:
+                    if do_update and not do_overwrite:
+                        logger.debug(f'Skipping raw representation for split: {sp}, {i}.parquet')
                         continue
                     elif not do_overwrite:
                         raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
@@ -1311,13 +1313,14 @@ class DatasetBase(
                 for i, df_fp in enumerate(tqdm(df_fps, desc="Subject chunks", leave=False)):
                     fp = history_subdir / sp / window_size / f"{i}.parquet"
                     if fp.exists():
-                        if do_update:
+                        if do_update and not do_overwrite:
+                            logger.debug(f'Skipping summarized history representation for split: {sp}, {i}.parquet')
                             continue
                         elif not do_overwrite:
                             raise FileExistsError(f"do_overwrite is {do_overwrite} and {fp} exists!")
 
                     df = self._summarize_over_window(df_fp, window_size)
-                    self._write_df(df, fp)
+                    self._write_df(df, fp, do_overwrite=do_overwrite)
 
     @TimeableMixin.TimeAs
     def cache_deep_learning_representation(

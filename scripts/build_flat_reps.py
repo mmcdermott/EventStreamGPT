@@ -34,7 +34,7 @@ def main(cfg: DictConfig):
         window_sizes=window_sizes,
         include_only_measurements=include_only_measurements,
         do_overwrite=cfg.pop("do_overwrite"),
-        do_update=True,
+        do_update=cfg.pop("do_update"),
     )
     logger.debug('Caching flat representation..')
     ESD.cache_flat_representation(**cache_kwargs)
