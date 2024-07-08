@@ -155,6 +155,7 @@ def load_flat_rep(
 
         static_df = pl.scan_parquet(flat_dir / "static" / sp / "*.parquet")
         if task_df_name is not None:
+            static_df = static_df.cast({"subject_id": sp_join_df.select('subject_id').dtypes[0]})
             static_df = static_df.join(sp_join_df.select("subject_id").unique(), on="subject_id", how="inner")
 
         dfs = []
@@ -184,7 +185,7 @@ def load_flat_rep(
                 df = pl.scan_parquet(fp)
                 if task_df_name is not None:
                     filter_join_df = sp_join_df.select(join_keys).filter(pl.col("subject_id").is_in(subjects))
-
+                    df = df.cast({"subject_id": filter_join_df.select('subject_id').dtypes[0]})
                     df = filter_join_df.join_asof(
                         df,
                         by="subject_id",
@@ -203,7 +204,7 @@ def load_flat_rep(
 
                 window_dfs.append(df)
 
-            dfs.append(pl.concat(window_dfs, how="vertical"))
+            dfs.append(pl.concat(window_dfs, how="vertical_relaxed"))
 
         joined_df = dfs[0]
         for jdf in dfs[1:]:
