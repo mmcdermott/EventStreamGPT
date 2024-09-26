@@ -33,7 +33,7 @@ from .types import (
 from .vocabulary import Vocabulary
 
 # We need to do this so that categorical columns can be reliably used via category names.
-pl.enable_string_cache(True)
+pl.enable_string_cache()
 
 
 @dataclasses.dataclass(frozen=True)
