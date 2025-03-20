@@ -18,6 +18,8 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
+numpy = "^1.26.4"
+safetensors = "^0.3.3"
 polars = "^0.18.15"
 plotly = "^5.16.1"
 ml-mixins = "^0.0.5"
