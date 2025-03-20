@@ -256,6 +256,25 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
 
         self.assertEqual({}, self.E.functions_called)
 
+    def test_split_mandatory_ids(self):
+        self.E._reset_functions_called()
+
+        all_subject_ids = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+        mandatory_set_IDs = {"set_1": {1, 2, 3, 4}, "set_2": {5, 6, 7}}
+        self.E.subject_ids = list(all_subject_ids)
+
+        self.E.split(split_fracs=[1 / 3, 1 / 3], seed=1, mandatory_set_IDs=mandatory_set_IDs)
+
+        split_subjects = self.E.split_subjects
+
+        self.assertEqual({"train", "tuning", "held_out", "set_1", "set_2"}, set(split_subjects.keys()))
+        self.assertEqual(all_subject_ids, set().union(*split_subjects.values()))
+        self.assertEqual(mandatory_set_IDs["set_1"], split_subjects["set_1"])
+        self.assertEqual(mandatory_set_IDs["set_2"], split_subjects["set_2"])
+        self.assertEqual(len(split_subjects["train"]), 1)
+        self.assertEqual(len(split_subjects["tuning"]), 1)
+        self.assertEqual(len(split_subjects["held_out"]), 1)
+
     def test_split_accessors(self):
         self.E.split_subjects = {
             "train": [1, 2, 3],
@@ -472,8 +491,10 @@ class TestDatasetBase(ConfigComparisonsMixin, unittest.TestCase):
         empty_measurement_metadata = pd.DataFrame(
             {
                 "value_type": pd.Series([], dtype=object),
-                "outlier_model": pd.Series([], dtype=object),
-                "normalizer": pd.Series([], dtype=object),
+                "mean": pd.Series([], dtype=float),
+                "std": pd.Series([], dtype=float),
+                "thresh_small": pd.Series([], dtype=float),
+                "thresh_large": pd.Series([], dtype=float),
             },
             index=pd.Index([], name="numeric"),
         )

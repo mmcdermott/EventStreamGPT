@@ -15,6 +15,7 @@ from typing import Any
 
 import hydra
 import inflect
+from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 
 from EventStream.data.config import (
@@ -30,6 +31,7 @@ from EventStream.data.types import (
     InputDFType,
     TemporalityType,
 )
+from EventStream.logger import hydra_loguru_init
 
 inflect = inflect.engine()
 
@@ -49,12 +51,16 @@ def add_to_container(key: str, val: Any, cont: dict[str, Any]):
         ValueError: If `key` is in `cont` with value not equal to `val`.
 
     Examples:
+        >>> import sys
+        >>> from loguru import logger
+        >>> logger.remove()
+        >>> _ = logger.add(sys.stdout, format="{message}")
         >>> cont = {'foo': "bar"}
         >>> add_to_container('biz', 3, cont)
         >>> cont
         {'foo': 'bar', 'biz': 3}
         >>> add_to_container('biz', 3, cont)
-        WARNING: biz is specified twice with value 3.
+        biz is specified twice with value 3.
         >>> cont
         {'foo': 'bar', 'biz': 3}
         >>> add_to_container('foo', 3, cont)
@@ -65,7 +71,7 @@ def add_to_container(key: str, val: Any, cont: dict[str, Any]):
 
     if key in cont:
         if cont[key] == val:
-            print(f"WARNING: {key} is specified twice with value {val}.")
+            logger.warning(f"{key} is specified twice with value {val}.")
         else:
             raise ValueError(f"{key} is specified twice ({val} v. {cont[key]})")
     else:
@@ -74,6 +80,8 @@ def add_to_container(key: str, val: Any, cont: dict[str, Any]):
 
 @hydra.main(version_base=None, config_path="../configs", config_name="dataset_base")
 def main(cfg: DictConfig):
+    hydra_loguru_init()
+
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
 
     cfg_fp = Path(cfg["save_dir"]) / "hydra_config.yaml"
@@ -354,7 +362,7 @@ def main(cfg: DictConfig):
     config_kwargs = {k: v for k, v in cfg.items() if k in valid_config_kwargs}
 
     if extra_kwargs:
-        print(f"Omitting {extra_kwargs} from config!")
+        logger.info(f"Omitting {extra_kwargs} from config!")
 
     config = DatasetConfig(measurement_configs=measurement_configs, **config_kwargs)
 
