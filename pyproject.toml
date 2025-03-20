@@ -20,7 +20,6 @@ packages = [
 python = ">=3.10,<3.13"
 polars = "^0.20.31"
 numpy = "^1.26.4"
-safetensors = "^0.3.3"
 plotly = "^5.16.1"
 ml-mixins = "^0.0.5"
 humanize = "^4.8.0"
