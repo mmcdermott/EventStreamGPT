@@ -12,7 +12,7 @@
 [![contributors](https://img.shields.io/github/contributors/mmcdermott/EventStreamGPT.svg)](https://github.com/mmcdermott/EventStreamGPT/graphs/contributors)
 [![Documentation Status](https://readthedocs.org/projects/eventstreamml/badge/?version=latest)](https://eventstreamml.readthedocs.io/en/latest/?badge=latest)
 
-> [!WARNING]
+> \[!WARNING\]
 > ESGPT is going to be deprecated at some point soon, in favor of the superior, better maintained, and more flexible [MEDS Ecosystem](https://medical-event-data-standard.github.io/). There will be a detailed roadmap for transitioning any usage to MEDS that will be published soon, but be aware that this is coming, and new features to ESGPT will not be added at this time given the upcoming deprecation (critical bug fixes and transition utilities may be added, but new core features won't). Don't hesitate to leave an issue if you have any questions or concerns and be on the lookout for more info coming soon.
 
 Event Stream GPT (ESGPT) is a library for streamlining the development of generative, pre-trained transformers (i.e., foundation models) over "event stream" datasets---datasets consisting of discrete sequences of complex events in continuous times (_aka_ multivariate temporal point processes). ESGPT is particularly motivated by _Electronic Health Record_ (EHR) datasets, which often consist of sequences of medical visits or events distributed in time, with any given event containing diverse laboratory test orders and results, medication prescriptions, diagnoses, procedures, etc.
