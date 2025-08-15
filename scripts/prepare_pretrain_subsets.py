@@ -21,13 +21,16 @@ from collections import defaultdict
 from pathlib import Path
 
 import hydra
+from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 
 from EventStream.data.config import SeqPaddingSide, SubsequenceSamplingStrategy
+from EventStream.logger import hydra_loguru_init
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="pretrain_subsets_base")
 def main(cfg: DictConfig):
+    hydra_loguru_init()
     cfg = hydra.utils.instantiate(cfg, _convert_="all")
 
     # Validation
@@ -57,7 +60,7 @@ def main(cfg: DictConfig):
     experiment_dir = cfg["experiment_dir"]
     if experiment_dir is None:
         experiment_dir = initial_config.experiment_dir
-        print(f"Setting experiment dir to {experiment_dir}!")
+        logger.info(f"Setting experiment dir to {experiment_dir}!")
 
     experiment_dir = Path(experiment_dir)
 
@@ -249,7 +252,7 @@ def main(cfg: DictConfig):
         commands_path = runs_dir / f"{key}_commands.txt"
         with open(commands_path, "w") as f:
             f.write("\n".join(value))
-        print(f"{key} Commands written to {commands_path}!")
+        logger.info(f"{key} Commands written to {commands_path}!")
 
 
 if __name__ == "__main__":

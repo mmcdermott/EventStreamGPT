@@ -1,6 +1,5 @@
 defaults:
   - outlier_detector_config: stddev_cutoff
-  - normalizer_config: standard_scaler
   - _self_
 
 cohort_name: ???
@@ -16,6 +15,7 @@ min_true_float_frequency: 0.1
 min_unique_numerical_observations: 25
 min_events_per_subject: 20
 agg_by_time_scale: null
+center_and_scale: True
 
 hydra:
   job:

@@ -10,6 +10,7 @@ import torch
 import torch.multiprocessing
 import torchmetrics
 from lightning.pytorch.loggers import WandbLogger
+from loguru import logger
 from torchmetrics.classification import (
     BinaryAccuracy,
     BinaryAUROC,
@@ -168,7 +169,7 @@ class ESTForZeroShotClassificationLM(L.LightningModule):
                 metric(preds, labels)
                 self.log(f"{prefix}_{metric_name}", metric)
             except (ValueError, IndexError) as e:
-                print(
+                logger.error(
                     f"Failed to compute {metric_name} "
                     f"with preds ({str_summary(preds)}) and labels ({str_summary(labels)}): {e}."
                 )
@@ -380,7 +381,7 @@ def zero_shot_evaluation(cfg: FinetuneConfig):
     held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader)
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
-        print("Saving final metrics...")
+        logger.info("Saving final metrics...")
         cfg.save_dir.mkdir(parents=True, exist_ok=True)
 
         with open(cfg.save_dir / "zero_shot_tuning_metrics.json", mode="w") as f:

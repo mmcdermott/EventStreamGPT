@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 import torch
+from loguru import logger
 from transformers.utils import ModelOutput
 
 from ..data.data_embedding_layer import MeasIndexGroupOptions
@@ -430,8 +431,8 @@ class GenerativeSequenceModelSamples(ModelOutput):
             vocab_size = config.vocab_sizes_by_measurement[measurement]
 
             if measurement not in self.classification:
-                print(
-                    f"WARNING: Attempting to generate improper measurement {measurement}! "
+                logger.warning(
+                    f"Attempting to generate improper measurement {measurement}! "
                     f"Acceptable targets: {', '.join(self.classification.keys())}"
                 )
                 return
@@ -457,7 +458,7 @@ class GenerativeSequenceModelSamples(ModelOutput):
             vocab_size = config.vocab_sizes_by_measurement[measurement]
 
             if measurement not in self.classification:
-                print(f"WARNING: Attempting to generate improper measurement {measurement}!")
+                logger.warning(f"Attempting to generate improper measurement {measurement}!")
                 return
 
             preds = self.classification[measurement]
@@ -525,11 +526,12 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
                 values = regressed_values.gather(-1, idx_gather_T)
                 values_mask = regressed_values_mask.gather(-1, idx_gather_T)
-            except RuntimeError:
-                print(f"Failed on {measurement} with {indices.shape} indices")
-                print(f"Vocab offset: {vocab_offset}")
-                print(f"Indices:\n{indices}")
-                raise
+            except RuntimeError as e:
+                raise ValueError(
+                    f"Failed on {measurement} with {indices.shape} indices\n"
+                    f"Vocab offset: {vocab_offset}\n"
+                    f"Indices:\n{indices}"
+                ) from e
 
             values = torch.where(mask, values, 0)
             values_mask = torch.where(mask, values_mask, False)
@@ -1022,9 +1024,11 @@ class GenerativeSequenceModelSamples(ModelOutput):
 
         try:
             new_dynamic_indices = torch.cat((prev_dynamic_indices, new_dynamic_indices), 1)
-        except BaseException:
-            print(prev_dynamic_indices.shape)
-            print(new_dynamic_indices.shape)
+        except BaseException as e:
+            raise ValueError(
+                f"Failed to construct new indices given shapes {prev_dynamic_indices.shape} and "
+                f"{new_dynamic_indices.shape}."
+            ) from e
         new_dynamic_measurement_indices = torch.cat(
             (prev_dynamic_measurement_indices, new_dynamic_measurement_indices), 1
         )
@@ -1354,8 +1358,7 @@ class GenerativeOutputLayerBase(torch.nn.Module):
         try:
             TTE_LL = TTE_dist.log_prob(TTE_true_exp)
         except ValueError as e:
-            print(f"Failed to compute TTE log prob on input {str_summary(TTE_true_exp)}: {e}")
-            raise
+            raise ValueError(f"Failed to compute TTE log prob on input {str_summary(TTE_true_exp)}") from e
 
         if TTE_obs_mask_exp.isnan().any():
             raise ValueError(f"NaNs in TTE_obs_mask_exp: {batch}")
@@ -1490,16 +1493,15 @@ class GenerativeOutputLayerBase(torch.nn.Module):
                 try:
                     loss_per_event = self.classification_criteria[measurement](scores.transpose(1, 2), labels)
                 except IndexError as e:
-                    print(f"Failed to get loss for {measurement}: {e}!")
-                    print(f"vocab_start: {vocab_start}, vocab_end: {vocab_end}")
-                    print(f"max(labels): {labels.max()}, min(labels): {labels.min()}")
-                    print(
+                    raise ValueError(
+                        f"Failed to get loss for {measurement}:\n"
+                        f"vocab_start: {vocab_start}, vocab_end: {vocab_end}\n"
+                        f"max(labels): {labels.max()}, min(labels): {labels.min()}\n"
                         f"max(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).max())}, "
-                        f"min(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).min())}"
-                    )
-                    print(f"max(tensor_idx.sum(-1)): {tensor_idx.sum(-1).max()}")
-                    print(f"scores.shape: {scores.shape}")
-                    raise
+                        f"min(dynamic_indices*tensor_idx): {((dynamic_indices*tensor_idx).min())}\n"
+                        f"max(tensor_idx.sum(-1)): {tensor_idx.sum(-1).max()}\n"
+                        f"scores.shape: {scores.shape}"
+                    ) from e
 
                 event_mask = event_mask & events_with_label
 

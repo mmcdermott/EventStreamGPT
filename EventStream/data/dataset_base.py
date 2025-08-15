@@ -18,7 +18,10 @@ from typing import Any, Generic, TypeVar
 import humanize
 import numpy as np
 import pandas as pd
+import polars as pl
+from loguru import logger
 from mixins import SaveableMixin, SeedableMixin, TimeableMixin, TQDMableMixin
+from nested_ragged_tensors.ragged_numpy import JointNestedRaggedTensorDict
 from plotly.graph_objs._figure import Figure
 from tqdm.auto import tqdm
 
@@ -106,8 +109,6 @@ class DatasetBase(
         df: INPUT_DF_T,
         columns: list[tuple[str, InputDataType | tuple[InputDataType, str]]],
         subject_id_col: str | None = None,
-        subject_ids_map: dict[Any, int] | None = None,
-        subject_id_dtype: Any | None = None,
         filter_on: dict[str, bool | list[Any]] | None = None,
     ) -> DF_T:
         """Loads an input dataframe into the format expected by the processing library."""
@@ -155,12 +156,6 @@ class DatasetBase(
 
     @classmethod
     @abc.abstractmethod
-    def _inc_df_col(cls, df: DF_T, col: str, inc_by: int) -> tuple[DF_T, int]:
-        """Increments the values in `col` by a given amount and returns the resulting df."""
-        raise NotImplementedError("Must be implemented by subclass.")
-
-    @classmethod
-    @abc.abstractmethod
     def _concat_dfs(cls, dfs: list[DF_T]) -> DF_T:
         """Concatenates a list of dataframes into a single dataframe."""
         raise NotImplementedError("Must be implemented by subclass.")
@@ -189,32 +184,25 @@ class DatasetBase(
             Both the built `subjects_df` as well as a dictionary from the raw subject ID column values to the
             inferred numeric subject IDs.
         """
-        subjects_df, ID_map = cls._load_input_df(
+        subjects_df = cls._load_input_df(
             schema.input_df,
-            [(schema.subject_id_col, InputDataType.CATEGORICAL)] + schema.columns_to_load,
+            schema.columns_to_load,
             filter_on=schema.filter_on,
-            subject_id_source_col=schema.subject_id_col,
+            subject_id_col=schema.subject_id_col,
         )
 
-        subjects_df = cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
-
-        return subjects_df, ID_map
+        return cls._rename_cols(subjects_df, {i: o for i, (o, _) in schema.unified_schema.items()})
 
     @classmethod
     def build_event_and_measurement_dfs(
         cls,
-        subject_ids_map: dict[Any, int],
         subject_id_col: str,
-        subject_id_dtype: Any,
         schemas_by_df: dict[INPUT_DF_T, list[InputDFSchema]],
     ) -> tuple[DF_T, DF_T]:
         """Builds and returns events and measurements dataframes from the input schema map.
 
         Args:
-            subject_ids_map: A mapping from the input subject ID space to the inferred, output ID space. This
-                is also used to filter dynamic input dataframes down to only valid subjects.
             subject_id_col: The name of the column containing (input) subject IDs.
-            subject_id_dtype: The dtype of the output subject ID column.
             schemas_by_df: A mapping from input dataframe to associated event/measurement schemas.
 
         Returns:
@@ -229,15 +217,17 @@ class DatasetBase(
             all_columns.extend(itertools.chain.from_iterable(s.columns_to_load for s in schemas))
 
             try:
-                df = cls._load_input_df(df, all_columns, subject_id_col, subject_ids_map, subject_id_dtype)
+                df = cls._load_input_df(df, all_columns, subject_id_col)
             except Exception as e:
                 raise ValueError(f"Errored while loading {df}") from e
 
             for schema in schemas:
                 if schema.filter_on:
+                    logger.debug("Filtering")
                     df = cls._filter_col_inclusion(schema.filter_on)
                 match schema.type:
                     case InputDFType.EVENT:
+                        logger.debug("Processing Event")
                         df = cls._resolve_ts_col(df, schema.ts_col, "timestamp")
                         all_events_and_measurements.append(
                             cls._process_events_and_measurements_df(
@@ -248,6 +238,7 @@ class DatasetBase(
                         )
                         event_types.append(schema.event_type)
                     case InputDFType.RANGE:
+                        logger.debug("Processing Range")
                         df = cls._resolve_ts_col(df, schema.start_ts_col, "start_time")
                         df = cls._resolve_ts_col(df, schema.end_ts_col, "end_time")
                         for et, unified_schema, sp_df in zip(
@@ -265,82 +256,16 @@ class DatasetBase(
                         raise ValueError(f"Invalid schema type {schema.type}.")
 
         all_events, all_measurements = [], []
-        running_event_id_max = 0
         for event_type, (events, measurements) in zip(event_types, all_events_and_measurements):
-            try:
-                new_events = cls._inc_df_col(events, "event_id", running_event_id_max)
-            except Exception as e:
-                raise ValueError(f"Failed to increment event_id on {event_type}") from e
-
-            if len(new_events) == 0:
-                print(f"Empty new events dataframe of type {event_type}!")
+            if events is None:
+                logger.warning(f"Empty new events dataframe of type {event_type}!")
                 continue
 
-            all_events.append(new_events)
+            all_events.append(events)
             if measurements is not None:
-                all_measurements.append(cls._inc_df_col(measurements, "event_id", running_event_id_max))
-
-            running_event_id_max = all_events[-1]["event_id"].max() + 1
+                all_measurements.append(measurements)
 
         return cls._concat_dfs(all_events), cls._concat_dfs(all_measurements)
-
-    @classmethod
-    def _get_preprocessing_model(
-        cls,
-        model_config: dict[str, Any],
-        for_fit: bool = False,
-    ) -> Any:
-        """Returns the appropriate model class or instance given the config for pre-processing.
-
-        This fetches the appropriate pre-processing model class (stored in ``model_config['cls']``) and either
-        returns it directly (if not `for_fit`) or instantiates it with the non-``'cls'`` config parameters and
-        returns the instance.
-
-        Args:
-            model_config: The configuration for the particular pre-processing model in question.
-            for_fit: Whether the retrieved model will be used for fitting (in which case it must be
-                instantiated with the passed configuration) or for transforming/predicting (in which case the
-                fit parameters will be stored with the data and so only the class is needed).
-
-        Returns:
-            Either the model class (as indicated via ``model_config['cls']``) or an instance of the class as
-            defined by non-``'cls'`` keyword parameters in `model_config`.
-
-        Raises:
-            KeyError: if ``'cls'`` is not in `model_config` or ``model_config['cls']`` is not in
-                `PREPROCESSORS`.
-
-        Examples:
-            >>> class MockPreprocessor:
-            ...     def __init__(self, name: str):
-            ...         self.name = name
-            ...     def __repr__(self) -> str:
-            ...         return f"MockPreprocessor(name={repr(self.name)})"
-            >>> DatasetBase.PREPROCESSORS = {'mock': MockPreprocessor}
-            >>> DatasetBase._get_preprocessing_model({'cls': 'mock', 'name': 'test'}, True)
-            MockPreprocessor(name='test')
-            >>> DatasetBase._get_preprocessing_model({'cls': 'mock', 'name': 'test'}, False)
-            <class '...MockPreprocessor'>
-            >>> DatasetBase._get_preprocessing_model({'name': 'test'}, True)
-            Traceback (most recent call last):
-                ...
-            KeyError: "Missing mandatory preprocessor class configuration parameter `'cls'`."
-            >>> DatasetBase._get_preprocessing_model({'cls': 'invalid', 'name': 'test'}, True)
-            Traceback (most recent call last):
-                ...
-            KeyError: 'Invalid preprocessor model class invalid! DatasetBase options are mock'
-        """
-        model_config = copy.deepcopy(model_config)
-        if "cls" not in model_config:
-            raise KeyError("Missing mandatory preprocessor class configuration parameter `'cls'`.")
-        if model_config["cls"] not in cls.PREPROCESSORS:
-            raise KeyError(
-                f"Invalid preprocessor model class {model_config['cls']}! {cls.__name__} options are "
-                f"{', '.join(cls.PREPROCESSORS.keys())}"
-            )
-
-        model_cls = cls.PREPROCESSORS[model_config.pop("cls")]
-        return model_cls(**model_config) if for_fit else model_cls
 
     @classmethod
     @abc.abstractmethod
@@ -364,7 +289,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_subjects_df")) or self._subjects_df is None:
             subjects_fp = self.subjects_fp(self.config.save_dir)
-            print(f"Loading subjects from {subjects_fp}...")
+            logger.info(f"Loading subjects from {subjects_fp}...")
             self._subjects_df = self._read_df(subjects_fp)
 
         return self._subjects_df
@@ -382,7 +307,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_events_df")) or self._events_df is None:
             events_fp = self.events_fp(self.config.save_dir)
-            print(f"Loading events from {events_fp}...")
+            logger.info(f"Loading events from {events_fp}...")
             self._events_df = self._read_df(events_fp)
 
         return self._events_df
@@ -401,7 +326,7 @@ class DatasetBase(
         """
         if (not hasattr(self, "_dynamic_measurements_df")) or self._dynamic_measurements_df is None:
             dynamic_measurements_fp = self.dynamic_measurements_fp(self.config.save_dir)
-            print(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
+            logger.info(f"Loading dynamic_measurements from {dynamic_measurements_fp}...")
             self._dynamic_measurements_df = self._read_df(dynamic_measurements_fp)
 
         return self._dynamic_measurements_df
@@ -438,7 +363,7 @@ class DatasetBase(
 
         reloaded_config = DatasetConfig.from_json_file(load_dir / "config.json")
         if reloaded_config.save_dir != load_dir:
-            print(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
+            logger.info(f"Updating config.save_dir from {reloaded_config.save_dir} to {load_dir}")
             reloaded_config.save_dir = load_dir
 
         attrs_to_add = {"config": reloaded_config}
@@ -544,15 +469,14 @@ class DatasetBase(
             if dynamic_measurements_df is not None:
                 raise ValueError("Can't set dynamic_measurements_df if input_schema is not None!")
 
-            subjects_df, ID_map = self.build_subjects_dfs(input_schema.static)
-            subject_id_dtype = subjects_df["subject_id"].dtype
+            subjects_df = self.build_subjects_dfs(input_schema.static)
 
+            logger.debug("Extracting events and measurements dataframe...")
             events_df, dynamic_measurements_df = self.build_event_and_measurement_dfs(
-                ID_map,
                 input_schema.static.subject_id_col,
-                subject_id_dtype,
                 input_schema.dynamic_by_df,
             )
+            logger.debug("Built events and measurements dataframe")
 
         self.config = config
         self._is_fit = False
@@ -583,15 +507,19 @@ class DatasetBase(
         self.event_types = []
         self.n_events_per_subject = {}
 
-        (
-            self.subjects_df,
-            self.events_df,
-            self.dynamic_measurements_df,
-        ) = self._validate_initial_dfs(subjects_df, events_df, dynamic_measurements_df)
+        self.events_df = events_df
+        self.dynamic_measurements_df = dynamic_measurements_df
 
         if self.events_df is not None:
             self._agg_by_time()
             self._sort_events()
+
+        (
+            self.subjects_df,
+            self.events_df,
+            self.dynamic_measurements_df,
+        ) = self._validate_initial_dfs(subjects_df, self.events_df, self.dynamic_measurements_df)
+
         self._update_subject_event_properties()
 
     @abc.abstractmethod
@@ -646,6 +574,7 @@ class DatasetBase(
         self,
         split_fracs: Sequence[float],
         split_names: Sequence[str] | None = None,
+        mandatory_set_IDs: dict[str, set[int] | None] | None = None,
     ):
         """Splits the underlying dataset into random sets by `subject_id`.
 
@@ -659,6 +588,11 @@ class DatasetBase(
                 'tuning', 'held_out']. If more than 3, it defaults to `['split_0', 'split_1', ...]`. Split
                 names of `train`, `tuning`, and `held_out` have special significance and are used elsewhere in
                 the model, so if `split_names` does not reflect those other things may not work down the line.
+            mandatory_set_IDs: Maps split name to an optional set of subject IDs that make up that split. If a
+                split name is included in mandatory_set_IDs, it should _not_ be included in `split_fracs` as
+                the size of the split is determined by the IDs in this object. Any IDs in this object will be
+                excluded from _all_ other splits and split_fractions will be taken over the remaining, unused
+                IDs.
 
         Raises:
             ValueError: if `split_fracs` contains anything outside the range of (0, 1], sums to something > 1,
@@ -688,6 +622,20 @@ class DatasetBase(
                 f"{len(split_fracs)}"
             )
 
+        if mandatory_set_IDs is None:
+            mandatory_set_IDs = {}
+
+        intersecting_split_names = set(split_names).intersection(mandatory_set_IDs.keys())
+        if intersecting_split_names:
+            raise ValueError(
+                "Splits with specified sizes overlap with those with pre-set populations! "
+                f"{', '.join(intersecting_split_names)}"
+            )
+
+        subjects_to_split = set(self.subject_ids) - set(
+            itertools.chain.from_iterable(mandatory_set_IDs.values())
+        )
+
         # As split fractions may not result in integer split sizes, we shuffle the split names and fractions
         # so that the splits that exceed the desired size are not always the last ones in the original passed
         # order.
@@ -695,13 +643,14 @@ class DatasetBase(
         split_names = [split_names[i] for i in split_names_idx]
         split_fracs = [split_fracs[i] for i in split_names_idx]
 
-        subjects = np.random.permutation(list(self.subject_ids))
+        subjects = np.random.permutation(list(subjects_to_split))
         split_lens = (np.array(split_fracs[:-1]) * len(subjects)).round().astype(int)
         split_lens = np.append(split_lens, len(subjects) - split_lens.sum())
 
         subjects_per_split = np.split(subjects, split_lens.cumsum())
 
         self.split_subjects = {k: set(v) for k, v in zip(split_names, subjects_per_split)}
+        self.split_subjects = {**self.split_subjects, **mandatory_set_IDs}
 
     @classmethod
     @abc.abstractmethod
@@ -769,10 +718,15 @@ class DatasetBase(
         3. Next, fit all pre-processing parameters over the observed measurements.
         4. Finally, transform all data via the fit pre-processing parameters.
         """
+        logger.info("Filtering subjects")
         self._filter_subjects()
+        logger.info("Adding time derived measurements")
         self._add_time_dependent_measurements()
+        logger.info("Fitting pre-processing parameters")
         self.fit_measurements()
+        logger.info("Transforming variables.")
         self.transform_measurements()
+        logger.info("Done with preprocessing")
 
     @TimeableMixin.TimeAs
     @abc.abstractmethod
@@ -838,7 +792,7 @@ class DatasetBase(
             _, _, source_df = self._get_source_df(config, do_only_train=True)
 
             if measure not in source_df:
-                print(f"WARNING: Measure {measure} not found! Dropping...")
+                logger.warning(f"Measure {measure} not found! Dropping...")
                 config.drop()
                 continue
 
@@ -848,7 +802,7 @@ class DatasetBase(
             source_df = self._filter_col_inclusion(source_df, {measure: True})
 
             if total_possible == 0:
-                print(f"Found no possible events for {measure}!")
+                logger.info(f"Found no possible events for {measure}!")
                 config.drop()
                 continue
 
@@ -1213,8 +1167,10 @@ class DatasetBase(
                 (b) attempt to write only those files that are not yet written to disk across the historical
                 summarization targets.
 
-        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.groupby_rolling.html # noqa: E501
+        .. _link: https://pola-rs.github.io/polars/py-polars/html/reference/dataframe/api/polars.DataFrame.group_by_rolling.html # noqa: E501
         """
+
+        logger.info("Caching flat representations")
 
         self._seed(1, "cache_flat_representation")
 
@@ -1251,7 +1207,7 @@ class DatasetBase(
                     old_params = json.load(f)
 
                 if old_params["subjects_per_output_file"] != params["subjects_per_output_file"]:
-                    print(
+                    logger.info(
                         "Standardizing chunk size to existing record "
                         f"({old_params['subjects_per_output_file']})."
                     )
@@ -1403,27 +1359,68 @@ class DatasetBase(
             do_overwrite: Whether or not to overwrite any existing file on disk.
         """
 
-        DL_dir = self.config.save_dir / "DL_reps"
-        DL_dir.mkdir(exist_ok=True, parents=True)
-
+        logger.info("Caching DL representations")
         if subjects_per_output_file is None:
-            subject_chunks = [None]
+            logger.warning("Sharding is recommended for DL representations.")
+
+        DL_dir = self.config.save_dir / "DL_reps"
+        NRT_dir = self.config.save_dir / "NRT_reps"
+
+        shards_fp = self.config.save_dir / "DL_shards.json"
+        if shards_fp.exists():
+            shards = json.loads(shards_fp.read_text())
         else:
-            subjects = np.random.permutation(list(self.subject_ids))
-            subject_chunks = np.array_split(
-                subjects,
-                np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),
-            )
-            subject_chunks = [list(c) for c in subject_chunks]
+            shards = {}
 
-        for chunk_idx, subjects_list in self._tqdm(list(enumerate(subject_chunks))):
-            cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
+            if subjects_per_output_file is None:
+                subject_chunks = [self.subject_ids]
+            else:
+                subjects = np.random.permutation(list(self.subject_ids))
+                subject_chunks = np.array_split(
+                    subjects,
+                    np.arange(subjects_per_output_file, len(subjects), subjects_per_output_file),
+                )
 
-            for split, subjects in self.split_subjects.items():
-                fp = DL_dir / f"{split}_{chunk_idx}.{self.DF_SAVE_FORMAT}"
+            subject_chunks = [[int(x) for x in c] for c in subject_chunks]
 
-                split_cached_df = self._filter_col_inclusion(cached_df, {"subject_id": subjects})
-                self._write_df(split_cached_df, fp, do_overwrite=do_overwrite)
+            for chunk_idx, subjects_list in enumerate(subject_chunks):
+                for split, subjects in self.split_subjects.items():
+                    shard_key = f"{split}/{chunk_idx}"
+                    included_subjects = set(subjects_list).intersection({int(x) for x in subjects})
+                    shards[shard_key] = list(included_subjects)
+
+            shards_fp.write_text(json.dumps(shards))
+
+        for shard_key, subjects_list in self._tqdm(list(shards.items()), desc="Shards"):
+            DL_fp = DL_dir / f"{shard_key}.{self.DF_SAVE_FORMAT}"
+            DL_fp.parent.mkdir(exist_ok=True, parents=True)
+
+            if DL_fp.exists() and not do_overwrite:
+                logger.info(f"Skipping {DL_fp} as it already exists.")
+                cached_df = self._read_df(DL_fp)
+            else:
+                logger.info(f"Caching {shard_key} to {DL_fp}")
+                cached_df = self.build_DL_cached_representation(subject_ids=subjects_list)
+                self._write_df(cached_df, DL_fp, do_overwrite=do_overwrite)
+
+            NRT_fp = NRT_dir / f"{shard_key}.pt"
+            NRT_fp.parent.mkdir(exist_ok=True, parents=True)
+            if NRT_fp.exists() and not do_overwrite:
+                logger.info(f"Skipping {NRT_fp} as it already exists.")
+            else:
+                logger.info(f"Caching NRT for {shard_key} to {NRT_fp}")
+                # TODO(mmd): This breaks the API isolation a bit, as we assume polars here. But that's fine.
+                jnrt_dict = {
+                    k: cached_df[k].to_list()
+                    for k in ["time_delta", "dynamic_indices", "dynamic_measurement_indices"]
+                }
+                jnrt_dict["dynamic_values"] = (
+                    cached_df["dynamic_values"]
+                    .list.eval(pl.element().list.eval(pl.element().fill_null(float("nan"))))
+                    .to_list()
+                )
+                jnrt_dict = JointNestedRaggedTensorDict(jnrt_dict)
+                jnrt_dict.save(NRT_fp)
 
     @property
     def vocabulary_config(self) -> VocabularyConfig:
@@ -1482,6 +1479,16 @@ class DatasetBase(
             else:
                 idxmaps[m] = {m: offset}
         return idxmaps
+
+    @property
+    def unified_vocabulary_flat(self) -> list[str]:
+        vocab_size = max(self.unified_vocabulary_idxmap[self.unified_measurements_vocab[-1]].values()) + 1
+        vocab = [None for _ in range(vocab_size)]
+        vocab[0] = "UNK"
+        for m, idxmap in self.unified_vocabulary_idxmap.items():
+            for e, i in idxmap.items():
+                vocab[i] = e
+        return vocab
 
     @abc.abstractmethod
     def build_DL_cached_representation(

@@ -29,6 +29,11 @@ inputs:
     input_df: "${raw_data_dir}/labs.csv"
     ts_col: "timestamp"
     ts_format: "%H:%M:%S-%Y-%m-%d"
+  medications:
+    input_df: "${raw_data_dir}/medications.csv"
+    ts_col: "timestamp"
+    ts_format: "%H:%M:%S-%Y-%m-%d"
+    columns: {"name": "medication"}
 
 measurements:
   static:
@@ -42,6 +47,13 @@ measurements:
   dynamic:
     multi_label_classification:
       admissions: ["department"]
+      medications:
+        - name: medication
+          modifiers: 
+            - [dose, "float"]
+            - [frequency, "categorical"]
+            - [duration, "categorical"]
+            - [generic_name, "categorical"]
     univariate_regression:
       vitals: ["HR", "temp"]
     multivariate_regression:

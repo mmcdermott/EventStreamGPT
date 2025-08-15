@@ -13,7 +13,6 @@ more information.
 ```yaml
 defaults:
   - outlier_detector_config: stddev_cutoff
-  - normalizer_config: standard_scaler
   - _self_
 
 cohort_name: ???

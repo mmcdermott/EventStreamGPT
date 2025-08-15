@@ -12,10 +12,12 @@ except ImportError:
 import hydra
 
 from EventStream.baseline.FT_task_baseline import SklearnConfig, wandb_train_sklearn
+from EventStream.logger import hydra_loguru_init
 
 
 @hydra.main(version_base=None, config_name="sklearn_config")
 def main(cfg: SklearnConfig):
+    hydra_loguru_init()
     if type(cfg) is not SklearnConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
 

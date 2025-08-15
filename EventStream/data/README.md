@@ -76,8 +76,8 @@ the following data:
    indices of the measures that correspond to the measurement observations in `dynamic_indices`.
 8. `dynamic_values`, which is of the same (ragged) shape as `dynamic_indices` and contains any unique
    numerical values associated with those measurements. Items may be missing (reflected with `None` or
-   `np.NaN`, depending on the data library format) or may have been filtered out as outliers (reflected with
-   `np.NaN`).
+   `float('nan')`, depending on the data library format) or may have been filtered out as outliers (reflected with
+   `float('nan')`).
 
 ### Measurements
 
@@ -390,7 +390,7 @@ Let us define the following variables:
 }
 ```
 
-`static_data_values` and `data_values` in the above dictionary may contain `np.NaN` entries where values were
+`static_data_values` and `data_values` in the above dictionary may contain `float('nan')` entries where values were
 not observed with a given data element. All other data elements are fully observed. The elements correspond to
 the following kinds of features:
 

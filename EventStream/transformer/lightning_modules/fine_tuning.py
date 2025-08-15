@@ -14,6 +14,7 @@ import torchmetrics
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
+from loguru import logger
 from omegaconf import OmegaConf
 from torchmetrics.classification import (
     BinaryAccuracy,
@@ -183,7 +184,7 @@ class ESTForStreamClassificationLM(L.LightningModule):
                 metric(preds, labels.long())
                 self.log(f"{prefix}_{metric_name}", metric)
             except (ValueError, IndexError) as e:
-                print(
+                logger.error(
                     f"Failed to compute {metric_name} "
                     f"with preds ({str_summary(preds)}) and labels ({str_summary(labels)}): {e}."
                 )
@@ -396,13 +397,13 @@ class FinetuneConfig:
             and self.data_config.get("train_subset_seed", None) is None
         ):
             self.data_config["train_subset_seed"] = int(random.randint(1, int(1e6)))
-            print(
-                f"WARNING: train_subset_size={self.data_config.train_subset_size} but "
+            logger.warning(
+                f"train_subset_size={self.data_config.train_subset_size} but "
                 f"seed is unset. Setting to {self.data_config['train_subset_seed']}"
             )
 
         data_config_fp = self.load_from_model_dir / "data_config.json"
-        print(f"Loading data_config from {data_config_fp}")
+        logger.info(f"Loading data_config from {data_config_fp}")
         reloaded_data_config = PytorchDatasetConfig.from_json_file(data_config_fp)
         reloaded_data_config.task_df_name = self.task_df_name
 
@@ -411,31 +412,33 @@ class FinetuneConfig:
                 continue
             if param == "task_df_name":
                 if val != self.task_df_name:
-                    print(
-                        f"WARNING: task_df_name is set in data_config_overrides to {val}! "
+                    logger.warning(
+                        f"task_df_name is set in data_config_overrides to {val}! "
                         f"Original is {self.task_df_name}. Ignoring data_config..."
                     )
                 continue
-            print(f"Overwriting {param} in data_config from {getattr(reloaded_data_config, param)} to {val}")
+            logger.info(
+                f"Overwriting {param} in data_config from {getattr(reloaded_data_config, param)} to {val}"
+            )
             setattr(reloaded_data_config, param, val)
 
         self.data_config = reloaded_data_config
 
         config_fp = self.load_from_model_dir / "config.json"
-        print(f"Loading config from {config_fp}")
+        logger.info(f"Loading config from {config_fp}")
         reloaded_config = StructuredTransformerConfig.from_json_file(config_fp)
 
         for param, val in self.config.items():
             if val is None:
                 continue
-            print(f"Overwriting {param} in config from {getattr(reloaded_config, param)} to {val}")
+            logger.info(f"Overwriting {param} in config from {getattr(reloaded_config, param)} to {val}")
             setattr(reloaded_config, param, val)
 
         self.config = reloaded_config
 
         reloaded_pretrain_config = OmegaConf.load(self.load_from_model_dir / "pretrain_config.yaml")
         if self.wandb_logger_kwargs.get("project", None) is None:
-            print(f"Setting wandb project to {reloaded_pretrain_config.wandb_logger_kwargs.project}")
+            logger.info(f"Setting wandb project to {reloaded_pretrain_config.wandb_logger_kwargs.project}")
             self.wandb_logger_kwargs["project"] = reloaded_pretrain_config.wandb_logger_kwargs.project
 
 
@@ -464,12 +467,12 @@ def train(cfg: FinetuneConfig):
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
         cfg.save_dir.mkdir(parents=True, exist_ok=True)
-        print("Saving config files...")
+        logger.info("Saving config files...")
         config_fp = cfg.save_dir / "config.json"
         if config_fp.exists() and not cfg.do_overwrite:
             raise FileExistsError(f"{config_fp} already exists!")
         else:
-            print(f"Writing to {config_fp}")
+            logger.info(f"Writing to {config_fp}")
             config.to_json_file(config_fp)
 
         data_config.to_json_file(cfg.save_dir / "data_config.json", do_overwrite=cfg.do_overwrite)
@@ -486,7 +489,7 @@ def train(cfg: FinetuneConfig):
 
     # TODO(mmd): Get this working!
     # if cfg.compile:
-    #     print("Compiling model!")
+    #     logger.info("Compiling model!")
     #     LM = torch.compile(LM)
 
     # Setting up torch dataloader
@@ -573,7 +576,7 @@ def train(cfg: FinetuneConfig):
     held_out_metrics = trainer.test(model=LM, dataloaders=held_out_dataloader, ckpt_path="best")
 
     if os.environ.get("LOCAL_RANK", "0") == "0":
-        print("Saving final metrics...")
+        logger.info("Saving final metrics...")
 
         with open(cfg.save_dir / "tuning_metrics.json", mode="w") as f:
             json.dump(tuning_metrics, f)

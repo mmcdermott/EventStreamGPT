@@ -12,6 +12,7 @@ except ImportError:
 import hydra
 import torch
 
+from EventStream.logger import hydra_loguru_init
 from EventStream.transformer.lightning_modules.zero_shot_evaluator import (
     FinetuneConfig,
     zero_shot_evaluation,
@@ -22,6 +23,7 @@ torch.set_float32_matmul_precision("high")
 
 @hydra.main(version_base=None, config_name="finetune_config")
 def main(cfg: FinetuneConfig):
+    hydra_loguru_init()
     if type(cfg) is not FinetuneConfig:
         cfg = hydra.utils.instantiate(cfg, _convert_="object")
     return zero_shot_evaluation(cfg)
